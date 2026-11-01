@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
     private val KEY_BASE44_TOKEN = "base44_access_token"
 
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
-    private var lastCopiedText = ""
+    private var lastHandledText = ""
     private var pendingScriptToInject: String? = null
 
     private val fileChooserLauncher = registerForActivityResult(
@@ -65,8 +65,13 @@ class MainActivity : AppCompatActivity() {
 
         requestNotificationPermission()
         setupWebView()
-        setupClipboardListener()
         handleIncomingIntent(intent)
+        showPersistentQuickNotification()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkClipboardOnResume()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -188,7 +193,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIncomingIntent(intent: Intent) {
-        // 1. Text or Link Share (e.g. from YouTube, Chrome, Twitter)
+        // 1. Text Selection Menu (PROCESS_TEXT from any app)
+        if (intent.action == Intent.ACTION_PROCESS_TEXT) {
+            val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            if (!text.isNullOrBlank()) {
+                injectTextIntoCreamy(text)
+                return
+            }
+        }
+
+        // 2. Text or Link Share (e.g. from YouTube, Chrome, Twitter)
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             if (!sharedText.isNullOrBlank()) {
@@ -197,7 +211,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 2. Image Share (e.g. from Gallery, Google Photos, Screenshots)
+        // 3. Image Share (e.g. from Gallery, Screenshots)
         if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true) {
             val imageUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             if (imageUri != null) {
@@ -206,7 +220,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 3. From Clipboard / Download Notification
+        // 4. From Notification or Widget
         val injectText = intent.getStringExtra("EXTRA_INJECT_TEXT")
         val injectImageUriStr = intent.getStringExtra("EXTRA_INJECT_IMAGE_URI")
 
@@ -220,7 +234,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 4. From Widget (Search Mode / Voice Trigger / Creamy Direct)
         val targetUrl = intent.getStringExtra("EXTRA_TARGET_URL")
         val mode = intent.getStringExtra("EXTRA_MODE")
         val triggerVoice = intent.getBooleanExtra("EXTRA_TRIGGER_VOICE", false)
@@ -382,73 +395,90 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupClipboardListener() {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-        clipboard.addPrimaryClipChangedListener {
-            try {
-                val clip = clipboard.primaryClip
-                if (clip != null && clip.itemCount > 0) {
-                    val item = clip.getItemAt(0)
-                    val text = item.text?.toString()?.trim() ?: ""
-                    val uri = item.uri
-
-                    if (text.isNotBlank() && text != lastCopiedText && text.length > 2) {
-                        lastCopiedText = text
-                        showClipboardNotification(text = text, uri = null)
-                    } else if (uri != null) {
-                        showClipboardNotification(text = null, uri = uri)
-                    }
+    private fun checkClipboardOnResume() {
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+            val clip = clipboard.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                val text = clip.getItemAt(0).text?.toString()?.trim() ?: ""
+                if (text.isNotBlank() && text != lastHandledText && text.length > 2) {
+                    lastHandledText = text
+                    updateClipboardNotification(text)
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
-    private fun showClipboardNotification(text: String?, uri: Uri?) {
-        val channelId = "cream_ai_clipboard_channel"
+    private fun showPersistentQuickNotification() {
+        val channelId = "cream_ai_quick_channel"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Cream ai 클립보드 감지",
-                NotificationManager.IMPORTANCE_HIGH
+                "Cream ai 빠른 실행",
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "복사한 내용으로 Creamy에 바로 질문합니다"
+                description = "알림창에서 Creamy를 바로 실행합니다"
             }
             notificationManager.createNotificationChannel(channel)
         }
 
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
+            putExtra("EXTRA_TARGET_URL", CREAMY_URL)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            if (!text.isNullOrBlank()) {
-                putExtra("EXTRA_INJECT_TEXT", text)
-            }
-            if (uri != null) {
-                putExtra("EXTRA_INJECT_IMAGE_URI", uri.toString())
-            }
         }
 
         val pendingIntent = PendingIntent.getActivity(
             this,
-            203,
+            100,
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val snippet = text?.take(40)?.replace("\n", " ") ?: "복사한 이미지"
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Cream ai Hub")
-            .setContentText("📋 복사한 내용으로 Creamy에 질문하기: \"$snippet\"")
+            .setContentText("탭하여 Creamy에게 질문하기")
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
+        notificationManager.notify(100, notification)
+    }
+
+    private fun updateClipboardNotification(text: String) {
+        val channelId = "cream_ai_quick_channel"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("EXTRA_INJECT_TEXT", text)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            101,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val snippet = text.take(35).replace("\n", " ")
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Cream ai Hub: 복사한 내용")
+            .setContentText("📋 \"$snippet\" 질문하기")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
 
-        notificationManager.notify(203, notification)
+        notificationManager.notify(101, notification)
     }
 
     override fun onBackPressed() {

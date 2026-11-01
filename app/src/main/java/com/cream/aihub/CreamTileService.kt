@@ -1,8 +1,8 @@
 package com.cream.aihub
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
-import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 
@@ -19,23 +19,23 @@ class CreamTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else true
 
-        if (hasOverlay) {
-            val serviceIntent = Intent(this, FloatingOverlayService::class.java).apply {
-                action = FloatingOverlayService.ACTION_TOGGLE
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
+        // Launch FloatingCreamActivity directly using Android 14 compliant PendingIntent
+        val intent = Intent(this, FloatingCreamActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            1001,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14 (API 34+)
+            startActivityAndCollapse(pendingIntent)
         } else {
-            val intent = Intent(this, FloatingCreamActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
+            @Suppress("DEPRECATION")
             startActivityAndCollapse(intent)
         }
     }

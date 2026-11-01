@@ -3,6 +3,7 @@ package com.cream.aihub
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -23,6 +24,14 @@ class FloatingCreamActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.view_floating_overlay)
+
+        window?.let { w ->
+            val dm = resources.displayMetrics
+            val width = (dm.widthPixels * 0.92).toInt()
+            val height = (dm.heightPixels * 0.75).toInt()
+            w.setLayout(width, height)
+            w.setGravity(Gravity.CENTER)
+        }
 
         webView = findViewById(R.id.floatingWebView)
         progressBar = findViewById(R.id.floatingProgressBar)
