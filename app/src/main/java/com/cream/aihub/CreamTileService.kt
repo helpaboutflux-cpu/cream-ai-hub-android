@@ -2,6 +2,7 @@ package com.cream.aihub
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -13,6 +14,7 @@ class CreamTileService : TileService() {
         qsTile?.apply {
             state = Tile.STATE_INACTIVE
             label = "Cream ai"
+            icon = Icon.createWithResource(this@CreamTileService, R.drawable.ic_stat_cream)
             updateTile()
         }
     }
