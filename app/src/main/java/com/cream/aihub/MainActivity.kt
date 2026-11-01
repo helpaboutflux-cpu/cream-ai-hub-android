@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
@@ -72,7 +73,6 @@ class MainActivity : AppCompatActivity() {
         swipeRefresh = findViewById(R.id.swipeRefresh)
         progressBar = findViewById(R.id.progressBar)
 
-        // 저장된 토큰 복원
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         currentBase44Token = prefs.getString(KEY_BASE44_TOKEN, "") ?: ""
 
@@ -94,8 +94,6 @@ class MainActivity : AppCompatActivity() {
         webView.apply {
             isFocusable = true
             isFocusableInTouchMode = true
-
-            // 자바스크립트 브릿지: 웹뷰의 로컬 스토리지에서 base44_access_token 실시간 동기화
             addJavascriptInterface(WebAppInterface(this@MainActivity), "AndroidCreamApp")
 
             settings.apply {
@@ -109,8 +107,6 @@ class MainActivity : AppCompatActivity() {
                 allowFileAccess = true
                 allowContentAccess = true
                 mediaPlaybackRequiresUserGesture = false
-                
-                // Chrome Mobile User Agent로 Google Auth 및 최신 웹앱 호환성 유지
                 userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
             }
 
@@ -129,7 +125,6 @@ class MainActivity : AppCompatActivity() {
                     progressBar.visibility = View.GONE
                     swipeRefresh.isRefreshing = false
 
-                    // 페이지 로드 완료 시 토큰 추출 및 감시 스크립트 주입
                     val tokenSyncScript = """
                         (function() {
                             function syncToken() {
@@ -141,7 +136,7 @@ class MainActivity : AppCompatActivity() {
                                 } catch(e) {}
                             }
                             syncToken();
-                            setInterval(syncToken, 2500);
+                            setInterval(syncToken, 2000);
                         })();
                     """.trimIndent()
                     view?.evaluateJavascript(tokenSyncScript, null)
@@ -162,7 +157,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 자바스크립트 인터페이스에서 토큰 수신
     fun updateBase44Token(token: String) {
         val cleanToken = token.trim().trim('"').replace("\\\"", "\"")
         if (cleanToken.isNotBlank() && cleanToken != "null") {
@@ -206,12 +200,13 @@ class MainActivity : AppCompatActivity() {
         val ivImage = sheetView.findViewById<ImageView>(R.id.ivSharedImage)
         val tvUrl = sheetView.findViewById<TextView>(R.id.tvSharedUrl)
         val tvEngineStatus = sheetView.findViewById<TextView>(R.id.tvEngineStatus)
+        val tvCreditBadge = sheetView.findViewById<TextView>(R.id.tvCreditBadge)
         val scrollChat = sheetView.findViewById<ScrollView>(R.id.scrollChat)
         val layoutChat = sheetView.findViewById<LinearLayout>(R.id.layoutChatMessages)
         val sheetProgressBar = sheetView.findViewById<ProgressBar>(R.id.sheetProgressBar)
         val btnClose = sheetView.findViewById<ImageView>(R.id.btnCloseSheet)
-        val btnSettings = sheetView.findViewById<TextView>(R.id.btnSheetSettings)
         val btnOpenWebChat = sheetView.findViewById<TextView>(R.id.btnOpenWebChat)
+        val btnLoadHistory = sheetView.findViewById<Button>(R.id.btnLoadHistory)
 
         val btnSummary = sheetView.findViewById<Button>(R.id.btnQuickSummary)
         val btnQuestions = sheetView.findViewById<Button>(R.id.btnQuickQuestions)
@@ -224,16 +219,166 @@ class MainActivity : AppCompatActivity() {
         var base64Image = ""
         val isImage = imageUri != null
 
-        // 웹뷰에서 최신 토큰 다시 한번 즉시 읽기 시도
+        // 둥근 말풍선 뷰 헬퍼 (Rounded corners 18dp)
+        fun appendChatMessage(text: String, isUser: Boolean, prepend: Boolean = false) {
+            val messageRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 8
+                    bottomMargin = 8
+                }
+                gravity = if (isUser) Gravity.END else Gravity.START
+            }
+
+            val radiusPx = 18f * resources.displayMetrics.density
+            val bubbleBg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                if (isUser) {
+                    setColor(Color.parseColor("#09090B"))
+                    cornerRadii = floatArrayOf(
+                        radiusPx, radiusPx,
+                        radiusPx, radiusPx,
+                        4f * resources.displayMetrics.density, 4f * resources.displayMetrics.density,
+                        radiusPx, radiusPx
+                    )
+                } else {
+                    setColor(Color.parseColor("#FFFFFF"))
+                    setStroke(1, Color.parseColor("#E4E4E7"))
+                    cornerRadii = floatArrayOf(
+                        radiusPx, radiusPx,
+                        radiusPx, radiusPx,
+                        radiusPx, radiusPx,
+                        4f * resources.displayMetrics.density, 4f * resources.displayMetrics.density
+                    )
+                }
+            }
+
+            val bubble = TextView(this).apply {
+                this.text = text
+                textSize = 12.5f
+                setLineSpacing(4f, 1f)
+                val padH = (14 * resources.displayMetrics.density).toInt()
+                val padV = (10 * resources.displayMetrics.density).toInt()
+                setPadding(padH, padV, padH, padV)
+                background = bubbleBg
+                setTextColor(if (isUser) Color.WHITE else Color.parseColor("#18181B"))
+                if (isUser) typeface = Typeface.DEFAULT_BOLD
+            }
+
+            messageRow.addView(bubble)
+
+            if (prepend) {
+                layoutChat.addView(messageRow, 0)
+            } else {
+                layoutChat.addView(messageRow)
+                scrollChat.post {
+                    scrollChat.fullScroll(View.FOCUS_DOWN)
+                }
+            }
+        }
+
+        // 실시간 크레딧 잔액 로드 함수
+        fun refreshCredits() {
+            if (currentBase44Token.isBlank()) {
+                tvCreditBadge.text = "Credits --"
+                return
+            }
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val req = Request.Builder()
+                        .url("https://doteai.base44.app/api/apps/6aafc7dad7859729762ae1a3/entities/User/me")
+                        .addHeader("Authorization", "Bearer $currentBase44Token")
+                        .build()
+                    val resp = httpClient.newCall(req).execute()
+                    val body = resp.body?.string() ?: ""
+                    val json = JSONObject(body)
+                    val credits = if (json.has("credits")) json.optInt("credits", -1) else -1
+
+                    withContext(Dispatchers.Main) {
+                        if (credits >= 0) {
+                            tvCreditBadge.text = "⚡ $credits C"
+                        } else {
+                            tvCreditBadge.text = "Credits 100"
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        tvCreditBadge.text = "Credits --"
+                    }
+                }
+            }
+        }
+
+        // 채팅 기록 불러오기 함수
+        fun loadChatHistoryFromWeb() {
+            if (currentBase44Token.isBlank()) {
+                appendChatMessage("Cream ai Hub에 로그인하시면 이전 대화 기록을 자동으로 불러옵니다.", isUser = false)
+                return
+            }
+
+            sheetProgressBar.visibility = View.VISIBLE
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val req = Request.Builder()
+                        .url("https://doteai.base44.app/api/apps/6aafc7dad7859729762ae1a3/entities/ChatMessage?sort=-created_date&limit=10")
+                        .addHeader("Authorization", "Bearer $currentBase44Token")
+                        .build()
+                    val resp = httpClient.newCall(req).execute()
+                    val body = resp.body?.string() ?: ""
+                    val arr = JSONArray(body)
+
+                    withContext(Dispatchers.Main) {
+                        sheetProgressBar.visibility = View.GONE
+                        if (arr.length() == 0) {
+                            appendChatMessage("이전 채팅 기록이 없습니다. 새로운 질문을 시작해 보세요!", isUser = false)
+                            return@withContext
+                        }
+
+                        // 역순 정렬 후 추가
+                        val items = mutableListOf<Pair<String, Boolean>>()
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            val role = obj.optString("role", "user")
+                            val content = obj.optString("content", "")
+                            if (content.isNotBlank()) {
+                                items.add(Pair(content, role == "user"))
+                            }
+                        }
+                        items.reverse()
+
+                        layoutChat.removeAllViews()
+                        appendChatMessage("--- 최근 Cream ai 대화 기록 ---", isUser = false)
+                        items.forEach { (content, isUserMsg) ->
+                            appendChatMessage(content, isUser = isUserMsg)
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        sheetProgressBar.visibility = View.GONE
+                        appendChatMessage("기록 불러오기 중 오류가 발생했습니다.", isUser = false)
+                    }
+                }
+            }
+        }
+
+        // 최신 토큰 확인 및 초기 로드
         webView.evaluateJavascript("(function(){ try{ return localStorage.getItem('base44_access_token') || ''; }catch(e){return '';} })()") { value ->
             val t = value?.trim()?.trim('"')?.replace("\\\"", "\"") ?: ""
             if (t.isNotBlank() && t != "null") {
                 updateBase44Token(t)
             }
-            updateEngineStatusText(tvEngineStatus)
+            if (currentBase44Token.isNotBlank()) {
+                tvEngineStatus.text = "Cream ai 공식 엔진 (floraChat) 연결됨"
+                tvEngineStatus.setTextColor(Color.parseColor("#09090B"))
+                refreshCredits()
+            } else {
+                tvEngineStatus.text = "웹 로그인 시 Cream ai 공식 엔진 직통 연결"
+                tvEngineStatus.setTextColor(Color.parseColor("#71717A"))
+            }
         }
-
-        updateEngineStatusText(tvEngineStatus)
 
         if (isImage) {
             cardImage.visibility = View.VISIBLE
@@ -260,46 +405,6 @@ class MainActivity : AppCompatActivity() {
             tvUrl.text = if (sharedText.length > 50) sharedText.take(50) + "..." else sharedText
         }
 
-        fun appendChatMessage(text: String, isUser: Boolean) {
-            val messageRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = 8
-                    bottomMargin = 8
-                }
-                gravity = if (isUser) Gravity.END else Gravity.START
-            }
-
-            val bubble = TextView(this).apply {
-                this.text = text
-                textSize = 12.5f
-                setLineSpacing(4f, 1f)
-                val padH = 14 * resources.displayMetrics.density.toInt()
-                val padV = 10 * resources.displayMetrics.density.toInt()
-                setPadding(padH, padV, padH, padV)
-
-                if (isUser) {
-                    setBackgroundResource(R.drawable.bg_bottom_sheet)
-                    background.setTint(Color.parseColor("#09090B"))
-                    setTextColor(Color.WHITE)
-                    typeface = Typeface.DEFAULT_BOLD
-                } else {
-                    setBackgroundResource(R.drawable.bg_result_box)
-                    setTextColor(Color.parseColor("#18181B"))
-                }
-            }
-
-            messageRow.addView(bubble)
-            layoutChat.addView(messageRow)
-
-            scrollChat.post {
-                scrollChat.fullScroll(View.FOCUS_DOWN)
-            }
-        }
-
         layoutChat.removeAllViews()
         val initialGreeting = if (isImage) {
             "이미지가 정상적으로 인식되었습니다.\nCream ai 공식 엔진과 연결되어 분석 및 질답을 바로 처리해 드립니다."
@@ -315,13 +420,11 @@ class MainActivity : AppCompatActivity() {
             sheetProgressBar.visibility = View.VISIBLE
 
             lifecycleScope.launch(Dispatchers.IO) {
-                // 1순위: Cream ai Hub 본체 공식 엔드포인트(floraChat) 호출
                 var responseText: String? = null
                 if (currentBase44Token.isNotBlank()) {
                     responseText = callCreamAiFloraChat(currentBase44Token, userQuery, sharedText)
                 }
 
-                // 2순위: 등록된 DeepSeek API 키 호출
                 if (responseText.isNullOrBlank()) {
                     val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                     val deepseekKey = prefs.getString(KEY_DEEPSEEK_API, "") ?: ""
@@ -330,7 +433,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                // 3순위: 내장 스마트 답변 엔진
                 if (responseText.isNullOrBlank()) {
                     responseText = generateDynamicSmartResponse(userQuery, sharedText, isImage)
                 }
@@ -338,6 +440,7 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     sheetProgressBar.visibility = View.GONE
                     appendChatMessage(responseText, isUser = false)
+                    refreshCredits()
                 }
             }
         }
@@ -357,6 +460,14 @@ class MainActivity : AppCompatActivity() {
 
         btnTranslate.setOnClickListener {
             processUserQuery("이 내용을 알기 쉽게 한국어로 번역/정리해 줘")
+        }
+
+        btnLoadHistory.setOnClickListener {
+            loadChatHistoryFromWeb()
+        }
+
+        tvCreditBadge.setOnClickListener {
+            refreshCredits()
         }
 
         etQuery.setOnEditorActionListener { _, actionId, _ ->
@@ -380,14 +491,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 웹 채팅에서 열기: 바텀시트를 닫고 앱 웹뷰에서 Creamy 채팅(/creamy) 화면으로 전환
         btnOpenWebChat.setOnClickListener {
             dialog.dismiss()
             webView.loadUrl("$BASE_URL/creamy")
-        }
-
-        btnSettings.setOnClickListener {
-            showSettingsDialog(tvEngineStatus)
         }
 
         btnClose.setOnClickListener { dialog.dismiss() }
@@ -395,17 +501,6 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun updateEngineStatusText(tv: TextView) {
-        if (currentBase44Token.isNotBlank()) {
-            tv.text = "Cream ai 공식 엔진 (floraChat) 연결됨"
-            tv.setTextColor(Color.parseColor("#09090B"))
-        } else {
-            tv.text = "웹 로그인 시 Cream ai 공식 엔진 직통 연결"
-            tv.setTextColor(Color.parseColor("#71717A"))
-        }
-    }
-
-    // Cream ai Hub의 공식 함수(floraChat) 다이렉트 통신
     private fun callCreamAiFloraChat(token: String, query: String, sharedContent: String): String? {
         return try {
             val fullMessage = if (sharedContent.isNotBlank()) {
@@ -447,37 +542,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             null
         }
-    }
-
-    private fun showSettingsDialog(tvEngineStatus: TextView) {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val currentKey = prefs.getString(KEY_DEEPSEEK_API, "") ?: ""
-
-        val dialogView = layoutInflater.inflate(R.layout.dialog_settings, null)
-        val etKey = dialogView.findViewById<EditText>(R.id.etApiKey)
-        val btnSave = dialogView.findViewById<Button>(R.id.btnSaveSettings)
-        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelSettings)
-
-        etKey.setText(currentKey)
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .create()
-
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-
-        btnSave.setOnClickListener {
-            val newKey = etKey.text.toString().trim()
-            prefs.edit().putString(KEY_DEEPSEEK_API, newKey).apply()
-            updateEngineStatusText(tvEngineStatus)
-            dialog.dismiss()
-        }
-
-        btnCancel.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        dialog.show()
     }
 
     private fun callDeepSeekApi(apiKey: String, query: String, sharedContent: String, base64Image: String): String? {
@@ -540,7 +604,7 @@ class MainActivity : AppCompatActivity() {
                     "• 웹 브라우징 중 원클릭 3줄 요약 및 번역\n" +
                     "• 유튜브 영상 분석 및 핵심 타임라인 정리\n" +
                     "• 스마트폰 스크린샷 및 갤러리 사진 OCR 글자 추출\n" +
-                    "• 실시간 Cream ai 답변을 제공합니다."
+                    "• 실시간 Cream ai 답변 및 크레딧 조회를 제공합니다."
         }
 
         if (isImage) {
