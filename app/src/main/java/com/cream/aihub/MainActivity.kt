@@ -45,6 +45,8 @@ class MainActivity : AppCompatActivity() {
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var lastHandledText = ""
     private var pendingScriptToInject: String? = null
+    private var isAppInForeground = false
+    private var isGenerationInProgress = false
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -67,11 +69,18 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         handleIncomingIntent(intent)
         showPersistentQuickNotification()
+        BriefingReceiver.scheduleDailyMorningBriefing(this)
     }
 
     override fun onResume() {
         super.onResume()
+        isAppInForeground = true
         checkClipboardOnResume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isAppInForeground = false
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -127,8 +136,8 @@ class MainActivity : AppCompatActivity() {
                     progressBar.visibility = View.GONE
                     swipeRefresh.isRefreshing = false
 
-                    // Sync token script
-                    val tokenSyncScript = """
+                    // Token sync & Generation status observer
+                    val monitoringScript = """
                         (function() {
                             function syncToken() {
                                 try {
@@ -140,9 +149,35 @@ class MainActivity : AppCompatActivity() {
                             }
                             syncToken();
                             setInterval(syncToken, 2500);
+
+                            var wasGenerating = false;
+                            function checkGenerationStatus() {
+                                try {
+                                    var isGenerating = !!document.querySelector(".animate-spin") ||
+                                                       !!document.querySelector(".animate-pulse");
+
+                                    if (isGenerating && !wasGenerating) {
+                                        wasGenerating = true;
+                                        if (window.AndroidCreamApp && window.AndroidCreamApp.onGenerationStarted) {
+                                            window.AndroidCreamApp.onGenerationStarted();
+                                        }
+                                    } else if (!isGenerating && wasGenerating) {
+                                        wasGenerating = false;
+                                        var text = "";
+                                        var bubbles = document.querySelectorAll(".prose, [class*='bubble'], [class*='message'] p");
+                                        if (bubbles.length > 0) {
+                                            text = bubbles[bubbles.length - 1].textContent || "";
+                                        }
+                                        if (window.AndroidCreamApp && window.AndroidCreamApp.onGenerationFinished) {
+                                            window.AndroidCreamApp.onGenerationFinished(text.slice(0, 100));
+                                        }
+                                    }
+                                } catch(err) {}
+                            }
+                            setInterval(checkGenerationStatus, 1000);
                         })();
                     """.trimIndent()
-                    view?.evaluateJavascript(tokenSyncScript, null)
+                    view?.evaluateJavascript(monitoringScript, null)
 
                     // Execute any pending injection script
                     pendingScriptToInject?.let { script ->
@@ -440,7 +475,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_cream)
             .setContentTitle("Cream ai Hub")
             .setContentText("탭하여 Creamy에게 질문하기")
             .setContentIntent(pendingIntent)
@@ -470,7 +505,7 @@ class MainActivity : AppCompatActivity() {
 
         val snippet = text.take(35).replace("\n", " ")
         val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_cream)
             .setContentTitle("Cream ai Hub: 복사한 내용")
             .setContentText("📋 \"$snippet\" 질문하기")
             .setContentIntent(pendingIntent)
@@ -479,6 +514,46 @@ class MainActivity : AppCompatActivity() {
             .build()
 
         notificationManager.notify(101, notification)
+    }
+
+    private fun showGenerationFinishedNotification(summary: String) {
+        val channelId = "cream_ai_generation_channel"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Cream ai 답변 완료",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "답변 생성이 완료되었을 때 알립니다"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            102,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val content = if (summary.isNotBlank()) summary else "생성이 완료되었습니다. 탭하여 확인하세요!"
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_stat_cream)
+            .setContentTitle("✨ Creamy 답변 완료")
+            .setContentText(content)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        notificationManager.notify(102, notification)
     }
 
     override fun onBackPressed() {
@@ -494,6 +569,23 @@ class MainActivity : AppCompatActivity() {
         fun onTokenReceived(token: String) {
             activity.runOnUiThread {
                 activity.updateBase44Token(token)
+            }
+        }
+
+        @JavascriptInterface
+        fun onGenerationStarted() {
+            activity.runOnUiThread {
+                activity.isGenerationInProgress = true
+            }
+        }
+
+        @JavascriptInterface
+        fun onGenerationFinished(summary: String) {
+            activity.runOnUiThread {
+                activity.isGenerationInProgress = false
+                if (!activity.isAppInForeground) {
+                    activity.showGenerationFinishedNotification(summary)
+                }
             }
         }
     }

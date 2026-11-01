@@ -68,7 +68,7 @@ class DownloadReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_cream)
             .setContentTitle("Cream ai Hub")
             .setContentText("📥 다운로드 완료: ${fileName}로 Creamy에 바로 질문하기")
             .setContentIntent(pendingIntent)
