@@ -17,7 +17,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.cream.aihub.databinding.ActivityMainBinding
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,7 +32,10 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityMainBinding
+    private lateinit var webView: WebView
+    private lateinit var swipeRefresh: SwipeRefreshLayout
+    private lateinit var progressBar: ProgressBar
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -42,8 +45,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_main)
+
+        webView = findViewById(R.id.webView)
+        swipeRefresh = findViewById(R.id.swipeRefresh)
+        progressBar = findViewById(R.id.progressBar)
 
         setupWebView()
         handleIncomingIntent(intent)
@@ -57,7 +63,7 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        binding.webView.apply {
+        webView.apply {
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -75,31 +81,30 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
-                    binding.progressBar.visibility = View.VISIBLE
+                    progressBar.visibility = View.VISIBLE
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    binding.progressBar.visibility = View.GONE
-                    binding.swipeRefresh.isRefreshing = false
+                    progressBar.visibility = View.GONE
+                    swipeRefresh.isRefreshing = false
                 }
             }
 
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                    binding.progressBar.progress = newProgress
+                    progressBar.progress = newProgress
                 }
             }
 
             loadUrl(BASE_URL)
         }
 
-        binding.swipeRefresh.setOnRefreshListener {
-            binding.webView.reload()
+        swipeRefresh.setOnRefreshListener {
+            webView.reload()
         }
     }
 
-    // 외부 앱(유튜브, 웹 브라우저)에서 [공유하기]로 넘어온 링크 처리
     private fun handleIncomingIntent(intent: Intent) {
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
@@ -109,7 +114,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 모바일 전용 3줄 요약 바텀시트
     private fun showSummaryBottomSheet(sharedText: String) {
         val dialog = BottomSheetDialog(this)
         val sheetView = layoutInflater.inflate(R.layout.dialog_summary_bottom_sheet, null)
@@ -117,7 +121,7 @@ class MainActivity : AppCompatActivity() {
 
         val tvUrl = sheetView.findViewById<TextView>(R.id.tvSharedUrl)
         val tvResult = sheetView.findViewById<TextView>(R.id.tvSummaryResult)
-        val progressBar = sheetView.findViewById<ProgressBar>(R.id.sheetProgressBar)
+        val sheetProgressBar = sheetView.findViewById<ProgressBar>(R.id.sheetProgressBar)
         val btnClose = sheetView.findViewById<ImageView>(R.id.btnCloseSheet)
         val btnSummary = sheetView.findViewById<Button>(R.id.btnQuickSummary)
         val btnQuestions = sheetView.findViewById<Button>(R.id.btnQuickQuestions)
@@ -129,13 +133,13 @@ class MainActivity : AppCompatActivity() {
         btnClose.setOnClickListener { dialog.dismiss() }
 
         fun requestAnalysis(prompt: String) {
-            progressBar.visibility = View.VISIBLE
+            sheetProgressBar.visibility = View.VISIBLE
             tvResult.text = "AI가 내용을 실시간으로 분석하고 있어요..."
 
             lifecycleScope.launch(Dispatchers.IO) {
                 val result = callAIEngine(sharedText, prompt)
                 withContext(Dispatchers.Main) {
-                    progressBar.visibility = View.GONE
+                    sheetProgressBar.visibility = View.GONE
                     tvResult.text = result
                 }
             }
@@ -163,14 +167,12 @@ class MainActivity : AppCompatActivity() {
 
         dialog.show()
 
-        // 첫 진입 시 자동 3줄 요약 실행
         requestAnalysis("이 링크나 내용의 핵심을 1) 한 줄 주제, 2) 주요 포인트 3가지, 3) 결론으로 깔끔하게 3줄 요약해 줘.")
     }
 
     private suspend fun callAIEngine(content: String, prompt: String): String {
         return try {
-            // DeepSeek API 호출 (기본 키가 없는 경우 친절한 안내 반환)
-            val apiKey = "" // SharedPreferences 또는 환경 설정에서 주입 가능
+            val apiKey = ""
             if (apiKey.isBlank()) {
                 return "🍦 [Cream ai 요약 안내]\n\n" +
                         "공유된 링크:\n$content\n\n" +
@@ -208,8 +210,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
-        if (binding.webView.canGoBack()) {
-            binding.webView.goBack()
+        if (webView.canGoBack()) {
+            webView.goBack()
         } else {
             super.onBackPressed()
         }
