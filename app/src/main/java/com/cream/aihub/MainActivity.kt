@@ -806,7 +806,7 @@ class MainActivity : AppCompatActivity() {
                 val text = clip.getItemAt(0).text?.toString()?.trim() ?: ""
                 if (text.isNotBlank() && text.length > 2) {
                     chipClipboardPaste.visibility = View.VISIBLE
-                    tvClipboardText.text = "📋 붙여넣기: "${text.take(30)}""
+                    tvClipboardText.text = "📋 붙여넣기: " + text.take(30)
                     tvClipboardText.tag = text
                     return
                 }
@@ -823,7 +823,7 @@ class MainActivity : AppCompatActivity() {
         if (filtered.isEmpty()) {
             val emptyTv = TextView(this).apply {
                 text = if (filterText.isBlank()) "최근 검색어가 없습니다." else "'$filterText' 검색하기"
-                textSize = 12sp
+                textSize = 12f
                 setTextColor(getColor(R.color.text_muted))
                 setPadding(6, 12, 6, 12)
             }
@@ -861,7 +861,7 @@ class MainActivity : AppCompatActivity() {
             val tv = TextView(this).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 text = q
-                textSize = 13sp
+                textSize = 13f
                 setTextColor(getColor(R.color.primary_black))
             }
 
@@ -901,7 +901,7 @@ class MainActivity : AppCompatActivity() {
         for (item in history) {
             val chip = TextView(this).apply {
                 text = item.title.take(12)
-                textSize = 11.5sp
+                textSize = 11.5f
                 setTextColor(getColor(R.color.primary_black))
                 setBackgroundResource(R.drawable.bg_pill_badge)
                 setPadding(24, 12, 24, 12)
@@ -1181,7 +1181,7 @@ class MainActivity : AppCompatActivity() {
 
         val title = TextView(this).apply {
             text = group.title
-            textSize = 13sp
+            textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setTextColor(getColor(R.color.primary_black))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1189,8 +1189,8 @@ class MainActivity : AppCompatActivity() {
 
         val countBadge = TextView(this).apply {
             val c = tabs.count { it.groupId == group.id && it.isSecurity == isSecurityMode }
-            text = "$c개 탭"
-            textSize = 10.5sp
+            text = "${c}개 탭"
+            textSize = 10.5f
             setTextColor(getColor(R.color.text_muted))
             setPadding(12, 4, 12, 4)
             setBackgroundResource(R.drawable.bg_pill_badge)
@@ -1198,7 +1198,7 @@ class MainActivity : AppCompatActivity() {
 
         val toggleBtn = TextView(this).apply {
             text = if (group.isCollapsed) " [펼치기]" else " [접기]"
-            textSize = 11sp
+            textSize = 11f
             setTextColor(getColor(R.color.text_muted))
             setPadding(8, 4, 8, 4)
             setOnClickListener {
@@ -1309,9 +1309,7 @@ class MainActivity : AppCompatActivity() {
 
             if (filtered.isEmpty()) {
                 val emptyTv = TextView(this).apply {
-                    text = "Bag에 보관된 항목이 없습니다.
-웹서핑 중 원하는 링크나 이미지를 Bag에 담아보세요!"
-                    textSize = 12sp
+                    text = "Bag에 보관된 항목이 없습니다.\n웹서핑 중 원하는 링크나 이미지를 Bag에 담아보세요!"
                     setTextColor(getColor(R.color.text_muted))
                     setPadding(12, 30, 12, 30)
                     gravity = android.view.Gravity.CENTER
@@ -1508,7 +1506,7 @@ class MainActivity : AppCompatActivity() {
             if (downloads.isEmpty()) {
                 val emptyTv = TextView(this).apply {
                     text = "다운로드된 파일이 없습니다."
-                    textSize = 12sp
+                    textSize = 12f
                     setTextColor(getColor(R.color.text_muted))
                     setPadding(10, 24, 10, 24)
                 }
@@ -1890,7 +1888,7 @@ $content"))
             for (f in folders) {
                 val chip = TextView(this).apply {
                     text = if (f == "전체") "전체" else "📁 $f"
-                    textSize = 11sp
+                    textSize = 11f
                     setPadding(30, 14, 30, 14)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1924,7 +1922,7 @@ $content"))
             if (filtered.isEmpty()) {
                 val emptyTv = TextView(this).apply {
                     text = "'$selectedFolder' 폴더에 저장된 북마크가 없습니다."
-                    textSize = 12sp
+                    textSize = 12f
                     setTextColor(getColor(R.color.text_muted))
                     setPadding(10, 20, 10, 20)
                 }
@@ -2058,7 +2056,7 @@ $content"))
 
         switchMaterialYou.isChecked = isMaterialYouEnabled()
         switchAdBlock.isChecked = isAdBlockEnabled()
-        tvZoomDisplay.text = "$selectedZoom% 설정됨"
+        tvZoomDisplay.text = "${selectedZoom}% 설정됨"
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         etApiKey.setText(prefs.getString("deepseek_api_key", ""))
