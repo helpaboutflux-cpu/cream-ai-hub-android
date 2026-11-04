@@ -13,7 +13,7 @@ class CreamTileService : TileService() {
         super.onStartListening()
         qsTile?.apply {
             state = Tile.STATE_INACTIVE
-            label = "Cream ai"
+            label = "Creamy"
             icon = Icon.createWithResource(this@CreamTileService, R.drawable.ic_stat_cream)
             updateTile()
         }

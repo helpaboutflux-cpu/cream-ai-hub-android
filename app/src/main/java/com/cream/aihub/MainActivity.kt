@@ -151,6 +151,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnCloseSidebar: ImageView
     private lateinit var btnTabAi: TextView
     private lateinit var btnTabBookmarks: TextView
+    private lateinit var btnTabMenu: TextView
+    private lateinit var layoutTabMenuContent: View
     private lateinit var layoutTabAiContent: View
     private lateinit var layoutTabBookmarksContent: View
     private lateinit var tvSidebarPageTitle: TextView
@@ -269,6 +271,8 @@ class MainActivity : AppCompatActivity() {
         btnCloseSidebar = findViewById(R.id.btnCloseSidebar)
         btnTabAi = findViewById(R.id.btnTabAi)
         btnTabBookmarks = findViewById(R.id.btnTabBookmarks)
+        btnTabMenu = findViewById(R.id.btnTabMenu)
+        layoutTabMenuContent = findViewById(R.id.layoutTabMenuContent)
         layoutTabAiContent = findViewById(R.id.layoutTabAiContent)
         layoutTabBookmarksContent = findViewById(R.id.layoutTabBookmarksContent)
         tvSidebarPageTitle = findViewById(R.id.tvSidebarPageTitle)
@@ -444,6 +448,10 @@ class MainActivity : AppCompatActivity() {
                     extractPageTextForSidebar()
                     val isStart = url == START_PAGE_URL || url == START_PAGE_SECURITY_URL || url?.startsWith("file:///android_asset/") == true
                     swipeRefresh.isEnabled = !isStart && view.scrollY == 0 && !view.canScrollVertically(-1)
+
+                    if (url == START_PAGE_URL) {
+                        view?.evaluateJavascript("if (window.setColorFavicons) window.setColorFavicons(${isColorFaviconsEnabled()});", null)
+                    }
 
                     // 보안 탭이 아닐 때만 방문 기록 저장
                     val curTab = getCurrentTab()
@@ -1575,9 +1583,7 @@ class MainActivity : AppCompatActivity() {
                     .filter(function(t) { return t.length > 20; });
                 return JSON.stringify({
                     title: title,
-                    content: paragraphs.join('
-
-')
+                    content: paragraphs.join('\n\n')
                 });
             })();
         """.trimIndent()
@@ -1633,6 +1639,10 @@ class MainActivity : AppCompatActivity() {
 
     // 메뉴 바텀시트
     private fun showMenuDialog() {
+        if (resources.configuration.screenWidthDp >= 600) {
+            toggleSidebar("menu")
+            return
+        }
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_menu_bottom_sheet, null)
         dialog.setContentView(view)
@@ -2006,6 +2016,7 @@ class MainActivity : AppCompatActivity() {
 
         val switchMaterialYou = view.findViewById<SwitchMaterial>(R.id.switchMaterialYou)
         val switchAdBlock = view.findViewById<SwitchMaterial>(R.id.switchAdBlock)
+        val switchColorFavicons = view.findViewById<SwitchMaterial>(R.id.switchColorFavicons)
         val tvZoomDisplay = view.findViewById<TextView>(R.id.tvZoomDisplay)
         val btnZoom80 = view.findViewById<Button>(R.id.btnZoom80)
         val btnZoom100 = view.findViewById<Button>(R.id.btnZoom100)
@@ -2056,6 +2067,7 @@ class MainActivity : AppCompatActivity() {
 
         switchMaterialYou.isChecked = isMaterialYouEnabled()
         switchAdBlock.isChecked = isAdBlockEnabled()
+        switchColorFavicons?.isChecked = isColorFaviconsEnabled()
         tvZoomDisplay.text = "${selectedZoom}% 설정됨"
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -2072,6 +2084,16 @@ class MainActivity : AppCompatActivity() {
             setTextZoom(selectedZoom)
             val matYouChanged = isMaterialYouEnabled() != switchMaterialYou.isChecked
             setMaterialYouEnabled(switchMaterialYou.isChecked)
+
+            val colorFavChanged = isColorFaviconsEnabled() != (switchColorFavicons?.isChecked ?: true)
+            prefs.edit().putBoolean("use_color_favicons", switchColorFavicons?.isChecked ?: true).apply()
+            if (colorFavChanged) {
+                for (t in tabs) {
+                    if (t.url == START_PAGE_URL) {
+                        t.webView.evaluateJavascript("if (window.setColorFavicons) window.setColorFavicons(${switchColorFavicons?.isChecked ?: true});", null)
+                    }
+                }
+            }
 
             val key = etApiKey.text.toString().trim()
             prefs.edit().putString("deepseek_api_key", key).apply()
@@ -2139,7 +2161,7 @@ class MainActivity : AppCompatActivity() {
         val rawJson = prefs.getString("saved_bookmarks_json", "[]") ?: "[]"
         val result = mutableListOf<BookmarkItem>()
 
-        result.add(BookmarkItem("Cream ai Hub", BASE_URL, "기본", false))
+        result.add(BookmarkItem("Creamy Hub", BASE_URL, "기본", false))
         result.add(BookmarkItem("Creamy AI 채팅", CREAMY_URL, "기본", false))
         result.add(BookmarkItem("Google", "https://www.google.com", "기본", false))
         result.add(BookmarkItem("Naver", "https://www.naver.com", "기본", false))
@@ -2484,43 +2506,122 @@ class MainActivity : AppCompatActivity() {
             .apply()
     }
 
-    private fun toggleSidebar() {
-        isSidebarOpen = !isSidebarOpen
-        layoutSidebar.visibility = if (isSidebarOpen) View.VISIBLE else View.GONE
-        if (isSidebarOpen) {
+    private fun isColorFaviconsEnabled(): Boolean {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean("use_color_favicons", true)
+    }
+
+    private fun switchSidebarTab(tab: String) {
+        btnTabAi.background = null
+        btnTabAi.setTextColor(getColor(R.color.text_muted))
+        btnTabBookmarks.background = null
+        btnTabBookmarks.setTextColor(getColor(R.color.text_muted))
+        btnTabMenu.background = null
+        btnTabMenu.setTextColor(getColor(R.color.text_muted))
+
+        layoutTabAiContent.visibility = View.GONE
+        layoutTabBookmarksContent.visibility = View.GONE
+        layoutTabMenuContent.visibility = View.GONE
+
+        when (tab) {
+            "bookmarks" -> {
+                btnTabBookmarks.setBackgroundResource(R.drawable.bg_pill_badge)
+                btnTabBookmarks.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                btnTabBookmarks.setTextColor(getColor(R.color.white))
+                layoutTabBookmarksContent.visibility = View.VISIBLE
+            }
+            "menu" -> {
+                btnTabMenu.setBackgroundResource(R.drawable.bg_pill_badge)
+                btnTabMenu.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                btnTabMenu.setTextColor(getColor(R.color.white))
+                layoutTabMenuContent.visibility = View.VISIBLE
+            }
+            else -> {
+                btnTabAi.setBackgroundResource(R.drawable.bg_pill_badge)
+                btnTabAi.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                btnTabAi.setTextColor(getColor(R.color.white))
+                layoutTabAiContent.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun toggleSidebar(tab: String = "ai") {
+        val isOpening = layoutSidebar.visibility != View.VISIBLE
+        if (isOpening) {
+            layoutSidebar.visibility = View.VISIBLE
+            layoutSidebar.alpha = 0f
+            layoutSidebar.translationX = 140f
+            layoutSidebar.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(240)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+            isSidebarOpen = true
+            switchSidebarTab(tab)
             extractPageTextForSidebar()
+        } else {
+            val isCurrentTabActive = when (tab) {
+                "menu" -> layoutTabMenuContent.visibility == View.VISIBLE
+                "bookmarks" -> layoutTabBookmarksContent.visibility == View.VISIBLE
+                else -> layoutTabAiContent.visibility == View.VISIBLE
+            }
+            if (!isCurrentTabActive) {
+                switchSidebarTab(tab)
+                return
+            }
+            layoutSidebar.animate()
+                .translationX(140f)
+                .alpha(0f)
+                .setDuration(180)
+                .setInterpolator(android.view.animation.AccelerateInterpolator())
+                .withEndAction {
+                    layoutSidebar.visibility = View.GONE
+                    layoutSidebar.translationX = 0f
+                    layoutSidebar.alpha = 1f
+                    isSidebarOpen = false
+                }
+                .start()
         }
     }
 
     private fun setupSidebarControls() {
         btnCloseSidebar.setOnClickListener {
-            layoutSidebar.visibility = View.GONE
-            isSidebarOpen = false
+            toggleSidebar()
         }
 
         btnTabAi.setOnClickListener {
-            btnTabAi.setBackgroundResource(R.drawable.bg_pill_badge)
-            btnTabAi.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
-            btnTabAi.setTextColor(getColor(R.color.white))
-
-            btnTabBookmarks.background = null
-            btnTabBookmarks.setTextColor(getColor(R.color.text_muted))
-
-            layoutTabAiContent.visibility = View.VISIBLE
-            layoutTabBookmarksContent.visibility = View.GONE
+            switchSidebarTab("ai")
         }
 
         btnTabBookmarks.setOnClickListener {
-            btnTabBookmarks.setBackgroundResource(R.drawable.bg_pill_badge)
-            btnTabBookmarks.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
-            btnTabBookmarks.setTextColor(getColor(R.color.white))
-
-            btnTabAi.background = null
-            btnTabAi.setTextColor(getColor(R.color.text_muted))
-
-            layoutTabBookmarksContent.visibility = View.VISIBLE
-            layoutTabAiContent.visibility = View.GONE
+            switchSidebarTab("bookmarks")
         }
+
+        btnTabMenu.setOnClickListener {
+            switchSidebarTab("menu")
+        }
+
+        // 사이드바 메뉴 패널의 모든 기능 연결
+        findViewById<Button>(R.id.btnSidebarQuickNewTab)?.setOnClickListener { addNewTab() }
+        findViewById<Button>(R.id.btnSidebarQuickReload)?.setOnClickListener { getCurrentWebView().reload() }
+        findViewById<Button>(R.id.btnSidebarQuickShare)?.setOnClickListener { shareCurrentPage() }
+        findViewById<Button>(R.id.btnSidebarQuickBookmark)?.setOnClickListener {
+            val cur = getCurrentWebView()
+            saveCustomBookmark(cur.title ?: "페이지", cur.url ?: START_PAGE_URL, "기본")
+            Toast.makeText(this, "📌 북마크에 저장되었습니다!", Toast.LENGTH_SHORT).show()
+        }
+
+        findViewById<TextView>(R.id.btnSidebarMenuBag)?.setOnClickListener { showBagDialog() }
+        findViewById<TextView>(R.id.btnSidebarMenuDownloads)?.setOnClickListener { showDownloadsDialog() }
+        findViewById<TextView>(R.id.btnSidebarMenuHistory)?.setOnClickListener { showHistoryDialog() }
+        findViewById<TextView>(R.id.btnSidebarMenuSecurity)?.setOnClickListener { showSecurityInfoDialog() }
+        findViewById<TextView>(R.id.btnSidebarMenuFind)?.setOnClickListener { showFindInPageDialog() }
+        findViewById<TextView>(R.id.btnSidebarMenuReader)?.setOnClickListener { showReaderMode() }
+        findViewById<TextView>(R.id.btnSidebarMenuTranslate)?.setOnClickListener { translateCurrentPage() }
+        findViewById<TextView>(R.id.btnSidebarMenuDesktop)?.setOnClickListener { toggleDesktopMode() }
+        findViewById<TextView>(R.id.btnSidebarMenuPrint)?.setOnClickListener { printCurrentPage() }
+        findViewById<TextView>(R.id.btnSidebarMenuSettings)?.setOnClickListener { showSettingsDialog() }
 
         btnSidebarQuickSummary.setOnClickListener {
             val currentWv = getCurrentWebView()
@@ -2668,7 +2769,7 @@ class MainActivity : AppCompatActivity() {
         if (!etBrowserUrl.hasFocus()) {
             val displayText = when {
                 url == START_PAGE_URL || url == START_PAGE_SECURITY_URL || url.startsWith("file:///android_asset/") -> ""
-                url == BASE_URL || url == "$BASE_URL/" -> "Cream ai Hub"
+                url == BASE_URL || url == "$BASE_URL/" -> "Creamy Hub"
                 url.startsWith(CREAMY_URL) -> "Creamy AI 채팅"
                 else -> {
                     try {
@@ -2713,7 +2814,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun updateBase44Token(token: String) {
-        val cleanToken = token.trim().trim('"').replace("\"", """)
+        val cleanToken = token.trim().trim('"').replace('"'.toString(), "")
         if (cleanToken.isNotBlank() && cleanToken != "null") {
             getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
@@ -2812,7 +2913,7 @@ class MainActivity : AppCompatActivity() {
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_stat_cream)
             .setContentTitle("Cream Browser: 복사한 내용")
-            .setContentText("📋 '$snippet' 검색하기")
+            .setContentText("📋 " + snippet + " 검색하기")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

@@ -43,7 +43,7 @@ class DownloadReceiver : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Cream ai 다운로드 알림",
+                "Creamy 다운로드 알림",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "다운로드한 파일로 Creamy에 질문합니다"
@@ -69,7 +69,7 @@ class DownloadReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_stat_cream)
-            .setContentTitle("Cream ai Hub")
+            .setContentTitle("Creamy Hub")
             .setContentText("📥 다운로드 완료: ${fileName}로 Creamy에 바로 질문하기")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

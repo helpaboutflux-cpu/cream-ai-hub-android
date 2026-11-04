@@ -63,7 +63,7 @@ class FloatingOverlayService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Cream ai 플로팅 서비스",
+                "Creamy 플로팅 서비스",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "플로팅 창이 활성화되어 있습니다"
@@ -83,7 +83,7 @@ class FloatingOverlayService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Cream ai Hub")
+            .setContentTitle("Creamy Hub")
             .setContentText("플로팅 창이 켜져 있습니다 (탭하여 닫기)")
             .setContentIntent(closePendingIntent)
             .setOngoing(true)
