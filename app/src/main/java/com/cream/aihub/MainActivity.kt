@@ -2617,7 +2617,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btnSidebarMenuHistory)?.setOnClickListener { showHistoryDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuSecurity)?.setOnClickListener { showSecurityInfoDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuFind)?.setOnClickListener { showFindInPageDialog() }
-        findViewById<TextView>(R.id.btnSidebarMenuReader)?.setOnClickListener { showReaderMode() }
+        findViewById<TextView>(R.id.btnSidebarMenuReader)?.setOnClickListener { showReaderModeDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuTranslate)?.setOnClickListener { translateCurrentPage() }
         findViewById<TextView>(R.id.btnSidebarMenuDesktop)?.setOnClickListener { toggleDesktopMode() }
         findViewById<TextView>(R.id.btnSidebarMenuPrint)?.setOnClickListener { printCurrentPage() }
