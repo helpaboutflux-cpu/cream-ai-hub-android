@@ -12,6 +12,10 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -40,6 +44,9 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -54,6 +61,12 @@ class MainActivity : AppCompatActivity() {
         val title: String,
         val url: String,
         val isCustom: Boolean = false
+    )
+
+    data class HistoryItem(
+        val title: String,
+        val url: String,
+        val timestamp: Long
     )
 
     private lateinit var webViewContainer: FrameLayout
@@ -191,6 +204,12 @@ class MainActivity : AppCompatActivity() {
         btnShortcutNaver = findViewById(R.id.btnShortcutNaver)
         btnShortcutGitHub = findViewById(R.id.btnShortcutGitHub)
         btnAddBookmark = findViewById(R.id.btnAddBookmark)
+
+        // 핵심 버그 수정: SwipeRefreshLayout 스크롤 충돌 완벽 방지
+        swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+            val wv = getCurrentWebView()
+            wv.canScrollVertically(-1) || wv.scrollY > 0
+        }
     }
 
     private fun setupResponsiveLayout() {
@@ -199,7 +218,6 @@ class MainActivity : AppCompatActivity() {
         val isTablet = screenWidthDp >= 600 || smallestWidthDp >= 600
 
         if (isTablet) {
-            // 태블릿 / 갤럭시 탭 대화면
             layoutBottomBar.visibility = View.GONE
             btnTopBack.visibility = View.VISIBLE
             btnTopForward.visibility = View.VISIBLE
@@ -211,7 +229,6 @@ class MainActivity : AppCompatActivity() {
             layoutSidebar.visibility = View.VISIBLE
             isSidebarOpen = true
         } else {
-            // 스마트폰 모드: 하단 블러 바 활성화, 사이드바는 분할 패널 대신 바텀시트로
             layoutBottomBar.visibility = View.VISIBLE
             btnTopBack.visibility = View.GONE
             btnTopForward.visibility = View.GONE
@@ -266,6 +283,14 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
         }
 
+        // 스크롤 시 SwipeRefresh 활성화 여부 세밀 동기화
+        wv.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            if (wv == getCurrentWebView()) {
+                val isStart = wv.url == START_PAGE_URL || wv.url?.startsWith("file:///android_asset/") == true
+                swipeRefresh.isEnabled = !isStart && scrollY == 0 && !wv.canScrollVertically(-1)
+            }
+        }
+
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
@@ -286,6 +311,8 @@ class MainActivity : AppCompatActivity() {
                 if (view == getCurrentWebView()) {
                     progressBar.visibility = View.VISIBLE
                     updateBrowserBar(url)
+                    val isStart = url == START_PAGE_URL || url?.startsWith("file:///android_asset/") == true
+                    swipeRefresh.isEnabled = !isStart
                 }
             }
 
@@ -302,6 +329,13 @@ class MainActivity : AppCompatActivity() {
                     swipeRefresh.isRefreshing = false
                     updateBrowserBar(url)
                     extractPageTextForSidebar()
+                    val isStart = url == START_PAGE_URL || url?.startsWith("file:///android_asset/") == true
+                    swipeRefresh.isEnabled = !isStart && view.scrollY == 0 && !view.canScrollVertically(-1)
+
+                    // 방문 기록 저장
+                    if (!isStart && !url.isNullOrBlank()) {
+                        addHistoryEntry(rawTitle, url)
+                    }
                 }
 
                 if (url?.contains("base44.app") == true) {
@@ -392,6 +426,9 @@ class MainActivity : AppCompatActivity() {
 
         updateBrowserBar(activeTab.webView.url ?: activeTab.url)
         updateTabBadge()
+
+        val isStart = activeTab.url == START_PAGE_URL || activeTab.url.startsWith("file:///android_asset/")
+        swipeRefresh.isEnabled = !isStart && activeTab.webView.scrollY == 0 && !activeTab.webView.canScrollVertically(-1)
     }
 
     private fun closeTab(index: Int) {
@@ -706,26 +743,70 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_menu_bottom_sheet, null)
         dialog.setContentView(view)
 
-        val menuItemShare = view.findViewById<LinearLayout>(R.id.menuItemShare)
-        val menuItemBookmark = view.findViewById<LinearLayout>(R.id.menuItemBookmark)
+        val menuQuickNewTab = view.findViewById<LinearLayout>(R.id.menuQuickNewTab)
+        val menuQuickReload = view.findViewById<LinearLayout>(R.id.menuQuickReload)
+        val menuQuickShare = view.findViewById<LinearLayout>(R.id.menuQuickShare)
+        val menuQuickAddBookmark = view.findViewById<LinearLayout>(R.id.menuQuickAddBookmark)
+
+        val menuItemBookmarksList = view.findViewById<LinearLayout>(R.id.menuItemBookmarksList)
+        val menuItemDesktop = view.findViewById<LinearLayout>(R.id.menuItemDesktop)
+        val tvDesktopModeStatus = view.findViewById<TextView>(R.id.tvDesktopModeStatus)
+        val menuItemFindInPage = view.findViewById<LinearLayout>(R.id.menuItemFindInPage)
+        val menuItemPrint = view.findViewById<LinearLayout>(R.id.menuItemPrint)
+        val menuItemHistory = view.findViewById<LinearLayout>(R.id.menuItemHistory)
         val menuItemSettings = view.findViewById<LinearLayout>(R.id.menuItemSettings)
 
-        menuItemShare.setOnClickListener {
+        tvDesktopModeStatus.text = if (isDesktopMode) "PC 웹 활성" else "모바일 웹"
+
+        // 퀵 액션
+        menuQuickNewTab.setOnClickListener {
             dialog.dismiss()
-            val currentTab = getCurrentTab()
-            val currentUrl = currentTab.webView.url ?: START_PAGE_URL
-            val currentTitle = currentTab.webView.title ?: "Cream Browser"
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, currentTitle)
-                putExtra(Intent.EXTRA_TEXT, currentUrl)
-            }
-            startActivity(Intent.createChooser(shareIntent, "페이지 공유"))
+            addNewTab(START_PAGE_URL, true)
         }
 
-        menuItemBookmark.setOnClickListener {
+        menuQuickReload.setOnClickListener {
+            dialog.dismiss()
+            getCurrentWebView().reload()
+        }
+
+        menuQuickShare.setOnClickListener {
+            dialog.dismiss()
+            shareCurrentPage()
+        }
+
+        menuQuickAddBookmark.setOnClickListener {
+            dialog.dismiss()
+            val currentTab = getCurrentTab()
+            val title = currentTab.webView.title ?: "북마크"
+            val url = currentTab.webView.url ?: START_PAGE_URL
+            saveCustomBookmark(title, url)
+            Toast.makeText(this, "📌 '$title' 북마크에 저장되었습니다!", Toast.LENGTH_SHORT).show()
+        }
+
+        // 리스트 액션
+        menuItemBookmarksList.setOnClickListener {
             dialog.dismiss()
             showBookmarksDialog()
+        }
+
+        menuItemDesktop.setOnClickListener {
+            dialog.dismiss()
+            toggleDesktopMode()
+        }
+
+        menuItemFindInPage.setOnClickListener {
+            dialog.dismiss()
+            showFindInPageDialog()
+        }
+
+        menuItemPrint.setOnClickListener {
+            dialog.dismiss()
+            printCurrentPage()
+        }
+
+        menuItemHistory.setOnClickListener {
+            dialog.dismiss()
+            showHistoryDialog()
         }
 
         menuItemSettings.setOnClickListener {
@@ -734,6 +815,194 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.show()
+    }
+
+    private fun shareCurrentPage() {
+        val currentTab = getCurrentTab()
+        val currentUrl = currentTab.webView.url ?: START_PAGE_URL
+        val currentTitle = currentTab.webView.title ?: "Cream Browser"
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, currentTitle)
+            putExtra(Intent.EXTRA_TEXT, currentUrl)
+        }
+        startActivity(Intent.createChooser(shareIntent, "페이지 공유"))
+    }
+
+    private fun toggleDesktopMode() {
+        isDesktopMode = !isDesktopMode
+        val currentWv = getCurrentWebView()
+        if (isDesktopMode) {
+            currentWv.settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+            Toast.makeText(this, "💻 데스크탑 (PC) 버전으로 전환되었습니다", Toast.LENGTH_SHORT).show()
+        } else {
+            currentWv.settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+            Toast.makeText(this, "📱 모바일 웹 버전으로 전환되었습니다", Toast.LENGTH_SHORT).show()
+        }
+        currentWv.reload()
+    }
+
+    private fun showFindInPageDialog() {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_find_in_page, null)
+        dialog.setContentView(view)
+
+        val etFindQuery = view.findViewById<EditText>(R.id.etFindQuery)
+        val btnFindPrev = view.findViewById<ImageView>(R.id.btnFindPrev)
+        val btnFindNext = view.findViewById<ImageView>(R.id.btnFindNext)
+        val btnFindClose = view.findViewById<ImageView>(R.id.btnFindClose)
+
+        val currentWv = getCurrentWebView()
+
+        etFindQuery.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val q = s?.toString()?.trim() ?: ""
+                if (q.isNotEmpty()) {
+                    currentWv.findAllAsync(q)
+                } else {
+                    currentWv.clearMatches()
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
+        btnFindPrev.setOnClickListener {
+            currentWv.findNext(false)
+        }
+
+        btnFindNext.setOnClickListener {
+            currentWv.findNext(true)
+        }
+
+        btnFindClose.setOnClickListener {
+            currentWv.clearMatches()
+            dialog.dismiss()
+        }
+
+        dialog.setOnDismissListener {
+            currentWv.clearMatches()
+        }
+
+        dialog.show()
+    }
+
+    private fun printCurrentPage() {
+        val currentWv = getCurrentWebView()
+        val printManager = getSystemService(Context.PRINT_SERVICE) as? PrintManager
+        if (printManager != null) {
+            val jobName = "Cream Browser - ${currentWv.title ?: "문서"}"
+            val printAdapter = currentWv.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+        } else {
+            Toast.makeText(this, "인쇄 서비스를 사용할 수 없습니다", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showHistoryDialog() {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_history, null)
+        dialog.setContentView(view)
+
+        val layoutHistoryList = view.findViewById<LinearLayout>(R.id.layoutHistoryList)
+        val btnClearHistory = view.findViewById<Button>(R.id.btnClearHistory)
+        val btnCloseHistory = view.findViewById<ImageView>(R.id.btnCloseHistory)
+
+        fun populateHistory() {
+            layoutHistoryList.removeAllViews()
+            val history = getSavedHistory()
+
+            if (history.isEmpty()) {
+                val emptyTv = TextView(this).apply {
+                    text = "최근 방문 기록이 없습니다."
+                    textSize = 12.5f
+                    setTextColor(getColor(R.color.text_muted))
+                    setPadding(10, 20, 10, 20)
+                }
+                layoutHistoryList.addView(emptyTv)
+                return
+            }
+
+            val dateFormat = SimpleDateFormat("MM.dd HH:mm", Locale.KOREA)
+            for (item in history) {
+                val itemView = layoutInflater.inflate(R.layout.item_tab_card, layoutHistoryList, false)
+                val tvTitle = itemView.findViewById<TextView>(R.id.tvTabTitle)
+                val tvUrl = itemView.findViewById<TextView>(R.id.tvTabUrl)
+                val btnClose = itemView.findViewById<ImageView>(R.id.btnTabClose)
+
+                tvTitle.text = item.title
+                tvUrl.text = "${dateFormat.format(Date(item.timestamp))} · ${item.url}"
+                btnClose.visibility = View.GONE
+
+                itemView.setOnClickListener {
+                    dialog.dismiss()
+                    loadWebQuery(item.url)
+                }
+                layoutHistoryList.addView(itemView)
+            }
+        }
+
+        populateHistory()
+
+        btnClearHistory.setOnClickListener {
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString("saved_history_json", "[]")
+                .apply()
+            populateHistory()
+            Toast.makeText(this, "방문 기록이 삭제되었습니다", Toast.LENGTH_SHORT).show()
+        }
+
+        btnCloseHistory.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    private fun addHistoryEntry(title: String, url: String) {
+        if (url.isBlank() || url == START_PAGE_URL || url.startsWith("file:///android_asset/")) return
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val rawJson = prefs.getString("saved_history_json", "[]") ?: "[]"
+        val arr = try { JSONArray(rawJson) } catch (e: Exception) { JSONArray() }
+
+        val newArr = JSONArray()
+        val newObj = JSONObject().apply {
+            put("title", if (title.isBlank()) url else title)
+            put("url", url)
+            put("time", System.currentTimeMillis())
+        }
+        newArr.put(newObj)
+        for (i in 0 until minOf(arr.length(), 40)) {
+            val item = arr.getJSONObject(i)
+            if (item.getString("url") != url) {
+                newArr.put(item)
+            }
+        }
+        prefs.edit().putString("saved_history_json", newArr.toString()).apply()
+    }
+
+    private fun getSavedHistory(): List<HistoryItem> {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val rawJson = prefs.getString("saved_history_json", "[]") ?: "[]"
+        val result = mutableListOf<HistoryItem>()
+
+        try {
+            val arr = JSONArray(rawJson)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                result.add(
+                    HistoryItem(
+                        title = obj.getString("title"),
+                        url = obj.getString("url"),
+                        timestamp = obj.optLong("time", System.currentTimeMillis())
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return result
     }
 
     private fun showBookmarksDialog() {
