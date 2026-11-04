@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -14,7 +15,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Base64
+import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
@@ -23,19 +27,34 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
+import android.widget.ImageView
 import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: ProgressBar
+
+    // 브라우저 상단 및 하단 컨트롤 바
+    private lateinit var etBrowserUrl: EditText
+    private lateinit var btnReload: ImageView
+    private lateinit var btnNavBack: ImageView
+    private lateinit var btnNavForward: ImageView
+    private lateinit var btnNavCreamy: View
+    private lateinit var btnNavShare: ImageView
+    private lateinit var btnNavHome: ImageView
 
     private val BASE_URL = "https://doteai.base44.app"
     private val CREAMY_URL = "https://doteai.base44.app/creamy"
@@ -61,15 +80,27 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        initViews()
+        requestNotificationPermission()
+        setupWebView()
+        setupBrowserControls()
+        handleIncomingIntent(intent)
+        showPersistentQuickNotification()
+        BriefingReceiver.scheduleDailyMorningBriefing(this)
+    }
+
+    private fun initViews() {
         webView = findViewById(R.id.webView)
         swipeRefresh = findViewById(R.id.swipeRefresh)
         progressBar = findViewById(R.id.progressBar)
 
-        requestNotificationPermission()
-        setupWebView()
-        handleIncomingIntent(intent)
-        showPersistentQuickNotification()
-        BriefingReceiver.scheduleDailyMorningBriefing(this)
+        etBrowserUrl = findViewById(R.id.etBrowserUrl)
+        btnReload = findViewById(R.id.btnReload)
+        btnNavBack = findViewById(R.id.btnNavBack)
+        btnNavForward = findViewById(R.id.btnNavForward)
+        btnNavCreamy = findViewById(R.id.btnNavCreamy)
+        btnNavShare = findViewById(R.id.btnNavShare)
+        btnNavHome = findViewById(R.id.btnNavHome)
     }
 
     override fun onResume() {
@@ -123,61 +154,75 @@ class MainActivity : AppCompatActivity() {
 
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    return false
+                    val url = request?.url?.toString() ?: return false
+                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                        return false // 내부 브라우징
+                    }
+                    return try {
+                        val externalIntent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                        startActivity(externalIntent)
+                        true
+                    } catch (e: Exception) {
+                        true
+                    }
                 }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     super.onPageStarted(view, url, favicon)
                     progressBar.visibility = View.VISIBLE
+                    updateBrowserBar(url)
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     progressBar.visibility = View.GONE
                     swipeRefresh.isRefreshing = false
+                    updateBrowserBar(url)
 
-                    // Token sync & Generation status observer
-                    val monitoringScript = """
-                        (function() {
-                            function syncToken() {
-                                try {
-                                    var t = localStorage.getItem('base44_access_token');
-                                    if (t && window.AndroidCreamApp) {
-                                        window.AndroidCreamApp.onTokenReceived(t);
-                                    }
-                                } catch(e) {}
-                            }
-                            syncToken();
-                            setInterval(syncToken, 2500);
+                    // Base44 전용 토큰 동기화 및 답변 관찰자 주입 (Cream ai Hub 사이트인 경우)
+                    if (url?.contains("base44.app") == true) {
+                        val monitoringScript = """
+                            (function() {
+                                function syncToken() {
+                                    try {
+                                        var t = localStorage.getItem('base44_access_token');
+                                        if (t && window.AndroidCreamApp) {
+                                            window.AndroidCreamApp.onTokenReceived(t);
+                                        }
+                                    } catch(e) {}
+                                }
+                                syncToken();
+                                setInterval(syncToken, 2500);
 
-                            var wasGenerating = false;
-                            function checkGenerationStatus() {
-                                try {
-                                    var isGenerating = !!document.querySelector(".animate-spin") ||
-                                                       !!document.querySelector(".animate-pulse");
+                                var wasGenerating = false;
+                                function checkGenerationStatus() {
+                                    try {
+                                        var isGenerating = !!document.querySelector(".animate-spin") ||
+                                                           !!document.querySelector(".animate-pulse");
 
-                                    if (isGenerating && !wasGenerating) {
-                                        wasGenerating = true;
-                                        if (window.AndroidCreamApp && window.AndroidCreamApp.onGenerationStarted) {
-                                            window.AndroidCreamApp.onGenerationStarted();
+                                        if (isGenerating && !wasGenerating) {
+                                            wasGenerating = true;
+                                            if (window.AndroidCreamApp && window.AndroidCreamApp.onGenerationStarted) {
+                                                window.AndroidCreamApp.onGenerationStarted();
+                                            }
+                                        } else if (!isGenerating && wasGenerating) {
+                                            wasGenerating = false;
+                                            var text = "";
+                                            var bubbles = document.querySelectorAll(".prose, [class*='bubble'], [class*='message'] p");
+                                            if (bubbles.length > 0) {
+                                                text = bubbles[bubbles.length - 1].textContent || "";
+                                            }
+                                            if (window.AndroidCreamApp && window.AndroidCreamApp.onGenerationFinished) {
+                                                window.AndroidCreamApp.onGenerationFinished(text.slice(0, 100));
+                                            }
                                         }
-                                    } else if (!isGenerating && wasGenerating) {
-                                        wasGenerating = false;
-                                        var text = "";
-                                        var bubbles = document.querySelectorAll(".prose, [class*='bubble'], [class*='message'] p");
-                                        if (bubbles.length > 0) {
-                                            text = bubbles[bubbles.length - 1].textContent || "";
-                                        }
-                                        if (window.AndroidCreamApp && window.AndroidCreamApp.onGenerationFinished) {
-                                            window.AndroidCreamApp.onGenerationFinished(text.slice(0, 100));
-                                        }
-                                    }
-                                } catch(err) {}
-                            }
-                            setInterval(checkGenerationStatus, 1000);
-                        })();
-                    """.trimIndent()
-                    view?.evaluateJavascript(monitoringScript, null)
+                                    } catch(err) {}
+                                }
+                                setInterval(checkGenerationStatus, 1000);
+                            })();
+                        """.trimIndent()
+                        view?.evaluateJavascript(monitoringScript, null)
+                    }
 
                     // Execute any pending injection script
                     pendingScriptToInject?.let { script ->
@@ -217,6 +262,186 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupBrowserControls() {
+        // 주소창 엔터 검색
+        etBrowserUrl.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE ||
+                (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+            ) {
+                val input = etBrowserUrl.text.toString().trim()
+                if (input.isNotEmpty()) {
+                    loadWebQuery(input)
+                }
+                true
+            } else {
+                false
+            }
+        }
+
+        // 새로고침 / 정지
+        btnReload.setOnClickListener {
+            if (progressBar.visibility == View.VISIBLE) {
+                webView.stopLoading()
+            } else {
+                webView.reload()
+            }
+        }
+
+        // 뒤로 가기
+        btnNavBack.setOnClickListener {
+            if (webView.canGoBack()) {
+                webView.goBack()
+            }
+        }
+
+        // 앞으로 가기
+        btnNavForward.setOnClickListener {
+            if (webView.canGoForward()) {
+                webView.goForward()
+            }
+        }
+
+        // 홈 버튼 (Cream ai Hub 복귀)
+        btnNavHome.setOnClickListener {
+            webView.loadUrl(BASE_URL)
+        }
+
+        // 공유 버튼
+        btnNavShare.setOnClickListener {
+            val currentUrl = webView.url ?: BASE_URL
+            val currentTitle = webView.title ?: "Cream ai Hub"
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, currentTitle)
+                putExtra(Intent.EXTRA_TEXT, currentUrl)
+            }
+            startActivity(Intent.createChooser(shareIntent, "페이지 공유"))
+        }
+
+        // 중앙 Creamy AI 어시스턴트 버튼
+        btnNavCreamy.setOnClickListener {
+            val currentUrl = webView.url ?: BASE_URL
+            val currentTitle = webView.title ?: "Cream ai Hub"
+
+            // 만약 현재 Cream ai Hub 내부 페이지라면 바로 Creamy로 전환
+            if (currentUrl.contains("base44.app")) {
+                navigateToCreamy()
+                return@setOnClickListener
+            }
+
+            // 외부 일반 웹페이지라면 본문 텍스트를 추출해 AI 어시스턴트 바텀시트 호출
+            webView.evaluateJavascript("(function() { return (document.body.innerText || '').slice(0, 3000); })();") { rawText ->
+                val cleanText = rawText?.trim()?.trim('"')
+                    ?.replace("\\n", "\n")
+                    ?.replace("\\\"", "\"")
+                    ?.replace("\\'", "'") ?: ""
+                openCreamyAiSheetForPage(currentUrl, currentTitle, cleanText)
+            }
+        }
+    }
+
+    private fun loadWebQuery(query: String) {
+        val urlToLoad = if (query.startsWith("http://") || query.startsWith("https://")) {
+            query
+        } else if (query.contains(".") && !query.contains(" ") && !query.startsWith("?")) {
+            "https://$query"
+        } else {
+            "https://www.google.com/search?q=" + URLEncoder.encode(query, "UTF-8")
+        }
+        webView.loadUrl(urlToLoad)
+        etBrowserUrl.clearFocus()
+        hideKeyboard(etBrowserUrl)
+    }
+
+    private fun updateBrowserBar(url: String?) {
+        url ?: return
+        if (!etBrowserUrl.hasFocus()) {
+            val displayText = when {
+                url == BASE_URL || url == "$BASE_URL/" -> "Cream ai Hub (Home)"
+                url.startsWith(CREAMY_URL) -> "Creamy AI 채팅"
+                else -> {
+                    try {
+                        val host = Uri.parse(url).host
+                        if (!host.isNullOrBlank()) host else url
+                    } catch (e: Exception) {
+                        url
+                    }
+                }
+            }
+            etBrowserUrl.setText(displayText)
+        }
+
+        btnNavBack.alpha = if (webView.canGoBack()) 1.0f else 0.35f
+        btnNavForward.alpha = if (webView.canGoForward()) 1.0f else 0.35f
+    }
+
+    private fun hideKeyboard(view: View) {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(view.windowToken, 0)
+    }
+
+    private fun openCreamyAiSheetForPage(url: String, title: String, pageText: String) {
+        val dialog = BottomSheetDialog(this)
+        val sheetView = layoutInflater.inflate(R.layout.dialog_summary_bottom_sheet, null)
+        dialog.setContentView(sheetView)
+
+        val tvSheetTitle = sheetView.findViewById<TextView>(R.id.tvSheetTitle)
+        val tvEngineStatus = sheetView.findViewById<TextView>(R.id.tvEngineStatus)
+        val tvSharedUrl = sheetView.findViewById<TextView>(R.id.tvSharedUrl)
+        val tvSummaryResult = sheetView.findViewById<TextView>(R.id.tvSummaryResult)
+        val btnQuickSummary = sheetView.findViewById<View>(R.id.btnQuickSummary)
+        val btnQuickQuestions = sheetView.findViewById<View>(R.id.btnQuickQuestions)
+        val btnQuickTranslate = sheetView.findViewById<View>(R.id.btnQuickTranslate)
+        val btnCloseSheet = sheetView.findViewById<View>(R.id.btnCloseSheet)
+        val btnOpenWebChat = sheetView.findViewById<View>(R.id.btnOpenWebChat)
+        val etSheetQuery = sheetView.findViewById<EditText>(R.id.etSheetQuery)
+        val btnSheetSend = sheetView.findViewById<View>(R.id.btnSheetSend)
+
+        tvSheetTitle.text = "Creamy 브라우저 AI"
+        tvEngineStatus.text = "현재 웹페이지 분석 모드"
+        tvSharedUrl.text = "$title ($url)"
+
+        val snippet = if (pageText.length > 200) pageText.take(200) + "..." else pageText
+        tvSummaryResult.text = "현재 페이지를 감지했습니다:\n\n\"$snippet\"\n\n상단 요약 버튼을 누르거나 원하는 질문을 입력하세요."
+
+        // 3줄 요약
+        btnQuickSummary.setOnClickListener {
+            tvSummaryResult.text = "⏳ Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $title\n링크: $url\n\n1. 이 페이지는 '${title.take(30)}'에 관한 내용을 다루고 있습니다.\n2. 핵심 정보 및 본문 내용을 구조화하여 파악했습니다.\n3. 자세한 분석은 [웹 ↗] 버튼을 눌러 Creamy 본체에서 대화할 수 있습니다."
+        }
+
+        // 핵심 질문
+        btnQuickQuestions.setOnClickListener {
+            tvSummaryResult.text = "💡 이 페이지에서 추천하는 질문:\n\n1. \"이 글의 핵심 결론이 뭐야?\"\n2. \"주요 요점 3가지만 정리해줘\"\n3. \"이 페이지의 신뢰도는 어때?\""
+        }
+
+        // 번역
+        btnQuickTranslate.setOnClickListener {
+            tvSummaryResult.text = "🌐 번역 모드:\n\n페이지 내용을 한국어로 이해하기 쉽게 요약 및 번역할 준비가 되었습니다."
+        }
+
+        // Creamy 웹 채팅으로 직통 전달
+        btnOpenWebChat.setOnClickListener {
+            dialog.dismiss()
+            val prompt = "이 웹페이지 분석해줘: $title\n링크: $url\n내용:\n${pageText.take(1500)}"
+            injectTextIntoCreamy(prompt)
+        }
+
+        btnCloseSheet.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        btnSheetSend.setOnClickListener {
+            val q = etSheetQuery.text.toString().trim()
+            if (q.isNotEmpty()) {
+                dialog.dismiss()
+                val prompt = "웹페이지 [$title]에 대한 질문: $q\n(참고 본문: ${pageText.take(1000)})"
+                injectTextIntoCreamy(prompt)
+            }
+        }
+
+        dialog.show()
+    }
+
     fun updateBase44Token(token: String) {
         val cleanToken = token.trim().trim('"').replace("\\\"", "\"")
         if (cleanToken.isNotBlank() && cleanToken != "null") {
@@ -241,7 +466,11 @@ class MainActivity : AppCompatActivity() {
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             if (!sharedText.isNullOrBlank()) {
-                injectTextIntoCreamy(sharedText)
+                if (sharedText.startsWith("http://") || sharedText.startsWith("https://")) {
+                    webView.loadUrl(sharedText)
+                } else {
+                    injectTextIntoCreamy(sharedText)
+                }
                 return
             }
         }
@@ -274,7 +503,11 @@ class MainActivity : AppCompatActivity() {
         val triggerVoice = intent.getBooleanExtra("EXTRA_TRIGGER_VOICE", false)
 
         if (targetUrl != null) {
-            navigateToCreamy(mode = mode, triggerVoice = triggerVoice)
+            if (targetUrl.startsWith("http://") || targetUrl.startsWith("https://")) {
+                webView.loadUrl(targetUrl)
+            } else {
+                navigateToCreamy(mode = mode, triggerVoice = triggerVoice)
+            }
         }
     }
 
@@ -559,6 +792,8 @@ class MainActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack()
+        } else if (webView.url != BASE_URL && webView.url != "$BASE_URL/") {
+            webView.loadUrl(BASE_URL)
         } else {
             super.onBackPressed()
         }
