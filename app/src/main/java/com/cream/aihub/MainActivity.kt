@@ -164,13 +164,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etSidebarQuery: EditText
     private lateinit var btnSidebarSend: Button
 
-    // 북마크 탭 바로가기 버튼들 (사이드바 내부)
-    private lateinit var btnShortcutCreamHub: Button
-    private lateinit var btnShortcutGoogle: Button
-    private lateinit var btnShortcutNaver: Button
-    private lateinit var btnShortcutGitHub: Button
-    private lateinit var btnAddBookmark: Button
-
     // 탭 및 그룹 상태
     private val tabs = mutableListOf<WebTab>()
     private val tabGroups = mutableListOf<TabGroup>()
@@ -284,17 +277,8 @@ class MainActivity : AppCompatActivity() {
         etSidebarQuery = findViewById(R.id.etSidebarQuery)
         btnSidebarSend = findViewById(R.id.btnSidebarSend)
 
-        btnShortcutCreamHub = findViewById(R.id.btnShortcutCreamHub)
-        btnShortcutGoogle = findViewById(R.id.btnShortcutGoogle)
-        btnShortcutNaver = findViewById(R.id.btnShortcutNaver)
-        btnShortcutGitHub = findViewById(R.id.btnShortcutGitHub)
-        btnAddBookmark = findViewById(R.id.btnAddBookmark)
-
-        // 핵심 버그 수정: SwipeRefreshLayout 스크롤 충돌 완벽 방지
+        // 제스쳐로 새로고침 완전 비활성화
         swipeRefresh.isEnabled = false
-            val wv = getCurrentWebView()
-            wv.canScrollVertically(-1) || wv.scrollY > 0
-        }
     }
 
     private fun setupResponsiveLayout() {
@@ -2723,19 +2707,6 @@ class MainActivity : AppCompatActivity() {
                 etSidebarQuery.setText("")
                 hideKeyboard(etSidebarQuery)
             }
-        }
-
-        btnShortcutCreamHub.setOnClickListener { loadWebQuery(BASE_URL) }
-        btnShortcutGoogle.setOnClickListener { loadWebQuery("https://www.google.com") }
-        btnShortcutNaver.setOnClickListener { loadWebQuery("https://www.naver.com") }
-        btnShortcutGitHub.setOnClickListener { loadWebQuery("https://github.com") }
-
-        btnAddBookmark.setOnClickListener {
-            val currentWv = getCurrentWebView()
-            val title = currentWv.title ?: "페이지"
-            val url = currentWv.url ?: START_PAGE_URL
-            saveCustomBookmark(title, url, "기본")
-            Toast.makeText(this, "'$title' 북마크에 저장되었습니다.", Toast.LENGTH_SHORT).show()
         }
     }
 
