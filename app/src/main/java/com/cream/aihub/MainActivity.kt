@@ -2191,7 +2191,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun getBookmarkFolders(): List<String> {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString("saved_bookmark_folders", "["기본", "업무", "쇼핑", "AI/기술"]") ?: "[]"
+        val raw = prefs.getString("saved_bookmark_folders", "[\"기본\", \"업무\", \"쇼핑\", \"AI/기술\"]") ?: "[]"
         val list = mutableListOf<String>()
         try {
             val arr = JSONArray(raw)
