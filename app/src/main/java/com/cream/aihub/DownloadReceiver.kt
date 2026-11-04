@@ -70,7 +70,7 @@ class DownloadReceiver : BroadcastReceiver() {
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_stat_cream)
             .setContentTitle("Creamy Hub")
-            .setContentText("📥 다운로드 완료: ${fileName}로 Creamy에 바로 질문하기")
+            .setContentText("다운로드 완료: ${fileName}로 Creamy에 바로 질문하기")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

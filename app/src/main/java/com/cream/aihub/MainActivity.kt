@@ -291,7 +291,7 @@ class MainActivity : AppCompatActivity() {
         btnAddBookmark = findViewById(R.id.btnAddBookmark)
 
         // 핵심 버그 수정: SwipeRefreshLayout 스크롤 충돌 완벽 방지
-        swipeRefresh.setOnChildScrollUpCallback { _, _ ->
+        swipeRefresh.isEnabled = false
             val wv = getCurrentWebView()
             wv.canScrollVertically(-1) || wv.scrollY > 0
         }
@@ -326,13 +326,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initTabs() {
-        webViewContainer.removeAllViews()
-        tabs.clear()
-        addNewTab(START_PAGE_URL, makeActive = true, isSecurity = false)
-
-        swipeRefresh.setOnRefreshListener {
-            getCurrentWebView().reload()
+        swipeRefresh.isEnabled = false
+        if (!loadSavedPersistentTabs()) {
+            webViewContainer.removeAllViews()
+            tabs.clear()
+            addNewTab(START_PAGE_URL, makeActive = true, isSecurity = false)
         }
+        applyThemeToViews(getAppThemeMode())
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -389,7 +389,7 @@ class MainActivity : AppCompatActivity() {
         wv.setOnScrollChangeListener { _, _, scrollY, _, _ ->
             if (wv == getCurrentWebView()) {
                 val isStart = wv.url == START_PAGE_URL || wv.url == START_PAGE_SECURITY_URL || wv.url?.startsWith("file:///android_asset/") == true
-                swipeRefresh.isEnabled = !isStart && scrollY == 0 && !wv.canScrollVertically(-1)
+        swipeRefresh.isEnabled = false
             }
         }
 
@@ -426,7 +426,7 @@ class MainActivity : AppCompatActivity() {
                     progressBar.visibility = View.VISIBLE
                     updateBrowserBar(url)
                     val isStart = url == START_PAGE_URL || url == START_PAGE_SECURITY_URL || url?.startsWith("file:///android_asset/") == true
-                    swipeRefresh.isEnabled = !isStart
+        swipeRefresh.isEnabled = false
                 }
             }
 
@@ -447,7 +447,7 @@ class MainActivity : AppCompatActivity() {
                     updateBrowserBar(url)
                     extractPageTextForSidebar()
                     val isStart = url == START_PAGE_URL || url == START_PAGE_SECURITY_URL || url?.startsWith("file:///android_asset/") == true
-                    swipeRefresh.isEnabled = !isStart && view.scrollY == 0 && !view.canScrollVertically(-1)
+        swipeRefresh.isEnabled = false
 
                     if (url == START_PAGE_URL) {
                         view?.evaluateJavascript("if (window.setColorFavicons) window.setColorFavicons(${isColorFaviconsEnabled()});", null)
@@ -538,6 +538,7 @@ class MainActivity : AppCompatActivity() {
         }
         manageInactiveTabs()
         updateTabBadge()
+        saveTabsToPrefs()
     }
 
     private fun switchTab(index: Int) {
@@ -565,7 +566,7 @@ class MainActivity : AppCompatActivity() {
         updateTabBadge()
 
         val isStart = activeTab.url == START_PAGE_URL || activeTab.url == START_PAGE_SECURITY_URL || activeTab.url.startsWith("file:///android_asset/")
-        swipeRefresh.isEnabled = !isStart && activeTab.webView.scrollY == 0 && !activeTab.webView.canScrollVertically(-1)
+        swipeRefresh.isEnabled = false
 
         manageInactiveTabs()
     }
@@ -814,7 +815,7 @@ class MainActivity : AppCompatActivity() {
                 val text = clip.getItemAt(0).text?.toString()?.trim() ?: ""
                 if (text.isNotBlank() && text.length > 2) {
                     chipClipboardPaste.visibility = View.VISIBLE
-                    tvClipboardText.text = "📋 붙여넣기: " + text.take(30)
+                    tvClipboardText.text = "붙여넣기: " + text.take(30)
                     tvClipboardText.tag = text
                     return
                 }
@@ -928,6 +929,11 @@ class MainActivity : AppCompatActivity() {
 
     // 보안 현황 다이얼로그 (SSL 인증서, HTTPS, 쿠키 수, 권한)
     private fun showSecurityInfoDialog() {
+        if (isTabletLayout()) {
+            switchSidebarTab("menu")
+            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
+            return
+        }
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_security_info, null)
         dialog.setContentView(view)
@@ -1286,6 +1292,11 @@ class MainActivity : AppCompatActivity() {
 
     // Bag 보관함 기능 (링크, 이미지, 텍스트 스크랩)
     private fun showBagDialog() {
+        if (isTabletLayout()) {
+            switchSidebarTab("menu")
+            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
+            return
+        }
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_bag, null)
         dialog.setContentView(view)
@@ -1343,9 +1354,9 @@ class MainActivity : AppCompatActivity() {
 
                 tvBadge.visibility = View.VISIBLE
                 tvBadge.text = when (item.type) {
-                    "image" -> "🖼️ 이미지"
-                    "link" -> "🔗 링크"
-                    else -> "📝 텍스트"
+                    "image" -> "이미지"
+                    "link" -> "링크"
+                    else -> "텍스트"
                 }
 
                 ivIcon.setImageResource(R.drawable.ic_bag)
@@ -1440,11 +1451,11 @@ class MainActivity : AppCompatActivity() {
             timestamp = System.currentTimeMillis()
         )
         saveBagItem(item)
-        Toast.makeText(this, "👜 '$title'이(가) Bag에 담겼습니다!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "'$title'이(가) Bag에 담겼습니다.", Toast.LENGTH_SHORT).show()
     }
 
     private fun showImageLongClickMenu(imageUrl: String, sourceUrl: String) {
-        val options = arrayOf("👜 Bag에 이 이미지 담기", "🔗 이미지 링크 복사", "⬇️ 이미지 다운로드")
+        val options = arrayOf("Bag에 이 이미지 담기", "이미지 링크 복사", "이미지 다운로드")
         AlertDialog.Builder(this)
             .setTitle("이미지 옵션")
             .setItems(options) { _, which ->
@@ -1459,7 +1470,7 @@ class MainActivity : AppCompatActivity() {
                             timestamp = System.currentTimeMillis()
                         )
                         saveBagItem(item)
-                        Toast.makeText(this, "👜 이미지가 Bag에 저장되었습니다!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "이미지가 Bag에 저장되었습니다.", Toast.LENGTH_SHORT).show()
                     }
                     1 -> {
                         val clip = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -1489,13 +1500,18 @@ class MainActivity : AppCompatActivity() {
             dm?.enqueue(request)
 
             saveDownloadItem(DownloadedFileItem(filename, url, Environment.DIRECTORY_DOWNLOADS + "/" + filename, contentLength, System.currentTimeMillis()))
-            Toast.makeText(this, "⬇️ 다운로드를 시작합니다: $filename", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "다운로드를 시작합니다: $filename", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "다운로드 요청 실패: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun showDownloadsDialog() {
+        if (isTabletLayout()) {
+            switchSidebarTab("menu")
+            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
+            return
+        }
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_downloads, null)
         dialog.setContentView(view)
@@ -1762,10 +1778,10 @@ class MainActivity : AppCompatActivity() {
         val currentWv = getCurrentWebView()
         if (isDesktopMode) {
             currentWv.settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-            Toast.makeText(this, "💻 데스크탑 (PC) 버전으로 전환되었습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "데스크탑 (PC) 버전으로 전환되었습니다.", Toast.LENGTH_SHORT).show()
         } else {
             currentWv.settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
-            Toast.makeText(this, "📱 모바일 웹 버전으로 전환되었습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "모바일 웹 버전으로 전환되었습니다.", Toast.LENGTH_SHORT).show()
         }
         currentWv.reload()
     }
@@ -1818,6 +1834,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHistoryDialog() {
+        if (isTabletLayout()) {
+            switchSidebarTab("menu")
+            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
+            return
+        }
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_history, null)
         dialog.setContentView(view)
@@ -1878,6 +1899,12 @@ class MainActivity : AppCompatActivity() {
 
     // 북마크 & 즐겨찾기 폴더
     private fun showBookmarksDialog() {
+        if (isTabletLayout()) {
+            switchSidebarTab("bookmarks")
+            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("bookmarks")
+            populateSidebarBookmarks()
+            return
+        }
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_bookmarks, null)
         dialog.setContentView(view)
@@ -1897,7 +1924,7 @@ class MainActivity : AppCompatActivity() {
 
             for (f in folders) {
                 val chip = TextView(this).apply {
-                    text = if (f == "전체") "전체" else "📁 $f"
+                    text = f
                     textSize = 11f
                     setPadding(30, 14, 30, 14)
                     layoutParams = LinearLayout.LayoutParams(
@@ -1953,7 +1980,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (b.folder != "기본") {
                     tvFolderTag.visibility = View.VISIBLE
-                    tvFolderTag.text = "📁 ${b.folder}"
+                    tvFolderTag.text = b.folder
                     tvFolderTag.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#4B5563"))
                 } else {
                     tvFolderTag.visibility = View.GONE
@@ -1997,7 +2024,7 @@ class MainActivity : AppCompatActivity() {
             val url = currentTab.webView.url ?: START_PAGE_URL
             val targetFolder = if (selectedFolder == "전체") "기본" else selectedFolder
             saveCustomBookmark(title, url, targetFolder)
-            Toast.makeText(this, "📌 '$title'이(가) '$targetFolder' 폴더에 저장되었습니다!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "'$title'이(가) '$targetFolder' 폴더에 저장되었습니다.", Toast.LENGTH_SHORT).show()
             populateBookmarks()
         }
 
@@ -2013,6 +2040,55 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
         dialog.setContentView(view)
+
+                val btnThemeDefaultDark = view.findViewById<TextView>(R.id.btnThemeDefaultDark)
+        val btnThemeDefaultLight = view.findViewById<TextView>(R.id.btnThemeDefaultLight)
+        val btnThemePinkDark = view.findViewById<TextView>(R.id.btnThemePinkDark)
+        val btnThemePinkLight = view.findViewById<TextView>(R.id.btnThemePinkLight)
+
+        var selectedTheme = getAppThemeMode()
+
+        fun updateThemeChips() {
+            val chips = listOf(
+                btnThemeDefaultDark to "theme-default-dark",
+                btnThemeDefaultLight to "theme-default-light",
+                btnThemePinkDark to "theme-pink-dark",
+                btnThemePinkLight to "theme-pink-light"
+            )
+            for ((chip, thm) in chips) {
+                if (thm == selectedTheme) {
+                    chip.setBackgroundResource(R.drawable.bg_pill_badge)
+                    chip.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                    chip.setTextColor(Color.WHITE)
+                } else {
+                    chip.setBackgroundResource(R.drawable.bg_pill_badge)
+                    chip.backgroundTintList = null
+                    chip.setTextColor(getColor(R.color.text_muted))
+                }
+            }
+        }
+
+        btnThemeDefaultDark.setOnClickListener {
+            selectedTheme = "theme-default-dark"
+            setAppThemeMode(selectedTheme)
+            updateThemeChips()
+        }
+        btnThemeDefaultLight.setOnClickListener {
+            selectedTheme = "theme-default-light"
+            setAppThemeMode(selectedTheme)
+            updateThemeChips()
+        }
+        btnThemePinkDark.setOnClickListener {
+            selectedTheme = "theme-pink-dark"
+            setAppThemeMode(selectedTheme)
+            updateThemeChips()
+        }
+        btnThemePinkLight.setOnClickListener {
+            selectedTheme = "theme-pink-light"
+            setAppThemeMode(selectedTheme)
+            updateThemeChips()
+        }
+        updateThemeChips()
 
         val switchMaterialYou = view.findViewById<SwitchMaterial>(R.id.switchMaterialYou)
         val switchAdBlock = view.findViewById<SwitchMaterial>(R.id.switchAdBlock)
@@ -2596,6 +2672,7 @@ class MainActivity : AppCompatActivity() {
 
         btnTabBookmarks.setOnClickListener {
             switchSidebarTab("bookmarks")
+            populateSidebarBookmarks()
         }
 
         btnTabMenu.setOnClickListener {
@@ -2609,7 +2686,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnSidebarQuickBookmark)?.setOnClickListener {
             val cur = getCurrentWebView()
             saveCustomBookmark(cur.title ?: "페이지", cur.url ?: START_PAGE_URL, "기본")
-            Toast.makeText(this, "📌 북마크에 저장되었습니다!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "북마크에 저장되었습니다.", Toast.LENGTH_SHORT).show()
         }
 
         findViewById<TextView>(R.id.btnSidebarMenuBag)?.setOnClickListener { showBagDialog() }
@@ -2626,11 +2703,11 @@ class MainActivity : AppCompatActivity() {
         btnSidebarQuickSummary.setOnClickListener {
             val currentWv = getCurrentWebView()
             val title = currentWv.title ?: "현재 페이지"
-            tvSidebarAiResult.text = "⏳ Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $title\n\n1. 이 페이지의 주요 흐름과 핵심 데이터를 분석했습니다.\n2. 전체 본문 중 중요 요점과 맥락을 파악했습니다.\n3. 상세한 심층 질문은 아래 입력창에 남겨주세요."
+            tvSidebarAiResult.text = "Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $title\n\n1. 이 페이지의 주요 흐름과 핵심 데이터를 분석했습니다.\n2. 전체 본문 중 중요 요점과 맥락을 파악했습니다.\n3. 상세한 심층 질문은 아래 입력창에 남겨주세요."
         }
 
         btnSidebarQuickQuestions.setOnClickListener {
-            tvSidebarAiResult.text = "💡 이 페이지 추천 질문:\n\n1. '이 글의 핵심 결론이 뭐야?'\n2. '주요 장단점 정리해줘'\n3. '관련된 최신 트렌드는?'"
+            tvSidebarAiResult.text = "이 페이지 추천 질문:\n\n1. '이 글의 핵심 결론이 뭐야?'\n2. '주요 장단점 정리해줘'\n3. '관련된 최신 트렌드는?'"
         }
 
         btnSidebarQuickTranslate.setOnClickListener {
@@ -2642,7 +2719,7 @@ class MainActivity : AppCompatActivity() {
             if (q.isNotEmpty()) {
                 val currentWv = getCurrentWebView()
                 val currentTitle = currentWv.title ?: "현재 페이지"
-                tvSidebarAiResult.text = "💬 질문: $q\n\n답변: [$currentTitle] 페이지의 맥락을 고려하여 Creamy가 신속하게 분석했습니다. 원본 웹페이지를 실시간으로 참조하며 최적의 답변을 생성 중입니다."
+                tvSidebarAiResult.text = "질문: $q\n\n답변: [$currentTitle] 페이지의 맥락을 고려하여 Creamy가 신속하게 분석했습니다. 원본 웹페이지를 실시간으로 참조하며 최적의 답변을 생성 중입니다."
                 etSidebarQuery.setText("")
                 hideKeyboard(etSidebarQuery)
             }
@@ -2658,7 +2735,7 @@ class MainActivity : AppCompatActivity() {
             val title = currentWv.title ?: "페이지"
             val url = currentWv.url ?: START_PAGE_URL
             saveCustomBookmark(title, url, "기본")
-            Toast.makeText(this, "📌 '$title' 북마크에 저장되었습니다!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "'$title' 북마크에 저장되었습니다.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -2696,11 +2773,11 @@ class MainActivity : AppCompatActivity() {
         btnCloseSheet.setOnClickListener { dialog.dismiss() }
 
         btnQuickSummary.setOnClickListener {
-            tvSummaryResult.text = "⏳ Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $currentTitle\n\n1. 웹페이지의 본문 핵심 정보와 주요 맥락을 파악했습니다.\n2. 중요 데이터와 세부 결론을 3줄로 간결히 정리했습니다.\n3. 상세한 질문이나 추가 조사가 필요하시면 아래에 질문을 남겨주세요."
+            tvSummaryResult.text = "Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $currentTitle\n\n1. 웹페이지의 본문 핵심 정보와 주요 맥락을 파악했습니다.\n2. 중요 데이터와 세부 결론을 3줄로 간결히 정리했습니다.\n3. 상세한 질문이나 추가 조사가 필요하시면 아래에 질문을 남겨주세요."
         }
 
         btnQuickQuestions.setOnClickListener {
-            tvSummaryResult.text = "💡 이 페이지 추천 질문:\n\n1. '이 글의 핵심 내용 3가지만 뽑아줘'\n2. '주요 장단점과 시사점은 뭐야?'\n3. '관련된 최신 트렌드 알려줘'"
+            tvSummaryResult.text = "이 페이지 추천 질문:\n\n1. '이 글의 핵심 내용 3가지만 뽑아줘'\n2. '주요 장단점과 시사점은 뭐야?'\n3. '관련된 최신 트렌드 알려줘'"
         }
 
         btnQuickTranslate.setOnClickListener {
@@ -2709,13 +2786,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnLoadHistory.setOnClickListener {
-            tvSummaryResult.text = "📜 Creamy 대화 기록과 연동 중입니다."
+            tvSummaryResult.text = "Creamy 대화 기록과 연동 중입니다."
         }
 
         btnSheetSend.setOnClickListener {
             val q = etSheetQuery.text.toString().trim()
             if (q.isNotEmpty()) {
-                tvSummaryResult.text = "💬 질문: $q\n\nCreamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요!"
+                tvSummaryResult.text = "질문: $q\n\nCreamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요!"
                 etSheetQuery.setText("")
                 hideKeyboard(etSheetQuery)
             }
@@ -2913,7 +2990,7 @@ class MainActivity : AppCompatActivity() {
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_stat_cream)
             .setContentTitle("Cream Browser: 복사한 내용")
-            .setContentText("📋 " + snippet + " 검색하기")
+            .setContentText(snippet + " 검색하기")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -2931,6 +3008,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         isAppInForeground = false
+        saveTabsToPrefs()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -2973,6 +3051,252 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun isTabletLayout(): Boolean {
+        return resources.configuration.screenWidthDp >= 600 || resources.configuration.smallestScreenWidthDp >= 600
+    }
+
+    private fun getAppThemeMode(): String {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("creamy_theme_mode", "theme-default-dark") ?: "theme-default-dark"
+    }
+
+    fun setAppThemeMode(theme: String) {
+        val target = if (theme.startsWith("theme-")) theme else "theme-" + theme.replace("_", "-")
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("creamy_theme_mode", target)
+            .apply()
+        applyThemeToViews(target)
+        val wv = getCurrentWebView()
+        wv.evaluateJavascript("if (window.setTheme) { window.setTheme(''); }", null)
+    }
+
+    private fun applyThemeToViews(theme: String) {
+        when (theme) {
+            "theme-default-dark" -> {
+                layoutTopBar.setBackgroundColor(Color.parseColor("#000000"))
+                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#16191E"))
+                etBrowserUrl.setTextColor(Color.WHITE)
+                etBrowserUrl.setHintTextColor(Color.parseColor("#767C88"))
+                ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopMenu.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnMobileReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                layoutBottomBar.setBackgroundColor(Color.parseColor("#000000"))
+                btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                tvNavTabCount.setTextColor(Color.BLACK)
+                layoutSidebar.setBackgroundColor(Color.parseColor("#121418"))
+            }
+            "theme-default-light" -> {
+                layoutTopBar.setBackgroundColor(Color.parseColor("#E5E7EB"))
+                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FFFFFF"))
+                etBrowserUrl.setTextColor(Color.parseColor("#111111"))
+                etBrowserUrl.setHintTextColor(Color.parseColor("#666666"))
+                ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnTopBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnTopForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnTopReload.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnTopHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnTopMenu.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnMobileReload.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                layoutBottomBar.setBackgroundColor(Color.parseColor("#FFFFFF"))
+                btnNavBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnNavForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                tvNavTabCount.setTextColor(Color.parseColor("#111111"))
+                layoutSidebar.setBackgroundColor(Color.parseColor("#F9FAFB"))
+            }
+            "theme-pink-dark" -> {
+                layoutTopBar.setBackgroundColor(Color.parseColor("#261316"))
+                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#331B20"))
+                etBrowserUrl.setTextColor(Color.parseColor("#FFFFFF"))
+                etBrowserUrl.setHintTextColor(Color.parseColor("#D9A5AF"))
+                ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnTopMenu.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnMobileReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                layoutBottomBar.setBackgroundColor(Color.parseColor("#261316"))
+                btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                tvNavTabCount.setTextColor(Color.parseColor("#261316"))
+                layoutSidebar.setBackgroundColor(Color.parseColor("#221013"))
+            }
+            "theme-pink-light" -> {
+                layoutTopBar.setBackgroundColor(Color.parseColor("#FAD2D9"))
+                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FFFFFF"))
+                etBrowserUrl.setTextColor(Color.parseColor("#6E343D"))
+                etBrowserUrl.setHintTextColor(Color.parseColor("#9C5D66"))
+                ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnTopBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnTopForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnTopReload.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnTopHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnTopMenu.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnMobileReload.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                layoutBottomBar.setBackgroundColor(Color.parseColor("#FFFFFF"))
+                btnNavBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnNavForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                tvNavTabCount.setTextColor(Color.parseColor("#6E343D"))
+                layoutSidebar.setBackgroundColor(Color.parseColor("#FFF5F7"))
+            }
+        }
+    }
+
+    private fun saveTabsToPrefs() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val arr = JSONArray()
+        for (t in tabs) {
+            if (!t.isSecurity) {
+                val obj = JSONObject().apply {
+                    put("id", t.id)
+                    put("title", t.title)
+                    put("url", t.webView.url ?: t.url)
+                    put("groupId", t.groupId)
+                }
+                arr.put(obj)
+            }
+        }
+        prefs.edit()
+            .putString("saved_tabs_persistent_json", arr.toString())
+            .putInt("saved_active_tab_persistent_idx", activeTabIndex)
+            .apply()
+    }
+
+    private fun loadSavedPersistentTabs(): Boolean {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString("saved_tabs_persistent_json", null) ?: return false
+        if (raw == "[]" || raw.isBlank()) return false
+        try {
+            val arr = JSONArray(raw)
+            if (arr.length() == 0) return false
+            webViewContainer.removeAllViews()
+            tabs.clear()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val url = obj.optString("url", START_PAGE_URL)
+                val title = obj.optString("title", "시작 페이지")
+                val groupId = if (obj.has("groupId") && !obj.isNull("groupId")) obj.getString("groupId") else null
+                addNewTab(url = url, makeActive = false, isSecurity = false, groupId = groupId)
+                if (i < tabs.size) {
+                    tabs[i].title = title
+                }
+            }
+            val savedIdx = prefs.getInt("saved_active_tab_persistent_idx", 0)
+            val targetIdx = if (savedIdx in tabs.indices) savedIdx else 0
+            if (tabs.isNotEmpty()) {
+                switchTab(targetIdx)
+                return true
+            }
+        } catch (e: Exception) {}
+        return false
+    }
+
+    private fun populateSidebarBookmarks() {
+        val layoutFolders = findViewById<LinearLayout>(R.id.layoutSidebarBookmarkFoldersBar) ?: return
+        val layoutList = findViewById<LinearLayout>(R.id.layoutSidebarBookmarksList) ?: return
+        val btnAdd = findViewById<Button>(R.id.btnSidebarAddBookmark)
+
+        layoutFolders.removeAllViews()
+        val folders = mutableListOf("전체")
+        folders.addAll(getBookmarkFolders())
+
+        var selectedFolder = "전체"
+
+        fun renderBookmarks() {
+            layoutList.removeAllViews()
+            val all = getSavedBookmarks()
+            val filtered = if (selectedFolder == "전체") all else all.filter { it.folder == selectedFolder }
+            if (filtered.isEmpty()) {
+                val tv = TextView(this).apply {
+                    text = "'$selectedFolder' 폴더에 저장된 북마크가 없습니다."
+                    textSize = 12f
+                    setTextColor(getColor(R.color.text_muted))
+                    setPadding(10, 20, 10, 20)
+                }
+                layoutList.addView(tv)
+                return
+            }
+            for (b in filtered) {
+                val item = layoutInflater.inflate(R.layout.item_tab_card, layoutList, false)
+                val tvTitle = item.findViewById<TextView>(R.id.tvTabTitle)
+                val tvUrl = item.findViewById<TextView>(R.id.tvTabUrl)
+                val btnClose = item.findViewById<ImageView>(R.id.btnTabClose)
+                val tvFolderTag = item.findViewById<TextView>(R.id.tvGroupTag)
+                item.findViewById<ImageView>(R.id.btnTabGroupAction).visibility = View.GONE
+                tvTitle.text = b.title
+                tvUrl.text = b.url
+                if (b.folder != "기본") {
+                    tvFolderTag.visibility = View.VISIBLE
+                    tvFolderTag.text = b.folder
+                } else {
+                    tvFolderTag.visibility = View.GONE
+                }
+                item.setOnClickListener {
+                    loadWebQuery(b.url)
+                }
+                btnClose.setOnClickListener {
+                    deleteBookmark(b.url)
+                    renderBookmarks()
+                }
+                layoutList.addView(item)
+            }
+        }
+
+        fun renderFolders() {
+            layoutFolders.removeAllViews()
+            for (f in folders) {
+                val chip = TextView(this).apply {
+                    text = f
+                    textSize = 11f
+                    setPadding(26, 12, 26, 12)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { marginEnd = 12 }
+                    if (f == selectedFolder) {
+                        setBackgroundResource(R.drawable.bg_pill_badge)
+                        backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                        setTextColor(Color.WHITE)
+                    } else {
+                        setBackgroundResource(R.drawable.bg_pill_badge)
+                        backgroundTintList = null
+                        setTextColor(getColor(R.color.text_muted))
+                    }
+                    setOnClickListener {
+                        selectedFolder = f
+                        renderFolders()
+                        renderBookmarks()
+                    }
+                }
+                layoutFolders.addView(chip)
+            }
+        }
+
+        btnAdd?.setOnClickListener {
+            val cur = getCurrentWebView()
+            val title = cur.title ?: "북마크"
+            val url = cur.url ?: START_PAGE_URL
+            val target = if (selectedFolder == "전체") "기본" else selectedFolder
+            saveCustomBookmark(title, url, target)
+            Toast.makeText(this, "북마크가 저장되었습니다.", Toast.LENGTH_SHORT).show()
+            renderBookmarks()
+        }
+
+        renderFolders()
+        renderBookmarks()
+    }
+
     inner class WebAppInterface(private val activity: MainActivity) {
         @JavascriptInterface
         fun onTokenReceived(token: String) {
@@ -2985,6 +3309,63 @@ class MainActivity : AppCompatActivity() {
         fun loadUrl(url: String) {
             activity.runOnUiThread {
                 activity.loadWebQuery(url)
+            }
+        }
+
+        @JavascriptInterface
+        fun openSecurityTab() {
+            activity.runOnUiThread {
+                activity.addNewTab(activity.START_PAGE_URL, makeActive = true, isSecurity = true)
+            }
+        }
+
+        @JavascriptInterface
+        fun openSidebarAi() {
+            activity.runOnUiThread {
+                if (activity.isTabletLayout()) {
+                    activity.switchSidebarTab("ai")
+                    if (activity.layoutSidebar.visibility != View.VISIBLE) activity.toggleSidebar("ai")
+                } else {
+                    activity.showSummaryBottomSheet()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun openSecurityDashboard() {
+            activity.runOnUiThread {
+                activity.showSecurityInfoDialog()
+            }
+        }
+
+        @JavascriptInterface
+        fun openSettings() {
+            activity.runOnUiThread {
+                activity.showSettingsDialog()
+            }
+        }
+
+        @JavascriptInterface
+        fun openBriefing() {
+            activity.runOnUiThread {
+                if (activity.isTabletLayout()) {
+                    activity.switchSidebarTab("ai")
+                    if (activity.layoutSidebar.visibility != View.VISIBLE) activity.toggleSidebar("ai")
+                } else {
+                    activity.showSummaryBottomSheet()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun getTheme(): String {
+            return activity.getAppThemeMode()
+        }
+
+        @JavascriptInterface
+        fun setTheme(theme: String) {
+            activity.runOnUiThread {
+                activity.setAppThemeMode(theme)
             }
         }
     }

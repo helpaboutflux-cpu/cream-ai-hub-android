@@ -57,7 +57,7 @@ class BriefingReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_stat_cream)
-            .setContentTitle("☀️ 오늘의 Creamy 모닝 브리핑")
+            .setContentTitle("오늘의 Creamy 모닝 브리핑")
             .setContentText("오늘의 날씨, 일정, 주요 AI 소식을 확인해 보세요.")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
