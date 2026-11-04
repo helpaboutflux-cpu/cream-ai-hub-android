@@ -3297,7 +3297,7 @@ class MainActivity : AppCompatActivity() {
                     activity.switchSidebarTab("ai")
                     if (activity.layoutSidebar.visibility != View.VISIBLE) activity.toggleSidebar("ai")
                 } else {
-                    activity.showSummaryBottomSheet()
+                    activity.showCreamyBottomSheet()
                 }
             }
         }
@@ -3323,7 +3323,7 @@ class MainActivity : AppCompatActivity() {
                     activity.switchSidebarTab("ai")
                     if (activity.layoutSidebar.visibility != View.VISIBLE) activity.toggleSidebar("ai")
                 } else {
-                    activity.showSummaryBottomSheet()
+                    activity.showCreamyBottomSheet()
                 }
             }
         }
