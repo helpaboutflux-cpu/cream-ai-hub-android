@@ -1584,10 +1584,12 @@ class MainActivity : AppCompatActivity() {
 
         currentWv.evaluateJavascript(extractScript) { resultJson ->
             try {
-                val cleanJson = resultJson?.trim()?.trim('"')
-                    ?.replace("\"", """)
-                    ?.replace("\n", "
-") ?: "{}"
+                val cleanJson = if (resultJson.isNullOrBlank()) "{}" else {
+                    try {
+                        val tok = org.json.JSONTokener(resultJson).nextValue()
+                        tok.toString()
+                    } catch (e: Exception) { resultJson ?: "{}" }
+                }
                 val obj = JSONObject(cleanJson)
                 val title = obj.optString("title", currentWv.title ?: "문서")
                 val content = obj.optString("content", "본문 내용을 추출할 수 없습니다.")
@@ -1603,9 +1605,7 @@ class MainActivity : AppCompatActivity() {
 
                 view.findViewById<Button>(R.id.btnReaderCopy).setOnClickListener {
                     val clip = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                    clip?.setPrimaryClip(android.content.ClipData.newPlainText("Reader Content", "$title
-
-$content"))
+                    clip?.setPrimaryClip(android.content.ClipData.newPlainText("Reader Content", "$title\n\n$content"))
                     Toast.makeText(this, "클린 리더 본문이 복사되었습니다", Toast.LENGTH_SHORT).show()
                 }
 
@@ -2525,21 +2525,11 @@ $content"))
         btnSidebarQuickSummary.setOnClickListener {
             val currentWv = getCurrentWebView()
             val title = currentWv.title ?: "현재 페이지"
-            tvSidebarAiResult.text = "⏳ Creamy가 페이지 핵심을 분석 중입니다...
-
-제목: $title
-
-1. 이 페이지의 주요 흐름과 핵심 데이터를 분석했습니다.
-2. 전체 본문 중 중요 요점과 맥락을 파악했습니다.
-3. 상세한 심층 질문은 아래 입력창에 남겨주세요."
+            tvSidebarAiResult.text = "⏳ Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $title\n\n1. 이 페이지의 주요 흐름과 핵심 데이터를 분석했습니다.\n2. 전체 본문 중 중요 요점과 맥락을 파악했습니다.\n3. 상세한 심층 질문은 아래 입력창에 남겨주세요."
         }
 
         btnSidebarQuickQuestions.setOnClickListener {
-            tvSidebarAiResult.text = "💡 이 페이지 추천 질문:
-
-1. "이 글의 핵심 결론이 뭐야?"
-2. "주요 장단점 정리해줘"
-3. "관련된 최신 트렌드는?""
+            tvSidebarAiResult.text = "💡 이 페이지 추천 질문:\n\n1. '이 글의 핵심 결론이 뭐야?'\n2. '주요 장단점 정리해줘'\n3. '관련된 최신 트렌드는?'"
         }
 
         btnSidebarQuickTranslate.setOnClickListener {
@@ -2551,9 +2541,7 @@ $content"))
             if (q.isNotEmpty()) {
                 val currentWv = getCurrentWebView()
                 val currentTitle = currentWv.title ?: "현재 페이지"
-                tvSidebarAiResult.text = "💬 질문: "$q"
-
-답변: [$currentTitle] 페이지의 맥락을 고려하여 Creamy가 신속하게 분석했습니다. 원본 웹페이지를 실시간으로 참조하며 최적의 답변을 생성 중입니다."
+                tvSidebarAiResult.text = "💬 질문: $q\n\n답변: [$currentTitle] 페이지의 맥락을 고려하여 Creamy가 신속하게 분석했습니다. 원본 웹페이지를 실시간으로 참조하며 최적의 답변을 생성 중입니다."
                 etSidebarQuery.setText("")
                 hideKeyboard(etSidebarQuery)
             }
@@ -2607,21 +2595,11 @@ $content"))
         btnCloseSheet.setOnClickListener { dialog.dismiss() }
 
         btnQuickSummary.setOnClickListener {
-            tvSummaryResult.text = "⏳ Creamy가 페이지 핵심을 분석 중입니다...
-
-제목: $currentTitle
-
-1. 웹페이지의 본문 핵심 정보와 주요 맥락을 파악했습니다.
-2. 중요 데이터와 세부 결론을 3줄로 간결히 정리했습니다.
-3. 상세한 질문이나 추가 조사가 필요하시면 아래에 질문을 남겨주세요."
+            tvSummaryResult.text = "⏳ Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $currentTitle\n\n1. 웹페이지의 본문 핵심 정보와 주요 맥락을 파악했습니다.\n2. 중요 데이터와 세부 결론을 3줄로 간결히 정리했습니다.\n3. 상세한 질문이나 추가 조사가 필요하시면 아래에 질문을 남겨주세요."
         }
 
         btnQuickQuestions.setOnClickListener {
-            tvSummaryResult.text = "💡 이 페이지 추천 질문:
-
-1. "이 글의 핵심 내용 3가지만 뽑아줘"
-2. "주요 장단점과 시사점은 뭐야?"
-3. "관련된 최신 트렌드 알려줘""
+            tvSummaryResult.text = "💡 이 페이지 추천 질문:\n\n1. '이 글의 핵심 내용 3가지만 뽑아줘'\n2. '주요 장단점과 시사점은 뭐야?'\n3. '관련된 최신 트렌드 알려줘'"
         }
 
         btnQuickTranslate.setOnClickListener {
@@ -2636,9 +2614,7 @@ $content"))
         btnSheetSend.setOnClickListener {
             val q = etSheetQuery.text.toString().trim()
             if (q.isNotEmpty()) {
-                tvSummaryResult.text = "💬 질문: "$q"
-
-Creamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요!"
+                tvSummaryResult.text = "💬 질문: $q\n\nCreamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요!"
                 etSheetQuery.setText("")
                 hideKeyboard(etSheetQuery)
             }
@@ -2656,10 +2632,11 @@ Creamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 
         tvSidebarPageUrl.text = currentUrl
 
         currentWv.evaluateJavascript("(function() { return (document.body.innerText || '').slice(0, 2000); })();") { rawText ->
-            currentPageText = rawText?.trim()?.trim('"')
-                ?.replace("\n", "
-")
-                ?.replace("\"", """) ?: ""
+            currentPageText = if (rawText.isNullOrBlank()) "" else {
+                try {
+                    org.json.JSONTokener(rawText).nextValue().toString()
+                } catch (e: Exception) { rawText ?: "" }
+            }
         }
     }
 
@@ -2831,12 +2808,11 @@ Creamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val snippet = text.take(35).replace("
-", " ")
+        val snippet = text.take(35).replace("\n", " ")
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_stat_cream)
             .setContentTitle("Cream Browser: 복사한 내용")
-            .setContentText("📋 "$snippet" 검색하기")
+            .setContentText("📋 '$snippet' 검색하기")
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
