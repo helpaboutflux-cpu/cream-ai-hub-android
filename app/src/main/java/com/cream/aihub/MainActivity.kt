@@ -1860,10 +1860,10 @@ class MainActivity : AppCompatActivity() {
     var st = d.createElement('style');
     st.id = 'cream_translate_style';
     st.textContent = [
-      '#google_translate_element, .goog-te-gadget, .goog-te-banner-frame, .goog-te-balloon-frame,',
-      '.goog-te-menu-frame, .goog-te-ftab, .goog-te-spinner-pos, .goog-tooltip,',
-      '#goog-gt-tt, .goog-gt-tt, #goog-gt-vt, .goog-te-float-top { display: none !important; visibility: hidden !important; opacity: 0 !important; }',
-      'body { top: 0px !important; position: static !important; min-height: 0px !important; margin-top: 0px !important; }',
+      '.goog-te-banner-frame, .goog-te-balloon-frame, .goog-te-menu-frame, .goog-te-ftab,',
+      '.goog-te-spinner-pos, .goog-tooltip, #goog-gt-tt, .goog-gt-tt, #goog-gt-vt,',
+      '.goog-te-float-top { display: none !important; visibility: hidden !important; opacity: 0 !important; }',
+      'body { top: 0px !important; margin-top: 0px !important; }',
       'html { margin-top: 0px !important; }',
       '.goog-text-highlight { background: none !important; box-shadow: none !important; }',
       '#cream_translate_host { position: fixed !important; left: -10000px !important; top: 0 !important;',
