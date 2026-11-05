@@ -50,6 +50,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationCompat
+import androidx.core.content.FileProvider
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.DynamicColors
@@ -57,10 +58,19 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
+import android.graphics.Canvas
+import android.provider.MediaStore
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
 
 class MainActivity : AppCompatActivity() {
 
@@ -112,7 +122,7 @@ class MainActivity : AppCompatActivity() {
         val timestamp: Long
     )
 
-    private lateinit var rootLayout: View
+    private lateinit var rootLayout: ViewGroup
     private lateinit var webViewContainer: FrameLayout
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: ProgressBar
@@ -124,6 +134,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTopSecurityBadge: TextView
     private lateinit var etBrowserUrl: EditText
     private lateinit var btnClearUrl: ImageView
+    private lateinit var btnQuickTranslateChip: LinearLayout
+    private lateinit var ivTranslateChipIcon: ImageView
+    private lateinit var tvTranslateChipText: TextView
     private lateinit var btnTopBack: ImageView
     private lateinit var btnTopForward: ImageView
     private lateinit var btnTopReload: ImageView
@@ -132,6 +145,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnTopHome: ImageView
     private lateinit var btnToggleSidebar: View
     private lateinit var tvSidebarBtnText: TextView
+
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     // 주소창 제안 오버레이
     private lateinit var layoutSearchSuggestions: LinearLayout
@@ -205,6 +221,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            WebView.enableSlowWholeDocumentDraw()
+        }
         super.onCreate(savedInstanceState)
         if (isMaterialYouEnabled() && DynamicColors.isDynamicColorAvailable()) {
             DynamicColors.applyToActivityIfAvailable(this)
@@ -239,6 +258,26 @@ class MainActivity : AppCompatActivity() {
         tvTopSecurityBadge = findViewById(R.id.tvTopSecurityBadge)
         etBrowserUrl = findViewById(R.id.etBrowserUrl)
         btnClearUrl = findViewById(R.id.btnClearUrl)
+        btnQuickTranslateChip = findViewById(R.id.btnQuickTranslateChip)
+        ivTranslateChipIcon = findViewById(R.id.ivTranslateChipIcon)
+        tvTranslateChipText = findViewById(R.id.tvTranslateChipText)
+
+        btnQuickTranslateChip.setOnClickListener {
+            val curUrl = getCurrentWebView().url ?: ""
+            if (curUrl.contains("translate.google.com")) {
+                try {
+                    val uri = Uri.parse(curUrl)
+                    val originalUrl = uri.getQueryParameter("u")
+                    if (!originalUrl.isNullOrBlank()) {
+                        loadWebQuery(originalUrl)
+                        return@setOnClickListener
+                    }
+                } catch (e: Exception) {}
+                getCurrentWebView().goBack()
+            } else {
+                translateCurrentPage()
+            }
+        }
         btnTopBack = findViewById(R.id.btnTopBack)
         btnTopForward = findViewById(R.id.btnTopForward)
         btnTopReload = findViewById(R.id.btnTopReload)
@@ -497,6 +536,75 @@ class MainActivity : AppCompatActivity() {
                 fileChooserLauncher.launch(Intent.createChooser(intent, "파일 선택"))
                 return true
             }
+
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (customView != null) {
+                    onHideCustomView()
+                    return
+                }
+                customView = view
+                customViewCallback = callback
+                if (view != null) {
+                    rootLayout.addView(view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                    layoutTopBar.visibility = View.GONE
+                    layoutBottomBar.visibility = View.GONE
+                    layoutSidebar.visibility = View.GONE
+                }
+            }
+
+            override fun onHideCustomView() {
+                customView?.let { rootLayout.removeView(it) }
+                customView = null
+                customViewCallback?.onCustomViewHidden()
+                customViewCallback = null
+                layoutTopBar.visibility = View.VISIBLE
+                if (!isTabletLayout()) layoutBottomBar.visibility = View.VISIBLE
+            }
+        }
+
+        wv.customSelectionActionModeCallback = object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+                menu?.add(Menu.NONE, 2001, 0, "Creamy 질문")
+                menu?.add(Menu.NONE, 2002, 1, "My Bag 담기")
+                menu?.add(Menu.NONE, 2003, 2, "작업 메뉴")
+                return true
+            }
+
+            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+                return false
+            }
+
+            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
+                when (item?.itemId) {
+                    2001 -> {
+                        wv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
+                            val text = cleanSelectedText(value)
+                            if (text.isNotBlank()) askCreamyWithText(text)
+                        }
+                        mode?.finish()
+                        return true
+                    }
+                    2002 -> {
+                        wv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
+                            val text = cleanSelectedText(value)
+                            if (text.isNotBlank()) addTextToBag(text)
+                        }
+                        mode?.finish()
+                        return true
+                    }
+                    2003 -> {
+                        wv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
+                            val text = cleanSelectedText(value)
+                            if (text.isNotBlank()) showTextActionDialog(text)
+                        }
+                        mode?.finish()
+                        return true
+                    }
+                }
+                return false
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode?) {}
         }
 
         wv.loadUrl(initialUrl)
@@ -1673,6 +1781,8 @@ class MainActivity : AppCompatActivity() {
         val menuItemTranslate = view.findViewById<LinearLayout>(R.id.menuItemTranslate)
         val menuItemDesktop = view.findViewById<LinearLayout>(R.id.menuItemDesktop)
         val tvDesktopModeStatus = view.findViewById<TextView>(R.id.tvDesktopModeStatus)
+        val menuItemPip = view.findViewById<LinearLayout>(R.id.menuItemPip)
+        val menuItemCapture = view.findViewById<LinearLayout>(R.id.menuItemCapture)
         val menuItemFindInPage = view.findViewById<LinearLayout>(R.id.menuItemFindInPage)
         val menuItemPrint = view.findViewById<LinearLayout>(R.id.menuItemPrint)
         val menuItemHistory = view.findViewById<LinearLayout>(R.id.menuItemHistory)
@@ -1733,6 +1843,16 @@ class MainActivity : AppCompatActivity() {
         menuItemDesktop.setOnClickListener {
             dialog.dismiss()
             toggleDesktopMode()
+        }
+
+        menuItemPip?.setOnClickListener {
+            dialog.dismiss()
+            enterPipMode()
+        }
+
+        menuItemCapture?.setOnClickListener {
+            dialog.dismiss()
+            captureFullPageScreenshot()
         }
 
         menuItemFindInPage.setOnClickListener {
@@ -2949,6 +3069,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btnSidebarMenuTranslate)?.setOnClickListener { translateCurrentPage() }
         findViewById<TextView>(R.id.btnSidebarMenuDesktop)?.setOnClickListener { toggleDesktopMode() }
         findViewById<TextView>(R.id.btnSidebarMenuPrint)?.setOnClickListener { printCurrentPage() }
+        findViewById<TextView>(R.id.btnSidebarMenuCapture)?.setOnClickListener { captureFullPageScreenshot() }
+        findViewById<TextView>(R.id.btnSidebarMenuPip)?.setOnClickListener { enterPipMode() }
         findViewById<TextView>(R.id.btnSidebarMenuSettings)?.setOnClickListener { showSettingsDialog() }
 
         btnSidebarQuickSummary.setOnClickListener {
@@ -2977,7 +3099,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showCreamyBottomSheet() {
+    private fun showCreamyBottomSheet(initialQuery: String? = null) {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_summary_bottom_sheet, null)
         dialog.setContentView(view)
@@ -2999,6 +3121,11 @@ class MainActivity : AppCompatActivity() {
         val currentTab = getCurrentTab()
         val currentTitle = currentTab.webView.title ?: "현재 페이지"
         val currentUrl = currentTab.webView.url ?: START_PAGE_URL
+
+        if (!initialQuery.isNullOrBlank()) {
+            etSheetQuery.setText(initialQuery)
+            tvSummaryResult.text = "질문: $initialQuery\n\nCreamy 답변: [$currentTitle] 페이지에서 선택한 내용을 바탕으로 분석을 진행 중입니다."
+        }
 
         tvSheetTitle.text = "Creamy AI"
         tvEngineStatus.text = "인텔리전트 웹 어시스턴트"
@@ -3122,6 +3249,15 @@ class MainActivity : AppCompatActivity() {
         btnNavForward.alpha = if (currentWv.canGoForward()) 1.0f else 0.35f
         btnTopBack.alpha = if (currentWv.canGoBack()) 1.0f else 0.35f
         btnTopForward.alpha = if (currentWv.canGoForward()) 1.0f else 0.35f
+
+        val isStart = url == START_PAGE_URL || url == START_PAGE_SECURITY_URL || url.startsWith("file:///android_asset/")
+        if (!isStart && !url.isNullOrBlank()) {
+            btnQuickTranslateChip.visibility = View.VISIBLE
+            val isTranslated = url.contains("translate.google.com")
+            tvTranslateChipText.text = if (isTranslated) "원문" else "번역"
+        } else {
+            btnQuickTranslateChip.visibility = View.GONE
+        }
     }
 
     private fun hideKeyboard(view: View) {
@@ -3265,6 +3401,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        if (customView != null) {
+            customView?.let { rootLayout.removeView(it) }
+            customView = null
+            customViewCallback?.onCustomViewHidden()
+            customViewCallback = null
+            layoutTopBar.visibility = View.VISIBLE
+            if (!isTabletLayout()) layoutBottomBar.visibility = View.VISIBLE
+            return
+        }
+
         if (layoutSearchSuggestions.visibility == View.VISIBLE) {
             hideSearchSuggestions()
             etBrowserUrl.clearFocus()
@@ -3331,6 +3477,9 @@ class MainActivity : AppCompatActivity() {
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_dark)
                 tvNavTabCount.setTextColor(Color.WHITE)
+                btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#262930"))
+                ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                tvTranslateChipText.setTextColor(Color.WHITE)
                 layoutSidebar.setBackgroundColor(Color.parseColor("#121418"))
             }
             "theme-default-light" -> {
@@ -3351,6 +3500,9 @@ class MainActivity : AppCompatActivity() {
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_light)
                 tvNavTabCount.setTextColor(Color.parseColor("#111111"))
+                btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E5E7EB"))
+                ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                tvTranslateChipText.setTextColor(Color.parseColor("#111111"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#F9FAFB"))
             }
             "theme-pink-dark" -> {
@@ -3371,6 +3523,9 @@ class MainActivity : AppCompatActivity() {
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_dark)
                 tvNavTabCount.setTextColor(Color.WHITE)
+                btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#3D2228"))
+                ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+                tvTranslateChipText.setTextColor(Color.WHITE)
                 layoutSidebar.setBackgroundColor(Color.parseColor("#221013"))
             }
             "theme-pink-light" -> {
@@ -3391,6 +3546,9 @@ class MainActivity : AppCompatActivity() {
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_light)
                 tvNavTabCount.setTextColor(Color.parseColor("#6E343D"))
+                btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FCE7EC"))
+                ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                tvTranslateChipText.setTextColor(Color.parseColor("#6E343D"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#FFF5F7"))
             }
         }
@@ -3538,6 +3696,260 @@ class MainActivity : AppCompatActivity() {
 
         renderFolders()
         renderBookmarks()
+    }
+
+    private fun enterPipMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val params = PictureInPictureParams.Builder().build()
+                enterPictureInPictureMode(params)
+            } catch (e: Exception) {
+                Toast.makeText(this, "PIP 모드를 시작할 수 없습니다", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(this, "이 안드로이드 버전에서는 PIP가 지원되지 않습니다", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            layoutTopBar.visibility = View.GONE
+            layoutBottomBar.visibility = View.GONE
+            layoutSidebar.visibility = View.GONE
+            progressBar.visibility = View.GONE
+        } else {
+            layoutTopBar.visibility = View.VISIBLE
+            if (!isTabletLayout()) {
+                layoutBottomBar.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (customView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            enterPipMode()
+        }
+    }
+
+    private fun captureFullPageScreenshot() {
+        val wv = getCurrentWebView()
+        val curUrl = wv.url ?: ""
+        if (curUrl == START_PAGE_URL || curUrl == START_PAGE_SECURITY_URL || curUrl.startsWith("file:///android_asset/")) {
+            Toast.makeText(this, "시작 페이지는 캡처할 수 없습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val scale = wv.scale
+            val contentHeight = (wv.contentHeight * scale).toInt()
+            val width = wv.width.coerceAtLeast(1)
+            val height = contentHeight.coerceIn(wv.height, 10000)
+
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            wv.draw(canvas)
+
+            showCaptureResultDialog(bitmap, wv.title ?: "캡처 이미지", curUrl)
+        } catch (oom: OutOfMemoryError) {
+            try {
+                val width = wv.width.coerceAtLeast(1)
+                val height = wv.height.coerceAtLeast(1)
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                wv.draw(canvas)
+                showCaptureResultDialog(bitmap, wv.title ?: "캡처 이미지", curUrl)
+            } catch (e: Exception) {
+                Toast.makeText(this, "화면 캡처 중 메모리가 부족합니다", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "화면 캡처 생성 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showCaptureResultDialog(bitmap: Bitmap, pageTitle: String, sourceUrl: String) {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_screenshot_result, null)
+        dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
+
+        val ivPreview = view.findViewById<ImageView>(R.id.ivCapturePreview)
+        val btnSaveGallery = view.findViewById<Button>(R.id.btnSaveGallery)
+        val btnShareCapture = view.findViewById<Button>(R.id.btnShareCapture)
+        val btnAddToBagCapture = view.findViewById<Button>(R.id.btnAddToBagCapture)
+
+        ivPreview.setImageBitmap(bitmap)
+
+        btnSaveGallery.setOnClickListener {
+            dialog.dismiss()
+            saveBitmapToGallery(bitmap, pageTitle)
+        }
+
+        btnShareCapture.setOnClickListener {
+            dialog.dismiss()
+            shareBitmap(bitmap)
+        }
+
+        btnAddToBagCapture.setOnClickListener {
+            dialog.dismiss()
+            addCaptureToBag(bitmap, pageTitle, sourceUrl)
+        }
+
+        dialog.show()
+    }
+
+    private fun saveBitmapToGallery(bitmap: Bitmap, title: String) {
+        try {
+            val filename = "CreamCapture_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.png"
+            val contentValues = android.content.ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/CreamBrowser")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                contentResolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    contentResolver.update(uri, contentValues, null, null)
+                }
+                Toast.makeText(this, "갤러리에 캡처 이미지가 저장되었습니다", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "이미지 저장에 실패했습니다", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "갤러리 저장 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareBitmap(bitmap: Bitmap) {
+        try {
+            val cacheFile = File(cacheDir, "shared_capture_${System.currentTimeMillis()}.png")
+            FileOutputStream(cacheFile).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            val contentUri = FileProvider.getUriForFile(
+                this,
+                "com.cream.browser.fileprovider",
+                cacheFile
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "캡처 이미지 공유"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "이미지 공유 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun addCaptureToBag(bitmap: Bitmap, title: String, sourceUrl: String) {
+        try {
+            val bagFile = File(filesDir, "bag_capture_${System.currentTimeMillis()}.png")
+            FileOutputStream(bagFile).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+            }
+            val item = BagItem(
+                id = System.currentTimeMillis().toString(),
+                type = "image",
+                title = if (title.isBlank()) "웹 전체 캡처" else "캡처: $title",
+                content = bagFile.absolutePath,
+                sourceUrl = sourceUrl,
+                timestamp = System.currentTimeMillis()
+            )
+            saveBagItem(item)
+            Toast.makeText(this, "My Bag에 캡처 이미지가 저장되었습니다.", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "My Bag 저장 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun cleanSelectedText(raw: String?): String {
+        if (raw.isNullOrBlank() || raw == "null" || raw == "\"\"") return ""
+        var s = raw.trim()
+        if (s.startsWith("\"") && s.endsWith("\"") && s.length >= 2) {
+            s = s.substring(1, s.length - 1)
+        }
+        return s.replace("\\n", "\n")
+            .replace("\\r", "")
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\")
+            .trim()
+    }
+
+    private fun addTextToBag(text: String) {
+        val curTab = getCurrentTab()
+        val curUrl = curTab.webView.url ?: ""
+        val item = BagItem(
+            id = System.currentTimeMillis().toString(),
+            type = "text",
+            title = if (text.length > 25) text.take(25) + "..." else text,
+            content = text,
+            sourceUrl = curUrl,
+            timestamp = System.currentTimeMillis()
+        )
+        saveBagItem(item)
+        Toast.makeText(this, "선택한 텍스트가 My Bag에 저장되었습니다.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun askCreamyWithText(text: String) {
+        if (isTabletLayout()) {
+            switchSidebarTab("ai")
+            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("ai")
+            etSidebarQuery.setText(text)
+            val currentWv = getCurrentWebView()
+            val currentTitle = currentWv.title ?: "현재 페이지"
+            tvSidebarAiResult.text = "질문: $text\n\n답변: [$currentTitle] 페이지에서 선택한 내용을 바탕으로 Creamy가 분석을 진행 중입니다."
+        } else {
+            showCreamyBottomSheet(text)
+        }
+    }
+
+    private fun showTextActionDialog(text: String) {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_text_action, null)
+        dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
+
+        val tvPreview = view.findViewById<TextView>(R.id.tvSelectedTextPreview)
+        val actionCreamyAsk = view.findViewById<LinearLayout>(R.id.actionCreamyAsk)
+        val actionAddToBag = view.findViewById<LinearLayout>(R.id.actionAddToBag)
+        val actionCopyText = view.findViewById<LinearLayout>(R.id.actionCopyText)
+        val actionSearchWeb = view.findViewById<LinearLayout>(R.id.actionSearchWeb)
+
+        tvPreview.text = text
+
+        actionCreamyAsk.setOnClickListener {
+            dialog.dismiss()
+            askCreamyWithText(text)
+        }
+
+        actionAddToBag.setOnClickListener {
+            dialog.dismiss()
+            addTextToBag(text)
+        }
+
+        actionCopyText.setOnClickListener {
+            dialog.dismiss()
+            val clip = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clip?.setPrimaryClip(android.content.ClipData.newPlainText("Selected Text", text))
+            Toast.makeText(this, "텍스트가 클립보드에 복사되었습니다", Toast.LENGTH_SHORT).show()
+        }
+
+        actionSearchWeb.setOnClickListener {
+            dialog.dismiss()
+            loadWebQuery(text)
+        }
+
+        dialog.show()
     }
 
     inner class WebAppInterface(private val activity: MainActivity) {
