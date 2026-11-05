@@ -562,51 +562,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        wv.customSelectionActionModeCallback = object : ActionMode.Callback {
-            override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                menu?.add(Menu.NONE, 2001, 0, "Creamy 질문")
-                menu?.add(Menu.NONE, 2002, 1, "My Bag 담기")
-                menu?.add(Menu.NONE, 2003, 2, "작업 메뉴")
-                return true
-            }
-
-            override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
-                return false
-            }
-
-            override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
-                when (item?.itemId) {
-                    2001 -> {
-                        wv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
-                            val text = cleanSelectedText(value)
-                            if (text.isNotBlank()) askCreamyWithText(text)
-                        }
-                        mode?.finish()
-                        return true
-                    }
-                    2002 -> {
-                        wv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
-                            val text = cleanSelectedText(value)
-                            if (text.isNotBlank()) addTextToBag(text)
-                        }
-                        mode?.finish()
-                        return true
-                    }
-                    2003 -> {
-                        wv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
-                            val text = cleanSelectedText(value)
-                            if (text.isNotBlank()) showTextActionDialog(text)
-                        }
-                        mode?.finish()
-                        return true
-                    }
-                }
-                return false
-            }
-
-            override fun onDestroyActionMode(mode: ActionMode?) {}
-        }
-
         wv.loadUrl(initialUrl)
         return wv
     }
@@ -3730,6 +3685,38 @@ class MainActivity : AppCompatActivity() {
         super.onUserLeaveHint()
         if (customView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             enterPipMode()
+        }
+    }
+
+    override fun onActionModeStarted(mode: ActionMode?) {
+        super.onActionModeStarted(mode)
+        val menu = mode?.menu
+        menu?.add(Menu.NONE, 2001, 0, "Creamy 질문")?.setOnMenuItemClickListener {
+            val curWv = getCurrentWebView()
+            curWv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
+                val text = cleanSelectedText(value)
+                if (text.isNotBlank()) askCreamyWithText(text)
+            }
+            mode.finish()
+            true
+        }
+        menu?.add(Menu.NONE, 2002, 1, "My Bag 담기")?.setOnMenuItemClickListener {
+            val curWv = getCurrentWebView()
+            curWv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
+                val text = cleanSelectedText(value)
+                if (text.isNotBlank()) addTextToBag(text)
+            }
+            mode.finish()
+            true
+        }
+        menu?.add(Menu.NONE, 2003, 2, "작업 메뉴")?.setOnMenuItemClickListener {
+            val curWv = getCurrentWebView()
+            curWv.evaluateJavascript("(function(){ return window.getSelection().toString(); })();") { value ->
+                val text = cleanSelectedText(value)
+                if (text.isNotBlank()) showTextActionDialog(text)
+            }
+            mode.finish()
+            true
         }
     }
 
