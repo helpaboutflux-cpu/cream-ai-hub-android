@@ -262,12 +262,22 @@
             cursor: pointer;
             text-decoration: none;
             white-space: nowrap;
-            transition: transform 0.1s, opacity 0.15s, background 0.25s, color 0.25s;
+            transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), opacity 0.12s ease, background 0.25s, color 0.25s;
         }
 
         .pill-btn:active {
-            transform: scale(0.96);
-            opacity: 0.85;
+            transform: scale(0.92) !important;
+            opacity: 0.8 !important;
+        }
+
+        button, a, .site-item, .search-submit-btn, .modal-btn, .briefing-link, .add-item {
+            transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), opacity 0.12s ease !important;
+            user-select: none;
+        }
+
+        button:active, a:active, .site-item:active, .search-submit-btn:active, .modal-btn:active, .briefing-link:active, .add-item:active {
+            transform: scale(0.92) !important;
+            opacity: 0.8 !important;
         }
 
         /* 즐겨찾기 카드 컨테이너 */
@@ -594,15 +604,32 @@
             const q = input.value.trim();
             if (!q) return;
 
-            let url;
             if (q.startsWith('http://') || q.startsWith('https://')) {
-                url = q;
+                navigate(q);
+                return;
             } else if (q.includes('.') && !q.includes(' ') && !q.startsWith('?')) {
-                url = 'https://' + q;
-            } else {
-                url = 'https://www.google.com/search?q=' + encodeURIComponent(q);
+                navigate('https://' + q);
+                return;
             }
-            navigate(url);
+
+            let engine = 'google';
+            try {
+                if (window.AndroidCreamApp && window.AndroidCreamApp.getSearchEngine) {
+                    engine = window.AndroidCreamApp.getSearchEngine() || 'google';
+                }
+            } catch(err) {}
+
+            let searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(q);
+            if (engine === 'naver') {
+                searchUrl = 'https://search.naver.com/search.naver?query=' + encodeURIComponent(q);
+            } else if (engine === 'daum') {
+                searchUrl = 'https://search.daum.net/search?q=' + encodeURIComponent(q);
+            } else if (engine === 'bing') {
+                searchUrl = 'https://www.bing.com/search?q=' + encodeURIComponent(q);
+            } else if (engine === 'duckduckgo') {
+                searchUrl = 'https://duckduckgo.com/?q=' + encodeURIComponent(q);
+            }
+            navigate(searchUrl);
         }
 
         function openSecurityTab() {
@@ -657,17 +684,39 @@
             } catch (err) {}
         };
 
-        // 시간대별 인사말 자동 갱신 함수
+        let currentUserName = "민중";
+
+        window.setUserName = function(name) {
+            if (name && name.trim()) {
+                currentUserName = name.trim();
+                try {
+                    localStorage.setItem('creamy_user_nickname', currentUserName);
+                } catch(e){}
+                updateGreeting();
+            }
+        };
+
+        // 시간대별 인사말 자동 갱신 함수 (사용자 이름 동적 연동)
         function updateGreeting() {
+            try {
+                if (window.AndroidCreamApp && window.AndroidCreamApp.getUserName) {
+                    const n = window.AndroidCreamApp.getUserName();
+                    if (n && n.trim()) currentUserName = n.trim();
+                } else {
+                    const saved = localStorage.getItem('creamy_user_nickname');
+                    if (saved && saved.trim()) currentUserName = saved.trim();
+                }
+            } catch(e){}
+
             const hour = new Date().getHours();
             const el = document.getElementById('greetingTitle');
             if (el) {
                 if (hour >= 5 && hour < 12) {
-                    el.textContent = "좋은 아침입니다, 민중님.";
+                    el.textContent = "좋은 아침입니다, " + currentUserName + "님.";
                 } else if (hour >= 12 && hour < 18) {
-                    el.textContent = "좋은 오후입니다, 민중님.";
+                    el.textContent = "좋은 오후입니다, " + currentUserName + "님.";
                 } else {
-                    el.textContent = "좋은 저녁입니다, 민중님.";
+                    el.textContent = "좋은 저녁입니다, " + currentUserName + "님.";
                 }
             }
         }

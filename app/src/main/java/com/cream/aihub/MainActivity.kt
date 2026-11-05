@@ -216,6 +216,8 @@ class MainActivity : AppCompatActivity() {
         setupSidebarControls()
         setupOmniboxSuggestions()
         handleIncomingIntent(intent)
+        checkAndShowOnboarding()
+        applyTouchAnimationToAll(findViewById(android.R.id.content))
         showPersistentQuickNotification()
         BriefingReceiver.scheduleDailyMorningBriefing(this)
     }
@@ -498,12 +500,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addNewTab(url: String = START_PAGE_URL, makeActive: Boolean = true, isSecurity: Boolean = false, groupId: String? = null) {
-        val initialUrl = if (url == START_PAGE_URL && isSecurity) START_PAGE_SECURITY_URL else url
+        val targetUrl = if (url == START_PAGE_URL) {
+            getHomeUrl(isSecurity)
+        } else url
+        val initialUrl = if (targetUrl == START_PAGE_URL && isSecurity) START_PAGE_SECURITY_URL else targetUrl
         val newWv = createWebViewForTab(initialUrl, isSecurity)
         val tabId = System.currentTimeMillis().toString()
         val newTab = WebTab(
             id = tabId,
-            title = if (isSecurity) "보안 탭" else if (url == START_PAGE_URL) "시작 페이지" else "새 탭",
+            title = if (isSecurity) "보안 탭" else if (url == START_PAGE_URL || targetUrl == START_PAGE_URL) "시작 페이지" else "새 탭",
             url = initialUrl,
             webView = newWv,
             isSecurity = isSecurity,
@@ -641,18 +646,15 @@ class MainActivity : AppCompatActivity() {
             btnTopForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
             btnTopReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
             btnTopHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            layoutBottomBar.setBackgroundColor(Color.parseColor("#0D0F12"))
+            btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_dark)
+            tvNavTabCount.setTextColor(Color.WHITE)
         } else {
-            layoutTopBar.setBackgroundColor(Color.WHITE)
-            layoutAddressBar.backgroundTintList = null
-            etBrowserUrl.setTextColor(getColor(R.color.primary_black))
-            etBrowserUrl.setHintTextColor(getColor(R.color.text_muted))
             tvTopSecurityBadge.visibility = View.GONE
-            btnTopMenu.imageTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
-            btnMobileReload.imageTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
-            btnTopBack.imageTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
-            btnTopForward.imageTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
-            btnTopReload.imageTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
-            btnTopHome.imageTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+            applyThemeToViews(getAppThemeMode())
         }
     }
 
@@ -713,7 +715,7 @@ class MainActivity : AppCompatActivity() {
         btnMobileReload.setOnClickListener { getCurrentWebView().reload() }
         btnTopHome.setOnClickListener {
             val cur = getCurrentTab()
-            getCurrentWebView().loadUrl(if (cur.isSecurity) START_PAGE_SECURITY_URL else START_PAGE_URL)
+            getCurrentWebView().loadUrl(getHomeUrl(cur.isSecurity))
         }
 
         // 사이드바 토글 버튼 (태블릿 전용)
@@ -726,7 +728,7 @@ class MainActivity : AppCompatActivity() {
         btnNavForward.setOnClickListener { if (getCurrentWebView().canGoForward()) getCurrentWebView().goForward() }
         btnNavHome.setOnClickListener {
             val cur = getCurrentTab()
-            getCurrentWebView().loadUrl(if (cur.isSecurity) START_PAGE_SECURITY_URL else START_PAGE_URL)
+            getCurrentWebView().loadUrl(getHomeUrl(cur.isSecurity))
         }
 
         btnNavCreamy.setOnClickListener {
@@ -921,6 +923,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_security_info, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val ivStatusIcon = view.findViewById<ImageView>(R.id.ivSecurityStatusIcon)
         val tvStatusTitle = view.findViewById<TextView>(R.id.tvSecurityStatusTitle)
@@ -989,6 +992,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_tab_manager, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         var isViewingSecurityMode = getCurrentTab().isSecurity
 
@@ -1216,6 +1220,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_group_picker, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val etGroupName = view.findViewById<EditText>(R.id.etGroupName)
         val btnApply = view.findViewById<Button>(R.id.btnApplyGroup)
@@ -1284,6 +1289,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_bag, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val tvBagCount = view.findViewById<TextView>(R.id.tvBagCountBadge)
         val layoutBagItems = view.findViewById<LinearLayout>(R.id.layoutBagItemsList)
@@ -1312,7 +1318,7 @@ class MainActivity : AppCompatActivity() {
 
             if (filtered.isEmpty()) {
                 val emptyTv = TextView(this).apply {
-                    text = "Bag에 보관된 항목이 없습니다.\n웹서핑 중 원하는 링크나 이미지를 Bag에 담아보세요!"
+                    text = "My Bag에 보관된 항목이 없습니다.\n웹서핑 중 원하는 링크나 이미지를 My Bag에 담아보세요!"
                     setTextColor(getColor(R.color.text_muted))
                     setPadding(12, 30, 12, 30)
                     gravity = android.view.Gravity.CENTER
@@ -1423,7 +1429,7 @@ class MainActivity : AppCompatActivity() {
         val title = curTab.webView.title ?: "스크랩 페이지"
         val url = curTab.webView.url ?: START_PAGE_URL
         if (url == START_PAGE_URL || url.startsWith("file:///android_asset/")) {
-            Toast.makeText(this, "시작 페이지는 Bag에 담을 수 없습니다", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "시작 페이지는 My Bag에 담을 수 없습니다", Toast.LENGTH_SHORT).show()
             return
         }
         val item = BagItem(
@@ -1435,11 +1441,11 @@ class MainActivity : AppCompatActivity() {
             timestamp = System.currentTimeMillis()
         )
         saveBagItem(item)
-        Toast.makeText(this, "'$title'이(가) Bag에 담겼습니다.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "'$title'이(가) My Bag에 담겼습니다.", Toast.LENGTH_SHORT).show()
     }
 
     private fun showImageLongClickMenu(imageUrl: String, sourceUrl: String) {
-        val options = arrayOf("Bag에 이 이미지 담기", "이미지 링크 복사", "이미지 다운로드")
+        val options = arrayOf("My Bag에 이 이미지 담기", "이미지 링크 복사", "이미지 다운로드")
         AlertDialog.Builder(this)
             .setTitle("이미지 옵션")
             .setItems(options) { _, which ->
@@ -1454,7 +1460,7 @@ class MainActivity : AppCompatActivity() {
                             timestamp = System.currentTimeMillis()
                         )
                         saveBagItem(item)
-                        Toast.makeText(this, "이미지가 Bag에 저장되었습니다.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "이미지가 My Bag에 저장되었습니다.", Toast.LENGTH_SHORT).show()
                     }
                     1 -> {
                         val clip = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -1499,6 +1505,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_downloads, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val tvCount = view.findViewById<TextView>(R.id.tvDownloadCount)
         val layoutList = view.findViewById<LinearLayout>(R.id.layoutDownloadsList)
@@ -1603,6 +1610,7 @@ class MainActivity : AppCompatActivity() {
                 val dialog = BottomSheetDialog(this)
                 val view = layoutInflater.inflate(R.layout.dialog_reader_mode, null)
                 dialog.setContentView(view)
+                applyTouchAnimationToAll(view)
 
                 view.findViewById<TextView>(R.id.tvReaderTitle).text = title
                 view.findViewById<TextView>(R.id.tvReaderSource).text = "출처: ${currentWv.url ?: ""}"
@@ -1646,6 +1654,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_menu_bottom_sheet, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val menuQuickNewTab = view.findViewById<LinearLayout>(R.id.menuQuickNewTab)
         val menuQuickSecurityTab = view.findViewById<LinearLayout>(R.id.menuQuickSecurityTab)
@@ -1774,6 +1783,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_find_in_page, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val etFindQuery = view.findViewById<EditText>(R.id.etFindQuery)
         val btnFindPrev = view.findViewById<ImageView>(R.id.btnFindPrev)
@@ -1826,6 +1836,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_history, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val layoutHistoryList = view.findViewById<LinearLayout>(R.id.layoutHistoryList)
         val btnClearHistory = view.findViewById<Button>(R.id.btnClearHistory)
@@ -1892,6 +1903,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_bookmarks, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val layoutFoldersBar = view.findViewById<LinearLayout>(R.id.layoutBookmarkFoldersBar)
         val layoutBookmarksList = view.findViewById<LinearLayout>(R.id.layoutBookmarksList)
@@ -2024,6 +2036,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
                 val btnThemeDefaultDark = view.findViewById<TextView>(R.id.btnThemeDefaultDark)
         val btnThemeDefaultLight = view.findViewById<TextView>(R.id.btnThemeDefaultLight)
@@ -2073,6 +2086,61 @@ class MainActivity : AppCompatActivity() {
             updateThemeChips()
         }
         updateThemeChips()
+
+        // 사용자 이름 설정 뷰
+        val etSettingUserName = view.findViewById<EditText>(R.id.etSettingUserName)
+        etSettingUserName?.setText(getUserNickname())
+
+        // 시작 페이지 설정 칩들
+        val btnStartPageHome = view.findViewById<TextView>(R.id.btnStartPageHome)
+        val btnStartPageNaver = view.findViewById<TextView>(R.id.btnStartPageNaver)
+        val btnStartPageGoogle = view.findViewById<TextView>(R.id.btnStartPageGoogle)
+        val btnStartPageCustom = view.findViewById<TextView>(R.id.btnStartPageCustom)
+        val etCustomStartPageUrl = view.findViewById<EditText>(R.id.etCustomStartPageUrl)
+
+        var selectedStartPage = getStartPageType()
+        etCustomStartPageUrl?.setText(getCustomStartPageUrl())
+        etCustomStartPageUrl?.visibility = if (selectedStartPage == "custom") View.VISIBLE else View.GONE
+
+        fun updateStartPageChips() {
+            val chips = listOf(
+                btnStartPageHome to "home",
+                btnStartPageNaver to "naver",
+                btnStartPageGoogle to "google",
+                btnStartPageCustom to "custom"
+            )
+            for ((chip, typ) in chips) {
+                if (chip == null) continue
+                if (typ == selectedStartPage) {
+                    chip.setBackgroundResource(R.drawable.bg_pill_badge)
+                    chip.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                    chip.setTextColor(Color.WHITE)
+                } else {
+                    chip.setBackgroundResource(R.drawable.bg_pill_badge)
+                    chip.backgroundTintList = null
+                    chip.setTextColor(getColor(R.color.text_muted))
+                }
+            }
+            etCustomStartPageUrl?.visibility = if (selectedStartPage == "custom") View.VISIBLE else View.GONE
+        }
+
+        btnStartPageHome?.setOnClickListener { selectedStartPage = "home"; updateStartPageChips() }
+        btnStartPageNaver?.setOnClickListener { selectedStartPage = "naver"; updateStartPageChips() }
+        btnStartPageGoogle?.setOnClickListener { selectedStartPage = "google"; updateStartPageChips() }
+        btnStartPageCustom?.setOnClickListener { selectedStartPage = "custom"; updateStartPageChips() }
+        updateStartPageChips()
+
+        // 알림 카테고리 스위치들
+        val switchNotifDownload = view.findViewById<SwitchMaterial>(R.id.switchNotifDownload)
+        val switchNotifSecurity = view.findViewById<SwitchMaterial>(R.id.switchNotifSecurity)
+        val switchNotifTabs = view.findViewById<SwitchMaterial>(R.id.switchNotifTabs)
+        val switchNotifTips = view.findViewById<SwitchMaterial>(R.id.switchNotifTips)
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        switchNotifDownload?.isChecked = prefs.getBoolean("notif_download", true)
+        switchNotifSecurity?.isChecked = prefs.getBoolean("notif_security", true)
+        switchNotifTabs?.isChecked = prefs.getBoolean("notif_tabs", false)
+        switchNotifTips?.isChecked = prefs.getBoolean("notif_tips", true)
 
         val switchMaterialYou = view.findViewById<SwitchMaterial>(R.id.switchMaterialYou)
         val switchAdBlock = view.findViewById<SwitchMaterial>(R.id.switchAdBlock)
@@ -2139,6 +2207,24 @@ class MainActivity : AppCompatActivity() {
         btnZoom140.setOnClickListener { selectedZoom = 130; tvZoomDisplay.text = "130% (매우 크게)" }
 
         btnSave.setOnClickListener {
+            // 사용자 이름 저장 및 갱신
+            val newName = etSettingUserName?.text?.toString()?.trim() ?: ""
+            if (newName.isNotBlank()) {
+                setUserNickname(newName)
+            }
+
+            // 시작 페이지 저장
+            val customUrl = etCustomStartPageUrl?.text?.toString()?.trim() ?: ""
+            setStartPageSettings(selectedStartPage, customUrl)
+
+            // 알림 카테고리 저장
+            prefs.edit().apply {
+                putBoolean("notif_download", switchNotifDownload?.isChecked ?: true)
+                putBoolean("notif_security", switchNotifSecurity?.isChecked ?: true)
+                putBoolean("notif_tabs", switchNotifTabs?.isChecked ?: false)
+                putBoolean("notif_tips", switchNotifTips?.isChecked ?: true)
+            }.apply()
+
             setSearchEngine(selectedEngine)
             setAdBlockEnabled(switchAdBlock.isChecked)
             setTextZoom(selectedZoom)
@@ -2571,6 +2657,184 @@ class MainActivity : AppCompatActivity() {
             .getBoolean("use_color_favicons", true)
     }
 
+    // 사용자 이름 설정
+    fun getUserNickname(): String {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("user_nickname", "민중") ?: "민중"
+    }
+
+    fun setUserNickname(name: String) {
+        val validName = if (name.isBlank()) "민중" else name.trim()
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("user_nickname", validName)
+            .apply()
+        for (t in tabs) {
+            t.webView.evaluateJavascript("if (window.setUserName) { window.setUserName('$validName'); }", null)
+        }
+    }
+
+    // 시작 페이지 설정
+    fun getStartPageType(): String {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("start_page_type", "home") ?: "home"
+    }
+
+    fun getCustomStartPageUrl(): String {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("start_page_custom_url", "") ?: ""
+    }
+
+    fun setStartPageSettings(type: String, customUrl: String) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("start_page_type", type)
+            .putString("start_page_custom_url", customUrl)
+            .apply()
+    }
+
+    fun getHomeUrl(isSecurity: Boolean = false): String {
+        if (isSecurity) return START_PAGE_SECURITY_URL
+        return when (getStartPageType()) {
+            "naver" -> "https://www.naver.com"
+            "google" -> "https://www.google.com"
+            "custom" -> {
+                val c = getCustomStartPageUrl()
+                if (c.isNotBlank()) c else START_PAGE_URL
+            }
+            else -> START_PAGE_URL
+        }
+    }
+
+    // 어떤 버튼이든, 항목이든 누를 때의 바운스 애니메이션
+    private fun applyTouchAnimation(v: View) {
+        v.setOnTouchListener { view, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    view.animate().scaleX(0.93f).scaleY(0.93f).alpha(0.85f).setDuration(80).start()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    view.animate().scaleX(1.0f).scaleY(1.0f).alpha(1.0f).setDuration(100).start()
+                }
+            }
+            false
+        }
+    }
+
+    private fun applyTouchAnimationToAll(rootView: View) {
+        if (rootView is ViewGroup) {
+            for (i in 0 until rootView.childCount) {
+                applyTouchAnimationToAll(rootView.getChildAt(i))
+            }
+        }
+        if (rootView.isClickable || rootView is Button || rootView is ImageButton || rootView.id == R.id.btnNavTabs || rootView.id == R.id.btnNavCreamy) {
+            rootView.setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.animate().scaleX(0.93f).scaleY(0.93f).alpha(0.85f).setDuration(80).start()
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        v.animate().scaleX(1.0f).scaleY(1.0f).alpha(1.0f).setDuration(100).start()
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    // 첫 실행 온보딩 캐러셀 및 사용자 이름 설정
+    private fun checkAndShowOnboarding() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val hasCompleted = prefs.getBoolean("has_completed_onboarding", false)
+        val layoutOnboarding = findViewById<View>(R.id.layoutOnboarding) ?: return
+        if (hasCompleted) {
+            layoutOnboarding.visibility = View.GONE
+            return
+        }
+
+        layoutOnboarding.visibility = View.VISIBLE
+        val scrollOnboarding = findViewById<HorizontalScrollView>(R.id.scrollOnboarding)
+        val btnSkip = findViewById<TextView>(R.id.btnOnboardingSkip)
+        val btnNext = findViewById<Button>(R.id.btnOnboardingNext)
+        val btnStart = findViewById<Button>(R.id.btnOnboardingStart)
+        val etUserName = findViewById<EditText>(R.id.etOnboardingUserName)
+
+        val dot1 = findViewById<View>(R.id.dot1)
+        val dot2 = findViewById<View>(R.id.dot2)
+        val dot3 = findViewById<View>(R.id.dot3)
+        val dot4 = findViewById<View>(R.id.dot4)
+        val dots = listOfNotNull(dot1, dot2, dot3, dot4)
+
+        val screenWidth = resources.displayMetrics.widthPixels
+        val slideIds = listOf(R.id.slide1, R.id.slide2, R.id.slide3, R.id.slide4)
+        for (sid in slideIds) {
+            findViewById<View>(sid)?.layoutParams = LinearLayout.LayoutParams(screenWidth, LinearLayout.LayoutParams.MATCH_PARENT)
+        }
+
+        fun updateDots(page: Int) {
+            val dActiveWidth = (18 * resources.displayMetrics.density).toInt()
+            val dInactiveWidth = (6 * resources.displayMetrics.density).toInt()
+            val dHeight = (6 * resources.displayMetrics.density).toInt()
+            val dMargin = (6 * resources.displayMetrics.density).toInt()
+
+            for (i in dots.indices) {
+                if (i == page) {
+                    dots[i].setBackgroundResource(R.drawable.dot_active)
+                    dots[i].layoutParams = LinearLayout.LayoutParams(dActiveWidth, dHeight).apply {
+                        marginEnd = if (i < dots.size - 1) dMargin else 0
+                    }
+                } else {
+                    dots[i].setBackgroundResource(R.drawable.dot_inactive)
+                    dots[i].layoutParams = LinearLayout.LayoutParams(dInactiveWidth, dHeight).apply {
+                        marginEnd = if (i < dots.size - 1) dMargin else 0
+                    }
+                }
+            }
+            if (page == 3) {
+                btnNext?.visibility = View.GONE
+            } else {
+                btnNext?.visibility = View.VISIBLE
+            }
+        }
+
+        var currentPage = 0
+        updateDots(0)
+
+        scrollOnboarding?.setOnScrollChangeListener { _, scrollX, _, _, _ ->
+            val page = Math.round(scrollX.toFloat() / screenWidth).coerceIn(0, 3)
+            if (page != currentPage) {
+                currentPage = page
+                updateDots(page)
+            }
+        }
+
+        btnNext?.setOnClickListener {
+            if (currentPage < 3) {
+                currentPage++
+                scrollOnboarding?.smoothScrollTo(currentPage * screenWidth, 0)
+                updateDots(currentPage)
+            }
+        }
+
+        fun finishOnboarding(name: String) {
+            val nick = if (name.isBlank()) "민중" else name.trim()
+            setUserNickname(nick)
+            prefs.edit().putBoolean("has_completed_onboarding", true).apply()
+            layoutOnboarding.animate().alpha(0f).setDuration(220).withEndAction {
+                layoutOnboarding.visibility = View.GONE
+            }.start()
+        }
+
+        btnSkip?.setOnClickListener {
+            finishOnboarding("민중")
+        }
+
+        btnStart?.setOnClickListener {
+            val name = etUserName?.text?.toString()?.trim() ?: ""
+            finishOnboarding(name)
+        }
+    }
+
     private fun switchSidebarTab(tab: String) {
         btnTabAi.background = null
         btnTabAi.setTextColor(getColor(R.color.text_muted))
@@ -2714,6 +2978,7 @@ class MainActivity : AppCompatActivity() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_summary_bottom_sheet, null)
         dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
 
         val tvSheetTitle = view.findViewById<TextView>(R.id.tvSheetTitle)
         val tvEngineStatus = view.findViewById<TextView>(R.id.tvEngineStatus)
@@ -3061,7 +3326,8 @@ class MainActivity : AppCompatActivity() {
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
-                tvNavTabCount.setTextColor(Color.BLACK)
+                tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_dark)
+                tvNavTabCount.setTextColor(Color.WHITE)
                 layoutSidebar.setBackgroundColor(Color.parseColor("#121418"))
             }
             "theme-default-light" -> {
@@ -3080,6 +3346,7 @@ class MainActivity : AppCompatActivity() {
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_light)
                 tvNavTabCount.setTextColor(Color.parseColor("#111111"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#F9FAFB"))
             }
@@ -3099,7 +3366,8 @@ class MainActivity : AppCompatActivity() {
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
-                tvNavTabCount.setTextColor(Color.parseColor("#261316"))
+                tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_dark)
+                tvNavTabCount.setTextColor(Color.WHITE)
                 layoutSidebar.setBackgroundColor(Color.parseColor("#221013"))
             }
             "theme-pink-light" -> {
@@ -3118,6 +3386,7 @@ class MainActivity : AppCompatActivity() {
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                tvNavTabCount.setBackgroundResource(R.drawable.bg_tab_counter_light)
                 tvNavTabCount.setTextColor(Color.parseColor("#6E343D"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#FFF5F7"))
             }
@@ -3338,6 +3607,23 @@ class MainActivity : AppCompatActivity() {
             activity.runOnUiThread {
                 activity.setAppThemeMode(theme)
             }
+        }
+
+        @JavascriptInterface
+        fun getUserName(): String {
+            return activity.getUserNickname()
+        }
+
+        @JavascriptInterface
+        fun setUserName(name: String) {
+            activity.runOnUiThread {
+                activity.setUserNickname(name)
+            }
+        }
+
+        @JavascriptInterface
+        fun getSearchEngine(): String {
+            return activity.getSearchEngine()
         }
     }
 }
