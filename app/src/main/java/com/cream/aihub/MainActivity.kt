@@ -22,7 +22,9 @@ import android.print.PrintManager
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
@@ -38,6 +40,8 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -2198,7 +2202,6 @@ class MainActivity : AppCompatActivity() {
         switchColorFavicons?.isChecked = isColorFaviconsEnabled()
         tvZoomDisplay.text = "${selectedZoom}% 설정됨"
 
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         etApiKey.setText(prefs.getString("deepseek_api_key", ""))
 
         btnZoom80.setOnClickListener { selectedZoom = 85; tvZoomDisplay.text = "85% (작게)" }
@@ -2800,7 +2803,7 @@ class MainActivity : AppCompatActivity() {
         var currentPage = 0
         updateDots(0)
 
-        scrollOnboarding?.setOnScrollChangeListener { _, scrollX, _, _, _ ->
+        scrollOnboarding?.setOnScrollChangeListener { _: View?, scrollX: Int, _: Int, _: Int, _: Int ->
             val page = Math.round(scrollX.toFloat() / screenWidth).coerceIn(0, 3)
             if (page != currentPage) {
                 currentPage = page
