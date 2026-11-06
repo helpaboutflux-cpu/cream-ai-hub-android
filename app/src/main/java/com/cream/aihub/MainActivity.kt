@@ -477,7 +477,8 @@ class MainActivity : AppCompatActivity() {
                 // 새 페이지가 열리면 해당 탭의 번역 상태를 초기화한다
                 findTabByWebView(view)?.isTranslated = false
                 translationJobToken++
-                fallbackRunning = false
+                layoutTranslateProgress.visibility = View.GONE
+                tvTranslateChipText.text = "번역"
                 if (view == getCurrentWebView()) {
                     progressBar.visibility = View.VISIBLE
                     updateBrowserBar(url)
