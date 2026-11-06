@@ -5,7 +5,7 @@
 
 ---
 
-## 📱 프로젝트 소개
+##  프로젝트 소개
 
 Cream ai Hub의 공식 안드로이드 네이티브 클라이언트 애플리케이션입니다.  
 웹 서비스(Base44)의 `floraChat` 백엔드 엔진과 실시간 직통 통신하며, 안드로이드 시스템 레벨의 다양한 편의 기능을 제공합니다.
@@ -15,7 +15,7 @@ Cream ai Hub의 공식 안드로이드 네이티브 클라이언트 애플리케
 
 ---
 
-## ✨ 핵심 기능
+##  핵심 기능
 
 1. **원터치 콘텐츠 공유 & 분석**
    - 웹 브라우저 링크 및 텍스트 공유 시 Creamy 채팅 화면으로 직통 연결
@@ -33,7 +33,7 @@ Cream ai Hub의 공식 안드로이드 네이티브 클라이언트 애플리케
 
 ---
 
-## 🛠️ 기술 스택 및 빌드
+## ️ 기술 스택 및 빌드
 
 - **언어**: Kotlin, Java
 - **UI**: Android SDK, RemoteViews (Widget), Custom Floating Window
@@ -42,6 +42,6 @@ Cream ai Hub의 공식 안드로이드 네이티브 클라이언트 애플리케
 
 ---
 
-## 📄 라이선스
+##  라이선스
 
 Copyright © 2026 Minjung Kim (@helpaboutflux-cpu). All rights reserved.

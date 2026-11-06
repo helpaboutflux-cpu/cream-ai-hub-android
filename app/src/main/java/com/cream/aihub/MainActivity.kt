@@ -52,6 +52,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.switchmaterial.SwitchMaterial
@@ -142,6 +143,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnQuickTranslateChip: LinearLayout
     private lateinit var ivTranslateChipIcon: ImageView
     private lateinit var tvTranslateChipText: TextView
+    private lateinit var layoutTranslateProgress: LinearLayout
+    private lateinit var pbTranslateSpinner: ProgressBar
+    private lateinit var tvTranslateStatus: TextView
+    private lateinit var btnCloseTranslateProgress: ImageView
     private lateinit var btnTopBack: ImageView
     private lateinit var btnTopForward: ImageView
     private lateinit var btnTopReload: ImageView
@@ -245,7 +250,9 @@ class MainActivity : AppCompatActivity() {
         setupOmniboxSuggestions()
         handleIncomingIntent(intent)
         checkAndShowOnboarding()
-        applyTouchAnimationToAll(findViewById(android.R.id.content))
+        if (isTouchAnimationEnabled()) {
+            applyTouchAnimationToAll(findViewById(android.R.id.content))
+        }
         showPersistentQuickNotification()
         BriefingReceiver.scheduleDailyMorningBriefing(this)
     }
@@ -266,6 +273,17 @@ class MainActivity : AppCompatActivity() {
         btnQuickTranslateChip = findViewById(R.id.btnQuickTranslateChip)
         ivTranslateChipIcon = findViewById(R.id.ivTranslateChipIcon)
         tvTranslateChipText = findViewById(R.id.tvTranslateChipText)
+        layoutTranslateProgress = findViewById(R.id.layoutTranslateProgress)
+        pbTranslateSpinner = findViewById(R.id.pbTranslateSpinner)
+        tvTranslateStatus = findViewById(R.id.tvTranslateStatus)
+        btnCloseTranslateProgress = findViewById(R.id.btnCloseTranslateProgress)
+        btnCloseTranslateProgress.setOnClickListener {
+            translationJobToken++
+            layoutTranslateProgress.visibility = View.GONE
+            val tab = getCurrentTab()
+            tvTranslateChipText.text = if (tab.isTranslated) "원문" else "번역"
+            Toast.makeText(this, "번역이 중단되었습니다", Toast.LENGTH_SHORT).show()
+        }
 
         btnQuickTranslateChip.setOnClickListener {
             val curUrl = getCurrentWebView().url ?: ""
@@ -996,7 +1014,7 @@ class MainActivity : AppCompatActivity() {
             if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
             return
         }
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_security_info, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -1065,7 +1083,7 @@ class MainActivity : AppCompatActivity() {
 
     // 탭 관리자 (일반 탭 vs 보안 탭 세그먼트, 탭 그룹, 비활성 절전 탭 관리)
     private fun showTabManagerDialog() {
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_tab_manager, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -1293,7 +1311,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showGroupPickerDialog(tab: WebTab, onComplete: () -> Unit) {
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_group_picker, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -1362,7 +1380,7 @@ class MainActivity : AppCompatActivity() {
             if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
             return
         }
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_bag, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -1578,7 +1596,7 @@ class MainActivity : AppCompatActivity() {
             if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
             return
         }
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_downloads, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -1683,7 +1701,7 @@ class MainActivity : AppCompatActivity() {
                 val title = obj.optString("title", currentWv.title ?: "문서")
                 val content = obj.optString("content", "본문 내용을 추출할 수 없습니다.")
 
-                val dialog = BottomSheetDialog(this)
+                val dialog = createConfiguredBottomSheetDialog()
                 val view = layoutInflater.inflate(R.layout.dialog_reader_mode, null)
                 dialog.setContentView(view)
                 applyTouchAnimationToAll(view)
@@ -1692,6 +1710,50 @@ class MainActivity : AppCompatActivity() {
                 view.findViewById<TextView>(R.id.tvReaderSource).text = "출처: ${currentWv.url ?: ""}"
                 val tvContent = view.findViewById<TextView>(R.id.tvReaderContent)
                 tvContent.text = content
+
+                val btnReaderTranslate = view.findViewById<Button>(R.id.btnReaderTranslate)
+                var isReaderTranslated = false
+                val origTitle = title
+                val origContent = content
+                var cachedTranslatedTitle: String? = null
+                var cachedTranslatedContent: String? = null
+
+                btnReaderTranslate?.setOnClickListener {
+                    if (isReaderTranslated) {
+                        view.findViewById<TextView>(R.id.tvReaderTitle).text = origTitle
+                        tvContent.text = origContent
+                        btnReaderTranslate.text = "한국어 번역"
+                        isReaderTranslated = false
+                        Toast.makeText(this@MainActivity, "원문으로 복원되었습니다", Toast.LENGTH_SHORT).show()
+                    } else {
+                        if (cachedTranslatedTitle != null && cachedTranslatedContent != null) {
+                            view.findViewById<TextView>(R.id.tvReaderTitle).text = cachedTranslatedTitle
+                            tvContent.text = cachedTranslatedContent
+                            btnReaderTranslate.text = "원문 보기"
+                            isReaderTranslated = true
+                            Toast.makeText(this@MainActivity, "한국어로 번역되었습니다", Toast.LENGTH_SHORT).show()
+                        } else {
+                            btnReaderTranslate.text = "번역 중..."
+                            btnReaderTranslate.isEnabled = false
+                            Thread {
+                                val trTitle = translateTextWithDictChromeEx(origTitle) ?: origTitle
+                                val trContent = translateLongTextWithDictChromeEx(origContent) ?: origContent
+                                runOnUiThread {
+                                    if (!isFinishing && !isDestroyed) {
+                                        cachedTranslatedTitle = trTitle
+                                        cachedTranslatedContent = trContent
+                                        view.findViewById<TextView>(R.id.tvReaderTitle).text = trTitle
+                                        tvContent.text = trContent
+                                        btnReaderTranslate.text = "원문 보기"
+                                        btnReaderTranslate.isEnabled = true
+                                        isReaderTranslated = true
+                                        Toast.makeText(this@MainActivity, "한국어로 번역되었습니다", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }.start()
+                        }
+                    }
+                }
 
                 view.findViewById<Button>(R.id.btnReaderCopy).setOnClickListener {
                     val clip = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -1710,9 +1772,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ===== 웹페이지 번역: 주소와 화면을 유지한 채 본문 텍스트만 한국어로 치환 =====
+    private fun createConfiguredBottomSheetDialog(): BottomSheetDialog {
+        val dialog = BottomSheetDialog(this)
+        dialog.setOnShowListener {
+            val bottomSheet = dialog.findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
+            if (bottomSheet != null) {
+                val behavior = BottomSheetBehavior.from(bottomSheet)
+                behavior.state = BottomSheetBehavior.STATE_EXPANDED
+                behavior.skipCollapsed = true
+                behavior.isHideable = true
+            }
+        }
+        return dialog
+    }
+
+    // ===== 웹페이지 번역: 고속 배치 번역 및 상단 닫기 가능한 프로그레스바 =====
     private var translationJobToken = 0
-    private var fallbackRunning = false
 
     private fun isTranslatableUrl(url: String?): Boolean {
         if (url.isNullOrBlank()) return false
@@ -1721,42 +1796,6 @@ class MainActivity : AppCompatActivity() {
             url.startsWith("javascript:") || url.startsWith("blob:") || url.startsWith("chrome:")
         ) return false
         return url.startsWith("http://") || url.startsWith("https://")
-    }
-
-    private fun registrableDomain(host: String): String? {
-        val parts = host.split(".").filter { it.isNotBlank() }
-        if (parts.size < 2) return null
-        val twoLevelTlds = setOf(
-            "co.kr", "or.kr", "ac.kr", "ne.kr", "go.kr", "re.kr", "pe.kr",
-            "co.jp", "ne.jp", "or.jp", "com.au", "net.au", "co.uk", "org.uk",
-            "com.cn", "com.tw", "com.hk", "co.in", "com.br", "com.sg"
-        )
-        val lastTwo = parts.takeLast(2).joinToString(".")
-        return if (twoLevelTlds.contains(lastTwo) && parts.size >= 3) {
-            parts.takeLast(3).joinToString(".")
-        } else lastTwo
-    }
-
-    private fun setGoogtransCookie(pageUrl: String, value: String) {
-        try {
-            val host = Uri.parse(pageUrl).host ?: return
-            val cookieManager = CookieManager.getInstance()
-            val expiry = if (value.isBlank()) "; Max-Age=0" else ""
-            val base = "googtrans=" + value + "; path=/" + expiry
-            cookieManager.setCookie(pageUrl, base)
-            cookieManager.setCookie("https://" + host + "/", base)
-            cookieManager.setCookie("http://" + host + "/", base)
-            registrableDomain(host)?.let { root ->
-                if (root != host) {
-                    val rootCookie = "googtrans=" + value + "; path=/; domain=." + root + expiry
-                    cookieManager.setCookie("https://" + root + "/", rootCookie)
-                    cookieManager.setCookie(pageUrl, rootCookie)
-                }
-            }
-            cookieManager.flush()
-        } catch (e: Exception) {
-            // 쿠키 설정이 막힌 경우에도 페이지 내 스크립트가 직접 쿠키를 설정한다
-        }
     }
 
     private fun togglePageTranslation() {
@@ -1778,190 +1817,135 @@ class MainActivity : AppCompatActivity() {
 
         translationJobToken++
         val token = translationJobToken
-        fallbackRunning = false
 
-        setGoogtransCookie(curUrl, "/auto/ko")
-        curTab.isTranslated = true
-        tvTranslateChipText.text = "원문"
-        wv.evaluateJavascript(buildInPageTranslateScript(), null)
-        Toast.makeText(this, "페이지를 한국어로 번역합니다", Toast.LENGTH_SHORT).show()
+        layoutTranslateProgress.visibility = View.VISIBLE
+        pbTranslateSpinner.visibility = View.VISIBLE
+        tvTranslateStatus.text = "페이지 한국어로 번역 준비 중..."
+        tvTranslateChipText.text = "번역 중"
 
-        // 번역 위젯이 페이지 보안 정책에 막히면 본문 직접 번역으로 전환한다
-        wv.postDelayed({
-            if (token != translationJobToken) return@postDelayed
-            if (curTab.webView !== wv || !curTab.isTranslated) return@postDelayed
-            wv.evaluateJavascript(buildTranslateCheckScript()) { raw ->
-                var widgetWorked = false
-                try {
-                    if (!raw.isNullOrBlank() && raw != "null") {
-                        val state = JSONObject(raw)
-                        val ready = state.optBoolean("ready", false)
-                        val before = state.optInt("before", 0)
-                        val now = state.optInt("now", 0)
-                        widgetWorked = ready && now > before + 2
-                    }
-                } catch (e: Exception) {
-                    widgetWorked = false
-                }
-                if (!widgetWorked && token == translationJobToken && curTab.isTranslated) {
-                    startFallbackTranslation(wv, token)
-                }
+        wv.evaluateJavascript(buildTranslateExtractScript()) { raw ->
+            if (token != translationJobToken) return@evaluateJavascript
+            val texts = parseStringArray(decodeJavascriptString(raw))
+            if (texts.isEmpty()) {
+                layoutTranslateProgress.visibility = View.GONE
+                tvTranslateChipText.text = "번역"
+                Toast.makeText(this@MainActivity, "번역할 외국어 텍스트가 없습니다", Toast.LENGTH_SHORT).show()
+                return@evaluateJavascript
             }
-        }, 9000L)
+
+            tvTranslateStatus.text = "페이지 한국어로 번역 중 (0 / ${texts.size})..."
+            Thread {
+                runHighSpeedBatchTranslation(wv, token, texts)
+            }.start()
+        }
     }
 
-    private fun buildTranslateCheckScript(): String = """
-(function () {
-  try {
-    var now = document.body ? (document.body.innerText || '').replace(/[^가-힣]/g, '').length : 0;
-    return { ready: window.__creamTrReady === true, before: window.__creamKoBefore || 0, now: now };
-  } catch (e) {
-    return { ready: false, before: 0, now: 0 };
-  }
-})();
-""".trimIndent()
+    private fun runHighSpeedBatchTranslation(wv: WebView, token: Int, texts: List<String>) {
+        val total = texts.size
+        var translatedCount = 0
+        val batchSize = 30
+        for (start in 0 until total step batchSize) {
+            if (token != translationJobToken) return
+            val end = minOf(start + batchSize, total)
+            val chunkTexts = texts.subList(start, end)
+            val chunkTr = translateBatchWithDictChromeEx(chunkTexts)
+            if (token != translationJobToken) return
+
+            if (chunkTr.isNotEmpty()) {
+                val batchMap = JSONObject()
+                for (i in chunkTr.indices) {
+                    val trText = chunkTr[i]
+                    if (trText.isNotBlank()) {
+                        batchMap.put((start + i).toString(), trText)
+                    }
+                }
+                translatedCount += chunkTr.size
+                val payload = sanitizeForJavascript(batchMap.toString())
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed && token == translationJobToken) {
+                        wv.evaluateJavascript(
+                            "if (window.__creamApplyBatch) window.__creamApplyBatch(" + payload + ");",
+                            null
+                        )
+                        tvTranslateStatus.text = "페이지 한국어로 번역 중 ($translatedCount / $total)..."
+                    }
+                }
+            }
+        }
+
+        runOnUiThread {
+            if (!isFinishing && !isDestroyed && token == translationJobToken) {
+                val tab = getCurrentTab()
+                if (tab.webView === wv) {
+                    tab.isTranslated = true
+                    tvTranslateChipText.text = "원문"
+                }
+                pbTranslateSpinner.visibility = View.GONE
+                tvTranslateStatus.text = "번역 완료"
+                Toast.makeText(this@MainActivity, "페이지가 한국어로 번역되었습니다", Toast.LENGTH_SHORT).show()
+                layoutTranslateProgress.postDelayed({
+                    if (token == translationJobToken) {
+                        layoutTranslateProgress.visibility = View.GONE
+                    }
+                }, 1500L)
+            }
+        }
+    }
 
     private fun restoreOriginalPage() {
         val curTab = getCurrentTab()
         val wv = curTab.webView
-        val curUrl = wv.url ?: ""
         translationJobToken++
-        fallbackRunning = false
         curTab.isTranslated = false
         tvTranslateChipText.text = "번역"
-        if (isTranslatableUrl(curUrl)) {
-            setGoogtransCookie(curUrl, "")
-            wv.evaluateJavascript(
-                "(function(){ try { document.cookie = 'googtrans=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'; " +
-                    "var h = location.hostname.split('.'); " +
-                    "if (h.length > 1) { document.cookie = 'googtrans=; path=/; domain=.' + h.slice(-2).join('.'); } " +
-                    "if (h.length > 2) { document.cookie = 'googtrans=; path=/; domain=.' + h.slice(-3).join('.'); } } catch (e) {} })();",
-                null
-            )
-        }
-        wv.reload()
-        Toast.makeText(this, "원문 페이지로 복원합니다", Toast.LENGTH_SHORT).show()
+        layoutTranslateProgress.visibility = View.GONE
+        wv.evaluateJavascript(
+            "if (window.__creamRestoreOriginal) window.__creamRestoreOriginal();",
+            null
+        )
+        Toast.makeText(this, "원문으로 복원되었습니다", Toast.LENGTH_SHORT).show()
     }
-
-    private fun buildInPageTranslateScript(): String = """
-(function () {
-  var d = document;
-  try {
-    document.cookie = 'googtrans=/auto/ko; path=/';
-    var h = location.hostname.split('.');
-    if (h.length > 1) { document.cookie = 'googtrans=/auto/ko; path=/; domain=.' + h.slice(-2).join('.'); }
-    if (h.length > 2) { document.cookie = 'googtrans=/auto/ko; path=/; domain=.' + h.slice(-3).join('.'); }
-  } catch (e) {}
-  try {
-    window.__creamKoBefore = document.body ? (document.body.innerText || '').replace(/[^가-힣]/g, '').length : 0;
-  } catch (e) { window.__creamKoBefore = 0; }
-
-  if (!d.getElementById('cream_translate_style')) {
-    var st = d.createElement('style');
-    st.id = 'cream_translate_style';
-    st.textContent = [
-      '.goog-te-banner-frame, .goog-te-balloon-frame, .goog-te-menu-frame, .goog-te-ftab,',
-      '.goog-te-spinner-pos, .goog-tooltip, #goog-gt-tt, .goog-gt-tt, #goog-gt-vt,',
-      '.goog-te-float-top { display: none !important; visibility: hidden !important; opacity: 0 !important; }',
-      'body { top: 0px !important; margin-top: 0px !important; }',
-      'html { margin-top: 0px !important; }',
-      '.goog-text-highlight { background: none !important; box-shadow: none !important; }',
-      '#cream_translate_host { position: fixed !important; left: -10000px !important; top: 0 !important;',
-      'width: 1px !important; height: 1px !important; overflow: hidden !important; opacity: 0 !important; z-index: -1 !important; }'
-    ].join('\n');
-    (d.head || d.documentElement).appendChild(st);
-  }
-
-  var old = d.getElementById('cream_translate_host');
-  if (old && old.parentNode) old.parentNode.removeChild(old);
-  var host = d.createElement('div');
-  host.id = 'cream_translate_host';
-  var el = d.createElement('div');
-  el.id = 'google_translate_element';
-  host.appendChild(el);
-  (d.body || d.documentElement).appendChild(host);
-
-  window.__creamTrReady = false;
-
-  var startComboWatch = function () {
-    var tries = 0;
-    var timer = setInterval(function () {
-      tries++;
-      var combo = d.querySelector('select.goog-te-combo');
-      if (combo) {
-        if (combo.value !== 'ko') {
-          combo.value = 'ko';
-          try { combo.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {
-            var ev = d.createEvent('HTMLEvents');
-            ev.initEvent('change', true, true);
-            combo.dispatchEvent(ev);
-          }
-        }
-        window.__creamTrReady = true;
-        clearInterval(timer);
-        return;
-      }
-      if (tries > 60) clearInterval(timer);
-    }, 250);
-  };
-
-  window.googleTranslateElementInit = function () {
-    try {
-      new google.translate.TranslateElement({
-        pageLanguage: 'auto',
-        includedLanguages: 'ko',
-        layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
-        autoDisplay: false,
-        multilanguagePage: true
-      }, 'google_translate_element');
-    } catch (e) {}
-    startComboWatch();
-  };
-
-  if (window.google && window.google.translate && window.google.translate.TranslateElement) {
-    window.googleTranslateElementInit();
-  } else {
-    var s = d.createElement('script');
-    s.type = 'text/javascript';
-    s.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
-    s.onload = function () { startComboWatch(); };
-    s.onerror = function () { window.__creamTrReady = false; };
-    (d.head || d.documentElement).appendChild(s);
-  }
-})();
-""".trimIndent()
 
     private fun buildTranslateExtractScript(): String = """
 (function () {
   try {
-    window.__creamApply = function (map) {
-      var nodes = window.__creamTN || [];
-      var applied = 0;
+    window.__creamApplyBatch = function (map) {
+      var nodes = window.__creamTextNodes || [];
       for (var k in map) {
-        if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
-        var n = nodes[parseInt(k, 10)];
+        var idx = parseInt(k, 10);
+        var n = nodes[idx];
         if (!n || !n.parentNode) continue;
-        var next = map[k];
-        if (!next) continue;
-        var orig = n.nodeValue || '';
+        var tr = map[k];
+        if (!tr) continue;
+        if (n.__creamOrig === undefined) {
+          n.__creamOrig = n.nodeValue;
+        }
+        var orig = n.__creamOrig || '';
         var lead = orig.match(/^\s*/)[0];
         var trail = orig.match(/\s*$/)[0];
-        n.nodeValue = lead + next + trail;
-        applied++;
+        n.nodeValue = lead + tr + trail;
       }
-      return applied;
+    };
+    window.__creamRestoreOriginal = function () {
+      var nodes = window.__creamTextNodes || [];
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        if (n && n.__creamOrig !== undefined) {
+          n.nodeValue = n.__creamOrig;
+        }
+      }
     };
     if (!document.body) return '[]';
-    var skipTags = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, INPUT: 1, SELECT: 1, OPTION: 1, CODE: 1, PRE: 1, KBD: 1, SAMP: 1 };
-    var skipSelector = '#cream_translate_host, .skiptranslate, .goog-te-menu-frame, [contenteditable="true"], [translate="no"], .notranslate';
+    var skipTags = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, INPUT: 1, SELECT: 1, OPTION: 1, CODE: 1, PRE: 1, KBD: 1, SAMP: 1, SVG: 1, AUDIO: 1, VIDEO: 1 };
+    var skipSelector = '#cream_translate_host, .skiptranslate, [contenteditable="true"], [translate="no"], .notranslate';
     var nodes = [];
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
       acceptNode: function (n) {
         var t = n.nodeValue;
         if (!t) return NodeFilter.FILTER_REJECT;
         var trimmed = t.trim();
-        if (trimmed.length < 2 || trimmed.length > 500) return NodeFilter.FILTER_REJECT;
-        if (/[\uAC00-\uD7AF]/.test(trimmed)) return NodeFilter.FILTER_REJECT;
+        if (trimmed.length < 2 || trimmed.length > 1000) return NodeFilter.FILTER_REJECT;
+        if (/[\uAC00-\uD7AF]/.test(trimmed) && !/[A-Za-z\u00C0-\u04FF\u0370-\u03FF\u3040-\u30FF\u4E00-\u9FFF]/.test(trimmed)) return NodeFilter.FILTER_REJECT;
         if (!/[A-Za-z\u00C0-\u04FF\u0370-\u03FF\u3040-\u30FF\u4E00-\u9FFF]/.test(trimmed)) return NodeFilter.FILTER_REJECT;
         var p = n.parentNode;
         if (!p || !p.nodeName) return NodeFilter.FILTER_REJECT;
@@ -1973,10 +1957,10 @@ class MainActivity : AppCompatActivity() {
     var node;
     while ((node = walker.nextNode())) {
       nodes.push(node);
-      if (nodes.length >= 90) break;
+      if (nodes.length >= 150) break;
     }
     if (nodes.length === 0) return '[]';
-    window.__creamTN = nodes;
+    window.__creamTextNodes = nodes;
     var items = [];
     for (var i = 0; i < nodes.length; i++) items.push(nodes[i].nodeValue);
     return JSON.stringify(items);
@@ -1995,20 +1979,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startFallbackTranslation(wv: WebView, token: Int) {
-        if (fallbackRunning) return
-        fallbackRunning = true
-        wv.evaluateJavascript(buildTranslateExtractScript()) { raw ->
-            val texts = parseStringArray(decodeJavascriptString(raw))
-            if (texts.isEmpty()) {
-                fallbackRunning = false
-                return@evaluateJavascript
-            }
-            Toast.makeText(this, "페이지 본문을 직접 번역합니다", Toast.LENGTH_SHORT).show()
-            Thread { runFallbackTranslation(wv, token, texts) }.start()
-        }
-    }
-
     private fun parseStringArray(jsonText: String): List<String> {
         val out = mutableListOf<String>()
         if (jsonText.isBlank()) return out
@@ -2023,92 +1993,74 @@ class MainActivity : AppCompatActivity() {
         return out
     }
 
-    private fun runFallbackTranslation(wv: WebView, token: Int, texts: List<String>) {
-        val pool = Executors.newFixedThreadPool(4)
-        try {
-            var index = 0
-            while (index < texts.size) {
-                if (token != translationJobToken) return
-                val end = minOf(index + 4, texts.size)
-                val futures = (index until end).map { i ->
-                    pool.submit(Callable { i to translateTextWithGtx(texts[i]) })
-                }
-                val chunk = JSONObject()
-                for (f in futures) {
-                    if (token != translationJobToken) return
-                    val pair: Pair<Int, String?>? = try {
-                        f.get()
-                    } catch (e: Exception) {
-                        null
-                    }
-                    if (pair == null) continue
-                    val translated = pair.second
-                    if (translated.isNullOrBlank()) continue
-                    chunk.put(pair.first.toString(), translated)
-                }
-                if (chunk.length() > 0 && token == translationJobToken) {
-                    val payload = sanitizeForJavascript(chunk.toString())
-                    runOnUiThread {
-                        if (!isFinishing && !isDestroyed) {
-                            wv.evaluateJavascript(
-                                "(function(){ try { if (window.__creamApply) window.__creamApply(" + payload + "); } catch (e) {} })();",
-                                null
-                            )
-                        }
-                    }
-                }
-                index = end
-            }
-        } catch (e: Exception) {
-            // 번역 중 오류가 나도 페이지는 원래대로 유지된다
-        } finally {
-            pool.shutdownNow()
-            fallbackRunning = false
-        }
-    }
-
     private fun sanitizeForJavascript(json: String): String {
         return json.replace("\u2028", " ").replace("\u2029", " ")
     }
 
-    private fun translateTextWithGtx(text: String): String? {
-        val source = text.trim()
-        if (source.length < 2) return null
+    private fun translateBatchWithDictChromeEx(texts: List<String>): List<String> {
+        if (texts.isEmpty()) return emptyList()
         var conn: HttpURLConnection? = null
         return try {
-            val encoded = URLEncoder.encode(source, "UTF-8")
-            val url = URL(
-                "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ko&dt=t&format=html&q=" + encoded
-            )
-            val connection = url.openConnection() as HttpURLConnection
-            conn = connection
-            connection.connectTimeout = 6000
-            connection.readTimeout = 9000
-            connection.requestMethod = "GET"
-            connection.setRequestProperty(
-                "User-Agent",
-                "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
-            )
-            connection.setRequestProperty("Accept", "application/json, text/plain, */*")
-            if (connection.responseCode != 200) return null
-            val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            if (!body.trimStart().startsWith("[")) return null
-            val segments = JSONArray(body).optJSONArray(0) ?: return null
-            val sb = StringBuilder()
-            for (i in 0 until segments.length()) {
-                val seg = segments.optJSONArray(i) ?: continue
-                val piece = seg.optString(0, "")
-                if (piece.isNotEmpty()) sb.append(piece)
+            val pairs = mutableListOf<String>()
+            for (t in texts) {
+                val trimmed = t.trim()
+                val valToEncode = if (trimmed.isNotBlank()) trimmed else " "
+                pairs.add("q=" + URLEncoder.encode(valToEncode, "UTF-8"))
             }
-            if (sb.isEmpty()) null else sb.toString()
+            val postData = pairs.joinToString("&").toByteArray(Charsets.UTF_8)
+            val url = URL("https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=ko")
+            conn = url.openConnection() as HttpURLConnection
+            conn.connectTimeout = 6000
+            conn.readTimeout = 9000
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
+            conn.setRequestProperty("Content-Length", postData.size.toString())
+            conn.outputStream.use { it.write(postData) }
+
+            if (conn.responseCode == 200) {
+                val responseText = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                val arr = JSONArray(responseText)
+                val result = mutableListOf<String>()
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONArray(i)
+                    val tr = item?.optString(0, "") ?: ""
+                    result.add(tr)
+                }
+                result
+            } else {
+                emptyList()
+            }
         } catch (e: Exception) {
-            null
+            emptyList()
         } finally {
             try {
                 conn?.disconnect()
-            } catch (e: Exception) {
+            } catch (e: Exception) {}
+        }
+    }
+
+    private fun translateTextWithDictChromeEx(text: String): String? {
+        val list = translateBatchWithDictChromeEx(listOf(text))
+        return list.firstOrNull()
+    }
+
+    private fun translateLongTextWithDictChromeEx(content: String): String? {
+        val paragraphs = content.split("\n\n").map { it.trim() }.filter { it.isNotBlank() }
+        if (paragraphs.isEmpty()) return translateTextWithDictChromeEx(content)
+        val translated = mutableListOf<String>()
+        val batchSize = 15
+        for (i in 0 until paragraphs.size step batchSize) {
+            val chunk = paragraphs.subList(i, minOf(i + batchSize, paragraphs.size))
+            val chunkTr = translateBatchWithDictChromeEx(chunk)
+            if (chunkTr.size == chunk.size) {
+                translated.addAll(chunkTr)
+            } else {
+                translated.addAll(chunk)
             }
         }
+        return translated.joinToString("\n\n")
     }
 
     // 메뉴 바텀시트
@@ -2117,7 +2069,7 @@ class MainActivity : AppCompatActivity() {
             toggleSidebar("menu")
             return
         }
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_menu_bottom_sheet, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -2258,7 +2210,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFindInPageDialog() {
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_find_in_page, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -2311,7 +2263,7 @@ class MainActivity : AppCompatActivity() {
             if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
             return
         }
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_history, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -2378,7 +2330,7 @@ class MainActivity : AppCompatActivity() {
             populateSidebarBookmarks()
             return
         }
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_bookmarks, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -2511,7 +2463,7 @@ class MainActivity : AppCompatActivity() {
 
     // 설정 & 개인화 다이얼로그 (Material You, 검색엔진, 광고 차단, 텍스트 크기)
     private fun showSettingsDialog() {
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_settings, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -2674,6 +2626,18 @@ class MainActivity : AppCompatActivity() {
         switchMaterialYou.isChecked = isMaterialYouEnabled()
         switchAdBlock.isChecked = isAdBlockEnabled()
         switchColorFavicons?.isChecked = isColorFaviconsEnabled()
+
+        val switchTouchAnimation = view.findViewById<SwitchMaterial>(R.id.switchTouchAnimation)
+        val isTouchAnimEnabled = isTouchAnimationEnabled()
+        switchTouchAnimation?.isChecked = isTouchAnimEnabled
+        switchTouchAnimation?.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("touch_animation_enabled", isChecked).apply()
+            if (isChecked) {
+                applyTouchAnimationToAll(findViewById(android.R.id.content))
+                applyTouchAnimationToAll(view)
+            }
+        }
+
         tvZoomDisplay.text = "${selectedZoom}% 설정됨"
 
         etApiKey.setText(prefs.getString("deepseek_api_key", ""))
@@ -2716,6 +2680,12 @@ class MainActivity : AppCompatActivity() {
                         t.webView.evaluateJavascript("if (window.setColorFavicons) window.setColorFavicons(${switchColorFavicons?.isChecked ?: true});", null)
                     }
                 }
+            }
+
+            val newTouchAnimState = switchTouchAnimation?.isChecked ?: false
+            prefs.edit().putBoolean("touch_animation_enabled", newTouchAnimState).apply()
+            if (newTouchAnimState) {
+                applyTouchAnimationToAll(findViewById(android.R.id.content))
             }
 
             val key = etApiKey.text.toString().trim()
@@ -3183,8 +3153,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun isTouchAnimationEnabled(): Boolean {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean("touch_animation_enabled", false)
+    }
+
     // 어떤 버튼이든, 항목이든 누를 때의 바운스 애니메이션
     private fun applyTouchAnimation(v: View) {
+        if (!isTouchAnimationEnabled()) {
+            v.setOnTouchListener(null)
+            return
+        }
         v.setOnTouchListener { view, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -3199,6 +3178,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyTouchAnimationToAll(rootView: View) {
+        if (!isTouchAnimationEnabled()) return
         if (rootView is ViewGroup) {
             for (i in 0 until rootView.childCount) {
                 applyTouchAnimationToAll(rootView.getChildAt(i))
@@ -3454,7 +3434,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCreamyBottomSheet(initialQuery: String? = null) {
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_summary_bottom_sheet, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -3833,6 +3813,10 @@ class MainActivity : AppCompatActivity() {
                 btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#262930"))
                 ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 tvTranslateChipText.setTextColor(Color.WHITE)
+                layoutTranslateProgress.setBackgroundColor(Color.parseColor("#16191E"))
+                tvTranslateStatus.setTextColor(Color.WHITE)
+                pbTranslateSpinner.indeterminateTintList = ColorStateList.valueOf(Color.WHITE)
+                btnCloseTranslateProgress.imageTintList = ColorStateList.valueOf(Color.parseColor("#A1A1AA"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#121418"))
             }
             "theme-default-light" -> {
@@ -3856,6 +3840,10 @@ class MainActivity : AppCompatActivity() {
                 btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#E5E7EB"))
                 ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 tvTranslateChipText.setTextColor(Color.parseColor("#111111"))
+                layoutTranslateProgress.setBackgroundColor(Color.WHITE)
+                tvTranslateStatus.setTextColor(Color.parseColor("#111111"))
+                pbTranslateSpinner.indeterminateTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
+                btnCloseTranslateProgress.imageTintList = ColorStateList.valueOf(Color.parseColor("#71717A"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#F9FAFB"))
             }
             "theme-pink-dark" -> {
@@ -3879,6 +3867,10 @@ class MainActivity : AppCompatActivity() {
                 btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#3D2228"))
                 ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 tvTranslateChipText.setTextColor(Color.WHITE)
+                layoutTranslateProgress.setBackgroundColor(Color.parseColor("#331B20"))
+                tvTranslateStatus.setTextColor(Color.WHITE)
+                pbTranslateSpinner.indeterminateTintList = ColorStateList.valueOf(Color.WHITE)
+                btnCloseTranslateProgress.imageTintList = ColorStateList.valueOf(Color.parseColor("#D9A5AF"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#221013"))
             }
             "theme-pink-light" -> {
@@ -3902,6 +3894,10 @@ class MainActivity : AppCompatActivity() {
                 btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FCE7EC"))
                 ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 tvTranslateChipText.setTextColor(Color.parseColor("#6E343D"))
+                layoutTranslateProgress.setBackgroundColor(Color.parseColor("#FFFFFF"))
+                tvTranslateStatus.setTextColor(Color.parseColor("#6E343D"))
+                pbTranslateSpinner.indeterminateTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
+                btnCloseTranslateProgress.imageTintList = ColorStateList.valueOf(Color.parseColor("#9C5D66"))
                 layoutSidebar.setBackgroundColor(Color.parseColor("#FFF5F7"))
             }
         }
@@ -4154,7 +4150,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCaptureResultDialog(bitmap: Bitmap, pageTitle: String, sourceUrl: String) {
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_screenshot_result, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -4299,7 +4295,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTextActionDialog(text: String) {
-        val dialog = BottomSheetDialog(this)
+        val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_text_action, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
