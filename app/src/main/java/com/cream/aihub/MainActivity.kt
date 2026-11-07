@@ -2973,7 +2973,7 @@ class MainActivity : AppCompatActivity() {
         params.marginEnd = dpToPx(6)
         params.bottomMargin = dpToPx(4)
         chip.layoutParams = params
-        chip.setBackgroundResource(R.drawable.bg_pill_badge)
+        chip.setBackgroundResource(R.drawable.bg_tablet_new_tab_square)
         chip.backgroundTintList = ColorStateList.valueOf(groupColor)
         chip.setTextColor(if (Color.luminance(groupColor) > 0.55f) Color.parseColor("#111111") else Color.WHITE)
         chip.setOnClickListener {
@@ -6953,7 +6953,7 @@ class MainActivity : AppCompatActivity() {
                     setTextColor(palette.textPrimary)
                 })
                 addView(TextView(this@MainActivity).apply {
-                    text = macro.steps.size.toString() + "단계 · " + macro.steps.joinToString(" → ") { it.title.take(10) }
+                    text = macro.steps.size.toString() + "단계 · " + macro.steps.joinToString(" › ") { it.title.take(10) }
                     textSize = 10.5f
                     setTextColor(palette.textSecondary)
                     maxLines = 1
@@ -7193,7 +7193,7 @@ class MainActivity : AppCompatActivity() {
                 for (macro in macros) {
                     container.addView(sidebarListRow(
                         macro.name,
-                        macro.steps.size.toString() + "단계 · " + macro.steps.joinToString(" → ") { it.title.take(12) },
+                        macro.steps.size.toString() + "단계 · " + macro.steps.joinToString(" › ") { it.title.take(12) },
                         listOf(
                             "실행" to { runMacro(macro) },
                             "삭제" to {
@@ -7707,6 +7707,14 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun fetchUrl(url: String, callbackId: String) {
             val target = webView ?: return
+            // 시작페이지 위젯이 쓰는 데이터 제공처만 허용한다
+            val host = try { Uri.parse(url).host?.lowercase(Locale.ROOT) ?: "" } catch (e: Exception) { "" }
+            val allowedHosts = setOf(
+                "api.open-meteo.com", "news.google.com", "polling.finance.naver.com",
+                "m.stock.naver.com", "router.project-osrm.org", "nominatim.openstreetmap.org",
+                "site.api.espn.com"
+            )
+            if (!url.startsWith("https://") || host !in allowedHosts) return
             Thread {
                 val body = try { httpGetCached(url) } catch (e: Exception) { null }
                 val clipped = if (body != null && body.length > 320_000) body.substring(0, 320_000) else body
