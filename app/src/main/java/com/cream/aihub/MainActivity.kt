@@ -7775,17 +7775,29 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun fetchUrl(url: String, callbackId: String) {
+            deliverWidgetFetch(url, callbackId, true)
+        }
+
+        // 위젯별 새로고침 버튼용: 네이티브 캐시를 건너뛰고 바로 다시 요청한다
+        @JavascriptInterface
+        fun fetchUrlFresh(url: String, callbackId: String) {
+            deliverWidgetFetch(url, callbackId, false)
+        }
+
+        private fun deliverWidgetFetch(url: String, callbackId: String, useCache: Boolean) {
             val target = webView ?: return
             // 시작페이지 위젯이 쓰는 데이터 제공처만 허용한다
             val host = try { Uri.parse(url).host?.lowercase(Locale.ROOT) ?: "" } catch (e: Exception) { "" }
             val allowedHosts = setOf(
-                "api.open-meteo.com", "news.google.com", "polling.finance.naver.com",
-                "m.stock.naver.com", "router.project-osrm.org", "nominatim.openstreetmap.org",
-                "site.api.espn.com"
+                "api.open-meteo.com", "geocoding-api.open-meteo.com", "news.google.com",
+                "polling.finance.naver.com", "m.stock.naver.com", "router.project-osrm.org",
+                "nominatim.openstreetmap.org", "site.api.espn.com"
             )
             if (!url.startsWith("https://") || host !in allowedHosts) return
             Thread {
-                val body = try { httpGetCached(url) } catch (e: Exception) { null }
+                val body = try {
+                    if (useCache) httpGetCached(url) else httpGet(url)
+                } catch (e: Exception) { null }
                 val clipped = if (body != null && body.length > 320_000) body.substring(0, 320_000) else body
                 target.post {
                     val payload = if (clipped == null) "null" else JSONObject.quote(clipped)

@@ -177,6 +177,140 @@ body[data-theme="pink-dark"] .search-form input { color: #222222; }
 
 body[data-theme="pink-dark"] .card h3 { color: #6e343d; }
 
+/* 날씨 카드의 위치(도시) 칩 */
+.city-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.city-chip:hover { background: rgba(128, 128, 128, 0.12); }
+
+.city-chip:active { opacity: 0.7; }
+
+.city-chip svg {
+  width: 10px;
+  height: 10px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.7;
+}
+
+body[data-theme="pink-dark"] .city-chip { color: #6e343d; }
+
+/* 위치 변경 모달 */
+.city-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 50;
+}
+
+.city-modal-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.city-modal-title { font-size: 15px; font-weight: 700; }
+
+.city-hint { font-size: 11.5px; font-weight: 600; color: var(--text-dim); margin-top: -4px; }
+
+.city-input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--search-bg);
+  color: var(--text);
+  padding: 0 13px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.city-status { display: none; font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
+
+.city-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow-y: auto; }
+
+.city-chip-opt {
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.city-chip-opt.on { background: var(--accent-btn); color: var(--accent-btn-text); border-color: transparent; }
+
+.city-results { display: none; flex-direction: column; gap: 6px; max-height: 176px; overflow-y: auto; }
+
+.city-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.city-result .cr-name { font-size: 12.5px; font-weight: 700; }
+.city-result .cr-region { font-size: 10.5px; color: var(--text-dim); }
+
+.city-btn-row { display: flex; gap: 8px; margin-top: 2px; }
+
+.city-btn {
+  flex: 1;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.city-btn.primary { background: var(--accent-btn); color: var(--accent-btn-text); border: none; }
+
 .weather-now {
   display: flex;
   align-items: center;
@@ -347,6 +481,21 @@ body.with-bg .shortcut {
 
   <div class="shortcuts" id="shortcuts"></div>
 
+  <div class="city-modal" id="cityModal">
+    <div class="city-modal-card">
+      <div class="city-modal-title">날씨 위치 변경</div>
+      <div class="city-hint" id="cityHint">현재 위치 · 서울</div>
+      <input class="city-input" id="citySearch" placeholder="도시 검색 (예: 대전, Tokyo)" autocomplete="off">
+      <div class="city-status" id="cityStatus"></div>
+      <div class="city-chips" id="cityChips"></div>
+      <div class="city-results" id="cityResults"></div>
+      <div class="city-btn-row">
+        <button class="city-btn" onclick="closeCityModal()">닫기</button>
+        <button class="city-btn primary" onclick="searchCity()">검색</button>
+      </div>
+    </div>
+  </div>
+
   <script>
   (function () {
     var api = window.creamy || null;
@@ -409,19 +558,24 @@ body.with-bg .shortcut {
       });
     }
 
-    function loadWeather() {
-      if (!api || !api.net) return;
-      api.settings.get().then(function (s) {
-        var lat = s.cityLat || 37.5665;
-        var lon = s.cityLon || 126.978;
-        return api.net.weather(lat, lon);
+    function loadWeather(fresh) {
+      if (!api || !api.net) return Promise.resolve();
+      if (!api.settings) return Promise.resolve();
+      return api.settings.get().then(function (s) {
+        s_cache = s || {};
+        var local = readCityFromLocal();
+        currentCity = {
+          name: s_cache.city || (local && local.name) || currentCity.name,
+          lat: Number(s_cache.cityLat) || (local && local.lat) || currentCity.lat,
+          lon: Number(s_cache.cityLon) || (local && local.lon) || currentCity.lon
+        };
+        return api.net.weather(currentCity.lat, currentCity.lon);
       }).then(function (w) {
         var card = $('#weatherCard');
         if (!w || !w.current) throw new Error('no data');
         var code = w.current.weather_code;
         var desc = WEATHER_CODES[code] || '알 수 없음';
         var temp = Math.round(w.current.temperature_2m);
-        var city = (api && s_cache && s_cache.city) ? s_cache.city : '';
         var days = '';
         if (w.daily && w.daily.time) {
           var dayNames = ['일', '월', '화', '수', '목', '금', '토'];
@@ -434,11 +588,161 @@ body.with-bg .shortcut {
           }
           days = '<div class="weather-days">' + parts.join('') + '</div>';
         }
-        card.innerHTML = '<h3>날씨' + (city ? ' / ' + city : '') + '</h3>' +
+        card.innerHTML = weatherHeading() +
           '<div class="weather-now"><div class="weather-temp">' + temp + '°C</div>' +
           '<div class="weather-desc">' + desc + '<br>습도 ' + w.current.relative_humidity_2m + '% / 풍속 ' + w.current.wind_speed_10m + ' km/h</div></div>' + days;
       }).catch(function () {
-        $('#weatherCard').innerHTML = '<h3>날씨</h3><div class="loading-note">날씨 정보를 불러올 수 없습니다.</div>';
+        $('#weatherCard').innerHTML = weatherHeading() + '<div class="loading-note">날씨 정보를 불러올 수 없습니다.</div>';
+      });
+    }
+
+    var CITY_PRESETS = [
+      { name: '서울', lat: 37.5665, lon: 126.9780 },
+      { name: '부산', lat: 35.1796, lon: 129.0756 },
+      { name: '대구', lat: 35.8714, lon: 128.6014 },
+      { name: '인천', lat: 37.4563, lon: 126.7052 },
+      { name: '광주', lat: 35.1595, lon: 126.8526 },
+      { name: '대전', lat: 36.3504, lon: 127.3845 },
+      { name: '울산', lat: 35.5384, lon: 129.3114 },
+      { name: '수원', lat: 37.2636, lon: 127.0286 },
+      { name: '제주', lat: 33.4996, lon: 126.5312 },
+      { name: '세종', lat: 36.4800, lon: 127.2890 },
+      { name: '성남', lat: 37.4200, lon: 127.1265 },
+      { name: '청주', lat: 36.6424, lon: 127.4890 },
+      { name: '전주', lat: 35.8242, lon: 127.1480 },
+      { name: '춘천', lat: 37.8813, lon: 127.7300 },
+      { name: '강릉', lat: 37.7519, lon: 128.8761 },
+      { name: '포항', lat: 36.0190, lon: 129.3435 }
+    ];
+
+    var currentCity = { name: '서울', lat: 37.5665, lon: 126.9780 };
+
+    function escHtml(text) {
+      return String(text == null ? '' : text)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function readCityFromLocal() {
+      try {
+        var raw = localStorage.getItem('creamy_weather_city');
+        if (raw) {
+          var o = JSON.parse(raw);
+          if (o && o.name && isFinite(Number(o.lat)) && isFinite(Number(o.lon))) {
+            return { name: String(o.name), lat: Number(o.lat), lon: Number(o.lon) };
+          }
+        }
+      } catch (err) {}
+      return null;
+    }
+
+    function weatherHeading() {
+      return '<h3>날씨 <button class="city-chip" type="button" onclick="openCityModal()" aria-label="날씨 위치 변경">'
+        + '<span>' + escHtml(currentCity.name) + '</span>'
+        + '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></h3>';
+    }
+
+    function cityStatus(text) {
+      var el = $('#cityStatus');
+      if (!el) return;
+      el.textContent = text || '';
+      el.style.display = text ? 'block' : 'none';
+    }
+
+    function markCityChips() {
+      var chips = document.querySelectorAll('#cityChips .city-chip-opt');
+      for (var i = 0; i < chips.length; i++) {
+        chips[i].classList.toggle('on', chips[i].textContent === currentCity.name);
+      }
+    }
+
+    function openCityModal() {
+      var wrap = $('#cityChips');
+      if (wrap) {
+        wrap.innerHTML = '';
+        CITY_PRESETS.forEach(function (city) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'city-chip-opt';
+          b.textContent = city.name;
+          b.addEventListener('click', function () { applyCity(city); });
+          wrap.appendChild(b);
+        });
+      }
+      var input = $('#citySearch');
+      if (input) input.value = '';
+      var results = $('#cityResults');
+      if (results) { results.innerHTML = ''; results.style.display = 'none'; }
+      cityStatus('');
+      var hint = $('#cityHint');
+      if (hint) hint.textContent = '현재 위치 · ' + currentCity.name;
+      markCityChips();
+      $('#cityModal').style.display = 'flex';
+      if (input) setTimeout(function () { input.focus(); }, 80);
+    }
+
+    function closeCityModal() {
+      $('#cityModal').style.display = 'none';
+    }
+
+    function applyCity(city) {
+      if (!city || !city.name) return;
+      currentCity = { name: String(city.name), lat: Number(city.lat), lon: Number(city.lon) };
+      try { localStorage.setItem('creamy_weather_city', JSON.stringify(currentCity)); } catch (err) {}
+      closeCityModal();
+      if (api && api.settings && api.settings.set) {
+        Promise.resolve(api.settings.set('city', currentCity.name))
+          .then(function () { return api.settings.set('cityLat', currentCity.lat); })
+          .then(function () { return api.settings.set('cityLon', currentCity.lon); })
+          .then(function () { s_cache = null; loadWeather(true); })
+          .catch(function () { s_cache = null; loadWeather(true); });
+      } else {
+        loadWeather(true);
+      }
+    }
+
+    function searchCity() {
+      var input = $('#citySearch');
+      var q = input ? input.value.trim() : '';
+      if (!q) { cityStatus('도시 이름을 입력해 주세요.'); return; }
+      if (!api || !api.net) { cityStatus('이 환경에서는 도시 검색을 쓸 수 없습니다.'); return; }
+      var searchFn = api.net.geocodeList || api.net.geocode;
+      cityStatus('도시를 찾는 중...');
+      searchFn(q).then(function (res) {
+        var list = [];
+        if (Array.isArray(res)) {
+          list = res;
+        } else if (res && res.name) {
+          list = [res];
+        }
+        var results = $('#cityResults');
+        if (!list.length) {
+          if (results) results.style.display = 'none';
+          cityStatus('검색 결과가 없습니다. 다른 이름으로 검색해 주세요.');
+          return;
+        }
+        cityStatus(list.length + '개 도시를 찾았습니다. 선택하면 바로 적용됩니다.');
+        if (!results) return;
+        results.innerHTML = '';
+        results.style.display = 'flex';
+        list.forEach(function (city) {
+          var row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'city-result';
+          var nameEl = document.createElement('span');
+          nameEl.className = 'cr-name';
+          nameEl.textContent = city.name;
+          var regionEl = document.createElement('span');
+          regionEl.className = 'cr-region';
+          regionEl.textContent = city.region || '';
+          row.appendChild(nameEl);
+          row.appendChild(regionEl);
+          row.addEventListener('click', function () {
+            applyCity({ name: city.name, lat: city.lat, lon: city.lon });
+          });
+          results.appendChild(row);
+        });
+      }).catch(function () {
+        cityStatus('도시를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
       });
     }
 
@@ -511,6 +815,23 @@ body.with-bg .shortcut {
       else url = (ENGINES[engine] || ENGINES.google).replace('{q}', encodeURIComponent(q));
       window.location.href = url;
     });
+
+    var citySearchInput = document.getElementById('citySearch');
+    if (citySearchInput) {
+      citySearchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          searchCity();
+        }
+      });
+    }
+
+    var cityModalEl = document.getElementById('cityModal');
+    if (cityModalEl) {
+      cityModalEl.addEventListener('click', function (e) {
+        if (e.target === cityModalEl) closeCityModal();
+      });
+    }
 
     tickClock();
     setInterval(tickClock, 1000);

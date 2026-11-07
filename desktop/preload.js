@@ -25,6 +25,7 @@ const fullBridge = {
   net: {
     weather: function (lat, lon) { return ipcRenderer.invoke('net:weather', lat, lon); },
     geocode: function (name) { return ipcRenderer.invoke('net:geocode', name); },
+    geocodeList: function (name) { return ipcRenderer.invoke('net:geocode-list', name); },
     rss: function () { return ipcRenderer.invoke('net:rss'); },
     fx: function () { return ipcRenderer.invoke('net:fx'); },
     quotes: function () { return ipcRenderer.invoke('net:quotes'); },
@@ -64,12 +65,14 @@ const guestBridge = {
   net: {
     weather: function (lat, lon) { return ipcRenderer.invoke('net:weather', lat, lon); },
     geocode: function (name) { return ipcRenderer.invoke('net:geocode', name); },
+    geocodeList: function (name) { return ipcRenderer.invoke('net:geocode-list', name); },
     rss: function () { return ipcRenderer.invoke('net:rss'); },
     fx: function () { return ipcRenderer.invoke('net:fx'); },
     quotes: function () { return ipcRenderer.invoke('net:quotes'); }
   },
   settings: {
-    get: function () { return ipcRenderer.invoke('settings:get'); }
+    get: function () { return ipcRenderer.invoke('settings:get'); },
+    set: function (key, value) { return ipcRenderer.invoke('settings:set', key, value); }
   }
 };
 

@@ -497,6 +497,21 @@ function registerIpc() {
     return null;
   });
 
+  ipcMain.handle('net:geocode-list', async function (event, name) {
+    const url = 'https://geocoding-api.open-meteo.com/v1/search?count=6&language=ko&format=json&name=' + encodeURIComponent(name);
+    const body = await fetchText(url);
+    const data = JSON.parse(body);
+    const list = (data.results || []).map(function (r) {
+      return {
+        name: r.name,
+        lat: r.latitude,
+        lon: r.longitude,
+        region: [r.admin1, r.country].filter(Boolean).join(' · ')
+      };
+    });
+    return list;
+  });
+
   ipcMain.handle('net:rss', async function () {
     const body = await fetchText('https://news.google.com/rss?hl=ko&gl=KR&ceid=KR:ko');
     return parseRssItems(body, 8);
