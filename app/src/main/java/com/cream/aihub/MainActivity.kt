@@ -1462,11 +1462,6 @@ class MainActivity : AppCompatActivity() {
 
     // Bag 보관함 기능 (링크, 이미지, 텍스트 스크랩)
     private fun showBagDialog() {
-        if (isTabletLayout()) {
-            switchSidebarTab("menu")
-            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
-            return
-        }
         val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_bag, null)
         dialog.setContentView(view)
@@ -1681,11 +1676,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showDownloadsDialog() {
-        if (isTabletLayout()) {
-            switchSidebarTab("menu")
-            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
-            return
-        }
         val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_downloads, null)
         dialog.setContentView(view)
@@ -1871,9 +1861,26 @@ class MainActivity : AppCompatActivity() {
                 behavior.state = BottomSheetBehavior.STATE_EXPANDED
                 behavior.skipCollapsed = true
                 behavior.isHideable = true
+                applyTabletDialogWidth(bottomSheet)
             }
         }
         return dialog
+    }
+
+    // 태블릿 넓은 화면에서 다이얼로그를 480dp 폭으로 가운데 정렬해 읽기 좋게 유지한다
+    private fun applyTabletDialogWidth(bottomSheet: View) {
+        if (!isTabletLayout()) return
+        val screenWidthDp = resources.configuration.screenWidthDp
+        val targetWidth = dpToPx(minOf(480, screenWidthDp - 32))
+        val lp = bottomSheet.layoutParams
+        if (lp is FrameLayout.LayoutParams) {
+            lp.width = targetWidth
+            lp.gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+            bottomSheet.layoutParams = lp
+        } else if (lp is android.view.ViewGroup.MarginLayoutParams) {
+            lp.width = targetWidth
+            bottomSheet.layoutParams = lp
+        }
     }
 
     // ===== 웹페이지 번역: 고속 배치 번역 및 상단 닫기 가능한 프로그레스바 =====
@@ -2780,7 +2787,10 @@ class MainActivity : AppCompatActivity() {
             R.id.btnSidebarMenuSettings
         )
         for (menuId in menuIds) {
-            findViewById<TextView>(menuId)?.setTextColor(palette.textPrimary)
+            findViewById<TextView>(menuId)?.apply {
+                setTextColor(palette.textPrimary)
+                setCompoundDrawableTintList(ColorStateList.valueOf(palette.textPrimary))
+            }
         }
 
         findViewById<TextView>(R.id.tvSidebarBookmarksHeader)?.setTextColor(palette.textPrimary)
@@ -2845,6 +2855,8 @@ class MainActivity : AppCompatActivity() {
         })
         val toggle = SwitchMaterial(this).apply {
             isChecked = checked
+            thumbTintList = ColorStateList.valueOf(Color.BLACK)
+            trackTintList = ColorStateList.valueOf(Color.parseColor("#555555"))
             setOnCheckedChangeListener { _, value ->
                 onChange(value)
                 post { renderSidebarSettingsPanel() }
@@ -3329,11 +3341,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHistoryDialog() {
-        if (isTabletLayout()) {
-            switchSidebarTab("menu")
-            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("menu")
-            return
-        }
         val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_history, null)
         dialog.setContentView(view)
@@ -3395,12 +3402,6 @@ class MainActivity : AppCompatActivity() {
 
     // 북마크 & 즐겨찾기 폴더
     private fun showBookmarksDialog() {
-        if (isTabletLayout()) {
-            switchSidebarTab("bookmarks")
-            if (layoutSidebar.visibility != View.VISIBLE) toggleSidebar("bookmarks")
-            populateSidebarBookmarks()
-            return
-        }
         val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_bookmarks, null)
         dialog.setContentView(view)
@@ -5106,28 +5107,32 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
+    private var sidebarBookmarkFolder: String = "전체"
+
     private fun populateSidebarBookmarks() {
         val layoutFolders = findViewById<LinearLayout>(R.id.layoutSidebarBookmarkFoldersBar) ?: return
         val layoutList = findViewById<LinearLayout>(R.id.layoutSidebarBookmarksList) ?: return
         val btnAdd = findViewById<Button>(R.id.btnSidebarAddBookmark)
+        val tvHeader = findViewById<TextView>(R.id.tvSidebarBookmarksHeader)
         val palette = sidebarPalette(getAppThemeMode())
 
         layoutFolders.removeAllViews()
         val folders = mutableListOf("전체")
         folders.addAll(getBookmarkFolders())
-
-        var selectedFolder = "전체"
+        if (!folders.contains(sidebarBookmarkFolder)) sidebarBookmarkFolder = "전체"
 
         fun renderBookmarks() {
             layoutList.removeAllViews()
             val all = getSavedBookmarks()
-            val filtered = if (selectedFolder == "전체") all else all.filter { it.folder == selectedFolder }
+            val filtered = if (sidebarBookmarkFolder == "전체") all else all.filter { it.folder == sidebarBookmarkFolder }
+            tvHeader?.text = "북마크 " + all.size + "개"
             if (filtered.isEmpty()) {
                 val tv = TextView(this).apply {
-                    text = "'$selectedFolder' 폴더에 저장된 북마크가 없습니다."
+                    text = "'" + sidebarBookmarkFolder + "' 폴더에 저장된 북마크가 없습니다.\n위의 [북마크 저장]으로 현재 페이지를 담아보세요."
                     textSize = 12f
                     setTextColor(palette.textSecondary)
-                    setPadding(10, 20, 10, 20)
+                    setPadding(dpToPx(4), dpToPx(16), dpToPx(4), dpToPx(16))
+                    gravity = android.view.Gravity.CENTER
                 }
                 layoutList.addView(tv)
                 return
@@ -5167,35 +5172,64 @@ class MainActivity : AppCompatActivity() {
                 val chip = TextView(this).apply {
                     text = f
                     textSize = 11f
-                    setPadding(26, 12, 26, 12)
+                    setPadding(dpToPx(13), dpToPx(6), dpToPx(13), dpToPx(6))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { marginEnd = 12 }
-                    if (f == selectedFolder) {
+                    ).apply { marginEnd = dpToPx(6) }
+                    if (f == sidebarBookmarkFolder) {
                         setBackgroundResource(R.drawable.bg_pill_badge)
                         backgroundTintList = ColorStateList.valueOf(palette.accentBg)
                         setTextColor(palette.accentFg)
                     } else {
                         setBackgroundResource(R.drawable.bg_pill_badge)
-                        backgroundTintList = null
+                        backgroundTintList = ColorStateList.valueOf(palette.headerBg)
                         setTextColor(palette.textSecondary)
                     }
                     setOnClickListener {
-                        selectedFolder = f
+                        sidebarBookmarkFolder = f
                         renderFolders()
                         renderBookmarks()
                     }
                 }
                 layoutFolders.addView(chip)
             }
+            val addFolderChip = TextView(this).apply {
+                text = "+ 폴더"
+                textSize = 11f
+                setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
+                setTextColor(palette.textSecondary)
+                setBackgroundResource(R.drawable.bg_pill_badge)
+                backgroundTintList = ColorStateList.valueOf(palette.headerBg)
+                setOnClickListener {
+                    val input = EditText(this@MainActivity).apply { hint = "폴더 이름 (예: 업무, 쇼핑, AI)" }
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("새 즐겨찾기 폴더")
+                        .setView(input)
+                        .setPositiveButton("생성") { _, _ ->
+                            val folderName = input.text.toString().trim()
+                            if (folderName.isNotEmpty()) {
+                                addBookmarkFolder(folderName)
+                                folders.clear()
+                                folders.add("전체")
+                                folders.addAll(getBookmarkFolders())
+                                sidebarBookmarkFolder = folderName
+                                renderFolders()
+                                renderBookmarks()
+                            }
+                        }
+                        .setNegativeButton("취소", null)
+                        .show()
+                }
+            }
+            layoutFolders.addView(addFolderChip)
         }
 
         btnAdd?.setOnClickListener {
             val cur = getCurrentWebView()
             val title = cur.title ?: "북마크"
             val url = cur.url ?: START_PAGE_URL
-            val target = if (selectedFolder == "전체") "기본" else selectedFolder
+            val target = if (sidebarBookmarkFolder == "전체") "기본" else sidebarBookmarkFolder
             saveCustomBookmark(title, url, target)
             Toast.makeText(this, "북마크가 저장되었습니다.", Toast.LENGTH_SHORT).show()
             renderBookmarks()
