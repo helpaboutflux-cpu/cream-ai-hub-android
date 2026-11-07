@@ -42,6 +42,15 @@ Cream ai Hub의 공식 안드로이드 네이티브 클라이언트 애플리케
 
 ---
 
+## 데스크탑: Creamy Browser for Windows
+
+윈도우 10/11용 독립 데스크탑 브라우저는 `desktop/` 디렉터리의 Electron 앱으로 개발되며,
+GitHub Actions 클라우드(`.github/workflows/build-windows.yml`)가 NSIS 인스톨러와
+포터블 실행 파일을 빌드해 아티팩트로 올립니다. 자세한 구성과 기능은
+[desktop/README.md](desktop/README.md)를 참고하세요.
+
+---
+
 ##  라이선스
 
 Copyright © 2026 Minjung Kim (@helpaboutflux-cpu). All rights reserved.
