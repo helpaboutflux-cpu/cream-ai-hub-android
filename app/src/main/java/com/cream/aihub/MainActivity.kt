@@ -3619,7 +3619,7 @@ class MainActivity : AppCompatActivity() {
                     "배경 이미지 변경" to { pickCustomBackgroundImage() },
                     "배경 초기화" to {
                         clearCustomStartBackground()
-                        post { renderSidebarSettingsPanel() }
+                        layoutSidebar.post { renderSidebarSettingsPanel() }
                     }
                 )
             )
@@ -3806,6 +3806,36 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "PDF를 열 수 있는 앱이 없습니다: " + (e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
+    }
+
+
+    // ---------- 유튜브 백그라운드 오디오 ----------
+    private fun isYoutubeUrl(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        return try {
+            val host = Uri.parse(url).host?.lowercase(Locale.ROOT) ?: return false
+            host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" || host.endsWith(".youtu.be")
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun injectYoutubeBackgroundAudio(wv: WebView) {
+        if (!isBackgroundAudioEnabled()) return
+        val script = """
+            (function() {
+              try {
+                Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
+                Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                document.hasFocus = function() { return true; };
+                window.addEventListener('visibilitychange', function(e) { e.stopImmediatePropagation(); }, true);
+                window.addEventListener('webkitvisibilitychange', function(e) { e.stopImmediatePropagation(); }, true);
+                window.addEventListener('blur', function(e) { e.stopImmediatePropagation(); }, true);
+                window.__creamBackgroundAudio = true;
+              } catch (e) {}
+            })();
+        """.trimIndent()
+        wv.evaluateJavascript(script, null)
     }
 
     private fun isDataSaverEnabled(): Boolean {
