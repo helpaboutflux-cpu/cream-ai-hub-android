@@ -17,12 +17,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.ParcelFileDescriptor
-import android.print.PageRange
 import android.print.PrintAttributes
-import android.print.PrintDocumentAdapter
-import android.print.PrintDocumentInfo
 import android.print.PrintManager
+import android.print.pdf.PrintedPdfDocument
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.KeyEvent
@@ -2947,90 +2944,68 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- 웹페이지 벡터 PDF 저장 ----------
     private fun saveWebPageAsPdf() {
-        val view = getCurrentWebView()
-        val url = view.url ?: ""
+        val wv = getCurrentWebView()
+        val url = wv.url ?: ""
         if (url.isBlank() || url.startsWith("file:///android_asset/")) {
             Toast.makeText(this, "시작 페이지는 PDF로 저장할 수 없습니다", Toast.LENGTH_SHORT).show()
             return
         }
-        val pageTitle = (view.title ?: "웹페이지").ifBlank { "웹페이지" }
+        val pageTitle = (wv.title ?: "웹페이지").ifBlank { "웹페이지" }
         val safeTitle = pageTitle.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().take(40).ifBlank { "webpage" }
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.KOREA).format(Date())
         val dir = File(getExternalFilesDir(null) ?: filesDir, "pdf")
         if (!dir.exists()) dir.mkdirs()
         val target = File(dir, safeTitle + "_" + stamp + ".pdf")
-        val adapter = view.createPrintDocumentAdapter(pageTitle)
+
+        val contentWidth = wv.width.coerceAtLeast(1)
+        val contentHeight = (wv.contentHeight * wv.scale).toInt().coerceIn(1, 60000)
+
+        Toast.makeText(this, "페이지를 벡터 PDF로 저장하는 중입니다", Toast.LENGTH_SHORT).show()
+
         val attributes = PrintAttributes.Builder()
             .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 600, 600))
+            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 200, 200))
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
 
-        Toast.makeText(this, "페이지를 벡터 PDF로 저장하는 중입니다", Toast.LENGTH_SHORT).show()
+        var document: PrintedPdfDocument? = null
         try {
-            adapter.onStart()
-            adapter.onLayout(null, attributes, null, object : PrintDocumentAdapter.LayoutResultCallback() {
-                override fun onLayoutFinished(info: PrintDocumentInfo?, changed: Boolean) {
-                    val pageCount = info?.pageCount ?: 0
-                    if (info == null || pageCount <= 0) {
-                        adapter.onFinish()
-                        Toast.makeText(this@MainActivity, "페이지를 읽지 못해 PDF를 만들 수 없습니다", Toast.LENGTH_SHORT).show()
-                        return
-                    }
-                    val ranges = arrayOf(PageRange(0, pageCount - 1))
-                    val descriptor = try {
-                        ParcelFileDescriptor.open(
-                            target,
-                            ParcelFileDescriptor.MODE_CREATE or
-                                ParcelFileDescriptor.MODE_READ_WRITE or
-                                ParcelFileDescriptor.MODE_TRUNCATE
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                    if (descriptor == null) {
-                        adapter.onFinish()
-                        Toast.makeText(this@MainActivity, "PDF 파일을 생성할 수 없습니다", Toast.LENGTH_SHORT).show()
-                        return
-                    }
-                    adapter.onWrite(ranges, descriptor, null, object : PrintDocumentAdapter.WriteResultCallback() {
-                        override fun onWriteFinished(pages: Array<out PageRange>?) {
-                            try {
-                                descriptor.close()
-                            } catch (e: Exception) {
-                            }
-                            adapter.onFinish()
-                            handlePdfSaved(target, pageTitle, url)
-                        }
+            val pdf = PrintedPdfDocument(this, attributes)
+            document = pdf
+            val pageWidth = pdf.pageWidth
+            val pageHeight = pdf.pageHeight
+            val scale = pageWidth.toFloat() / contentWidth.toFloat()
+            val contentPerPage = (pageHeight.toFloat() / scale).toInt().coerceAtLeast(1)
+            val pageCount = ((contentHeight + contentPerPage - 1) / contentPerPage).coerceIn(1, 120)
 
-                        override fun onWriteFailed(error: CharSequence?) {
-                            try {
-                                descriptor.close()
-                            } catch (e: Exception) {
-                            }
-                            adapter.onFinish()
-                            if (target.exists()) target.delete()
-                            Toast.makeText(this@MainActivity, "PDF 저장 실패: " + (error ?: ""), Toast.LENGTH_SHORT).show()
-                        }
+            for (index in 0 until pageCount) {
+                val page = pdf.startPage(index)
+                val canvas = page.canvas
+                canvas.save()
+                canvas.scale(scale, scale)
+                canvas.translate(0f, -(index * contentPerPage).toFloat())
+                wv.draw(canvas)
+                canvas.restore()
+                pdf.finishPage(page)
+            }
 
-                        override fun onWriteCancelled() {
-                            try {
-                                descriptor.close()
-                            } catch (e: Exception) {
-                            }
-                            adapter.onFinish()
-                            if (target.exists()) target.delete()
-                        }
-                    })
-                }
-
-                override fun onLayoutFailed(error: CharSequence?) {
-                    adapter.onFinish()
-                    Toast.makeText(this@MainActivity, "PDF 레이아웃 생성 실패: " + (error ?: ""), Toast.LENGTH_SHORT).show()
-                }
-            })
+            FileOutputStream(target).use { output ->
+                pdf.writeTo(output)
+            }
+            pdf.close()
+            document = null
+            handlePdfSaved(target, pageTitle, url)
+        } catch (oom: OutOfMemoryError) {
+            Toast.makeText(this, "페이지가 너무 커서 PDF로 만들지 못했습니다", Toast.LENGTH_SHORT).show()
+            if (target.exists()) target.delete()
         } catch (e: Exception) {
             Toast.makeText(this, "PDF 저장 중 오류: " + (e.message ?: ""), Toast.LENGTH_SHORT).show()
+            if (target.exists()) target.delete()
+        } finally {
+            try {
+                document?.close()
+            } catch (e: Exception) {
+            }
         }
     }
 
