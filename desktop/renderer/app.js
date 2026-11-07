@@ -106,7 +106,9 @@
     state.tabSeq = state.tabSeq + 1;
     var webview = document.createElement('webview');
     webview.setAttribute('src', tab.url);
-    webview.setAttribute('preload', bridge.env.preloadPath);
+    if (bridge && bridge.env && bridge.env.preloadPath) {
+      webview.setAttribute('preload', bridge.env.preloadPath);
+    }
     webview.classList.add('offscreen');
     tab.webview = webview;
     state.tabs.push(tab);
@@ -1106,10 +1108,14 @@
   /* ---------- Settings panel ---------- */
 
   function applyTheme() {
-    document.body.setAttribute('data-theme', state.settings.themePreset + '-' + state.settings.themeMode);
+    var themeClass = state.settings.themePreset + '-' + state.settings.themeMode;
+    document.documentElement.setAttribute('data-theme', themeClass);
+    document.body.setAttribute('data-theme', themeClass);
     if (state.settings.accent) {
+      document.documentElement.style.setProperty('--accent', state.settings.accent);
       document.body.style.setProperty('--accent', state.settings.accent);
     } else {
+      document.documentElement.style.removeProperty('--accent');
       document.body.style.removeProperty('--accent');
     }
   }
@@ -1625,7 +1631,13 @@
     state.history = lsGet('history', []);
     state.bookmarks = lsGet('bookmarks', []);
     state.bag = lsGet('bag', []);
-    state.mainSettings = await bridge.settings.get();
+    try {
+      if (bridge && bridge.settings && bridge.settings.get) {
+        state.mainSettings = (await bridge.settings.get()) || {};
+      }
+    } catch (err) {
+      console.error('Settings get error:', err);
+    }
     applyTheme();
     restoreSession();
     bindChrome();

@@ -157,6 +157,17 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
+  mainWindow.webContents.on('before-input-event', function (event, input) {
+    if (input.key === 'F12' || (input.control && input.shift && (input.key === 'I' || input.key === 'i'))) {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', function (event, errorCode, errorDescription, validatedURL) {
+    console.error('Failed to load:', errorCode, errorDescription, validatedURL);
+  });
+
   mainWindow.on('maximize', function () { sendToRenderer('win:state', { maximized: true }); });
   mainWindow.on('unmaximize', function () { sendToRenderer('win:state', { maximized: false }); });
   mainWindow.on('closed', function () { mainWindow = null; });

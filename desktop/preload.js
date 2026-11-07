@@ -80,13 +80,16 @@ function bridgeForLocation() {
   let protocol = '';
   let file = '';
   try {
-    protocol = window.location.protocol;
-    file = window.location.pathname || '';
+    protocol = window.location.protocol || '';
+    file = (window.location.pathname || '').replace(/\\/g, '/');
   } catch (err) {
     protocol = '';
   }
   if (protocol === 'file:' && file.indexOf('start_page') !== -1) {
     return guestBridge;
+  }
+  if (protocol === 'file:') {
+    return fullBridge;
   }
   return {};
 }
