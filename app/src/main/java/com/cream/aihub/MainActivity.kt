@@ -2182,7 +2182,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun runHighSpeedBatchTranslation(wv: WebView, token: Int, texts: List<String>, targetLang: String, targetLabel: String) {        val total = texts.size
+    private fun runHighSpeedBatchTranslation(wv: WebView, token: Int, texts: List<String>, targetLang: String, targetLabel: String) {
+        val total = texts.size
         val batchSize = 30
         var processed = 0
         var applied = 0
@@ -2573,7 +2574,14 @@ class MainActivity : AppCompatActivity() {
 
         menuItemPip?.setOnClickListener {
             dialog.dismiss()
-            enterPipMode()
+            if (isYoutubeVideoPage(getCurrentWebView().url)) enterYoutubePip() else enterPipMode()
+        }
+        menuItemPip?.setOnLongClickListener {
+            if (isYoutubeVideoPage(getCurrentWebView().url)) {
+                dialog.dismiss()
+                showYoutubeDownloadDialog()
+                true
+            } else false
         }
 
         menuItemCapture?.setOnClickListener {
@@ -3332,7 +3340,8 @@ class MainActivity : AppCompatActivity() {
             ) { enabled -> setAutoTranslateEnabled(enabled) }
         )
 
-        container.addView(sidebarSectionLabel("브라우징"))        container.addView(
+        container.addView(sidebarSectionLabel("브라우징"))
+        container.addView(
             sidebarSwitchRow(
                 "웹페이지 스마트 다크모드",
                 "흰색 웹사이트 본문을 다크로 자동 변환",
