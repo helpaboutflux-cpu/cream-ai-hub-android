@@ -12,9 +12,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
+import android.util.Base64
 import android.os.Bundle
 import android.os.Environment
 import android.print.PrintAttributes
@@ -101,7 +103,8 @@ class MainActivity : AppCompatActivity() {
         var isInactive: Boolean = false,
         var isTranslated: Boolean = false,
         var mediaUrl: String? = null,
-        var lastAccessedTime: Long = System.currentTimeMillis()
+        var lastAccessedTime: Long = System.currentTimeMillis(),
+        var autoTranslatedUrl: String? = null
     )
 
     data class TabGroup(
@@ -171,6 +174,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnQuickMediaDownloadChip: LinearLayout
     private lateinit var ivMediaChipIcon: ImageView
     private lateinit var tvMediaChipText: TextView
+    private lateinit var btnQuickYoutubePipChip: LinearLayout
+    private lateinit var ivYoutubePipIcon: ImageView
+    private lateinit var tvYoutubePipText: TextView
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -225,6 +231,28 @@ class MainActivity : AppCompatActivity() {
     private val PREFS_NAME = "cream_ai_prefs"
     private val KEY_BASE44_TOKEN = "base44_access_token"
 
+    // 커스텀 테마 색상 팔레트
+    private val CUSTOM_ACCENTS = listOf(
+        "#09090B" to "블랙",
+        "#3B82F6" to "블루",
+        "#10B981" to "에메랄드",
+        "#8B5CF6" to "퍼플",
+        "#EC4899" to "핑크",
+        "#F59E0B" to "오렌지"
+    )
+
+    private data class TranslateLangOption(val code: String, val label: String)
+
+    private val translateLanguages = listOf(
+        TranslateLangOption("ko", "한국어"),
+        TranslateLangOption("en", "영어"),
+        TranslateLangOption("ja", "일본어"),
+        TranslateLangOption("zh-CN", "중국어"),
+        TranslateLangOption("es", "스페인어"),
+        TranslateLangOption("fr", "프랑스어"),
+        TranslateLangOption("de", "독일어")
+    )
+
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var lastHandledText = ""
     private var pendingScriptToInject: String? = null
@@ -233,11 +261,13 @@ class MainActivity : AppCompatActivity() {
     private var isDesktopMode = false
     private var currentPageText = ""
     private var currentSidebarTab = "ai"
+    private var customBgDataUrlCache: String? = null
 
     // 태블릿 크롬형 상단 탭 스트립
     private lateinit var layoutTabletTabStrip: HorizontalScrollView
     private lateinit var layoutTabletTabsContainer: LinearLayout
     private lateinit var btnTabletNewTab: View
+    private lateinit var btnTabletNewGroup: View
 
     private val DESKTOP_USER_AGENT =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
@@ -268,6 +298,12 @@ class MainActivity : AppCompatActivity() {
         if (!contents.isNullOrBlank()) {
             handleScannedCode(contents)
         }
+    }
+
+    private val backgroundImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        handlePickedBackgroundImage(uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -341,6 +377,10 @@ class MainActivity : AppCompatActivity() {
                 togglePageTranslation()
             }
         }
+        btnQuickTranslateChip.setOnLongClickListener {
+            showTranslateLanguagePicker()
+            true
+        }
         btnTopBack = findViewById(R.id.btnTopBack)
         btnTopForward = findViewById(R.id.btnTopForward)
         btnTopReload = findViewById(R.id.btnTopReload)
@@ -354,6 +394,16 @@ class MainActivity : AppCompatActivity() {
         btnQuickMediaDownloadChip = findViewById(R.id.btnQuickMediaDownloadChip)
         ivMediaChipIcon = findViewById(R.id.ivMediaChipIcon)
         tvMediaChipText = findViewById(R.id.tvMediaChipText)
+
+        // 유튜브 PIP 칩 (롱클릭 시 미디어 저장)
+        btnQuickYoutubePipChip = findViewById(R.id.btnQuickYoutubePipChip)
+        ivYoutubePipIcon = findViewById(R.id.ivYoutubePipIcon)
+        tvYoutubePipText = findViewById(R.id.tvYoutubePipText)
+        btnQuickYoutubePipChip.setOnClickListener { enterYoutubePip() }
+        btnQuickYoutubePipChip.setOnLongClickListener {
+            showYoutubeDownloadDialog()
+            true
+        }
 
         // 주소창 제안 오버레이
         layoutSearchSuggestions = findViewById(R.id.layoutSearchSuggestions)
@@ -585,6 +635,18 @@ class MainActivity : AppCompatActivity() {
 
                     if (url == START_PAGE_URL) {
                         view?.evaluateJavascript("if (window.setColorFavicons) window.setColorFavicons(${isColorFaviconsEnabled()});", null)
+                        view?.let { startView ->
+                            val activeTheme = getAppThemeMode()
+                            if (activeTheme.startsWith("theme-custom")) {
+                                startView.evaluateJavascript(
+                                    "if (window.setCustomTheme) window.setCustomTheme('" + getCustomAccentHex() + "', " + (if (activeTheme.endsWith("-dark")) "true" else "false") + ");",
+                                    null
+                                )
+                            } else {
+                                startView.evaluateJavascript("if (window.setTheme) window.setTheme('" + activeTheme + "');", null)
+                            }
+                            injectCustomStartBackground(startView, customBackgroundDataUrl())
+                        }
                     }
 
                     // 보안 탭이 아닐 때만 방문 기록 저장
@@ -592,6 +654,14 @@ class MainActivity : AppCompatActivity() {
                     if (!curTab.isSecurity && !isStart && !url.isNullOrBlank()) {
                         addHistoryEntry(rawTitle, url)
                     }
+
+                    // 외국어 사이트 자동 번역
+                    maybeAutoTranslate(view, url)
+                }
+
+                // 유튜브: 백그라운드 재생 차단 우회 스크립트 주입
+                if (!url.isNullOrBlank() && isYoutubeUrl(url)) {
+                    view?.let { injectYoutubeBackgroundAudio(it) }
                 }
 
                 if (url?.contains("base44.app") == true) {
@@ -1397,7 +1467,7 @@ class MainActivity : AppCompatActivity() {
         return header
     }
 
-    private fun showGroupPickerDialog(tab: WebTab, onComplete: () -> Unit) {
+    private fun showGroupPickerDialog(tab: WebTab, forNewGroup: Boolean = false, onComplete: () -> Unit) {
         val dialog = createConfiguredBottomSheetDialog()
         val view = layoutInflater.inflate(R.layout.dialog_group_picker, null)
         dialog.setContentView(view)
@@ -1407,58 +1477,174 @@ class MainActivity : AppCompatActivity() {
         val btnApply = view.findViewById<Button>(R.id.btnApplyGroup)
         val btnRemove = view.findViewById<Button>(R.id.btnRemoveFromGroup)
         val btnClose = view.findViewById<ImageView>(R.id.btnCloseGroupPicker)
+        val presetRow = view.findViewById<LinearLayout>(R.id.layoutGroupNamePresets)
 
         var selectedColor = "#3B82F6"
 
-        val colorBlue = view.findViewById<View>(R.id.colorBlue)
-        val colorPurple = view.findViewById<View>(R.id.colorPurple)
-        val colorGreen = view.findViewById<View>(R.id.colorGreen)
-        val colorOrange = view.findViewById<View>(R.id.colorOrange)
-        val colorPink = view.findViewById<View>(R.id.colorPink)
-        val colorGray = view.findViewById<View>(R.id.colorGray)
+        val colorViews = listOf(
+            view.findViewById<View>(R.id.colorBlue) to "#3B82F6",
+            view.findViewById<View>(R.id.colorPurple) to "#8B5CF6",
+            view.findViewById<View>(R.id.colorGreen) to "#10B981",
+            view.findViewById<View>(R.id.colorOrange) to "#F59E0B",
+            view.findViewById<View>(R.id.colorPink) to "#EC4899",
+            view.findViewById<View>(R.id.colorGray) to "#71717A"
+        )
 
-        colorBlue.setOnClickListener { selectedColor = "#3B82F6"; Toast.makeText(this, "블루 선택", Toast.LENGTH_SHORT).show() }
-        colorPurple.setOnClickListener { selectedColor = "#8B5CF6"; Toast.makeText(this, "퍼플 선택", Toast.LENGTH_SHORT).show() }
-        colorGreen.setOnClickListener { selectedColor = "#10B981"; Toast.makeText(this, "그린 선택", Toast.LENGTH_SHORT).show() }
-        colorOrange.setOnClickListener { selectedColor = "#F59E0B"; Toast.makeText(this, "오렌지 선택", Toast.LENGTH_SHORT).show() }
-        colorPink.setOnClickListener { selectedColor = "#EC4899"; Toast.makeText(this, "핑크 선택", Toast.LENGTH_SHORT).show() }
-        colorGray.setOnClickListener { selectedColor = "#71717A"; Toast.makeText(this, "그레이 선택", Toast.LENGTH_SHORT).show() }
+        fun renderColorSelection() {
+            for ((colorView, hex) in colorViews) {
+                val picked = hex == selectedColor
+                colorView.alpha = if (picked) 1f else 0.35f
+                colorView.scaleX = if (picked) 1.15f else 1f
+                colorView.scaleY = if (picked) 1.15f else 1f
+            }
+        }
+
+        for ((colorView, hex) in colorViews) {
+            colorView.setOnClickListener {
+                selectedColor = hex
+                renderColorSelection()
+            }
+        }
+
+        // 빠른 이름 프리셋 (업무, 쇼핑, 뉴스, 리서치, 공부)
+        val palette = sidebarPalette(getAppThemeMode())
+        for (preset in listOf("업무", "쇼핑", "뉴스", "리서치", "공부")) {
+            val chip = TextView(this).apply {
+                text = preset
+                textSize = 11f
+                gravity = android.view.Gravity.CENTER
+                setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = dpToPx(6) }
+                setBackgroundResource(R.drawable.bg_pill_badge)
+                backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F4F4F5"))
+                setTextColor(Color.parseColor("#111111"))
+                setOnClickListener { etGroupName.setText(preset) }
+            }
+            presetRow.addView(chip)
+        }
 
         // 기존 그룹이 있으면 표시
-        if (!tab.groupId.isNullOrBlank()) {
+        if (!forNewGroup && !tab.groupId.isNullOrBlank()) {
             val curG = tabGroups.find { it.id == tab.groupId }
             if (curG != null) {
                 etGroupName.setText(curG.title)
                 selectedColor = curG.colorHex
             }
         }
+        renderColorSelection()
 
         btnApply.setOnClickListener {
             val name = etGroupName.text.toString().trim()
-            if (name.isNotEmpty()) {
-                var group = tabGroups.find { it.title == name }
-                if (group == null) {
-                    group = TabGroup(System.currentTimeMillis().toString(), name, selectedColor)
-                    tabGroups.add(group)
-                    saveTabGroups()
-                }
-                tab.groupId = group.id
-                Toast.makeText(this, "'${group.title}' 그룹에 지정되었습니다", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-                onComplete()
+            if (name.isEmpty()) {
+                Toast.makeText(this, "그룹 이름을 입력하세요", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
+            var group = tabGroups.find { it.title == name }
+            if (group == null) {
+                group = TabGroup("g" + System.currentTimeMillis(), name, selectedColor)
+                tabGroups.add(group)
+            } else {
+                group.colorHex = selectedColor
+            }
+            saveTabGroups()
+            tab.groupId = group.id
+            tab.groupName = group.title
+            tab.groupColor = group.colorHex
+            saveTabsToPrefs()
+            Toast.makeText(this, "'" + group.title + "' 그룹에 지정되었습니다", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+            if (isTabletLayout()) renderTabletTabStrip()
+            onComplete()
         }
 
         btnRemove.setOnClickListener {
             tab.groupId = null
+            tab.groupName = null
+            tab.groupColor = null
+            saveTabsToPrefs()
             Toast.makeText(this, "그룹이 해제되었습니다", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
+            if (isTabletLayout()) renderTabletTabStrip()
             onComplete()
         }
 
         btnClose.setOnClickListener { dialog.dismiss() }
         dialog.show()
     }
+
+    // 태블릿 탭 롱클릭: 새 그룹 / 그룹 변경 / 그룹 해제
+    private fun showTabGroupActionDialog(tabIndex: Int) {
+        if (tabIndex !in tabs.indices) return
+        val tab = tabs[tabIndex]
+        val dialog = createConfiguredBottomSheetDialog()
+        val view = layoutInflater.inflate(R.layout.dialog_tab_group_action, null)
+        dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
+
+        view.findViewById<TextView>(R.id.tvGroupActionTabTitle)?.text = when {
+            tab.title.isBlank() -> if (tab.isSecurity) "보안 탭" else "새 탭"
+            else -> tab.title
+        }
+        val currentGroup = tabGroups.find { it.id == tab.groupId }
+        view.findViewById<LinearLayout>(R.id.btnActionRemoveGroup)?.apply {
+            isEnabled = currentGroup != null
+            alpha = if (currentGroup != null) 1f else 0.4f
+        }
+
+        view.findViewById<LinearLayout>(R.id.btnActionNewGroup)?.setOnClickListener {
+            dialog.dismiss()
+            showGroupPickerDialog(tab, forNewGroup = true) { renderTabletTabStrip() }
+        }
+        view.findViewById<LinearLayout>(R.id.btnActionChangeGroup)?.setOnClickListener {
+            dialog.dismiss()
+            showGroupChangePicker(tab)
+        }
+        view.findViewById<LinearLayout>(R.id.btnActionRemoveGroup)?.setOnClickListener {
+            tab.groupId = null
+            tab.groupName = null
+            tab.groupColor = null
+            saveTabsToPrefs()
+            renderTabletTabStrip()
+            dialog.dismiss()
+            Toast.makeText(this, "그룹이 해제되었습니다", Toast.LENGTH_SHORT).show()
+        }
+        view.findViewById<Button>(R.id.btnCancelGroupAction)?.setOnClickListener { dialog.dismiss() }
+        view.findViewById<ImageView>(R.id.btnCloseGroupAction)?.setOnClickListener { dialog.dismiss() }
+        dialog.show()
+    }
+
+    private fun showGroupChangePicker(tab: WebTab) {
+        if (tabGroups.isEmpty()) {
+            showGroupPickerDialog(tab, forNewGroup = true) { renderTabletTabStrip() }
+            return
+        }
+        val names = tabGroups.map { it.title }.toTypedArray()
+        val currentIndex = tabGroups.indexOfFirst { it.id == tab.groupId }
+        val options = names + "+ 새 그룹 만들기"
+        AlertDialog.Builder(this)
+            .setTitle("그룹 변경")
+            .setSingleChoiceItems(options, currentIndex) { d, which ->
+                if (which == options.size - 1) {
+                    d.dismiss()
+                    showGroupPickerDialog(tab, forNewGroup = true) { renderTabletTabStrip() }
+                    return@setSingleChoiceItems
+                }
+                val group = tabGroups[which]
+                tab.groupId = group.id
+                tab.groupName = group.title
+                tab.groupColor = group.colorHex
+                saveTabsToPrefs()
+                renderTabletTabStrip()
+                d.dismiss()
+                Toast.makeText(this, "'" + group.title + "' 그룹으로 변경되었습니다", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("닫기", null)
+            .show()
+    }
+
 
     // Bag 보관함 기능 (링크, 이미지, 텍스트 스크랩)
     private fun showBagDialog() {
@@ -1917,10 +2103,12 @@ class MainActivity : AppCompatActivity() {
 
         layoutTranslateProgress.visibility = View.VISIBLE
         pbTranslateSpinner.visibility = View.VISIBLE
-        tvTranslateStatus.text = "페이지 한국어로 번역 준비 중..."
+        val targetLang = getTranslateLang()
+        val targetLabel = translateLangLabel()
+        tvTranslateStatus.text = "페이지 " + targetLabel + "로 번역 준비 중..."
         tvTranslateChipText.text = "번역 중"
 
-        wv.evaluateJavascript(buildTranslateExtractScript()) { raw ->
+        wv.evaluateJavascript(buildTranslateExtractScript(targetLang)) { raw ->
             if (token != translationJobToken) return@evaluateJavascript
             val texts = parseStringArray(decodeJavascriptString(raw))
             if (texts.isEmpty()) {
@@ -1930,15 +2118,71 @@ class MainActivity : AppCompatActivity() {
                 return@evaluateJavascript
             }
 
-            tvTranslateStatus.text = "페이지 한국어로 번역 중 (0 / ${texts.size})..."
+            tvTranslateStatus.text = "페이지 " + targetLabel + "로 번역 중 (0 / ${texts.size})..."
             Thread {
-                runHighSpeedBatchTranslation(wv, token, texts)
+                runHighSpeedBatchTranslation(wv, token, texts, targetLang, targetLabel)
             }.start()
         }
     }
 
-    private fun runHighSpeedBatchTranslation(wv: WebView, token: Int, texts: List<String>) {
-        val total = texts.size
+    // ---------- 외국어 사이트 자동 번역 ----------
+    private fun maybeAutoTranslate(view: WebView?, url: String?) {
+        if (!isAutoTranslateEnabled()) return
+        if (view == null || url == null) return
+        if (!isTranslatableUrl(url)) return
+        if (url.contains("youtube.com")) return
+        val tab = findTabByWebView(view) ?: return
+        if (tab.isSecurity || tab.isTranslated) return
+        if (tab.autoTranslatedUrl == url) return
+        if (view != getCurrentWebView()) return
+        tab.autoTranslatedUrl = url
+        val detectScript = """
+            (function(){
+              try {
+                var l = (document.documentElement.getAttribute('lang') || '').toLowerCase();
+                var b = document.body ? document.body.innerText : '';
+                b = b.replace(/\s+/g, ' ').slice(0, 800);
+                return JSON.stringify({lang: l, text: b});
+              } catch (e) { return JSON.stringify({lang: '', text: ''}); }
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(detectScript) { raw ->
+            try {
+                val obj = JSONObject(decodeJavascriptString(raw))
+                val lang = obj.optString("lang", "")
+                val sample = obj.optString("text", "")
+                if (shouldAutoTranslate(lang, sample) && !getCurrentTab().isTranslated) {
+                    translateCurrentPage()
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
+    private fun shouldAutoTranslate(lang: String, sample: String): Boolean {
+        val target = getTranslateLang()
+        val targetBase = target.substringBefore('-').lowercase(Locale.ROOT)
+        if (sample.trim().length < 40) return false
+        if (lang.length >= 2) {
+            val detected = lang.substring(0, 2).lowercase(Locale.ROOT)
+            return detected != targetBase
+        }
+        val total = sample.length.toFloat()
+        if (total <= 0f) return false
+        fun ratio(pattern: String): Float =
+            Regex(pattern).findAll(sample).count().toFloat() / total
+        val hangul = ratio("[\uAC00-\uD7AF]")
+        val kana = ratio("[\u3040-\u30FF]")
+        val cjk = ratio("[\u4E00-\u9FFF]")
+        val latin = ratio("[A-Za-z]")
+        return when (targetBase) {
+            "ko" -> hangul < 0.05f && (latin > 0.20f || cjk > 0.20f || kana > 0.10f)
+            "ja" -> hangul < 0.02f && kana < 0.03f && (latin > 0.20f || cjk > 0.10f)
+            "zh" -> hangul < 0.02f && cjk < 0.05f && (latin > 0.20f || kana > 0.10f)
+            else -> hangul > 0.10f || kana > 0.10f || cjk > 0.20f
+        }
+    }
+
+    private fun runHighSpeedBatchTranslation(wv: WebView, token: Int, texts: List<String>, targetLang: String, targetLabel: String) {        val total = texts.size
         val batchSize = 30
         var processed = 0
         var applied = 0
@@ -1946,7 +2190,7 @@ class MainActivity : AppCompatActivity() {
             if (token != translationJobToken) return
             val end = minOf(start + batchSize, total)
             val chunkTexts = texts.subList(start, end)
-            val chunkTr = translateBatchWithDictChromeEx(chunkTexts)
+            val chunkTr = translateBatchWithDictChromeEx(chunkTexts, targetLang)
             if (token != translationJobToken) return
 
             processed = end
@@ -1969,7 +2213,7 @@ class MainActivity : AppCompatActivity() {
                             null
                         )
                     }
-                    tvTranslateStatus.text = "페이지 한국어로 번역 중 (" + progress + " / " + total + ")"
+                    tvTranslateStatus.text = "페이지 " + targetLabel + "로 번역 중 (" + progress + " / " + total + ")"
                 }
             }
         }
@@ -1984,7 +2228,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 pbTranslateSpinner.visibility = View.GONE
                 tvTranslateStatus.text = "번역 완료 (" + appliedTotal + " / " + total + ")"
-                Toast.makeText(this@MainActivity, "페이지를 한국어로 번역했습니다 (" + appliedTotal + "개 문단)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "페이지를 " + targetLabel + "로 번역했습니다 (" + appliedTotal + "개 문단)", Toast.LENGTH_SHORT).show()
                 layoutTranslateProgress.postDelayed({
                     if (token == translationJobToken) {
                         layoutTranslateProgress.visibility = View.GONE
@@ -2008,7 +2252,22 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "원문으로 복원되었습니다", Toast.LENGTH_SHORT).show()
     }
 
-    private fun buildTranslateExtractScript(): String = """
+    private fun buildTranslateExtractScript(targetLang: String): String {
+        val targetPat = when (targetLang) {
+            "ko" -> "[\\uAC00-\\uD7AF]"
+            "ja" -> "[\\u3040-\\u30FF]"
+            "zh-CN" -> "[\\u4E00-\\u9FFF]"
+            else -> "(?!)  "
+        }
+        val hasTargetScript = targetLang == "ko" || targetLang == "ja" || targetLang == "zh-CN"
+        val otherPat = when (targetLang) {
+            "ko" -> "[A-Za-z\\u00C0-\\u024F\\u0370-\\u03FF\\u3040-\\u30FF\\u4E00-\\u9FFF]"
+            "ja" -> "[A-Za-z\\u00C0-\\u024F\\uAC00-\\uD7AF]"
+            "zh-CN" -> "[A-Za-z\\u00C0-\\u024F\\uAC00-\\uD7AF\\u3040-\\u30FF]"
+            else -> "[A-Za-z\\u00C0-\\u024F\\uAC00-\\uD7AF\\u3040-\\u30FF\\u4E00-\\u9FFF\\u0370-\\u03FF]"
+        }
+        val hasTargetScriptValue = hasTargetScript
+        return """
 (function () {
   try {
     window.__creamApplyBatch = function (map) {
@@ -2040,8 +2299,9 @@ class MainActivity : AppCompatActivity() {
     if (!document.body) return '[]';
     var skipTags = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, INPUT: 1, SELECT: 1, OPTION: 1, CODE: 1, PRE: 1, KBD: 1, SAMP: 1, SVG: 1, AUDIO: 1, VIDEO: 1 };
     var skipSelector = '#cream_translate_host, .skiptranslate, [contenteditable="true"], [translate="no"], .notranslate';
-    var latinPattern = /[A-Za-z\u00C0-\u04FF\u0370-\u03FF\u3040-\u30FF\u4E00-\u9FFF]/;
-    var hangulPattern = /[\uAC00-\uD7AF]/;
+    var targetPattern = /${targetPat}/;
+    var otherPattern = /${otherPat}/;
+    var hasTargetScript = $hasTargetScriptValue;
     var nodes = [];
     var nodeLimit = 2000;
 
@@ -2058,8 +2318,8 @@ class MainActivity : AppCompatActivity() {
       if (!t) return false;
       var trimmed = t.trim();
       if (trimmed.length < 2 || trimmed.length > 1000) return false;
-      if (hangulPattern.test(trimmed) && !latinPattern.test(trimmed)) return false;
-      if (!latinPattern.test(trimmed)) return false;
+      if (hasTargetScript && targetPattern.test(trimmed) && !otherPattern.test(trimmed)) return false;
+      if (!otherPattern.test(trimmed)) return false;
       var p = n.parentNode;
       if (!p || !p.nodeName) return false;
       if (skipTags[p.nodeName.toUpperCase()]) return false;
@@ -2125,6 +2385,7 @@ class MainActivity : AppCompatActivity() {
   }
 })();
 """.trimIndent()
+    }
 
     private fun decodeJavascriptString(raw: String?): String {
         if (raw.isNullOrBlank() || raw == "null") return ""
@@ -2153,7 +2414,7 @@ class MainActivity : AppCompatActivity() {
         return json.replace("\u2028", " ").replace("\u2029", " ")
     }
 
-    private fun translateBatchWithDictChromeEx(texts: List<String>): List<String> {
+    private fun translateBatchWithDictChromeEx(texts: List<String>, targetLang: String = "ko"): List<String> {
         if (texts.isEmpty()) return emptyList()
         var conn: HttpURLConnection? = null
         return try {
@@ -2164,7 +2425,7 @@ class MainActivity : AppCompatActivity() {
                 pairs.add("q=" + URLEncoder.encode(valToEncode, "UTF-8"))
             }
             val postData = pairs.joinToString("&").toByteArray(Charsets.UTF_8)
-            val url = URL("https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=ko")
+            val url = URL("https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=" + URLEncoder.encode(targetLang, "UTF-8"))
             conn = url.openConnection() as HttpURLConnection
             conn.connectTimeout = 6000
             conn.readTimeout = 9000
@@ -2512,7 +2773,26 @@ class MainActivity : AppCompatActivity() {
         val inactiveText: String
     )
 
+    private fun hexColor(color: Int): String = String.format("#%06X", 0xFFFFFF and color)
+
     private fun tabStripColors(theme: String): TabStripColors {
+        if (theme.startsWith("theme-custom")) {
+            val accent = getCustomAccentColor()
+            val dark = theme.endsWith("-dark")
+            return if (dark) TabStripColors(
+                hexColor(mixColor(accent, Color.BLACK, 0.96f)),
+                hexColor(mixColor(accent, Color.BLACK, 0.80f)),
+                hexColor(mixColor(accent, Color.BLACK, 0.90f)),
+                "#FFFFFF",
+                hexColor(mixColor(accent, Color.WHITE, 0.55f))
+            ) else TabStripColors(
+                hexColor(mixColor(accent, Color.WHITE, 0.72f)),
+                hexColor(mixColor(accent, Color.WHITE, 0.86f)),
+                hexColor(mixColor(accent, Color.WHITE, 0.94f)),
+                "#111111",
+                "#52525B"
+            )
+        }
         return when (theme) {
             "theme-default-light" -> TabStripColors("#DCDFE4", "#E5E7EB", "#F2F3F5", "#111111", "#52525B")
             "theme-pink-dark" -> TabStripColors("#1B0D10", "#261316", "#301A1F", "#FFFFFF", "#D9A5AF")
@@ -2610,6 +2890,10 @@ class MainActivity : AppCompatActivity() {
             btnClose.imageTintList = ColorStateList.valueOf(textColor)
             btnClose.visibility = if (tabs.size > 1) View.VISIBLE else View.GONE
             root.setOnClickListener { switchTab(i) }
+            root.setOnLongClickListener {
+                showTabGroupActionDialog(i)
+                true
+            }
             btnClose.setOnClickListener { closeTab(i) }
             layoutTabletTabsContainer.addView(item)
         }
@@ -2625,6 +2909,19 @@ class MainActivity : AppCompatActivity() {
         addItem.setOnClickListener { addNewTab() }
         btnTabletNewTab = addItem
         layoutTabletTabsContainer.addView(addItem)
+
+        // 새 탭 그룹 만들기 버튼
+        val groupItem = layoutInflater.inflate(R.layout.item_tablet_new_group, layoutTabletTabsContainer, false)
+        groupItem.findViewById<ImageView>(R.id.ivTabletNewGroupIcon)?.imageTintList = ColorStateList.valueOf(inactiveText)
+        groupItem.findViewById<TextView>(R.id.tvTabletNewGroupLabel)?.setTextColor(inactiveText)
+        groupItem.backgroundTintList = ColorStateList.valueOf(inactiveBg)
+        groupItem.setOnClickListener {
+            if (tabs.isNotEmpty()) {
+                showGroupPickerDialog(getCurrentTab(), forNewGroup = true) { renderTabletTabStrip() }
+            }
+        }
+        btnTabletNewGroup = groupItem
+        layoutTabletTabsContainer.addView(groupItem)
 
         layoutTabletTabStrip.post { layoutTabletTabStrip.scrollTo(savedScroll, 0) }
     }
@@ -2672,6 +2969,33 @@ class MainActivity : AppCompatActivity() {
     )
 
     private fun sidebarPalette(theme: String): SidebarPalette {
+        if (theme.startsWith("theme-custom")) {
+            val accent = getCustomAccentColor()
+            val dark = theme.endsWith("-dark")
+            return if (dark) SidebarPalette(
+                bg = mixColor(accent, Color.BLACK, 0.92f),
+                headerBg = mixColor(accent, Color.BLACK, 0.85f),
+                textPrimary = Color.parseColor("#F4F4F5"),
+                textSecondary = Color.parseColor("#A1A1AA"),
+                accentBg = accent,
+                accentFg = contrastOn(accent),
+                divider = mixColor(accent, Color.WHITE, 0.18f),
+                cardDrawable = R.drawable.bg_result_box_dark,
+                inputDrawable = R.drawable.bg_input_box_dark,
+                pageCardDrawable = R.drawable.bg_page_card_dark
+            ) else SidebarPalette(
+                bg = mixColor(accent, Color.WHITE, 0.95f),
+                headerBg = Color.WHITE,
+                textPrimary = Color.parseColor("#111111"),
+                textSecondary = Color.parseColor("#71717A"),
+                accentBg = accent,
+                accentFg = contrastOn(accent),
+                divider = mixColor(accent, Color.WHITE, 0.78f),
+                cardDrawable = R.drawable.bg_result_box,
+                inputDrawable = R.drawable.bg_input_box,
+                pageCardDrawable = R.drawable.bg_bottom_sheet
+            )
+        }
         return when (theme) {
             "theme-default-light" -> SidebarPalette(
                 Color.parseColor("#F9FAFB"),
@@ -2784,7 +3108,7 @@ class MainActivity : AppCompatActivity() {
             R.id.btnSidebarMenuSecurity, R.id.btnSidebarMenuFind, R.id.btnSidebarMenuReader,
             R.id.btnSidebarMenuTranslate, R.id.btnSidebarMenuDesktop, R.id.btnSidebarMenuPrint,
             R.id.btnSidebarMenuSavePdf, R.id.btnSidebarMenuCapture, R.id.btnSidebarMenuPip,
-            R.id.btnSidebarMenuSettings
+            R.id.btnSidebarMenuYoutube, R.id.btnSidebarMenuSettings
         )
         for (menuId in menuIds) {
             findViewById<TextView>(menuId)?.apply {
@@ -2905,6 +3229,54 @@ class MainActivity : AppCompatActivity() {
         return row
     }
 
+    private fun sidebarChipScrollRow(
+        options: List<Pair<String, String>>,
+        selectedKey: String,
+        onSelect: (String) -> Unit
+    ): HorizontalScrollView {
+        val palette = sidebarPalette(getAppThemeMode())
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        for ((label, key) in options) {
+            val chip = TextView(this).apply {
+                text = label
+                textSize = 10.5f
+                gravity = android.view.Gravity.CENTER
+                setPadding(dpToPx(11), dpToPx(7), dpToPx(11), dpToPx(7))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = dpToPx(5) }
+                setBackgroundResource(R.drawable.bg_pill_badge)
+                if (key == selectedKey) {
+                    backgroundTintList = ColorStateList.valueOf(palette.accentBg)
+                    setTextColor(palette.accentFg)
+                } else {
+                    backgroundTintList = ColorStateList.valueOf(palette.headerBg)
+                    setTextColor(palette.textSecondary)
+                }
+                setOnClickListener {
+                    onSelect(key)
+                    post { renderSidebarSettingsPanel() }
+                }
+            }
+            row.addView(chip)
+        }
+        return HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            addView(row)
+        }
+    }
+
     private fun renderSidebarSettingsPanel() {
         if (!::layoutSidebarSettingsContainer.isInitialized) return
         val palette = sidebarPalette(getAppThemeMode())
@@ -2924,8 +3296,43 @@ class MainActivity : AppCompatActivity() {
             ) { key -> setAppThemeMode(key) }
         )
 
-        container.addView(sidebarSectionLabel("브라우징"))
+        container.addView(sidebarSectionLabel("커스텀 테마 색상"))
         container.addView(
+            sidebarChipScrollRow(
+                CUSTOM_ACCENTS,
+                getCustomAccentHex()
+            ) { hex ->
+                setCustomTheme(hex, getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .getBoolean("custom_theme_is_dark", true))
+            }
+        )
+        container.addView(
+            sidebarChoiceRow(
+                listOf("라이트" to "light", "다크" to "dark"),
+                if (getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        .getBoolean("custom_theme_is_dark", true)
+                ) "dark" else "light"
+            ) { key ->
+                setCustomTheme(getCustomAccentHex(), key == "dark")
+            }
+        )
+
+        container.addView(sidebarSectionLabel("번역"))
+        container.addView(
+            sidebarChipScrollRow(
+                translateLanguages.map { it.label to it.code },
+                getTranslateLang()
+            ) { code -> setTranslateLang(code) }
+        )
+        container.addView(
+            sidebarSwitchRow(
+                "외국어 사이트 자동 번역",
+                "외국어 페이지를 열면 선택한 언어로 자동 번역",
+                isAutoTranslateEnabled()
+            ) { enabled -> setAutoTranslateEnabled(enabled) }
+        )
+
+        container.addView(sidebarSectionLabel("브라우징"))        container.addView(
             sidebarSwitchRow(
                 "웹페이지 스마트 다크모드",
                 "흰색 웹사이트 본문을 다크로 자동 변환",
@@ -3192,6 +3599,248 @@ class MainActivity : AppCompatActivity() {
         startDownloadFile(media, "", mime, 0L)
         tab.mediaUrl = null
         updateMediaChip()
+    }
+
+    // ---------- 유튜브 전용: 백그라운드 재생·PIP·미디어 저장 ----------
+    private fun isYoutubeUrl(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        return try {
+            val host = Uri.parse(url).host?.lowercase(Locale.ROOT) ?: return false
+            host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" || host.endsWith(".youtu.be")
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun isYoutubeVideoPage(url: String?): Boolean {
+        if (!isYoutubeUrl(url)) return false
+        val u = url ?: return false
+        return u.contains("/watch") || u.contains("/shorts/") || u.contains("/live/") ||
+            (Uri.parse(u).host?.endsWith("youtu.be") == true)
+    }
+
+    // 유튜브가 백그라운드 전환을 감지해 자동 일시정지하는 동작을 차단한다
+    private fun injectYoutubeBackgroundAudio(wv: WebView) {
+        if (!isBackgroundAudioEnabled()) return
+        val script = """
+            (function() {
+              try {
+                Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
+                Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
+                document.hasFocus = function() { return true; };
+                window.addEventListener('visibilitychange', function(e) { e.stopImmediatePropagation(); }, true);
+                window.addEventListener('webkitvisibilitychange', function(e) { e.stopImmediatePropagation(); }, true);
+                window.addEventListener('blur', function(e) { e.stopImmediatePropagation(); }, true);
+                window.__creamBackgroundAudio = true;
+              } catch (e) {}
+            })();
+        """.trimIndent()
+        wv.evaluateJavascript(script, null)
+    }
+
+    private fun updateYoutubePipChip(url: String?) {
+        if (!::btnQuickYoutubePipChip.isInitialized) return
+        val show = isYoutubeVideoPage(url)
+        btnQuickYoutubePipChip.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        val theme = getAppThemeMode()
+        val dark = theme.endsWith("-dark")
+        val bg = if (theme.startsWith("theme-custom")) {
+            mixColor(getCustomAccentColor(), if (dark) Color.BLACK else Color.WHITE, if (dark) 0.68f else 0.86f)
+        } else if (dark) Color.parseColor("#262930") else Color.parseColor("#E5E7EB")
+        val fg = if (dark) Color.WHITE else Color.parseColor("#111111")
+        btnQuickYoutubePipChip.backgroundTintList = ColorStateList.valueOf(bg)
+        ivYoutubePipIcon.imageTintList = ColorStateList.valueOf(fg)
+        tvYoutubePipText.setTextColor(fg)
+    }
+
+    private fun enterYoutubePip() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Toast.makeText(this, "이 안드로이드 버전에서는 PIP가 지원되지 않습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val wv = getCurrentWebView()
+        val query = "(function(){try{var v=document.querySelector('video');if(!v)return '';var r=v.getBoundingClientRect();return Math.round(r.width)+'x'+Math.round(r.height);}catch(e){return '';}})();"
+        wv.evaluateJavascript(query) { raw ->
+            val builder = PictureInPictureParams.Builder()
+            val size = decodeJavascriptString(raw)
+            val parts = size.split("x")
+            if (parts.size == 2) {
+                val width = parts[0].toIntOrNull() ?: 0
+                val height = parts[1].toIntOrNull() ?: 0
+                if (width > 0 && height > 0) {
+                    builder.setAspectRatio(android.util.Rational(width, height))
+                }
+            }
+            try {
+                enterPictureInPictureMode(builder.build())
+            } catch (e: Exception) {
+                Toast.makeText(this, "PIP 모드를 시작할 수 없습니다", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun youtubeStreamInfoScript(): String = """
+        (function() {
+          try {
+            var pr = window.ytInitialPlayerResponse;
+            if (!pr || !pr.streamingData) {
+              return JSON.stringify({ error: 'no_player_response' });
+            }
+            var sd = pr.streamingData;
+            var formats = (sd.formats || []).concat(sd.adaptiveFormats || []);
+            var out = {
+              title: (pr.videoDetails && pr.videoDetails.title) || document.title || 'youtube',
+              video: null,
+              audio: null,
+              videoCount: 0,
+              audioCount: 0
+            };
+            for (var i = 0; i < formats.length; i++) {
+              var f = formats[i];
+              if (!f.url) continue;
+              var mime = f.mimeType || '';
+              if (mime.indexOf('video/mp4') === 0) {
+                out.videoCount++;
+                var isMuxed = !!(f.audioQuality);
+                if (!out.video && isMuxed) {
+                  out.video = { url: f.url, label: f.qualityLabel || 'MP4', size: parseInt(f.contentLength || '0', 10) || 0 };
+                }
+              }
+              if (mime.indexOf('audio/') === 0) {
+                out.audioCount++;
+                if (!out.audio) {
+                  var ext = mime.indexOf('audio/webm') === 0 ? 'webm' : 'm4a';
+                  out.audio = { url: f.url, label: (f.audioQuality || 'audio'), size: parseInt(f.contentLength || '0', 10) || 0, ext: ext };
+                }
+              }
+            }
+            if (!out.video) {
+              for (var j = 0; j < formats.length; j++) {
+                var g = formats[j];
+                if (g.url && (g.mimeType || '').indexOf('video/mp4') === 0) {
+                  out.video = { url: g.url, label: g.qualityLabel || 'MP4', size: parseInt(g.contentLength || '0', 10) || 0 };
+                  break;
+                }
+              }
+            }
+            return JSON.stringify(out);
+          } catch (e) {
+            return JSON.stringify({ error: String(e) });
+          }
+        })();
+    """.trimIndent()
+
+    private fun sanitizeFileName(raw: String): String {
+        val cleaned = raw.replace(Regex("[\\\\/:*?\"<>|]"), " ").replace("\n", " ").trim()
+        val sliced = if (cleaned.length > 60) cleaned.substring(0, 60) else cleaned
+        return if (sliced.isBlank()) "youtube_media" else sliced
+    }
+
+    private fun startNamedDownload(url: String, filename: String, mimetype: String, contentLength: Long) {
+        try {
+            val request = DownloadManager.Request(Uri.parse(url)).apply {
+                setMimeType(mimetype)
+                setTitle(filename)
+                setDescription("Cream Browser에서 다운로드 중...")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+                val cookie = CookieManager.getInstance().getCookie(url)
+                if (!cookie.isNullOrBlank()) addRequestHeader("Cookie", cookie)
+                addRequestHeader("User-Agent", getCurrentWebView().settings.userAgentString)
+                addRequestHeader("Referer", "https://www.youtube.com/")
+            }
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            dm?.enqueue(request)
+            saveDownloadItem(
+                DownloadedFileItem(
+                    filename, url,
+                    Environment.DIRECTORY_DOWNLOADS + "/" + filename,
+                    contentLength, System.currentTimeMillis()
+                )
+            )
+            Toast.makeText(this, "다운로드를 시작합니다: " + filename, Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "다운로드 요청 실패: " + (e.message ?: ""), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showYoutubeDownloadDialog() {
+        val wv = getCurrentWebView()
+        if (!isYoutubeVideoPage(wv.url)) {
+            Toast.makeText(this, "유튜브 동영상 페이지에서만 사용할 수 있습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dialog = createConfiguredBottomSheetDialog()
+        val view = layoutInflater.inflate(R.layout.dialog_youtube_download, null)
+        dialog.setContentView(view)
+        applyTouchAnimationToAll(view)
+
+        val tvTitle = view.findViewById<TextView>(R.id.tvYoutubeVideoTitle)
+        val tvStatus = view.findViewById<TextView>(R.id.tvYoutubeDownloadStatus)
+        val btnVideo = view.findViewById<Button>(R.id.btnYoutubeSaveVideo)
+        val btnAudio = view.findViewById<Button>(R.id.btnYoutubeSaveAudio)
+
+        tvTitle.text = wv.title ?: "유튜브 동영상"
+        btnVideo.isEnabled = false
+        btnAudio.isEnabled = false
+        btnVideo.alpha = 0.5f
+        btnAudio.alpha = 0.5f
+
+        wv.evaluateJavascript(youtubeStreamInfoScript()) { raw ->
+            var videoUrl: String? = null
+            var audioUrl: String? = null
+            var audioExt = "m4a"
+            var baseName = "youtube_media"
+            var titleText = wv.title ?: "유튜브 동영상"
+            var errorText: String? = null
+            try {
+                val obj = JSONObject(decodeJavascriptString(raw))
+                if (obj.has("error")) {
+                    errorText = obj.optString("error")
+                } else {
+                    titleText = obj.optString("title", titleText)
+                    baseName = sanitizeFileName(titleText)
+                    val v = obj.optJSONObject("video")
+                    if (v != null) videoUrl = v.optString("url", "").ifBlank { null }
+                    val a = obj.optJSONObject("audio")
+                    if (a != null) {
+                        audioUrl = a.optString("url", "").ifBlank { null }
+                        audioExt = a.optString("ext", "m4a")
+                    }
+                }
+            } catch (e: Exception) {
+                errorText = e.message
+            }
+
+            tvTitle.text = titleText
+            btnVideo.isEnabled = videoUrl != null
+            btnAudio.isEnabled = audioUrl != null
+            btnVideo.alpha = if (videoUrl != null) 1f else 0.45f
+            btnAudio.alpha = if (audioUrl != null) 1f else 0.45f
+            tvStatus.text = when {
+                videoUrl != null && audioUrl != null -> "동영상(MP4)과 원본 음원을 저장할 수 있습니다. 음원은 MP3 변환 없이 원본 트랙으로 저장됩니다."
+                videoUrl != null -> "동영상(MP4)만 저장할 수 있습니다. 이 영상은 음원 트랙이 분리되어 있지 않습니다."
+                audioUrl != null -> "음원 트랙만 저장할 수 있습니다. 화면 영상은 제공되지 않습니다."
+                errorText != null -> "이 영상의 스트림 정보를 읽지 못했습니다. 재생을 한 번 시작한 뒤 다시 시도해 주세요."
+                else -> "저장 가능한 스트림을 찾지 못했습니다. 유튜브 정책으로 제한된 영상일 수 있습니다."
+            }
+
+            btnVideo.setOnClickListener {
+                val target = videoUrl ?: return@setOnClickListener
+                startNamedDownload(target, baseName + ".mp4", "video/mp4", 0L)
+                dialog.dismiss()
+            }
+            btnAudio.setOnClickListener {
+                val target = audioUrl ?: return@setOnClickListener
+                val mime = if (audioExt == "webm") "audio/webm" else "audio/mp4"
+                startNamedDownload(target, baseName + "." + audioExt, mime, 0L)
+                dialog.dismiss()
+            }
+        }
+
+        view.findViewById<ImageView>(R.id.btnCloseYoutubeDownload)?.setOnClickListener { dialog.dismiss() }
+        dialog.show()
     }
 
     // ---------- 데이터 절약 모드 ----------
@@ -3593,6 +4242,118 @@ class MainActivity : AppCompatActivity() {
             updateThemeChips()
         }
         updateThemeChips()
+
+        // ---------- 커스텀 테마 색상 + 라이트/다크 ----------
+        val accentRow = view.findViewById<LinearLayout>(R.id.layoutCustomAccentRow)
+        val btnCustomModeLight = view.findViewById<TextView>(R.id.btnCustomModeLight)
+        val btnCustomModeDark = view.findViewById<TextView>(R.id.btnCustomModeDark)
+        var selectedAccent = getCustomAccentHex()
+
+        fun renderModeChips() {
+            val isDark = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean("custom_theme_is_dark", true)
+            val active = isCustomThemeActive()
+            for ((chip, dark) in listOf(btnCustomModeLight to false, btnCustomModeDark to true)) {
+                val selected = active && dark == isDark
+                chip.setBackgroundResource(R.drawable.bg_pill_badge)
+                if (selected) {
+                    chip.backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                    chip.setTextColor(Color.WHITE)
+                } else {
+                    chip.backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_light))
+                    chip.setTextColor(getColor(R.color.text_muted))
+                }
+            }
+        }
+
+        fun renderAccentChips() {
+            accentRow.removeAllViews()
+            for ((hex, label) in CUSTOM_ACCENTS) {
+                accentRow.addView(buildAccentChip(hex, label, hex.equals(selectedAccent, true)) {
+                    selectedAccent = hex
+                    setCustomTheme(
+                        hex,
+                        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                            .getBoolean("custom_theme_is_dark", true)
+                    )
+                    renderAccentChips()
+                    renderModeChips()
+                    updateThemeChips()
+                })
+            }
+        }
+
+        renderAccentChips()
+        renderModeChips()
+        btnCustomModeLight.setOnClickListener {
+            setCustomTheme(selectedAccent, false)
+            renderModeChips()
+            updateThemeChips()
+        }
+        btnCustomModeDark.setOnClickListener {
+            setCustomTheme(selectedAccent, true)
+            renderModeChips()
+            updateThemeChips()
+        }
+
+        // ---------- 시작페이지 배경 이미지 ----------
+        val tvBgStatus = view.findViewById<TextView>(R.id.tvStartBackgroundStatus)
+        fun updateBgStatus() {
+            tvBgStatus.text = if (hasCustomStartBackground())
+                "현재 배경 이미지가 적용되어 있습니다."
+            else
+                "갤러리 이미지를 홈 화면 배경으로 사용합니다."
+        }
+        updateBgStatus()
+        view.findViewById<Button>(R.id.btnPickStartBackground)?.setOnClickListener {
+            pickCustomBackgroundImage()
+        }
+        view.findViewById<Button>(R.id.btnResetStartBackground)?.setOnClickListener {
+            clearCustomStartBackground()
+            updateBgStatus()
+            Toast.makeText(this, "배경 이미지가 초기화되었습니다", Toast.LENGTH_SHORT).show()
+        }
+
+        // ---------- 번역 언어 + 자동 번역 ----------
+        val langRow = view.findViewById<LinearLayout>(R.id.layoutTranslateLangChips)
+        var selectedLang = getTranslateLang()
+        fun renderLangChips() {
+            langRow.removeAllViews()
+            for (lang in translateLanguages) {
+                val chip = TextView(this).apply {
+                    text = lang.label
+                    textSize = 11.5f
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(dpToPx(14), 0, dpToPx(14), 0)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dpToPx(32)
+                    ).apply { marginEnd = dpToPx(6) }
+                    setBackgroundResource(R.drawable.bg_pill_badge)
+                    if (lang.code == selectedLang) {
+                        backgroundTintList = ColorStateList.valueOf(getColor(R.color.primary_black))
+                        setTextColor(Color.WHITE)
+                    } else {
+                        backgroundTintList = ColorStateList.valueOf(getColor(R.color.bg_light))
+                        setTextColor(getColor(R.color.text_muted))
+                    }
+                    setOnClickListener {
+                        selectedLang = lang.code
+                        setTranslateLang(lang.code)
+                        tvTranslateChipText.text = "번역"
+                        renderLangChips()
+                    }
+                }
+                langRow.addView(chip)
+            }
+        }
+        renderLangChips()
+
+        val switchAutoTranslate = view.findViewById<SwitchMaterial>(R.id.switchAutoTranslate)
+        switchAutoTranslate?.isChecked = isAutoTranslateEnabled()
+        switchAutoTranslate?.setOnCheckedChangeListener { _, checked ->
+            setAutoTranslateEnabled(checked)
+        }
 
         // 사용자 이름 설정 뷰
         val etSettingUserName = view.findViewById<EditText>(R.id.etSettingUserName)
@@ -4511,6 +5272,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btnSidebarMenuQrCode)?.setOnClickListener { showQrCodeDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuCapture)?.setOnClickListener { captureFullPageScreenshot() }
         findViewById<TextView>(R.id.btnSidebarMenuPip)?.setOnClickListener { enterPipMode() }
+        findViewById<TextView>(R.id.btnSidebarMenuYoutube)?.setOnClickListener { showYoutubeDownloadDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuSettings)?.setOnClickListener { showSettingsDialog() }
 
         btnSidebarQuickSummary.setOnClickListener {
@@ -4698,6 +5460,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             btnQuickTranslateChip.visibility = View.GONE
         }
+        updateYoutubePipChip(if (isStart) null else url)
     }
 
     private fun hideKeyboard(view: View) {
@@ -4893,6 +5656,293 @@ class MainActivity : AppCompatActivity() {
         return resources.configuration.screenWidthDp >= 600 || resources.configuration.smallestScreenWidthDp >= 600
     }
 
+    // ---------- 커스텀 테마 (사용자 지정 색상 + 라이트/다크) ----------
+    private fun getCustomAccentHex(): String {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("custom_theme_accent", "#3B82F6") ?: "#3B82F6"
+    }
+
+    private fun getCustomAccentColor(): Int {
+        return try {
+            Color.parseColor(getCustomAccentHex())
+        } catch (e: Exception) {
+            Color.parseColor("#3B82F6")
+        }
+    }
+
+    private fun isCustomDarkMode(): Boolean {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean("custom_theme_is_dark", true)
+    }
+
+    private fun isCustomThemeActive(): Boolean = getAppThemeMode().startsWith("theme-custom")
+
+    private fun mixColor(base: Int, target: Int, amount: Float): Int {
+        val a = minOf(1f, maxOf(0f, amount))
+        val r = (Color.red(target) * a + Color.red(base) * (1f - a)).roundToInt()
+        val g = (Color.green(target) * a + Color.green(base) * (1f - a)).roundToInt()
+        val b = (Color.blue(target) * a + Color.blue(base) * (1f - a)).roundToInt()
+        return Color.rgb(r, g, b)
+    }
+
+    private fun contrastOn(color: Int): Int {
+        return if (Color.luminance(color) > 0.55f) Color.parseColor("#111111") else Color.WHITE
+    }
+
+    private fun setCustomTheme(accentHex: String, isDark: Boolean) {
+        val mode = if (isDark) "theme-custom-dark" else "theme-custom-light"
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("custom_theme_accent", accentHex)
+            .putBoolean("custom_theme_is_dark", isDark)
+            .putString("creamy_theme_mode", mode)
+            .apply()
+        applyThemeToViews(mode)
+        syncStartPageTheme()
+    }
+
+    private fun applyCustomThemeToViews(isDark: Boolean) {
+        val accent = getCustomAccentColor()
+        val onAccent = contrastOn(accent)
+        val topBg = if (isDark) mixColor(accent, Color.BLACK, 0.87f) else mixColor(accent, Color.WHITE, 0.80f)
+        val addressBg = if (isDark) mixColor(accent, Color.BLACK, 0.74f) else Color.WHITE
+        val textColor = if (isDark) Color.WHITE else Color.parseColor("#111111")
+        val hintColor = if (isDark) mixColor(accent, Color.WHITE, 0.45f) else Color.parseColor("#666666")
+        val chipBg = if (isDark) mixColor(accent, Color.BLACK, 0.68f) else mixColor(accent, Color.WHITE, 0.86f)
+        val barBg = if (isDark) topBg else Color.WHITE
+
+        layoutTopBar.setBackgroundColor(topBg)
+        layoutAddressBar.backgroundTintList = ColorStateList.valueOf(addressBg)
+        etBrowserUrl.setTextColor(textColor)
+        etBrowserUrl.setHintTextColor(hintColor)
+        for (icon in intArrayOf(
+            R.id.ivUrlIcon, R.id.btnTopBack, R.id.btnTopForward, R.id.btnTopReload,
+            R.id.btnTopHome, R.id.btnTopMenu, R.id.btnMobileReload
+        )) {
+            (findViewById<View>(icon) as? ImageView)?.imageTintList = ColorStateList.valueOf(textColor)
+        }
+        layoutBottomBar.setBackgroundColor(barBg)
+        for (icon in intArrayOf(R.id.btnNavBack, R.id.btnNavForward, R.id.btnNavHome)) {
+            (findViewById<View>(icon) as? ImageView)?.imageTintList = ColorStateList.valueOf(textColor)
+        }
+        tvNavTabCount.setBackgroundResource(if (isDark) R.drawable.bg_tab_counter_dark else R.drawable.bg_tab_counter_light)
+        tvNavTabCount.setTextColor(textColor)
+
+        btnQuickTranslateChip.backgroundTintList = ColorStateList.valueOf(chipBg)
+        ivTranslateChipIcon.imageTintList = ColorStateList.valueOf(textColor)
+        tvTranslateChipText.setTextColor(textColor)
+        layoutTranslateProgress.setBackgroundColor(addressBg)
+        tvTranslateStatus.setTextColor(textColor)
+        pbTranslateSpinner.indeterminateTintList = ColorStateList.valueOf(textColor)
+        btnCloseTranslateProgress.imageTintList = ColorStateList.valueOf(hintColor)
+        layoutSidebar.setBackgroundColor(if (isDark) mixColor(accent, Color.BLACK, 0.92f) else mixColor(accent, Color.WHITE, 0.95f))
+        rootLayout.setBackgroundColor(if (isDark) mixColor(accent, Color.BLACK, 0.95f) else mixColor(accent, Color.WHITE, 0.93f))
+        layoutSearchSuggestions.setBackgroundColor(if (isDark) mixColor(accent, Color.BLACK, 0.85f) else Color.WHITE)
+
+        val mediaChipBg = if (isDark) mixColor(accent, Color.BLACK, 0.68f) else mixColor(accent, Color.WHITE, 0.86f)
+        btnQuickMediaDownloadChip.backgroundTintList = ColorStateList.valueOf(mediaChipBg)
+        tvMediaChipText.setTextColor(textColor)
+        ivMediaChipIcon.imageTintList = ColorStateList.valueOf(textColor)
+        progressBar.progressTintList = ColorStateList.valueOf(accent)
+        tvTopSecurityBadge.backgroundTintList = ColorStateList.valueOf(accent)
+        tvTopSecurityBadge.setTextColor(onAccent)
+    }
+
+    private fun syncStartPageTheme() {
+        val theme = getAppThemeMode()
+        val script = if (theme.startsWith("theme-custom")) {
+            "if (window.setCustomTheme) { window.setCustomTheme('${getCustomAccentHex()}', ${if (theme.endsWith("-dark")) "true" else "false"}); }"
+        } else {
+            "if (window.setTheme) { window.setTheme('$theme'); }"
+        }
+        for (tab in tabs) {
+            val current = tab.webView.url
+            if (current == START_PAGE_URL) {
+                tab.webView.evaluateJavascript(script, null)
+            }
+        }
+    }
+
+    private fun buildAccentChip(hex: String, label: String, selected: Boolean, onPick: () -> Unit): LinearLayout {
+        val accent = try { Color.parseColor(hex) } catch (e: Exception) { Color.BLACK }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(8), dpToPx(6), dpToPx(10), dpToPx(6))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = dpToPx(6) }
+            setBackgroundResource(R.drawable.bg_pill_badge)
+            backgroundTintList = ColorStateList.valueOf(if (selected) mixColor(accent, Color.WHITE, 0.75f) else Color.parseColor("#F4F4F5"))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onPick() }
+        }
+        val dot = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { marginEnd = dpToPx(6) }
+            setBackgroundResource(R.drawable.bg_tab_counter)
+            backgroundTintList = ColorStateList.valueOf(accent)
+        }
+        val text = TextView(this).apply {
+            this.text = label
+            textSize = 11.5f
+            setTextColor(Color.parseColor("#111111"))
+            setTypeface(null, if (selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        }
+        row.addView(dot)
+        row.addView(text)
+        return row
+    }
+
+    // ---------- 번역 언어 설정 ----------
+    private fun getTranslateLang(): String {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("translate_target_lang", "ko") ?: "ko"
+    }
+
+    private fun setTranslateLang(code: String) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("translate_target_lang", code)
+            .apply()
+    }
+
+    private fun translateLangLabel(): String {
+        val code = getTranslateLang()
+        return translateLanguages.firstOrNull { it.code == code }?.label ?: "한국어"
+    }
+
+    private fun isAutoTranslateEnabled(): Boolean {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean("auto_translate_enabled", false)
+    }
+
+    private fun setAutoTranslateEnabled(enabled: Boolean) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("auto_translate_enabled", enabled)
+            .apply()
+    }
+
+    private fun showTranslateLanguagePicker() {
+        val labels = translateLanguages.map { it.label }.toTypedArray()
+        val currentIndex = translateLanguages.indexOfFirst { it.code == getTranslateLang() }.coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("번역할 언어 선택")
+            .setSingleChoiceItems(labels, currentIndex) { d, which ->
+                setTranslateLang(translateLanguages[which].code)
+                tvTranslateChipText.text = if (getCurrentTab().isTranslated) "원문" else "번역"
+                Toast.makeText(this, translateLanguages[which].label + "로 번역합니다", Toast.LENGTH_SHORT).show()
+                d.dismiss()
+            }
+            .setNegativeButton("닫기", null)
+            .show()
+    }
+
+    // ---------- 시작페이지 커스텀 배경 이미지 ----------
+    private fun customStartBgFile(): File = File(filesDir, "custom_start_bg.jpg")
+
+    private fun hasCustomStartBackground(): Boolean {
+        val f = customStartBgFile()
+        return f.exists() && f.length() > 0L
+    }
+
+    private fun pickCustomBackgroundImage() {
+        try {
+            backgroundImageLauncher.launch("image/*")
+        } catch (e: Exception) {
+            Toast.makeText(this, "갤러리를 열 수 없습니다", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handlePickedBackgroundImage(uri: Uri?) {
+        if (uri == null) return
+        Thread {
+            var ok = false
+            try {
+                val input = contentResolver.openInputStream(uri)
+                val decoded = if (input != null) BitmapFactory.decodeStream(input) else null
+                input?.close()
+                if (decoded != null) {
+                    val maxDim = 1600
+                    val longest = maxOf(decoded.width, decoded.height)
+                    val scaled = if (longest > maxDim) {
+                        val ratio = maxDim.toFloat() / longest.toFloat()
+                        Bitmap.createScaledBitmap(
+                            decoded,
+                            (decoded.width * ratio).roundToInt().coerceAtLeast(1),
+                            (decoded.height * ratio).roundToInt().coerceAtLeast(1),
+                            true
+                        )
+                    } else decoded
+                    FileOutputStream(customStartBgFile()).use { out ->
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 88, out)
+                    }
+                    if (scaled !== decoded) decoded.recycle()
+                    ok = true
+                }
+            } catch (e: Exception) {
+                ok = false
+            }
+            runOnUiThread {
+                if (ok) {
+                    customBgDataUrlCache = null
+                    applyCustomStartBackgroundToStartPages()
+                    Toast.makeText(this, "시작페이지 배경 이미지가 적용되었습니다", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "이미지를 불러오지 못했습니다", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun clearCustomStartBackground() {
+        try {
+            customStartBgFile().delete()
+        } catch (e: Exception) {}
+        customBgDataUrlCache = null
+        for (tab in tabs) {
+            if (tab.webView.url == START_PAGE_URL) {
+                tab.webView.evaluateJavascript("if (window.clearCustomBackground) window.clearCustomBackground();", null)
+            }
+        }
+    }
+
+    private fun customBackgroundDataUrl(): String? {
+        customBgDataUrlCache?.let { return it }
+        if (!hasCustomStartBackground()) return null
+        return try {
+            val bytes = customStartBgFile().readBytes()
+            val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            val url = "data:image/jpeg;base64," + encoded
+            customBgDataUrlCache = url
+            url
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun applyCustomStartBackgroundToStartPages() {
+        val dataUrl = customBackgroundDataUrl()
+        for (tab in tabs) {
+            if (tab.webView.url == START_PAGE_URL) {
+                injectCustomStartBackground(tab.webView, dataUrl)
+            }
+        }
+    }
+
+    private fun injectCustomStartBackground(wv: WebView, dataUrl: String?) {
+        if (dataUrl == null) {
+            wv.evaluateJavascript("if (window.clearCustomBackground) window.clearCustomBackground();", null)
+        } else {
+            wv.evaluateJavascript(
+                "if (window.setCustomBackground) window.setCustomBackground('" + dataUrl + "');",
+                null
+            )
+        }
+    }
+
     private fun getAppThemeMode(): String {
         return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString("creamy_theme_mode", "theme-default-dark") ?: "theme-default-dark"
@@ -4905,12 +5955,13 @@ class MainActivity : AppCompatActivity() {
             .putString("creamy_theme_mode", target)
             .apply()
         applyThemeToViews(target)
-        val wv = getCurrentWebView()
-        wv.evaluateJavascript("if (window.setTheme) { window.setTheme(''); }", null)
+        syncStartPageTheme()
     }
 
     private fun applyThemeToViews(theme: String) {
-        when (theme) {
+        if (theme.startsWith("theme-custom")) {
+            applyCustomThemeToViews(theme.endsWith("-dark"))
+        } else when (theme) {
             "theme-default-dark" -> {
                 layoutTopBar.setBackgroundColor(Color.parseColor("#000000"))
                 layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#16191E"))
@@ -5021,6 +6072,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        if (theme.startsWith("theme-custom")) {
+            applySidebarTheme(theme)
+            applyWebDarkModeToAllTabs()
+            updateDesktopMenuLabels()
+            if (isTabletLayout()) renderTabletTabStrip()
+            if (::btnQuickYoutubePipChip.isInitialized && tabs.isNotEmpty()) {
+                updateYoutubePipChip(getCurrentWebView().url)
+            }
+            return
+        }
+
         val isDarkTheme = theme.endsWith("-dark")
         val isPinkTheme = theme.startsWith("theme-pink")
         val chipTextColor = when {
@@ -5056,6 +6118,9 @@ class MainActivity : AppCompatActivity() {
         applyWebDarkModeToAllTabs()
         updateDesktopMenuLabels()
         if (isTabletLayout()) renderTabletTabStrip()
+        if (::btnQuickYoutubePipChip.isInitialized && tabs.isNotEmpty()) {
+            updateYoutubePipChip(getCurrentWebView().url)
+        }
     }
 
     private fun saveTabsToPrefs() {
@@ -5619,6 +6684,26 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getSearchEngine(): String {
             return activity.getSearchEngine()
+        }
+
+        @JavascriptInterface
+        fun getCustomAccent(): String {
+            return activity.getCustomAccentHex()
+        }
+
+        @JavascriptInterface
+        fun pickCustomBackgroundImage() {
+            activity.runOnUiThread {
+                activity.pickCustomBackgroundImage()
+            }
+        }
+
+        @JavascriptInterface
+        fun clearCustomBackgroundImage() {
+            activity.runOnUiThread {
+                activity.clearCustomStartBackground()
+                Toast.makeText(activity, "배경 이미지가 초기화되었습니다", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }
