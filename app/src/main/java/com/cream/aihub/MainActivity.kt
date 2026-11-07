@@ -4293,6 +4293,7 @@ class MainActivity : AppCompatActivity() {
                         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                             .getBoolean("custom_theme_is_dark", true)
                     )
+                    selectedTheme = getAppThemeMode()
                     renderAccentChips()
                     renderModeChips()
                     updateThemeChips()
@@ -4304,11 +4305,13 @@ class MainActivity : AppCompatActivity() {
         renderModeChips()
         btnCustomModeLight.setOnClickListener {
             setCustomTheme(selectedAccent, false)
+            selectedTheme = getAppThemeMode()
             renderModeChips()
             updateThemeChips()
         }
         btnCustomModeDark.setOnClickListener {
             setCustomTheme(selectedAccent, true)
+            selectedTheme = getAppThemeMode()
             renderModeChips()
             updateThemeChips()
         }
