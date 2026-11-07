@@ -639,6 +639,7 @@ class MainActivity : AppCompatActivity() {
 
                     if (url == START_PAGE_URL) {
                         view?.evaluateJavascript("if (window.setColorFavicons) window.setColorFavicons(${isColorFaviconsEnabled()});", null)
+                        view?.evaluateJavascript("if (window.setWidgetColorful) window.setWidgetColorful(${isWidgetColorfulEnabled()});", null)
                         view?.let { startView ->
                             val activeTheme = getAppThemeMode()
                             if (activeTheme.startsWith("theme-custom")) {
@@ -3483,6 +3484,13 @@ class MainActivity : AppCompatActivity() {
                 getCustomStartPageUrl()
             ) { url -> setStartPageSettings(getStartPageType(), url) }
         )
+        container.addView(
+            sidebarSwitchRow(
+                "컬러풀 위젯 스타일",
+                "홈 위젯을 테마별 그라데이션 컬러로 표시합니다",
+                isWidgetColorfulEnabled()
+            ) { enabled -> setWidgetColorfulEnabled(enabled) }
+        )
 
         // 5. 검색 엔진
         container.addView(sidebarSectionLabel("기본 검색 엔진"))
@@ -4413,6 +4421,7 @@ class MainActivity : AppCompatActivity() {
         val switchMaterialYou = view.findViewById<SwitchMaterial>(R.id.switchMaterialYou)
         val switchAdBlock = view.findViewById<SwitchMaterial>(R.id.switchAdBlock)
         val switchColorFavicons = view.findViewById<SwitchMaterial>(R.id.switchColorFavicons)
+        val switchWidgetColorful = view.findViewById<SwitchMaterial>(R.id.switchWidgetColorful)
         val tvZoomDisplay = view.findViewById<TextView>(R.id.tvZoomDisplay)
         val btnZoom80 = view.findViewById<Button>(R.id.btnZoom80)
         val btnZoom100 = view.findViewById<Button>(R.id.btnZoom100)
@@ -4464,6 +4473,7 @@ class MainActivity : AppCompatActivity() {
         switchMaterialYou.isChecked = isMaterialYouEnabled()
         switchAdBlock.isChecked = isAdBlockEnabled()
         switchColorFavicons?.isChecked = isColorFaviconsEnabled()
+        switchWidgetColorful?.isChecked = isWidgetColorfulEnabled()
 
         val switchWebDarkMode = view.findViewById<SwitchMaterial>(R.id.switchWebDarkMode)
         val switchBackgroundAudio = view.findViewById<SwitchMaterial>(R.id.switchBackgroundAudio)
@@ -4529,6 +4539,10 @@ class MainActivity : AppCompatActivity() {
                         t.webView.evaluateJavascript("if (window.setColorFavicons) window.setColorFavicons(${switchColorFavicons?.isChecked ?: true});", null)
                     }
                 }
+            }
+
+            if (isWidgetColorfulEnabled() != (switchWidgetColorful?.isChecked ?: true)) {
+                setWidgetColorfulEnabled(switchWidgetColorful?.isChecked ?: true)
             }
 
             val newTouchAnimState = switchTouchAnimation?.isChecked ?: false
@@ -4957,6 +4971,27 @@ class MainActivity : AppCompatActivity() {
     private fun isColorFaviconsEnabled(): Boolean {
         return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean("use_color_favicons", true)
+    }
+
+    // 컬러풀 위젯 스타일 (v2.2.1)
+    private fun isWidgetColorfulEnabled(): Boolean {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean("widget_colorful", true)
+    }
+
+    private fun setWidgetColorfulEnabled(enabled: Boolean) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("widget_colorful", enabled)
+            .apply()
+        for (t in tabs) {
+            if (t.url == START_PAGE_URL) {
+                t.webView.evaluateJavascript(
+                    "if (window.setWidgetColorful) window.setWidgetColorful(" + enabled + ");",
+                    null
+                )
+            }
+        }
     }
 
     // 사용자 이름 설정
@@ -7716,6 +7751,18 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getCustomAccent(): String {
             return activity.getCustomAccentHex()
+        }
+
+        @JavascriptInterface
+        fun getWidgetColorful(): Boolean {
+            return activity.isWidgetColorfulEnabled()
+        }
+
+        @JavascriptInterface
+        fun setWidgetColorful(enabled: Boolean) {
+            activity.runOnUiThread {
+                activity.setWidgetColorfulEnabled(enabled)
+            }
         }
 
         @JavascriptInterface
