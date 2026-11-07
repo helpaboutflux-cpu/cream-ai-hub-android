@@ -647,6 +647,8 @@ class MainActivity : AppCompatActivity() {
                             }
                             injectCustomStartBackground(startView, customBackgroundDataUrl())
                         }
+                    } else if (url == START_PAGE_SECURITY_URL) {
+                        view?.let { injectCustomStartBackground(it, customBackgroundDataUrl()) }
                     }
 
                     // 보안 탭이 아닐 때만 방문 기록 저장
@@ -4652,6 +4654,9 @@ class MainActivity : AppCompatActivity() {
         }
         arr.put(newObj)
         prefs.edit().putString("saved_bookmarks_json", arr.toString()).apply()
+        if (::layoutSidebar.isInitialized && layoutSidebar.visibility == View.VISIBLE) {
+            populateSidebarBookmarks()
+        }
     }
 
     private fun deleteBookmark(url: String) {
@@ -4666,6 +4671,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
         prefs.edit().putString("saved_bookmarks_json", newArr.toString()).apply()
+        if (::layoutSidebar.isInitialized && layoutSidebar.visibility == View.VISIBLE) {
+            populateSidebarBookmarks()
+        }
     }
 
     private fun getBookmarkFolders(): List<String> {
