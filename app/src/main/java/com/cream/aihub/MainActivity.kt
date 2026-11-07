@@ -1932,8 +1932,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun runHighSpeedBatchTranslation(wv: WebView, token: Int, texts: List<String>) {
         val total = texts.size
-        var translatedCount = 0
         val batchSize = 30
+        var processed = 0
+        var applied = 0
         for (start in 0 until total step batchSize) {
             if (token != translationJobToken) return
             val end = minOf(start + batchSize, total)
@@ -1941,28 +1942,32 @@ class MainActivity : AppCompatActivity() {
             val chunkTr = translateBatchWithDictChromeEx(chunkTexts)
             if (token != translationJobToken) return
 
-            if (chunkTr.isNotEmpty()) {
-                val batchMap = JSONObject()
-                for (i in chunkTr.indices) {
-                    val trText = chunkTr[i]
-                    if (trText.isNotBlank()) {
-                        batchMap.put((start + i).toString(), trText)
-                    }
+            processed = end
+            val batchMap = JSONObject()
+            for (i in chunkTr.indices) {
+                if (start + i >= total) break
+                val trText = chunkTr[i]
+                if (trText.isNotBlank()) {
+                    batchMap.put((start + i).toString(), trText)
+                    applied++
                 }
-                translatedCount += chunkTr.size
-                val payload = sanitizeForJavascript(batchMap.toString())
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed && token == translationJobToken) {
+            }
+            val payload = if (batchMap.length() > 0) sanitizeForJavascript(batchMap.toString()) else ""
+            val progress = processed
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && token == translationJobToken) {
+                    if (payload.isNotBlank()) {
                         wv.evaluateJavascript(
                             "if (window.__creamApplyBatch) window.__creamApplyBatch(" + payload + ");",
                             null
                         )
-                        tvTranslateStatus.text = "페이지 한국어로 번역 중 ($translatedCount / $total)..."
                     }
+                    tvTranslateStatus.text = "페이지 한국어로 번역 중 (" + progress + " / " + total + ")"
                 }
             }
         }
 
+        val appliedTotal = applied
         runOnUiThread {
             if (!isFinishing && !isDestroyed && token == translationJobToken) {
                 val tab = getCurrentTab()
@@ -1971,8 +1976,8 @@ class MainActivity : AppCompatActivity() {
                     tvTranslateChipText.text = "원문"
                 }
                 pbTranslateSpinner.visibility = View.GONE
-                tvTranslateStatus.text = "번역 완료"
-                Toast.makeText(this@MainActivity, "페이지가 한국어로 번역되었습니다", Toast.LENGTH_SHORT).show()
+                tvTranslateStatus.text = "번역 완료 (" + appliedTotal + " / " + total + ")"
+                Toast.makeText(this@MainActivity, "페이지를 한국어로 번역했습니다 (" + appliedTotal + "개 문단)", Toast.LENGTH_SHORT).show()
                 layoutTranslateProgress.postDelayed({
                     if (token == translationJobToken) {
                         layoutTranslateProgress.visibility = View.GONE
@@ -2028,27 +2033,81 @@ class MainActivity : AppCompatActivity() {
     if (!document.body) return '[]';
     var skipTags = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, INPUT: 1, SELECT: 1, OPTION: 1, CODE: 1, PRE: 1, KBD: 1, SAMP: 1, SVG: 1, AUDIO: 1, VIDEO: 1 };
     var skipSelector = '#cream_translate_host, .skiptranslate, [contenteditable="true"], [translate="no"], .notranslate';
+    var latinPattern = /[A-Za-z\u00C0-\u04FF\u0370-\u03FF\u3040-\u30FF\u4E00-\u9FFF]/;
+    var hangulPattern = /[\uAC00-\uD7AF]/;
     var nodes = [];
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode: function (n) {
-        var t = n.nodeValue;
-        if (!t) return NodeFilter.FILTER_REJECT;
-        var trimmed = t.trim();
-        if (trimmed.length < 2 || trimmed.length > 1000) return NodeFilter.FILTER_REJECT;
-        if (/[\uAC00-\uD7AF]/.test(trimmed) && !/[A-Za-z\u00C0-\u04FF\u0370-\u03FF\u3040-\u30FF\u4E00-\u9FFF]/.test(trimmed)) return NodeFilter.FILTER_REJECT;
-        if (!/[A-Za-z\u00C0-\u04FF\u0370-\u03FF\u3040-\u30FF\u4E00-\u9FFF]/.test(trimmed)) return NodeFilter.FILTER_REJECT;
-        var p = n.parentNode;
-        if (!p || !p.nodeName) return NodeFilter.FILTER_REJECT;
-        if (skipTags[p.nodeName.toUpperCase()]) return NodeFilter.FILTER_REJECT;
-        if (p.closest && p.closest(skipSelector)) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
+    var nodeLimit = 2000;
+
+    // 이전 번역에서 표시해 둔 수집 마커를 초기화한다
+    if (window.__creamTextNodes) {
+      for (var ci = 0; ci < window.__creamTextNodes.length; ci++) {
+        var oldNode = window.__creamTextNodes[ci];
+        if (oldNode) oldNode.__creamPicked = false;
       }
-    }, false);
-    var node;
-    while ((node = walker.nextNode())) {
-      nodes.push(node);
-      if (nodes.length >= 150) break;
     }
+
+    function acceptable(n) {
+      var t = n.nodeValue;
+      if (!t) return false;
+      var trimmed = t.trim();
+      if (trimmed.length < 2 || trimmed.length > 1000) return false;
+      if (hangulPattern.test(trimmed) && !latinPattern.test(trimmed)) return false;
+      if (!latinPattern.test(trimmed)) return false;
+      var p = n.parentNode;
+      if (!p || !p.nodeName) return false;
+      if (skipTags[p.nodeName.toUpperCase()]) return false;
+      if (p.closest && p.closest(skipSelector)) return false;
+      if (n.__creamPicked) return false;
+      return true;
+    }
+
+    function collectWithin(root) {
+      if (!root || nodes.length >= nodeLimit) return;
+      var walker;
+      try {
+        walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+      } catch (e) {
+        return;
+      }
+      var node;
+      while ((node = walker.nextNode())) {
+        if (nodes.length >= nodeLimit) break;
+        if (!acceptable(node)) continue;
+        node.__creamPicked = true;
+        nodes.push(node);
+      }
+    }
+
+    var primarySelectors = ['main', 'article', '[role="main"]', '.article-body', '.article-content', '.post-content', '.entry-content', '#content', '.content'];
+    var primaryRoots = [];
+    for (var si = 0; si < primarySelectors.length; si++) {
+      var found;
+      try {
+        found = document.querySelectorAll(primarySelectors[si]);
+      } catch (e) {
+        found = [];
+      }
+      for (var fi = 0; fi < found.length; fi++) {
+        var el = found[fi];
+        var isNested = false;
+        for (var ri = 0; ri < primaryRoots.length; ri++) {
+          if (primaryRoots[ri] === el || (primaryRoots[ri].contains && primaryRoots[ri].contains(el))) {
+            isNested = true;
+            break;
+          }
+        }
+        if (!isNested) primaryRoots.push(el);
+      }
+    }
+
+    // 1순위: 기사 본문과 제목 영역의 텍스트를 먼저 수집한다
+    for (var pi = 0; pi < primaryRoots.length; pi++) {
+      if (nodes.length >= nodeLimit) break;
+      collectWithin(primaryRoots[pi]);
+    }
+    // 2순위: 남은 문서 전체 텍스트를 이어서 수집한다
+    collectWithin(document.body);
+
     if (nodes.length === 0) return '[]';
     window.__creamTextNodes = nodes;
     var items = [];
