@@ -2506,6 +2506,8 @@ class MainActivity : AppCompatActivity() {
         val menuItemDesktop = view.findViewById<LinearLayout>(R.id.menuItemDesktop)
         val tvDesktopModeStatus = view.findViewById<TextView>(R.id.tvDesktopModeStatus)
         val menuItemPip = view.findViewById<LinearLayout>(R.id.menuItemPip)
+        val menuItemYoutubeSave = view.findViewById<LinearLayout>(R.id.menuItemYoutubeSave)
+        val tvYoutubeSaveStatus = view.findViewById<TextView>(R.id.tvYoutubeSaveStatus)
         val menuItemCapture = view.findViewById<LinearLayout>(R.id.menuItemCapture)
         val menuItemFindInPage = view.findViewById<LinearLayout>(R.id.menuItemFindInPage)
         val menuItemPrint = view.findViewById<LinearLayout>(R.id.menuItemPrint)
@@ -2576,12 +2578,11 @@ class MainActivity : AppCompatActivity() {
             dialog.dismiss()
             if (isYoutubeVideoPage(getCurrentWebView().url)) enterYoutubePip() else enterPipMode()
         }
-        menuItemPip?.setOnLongClickListener {
-            if (isYoutubeVideoPage(getCurrentWebView().url)) {
-                dialog.dismiss()
-                showYoutubeDownloadDialog()
-                true
-            } else false
+        menuItemYoutubeSave?.alpha = if (isYoutubeVideoPage(getCurrentWebView().url)) 1f else 0.45f
+        tvYoutubeSaveStatus?.text = if (isYoutubeVideoPage(getCurrentWebView().url)) "MP4 / 음원" else "유튜브 전용"
+        menuItemYoutubeSave?.setOnClickListener {
+            dialog.dismiss()
+            showYoutubeDownloadDialog()
         }
 
         menuItemCapture?.setOnClickListener {
