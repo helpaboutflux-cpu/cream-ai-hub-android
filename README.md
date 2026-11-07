@@ -33,7 +33,7 @@ Cream ai Hub의 공식 안드로이드 네이티브 클라이언트 애플리케
 
 ---
 
-## ️ 기술 스택 및 빌드
+## 기술 스택 및 빌드
 
 - **언어**: Kotlin, Java
 - **UI**: Android SDK, RemoteViews (Widget), Custom Floating Window
