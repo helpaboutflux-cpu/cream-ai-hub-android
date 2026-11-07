@@ -81,8 +81,6 @@ import java.util.concurrent.Executors
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
-import android.app.PictureInPictureParams
-import android.content.res.Configuration
 import android.graphics.Canvas
 import android.provider.MediaStore
 import android.view.ActionMode
@@ -171,12 +169,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnTopHome: ImageView
     private lateinit var btnToggleSidebar: View
     private lateinit var tvSidebarBtnText: TextView
-    private lateinit var btnQuickMediaDownloadChip: LinearLayout
-    private lateinit var ivMediaChipIcon: ImageView
-    private lateinit var tvMediaChipText: TextView
-    private lateinit var btnQuickYoutubePipChip: LinearLayout
-    private lateinit var ivYoutubePipIcon: ImageView
-    private lateinit var tvYoutubePipText: TextView
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -210,6 +202,29 @@ class MainActivity : AppCompatActivity() {
     private lateinit var layoutTabBookmarksContent: View
     private lateinit var layoutTabSettingsContent: View
     private lateinit var layoutSidebarSettingsContainer: LinearLayout
+    private lateinit var layoutTabListContent: LinearLayout
+    private lateinit var tvSidebarListTitle: TextView
+    private lateinit var layoutSidebarListContainer: LinearLayout
+    private lateinit var btnSidebarListAction: Button
+    private lateinit var btnSidebarListBack: ImageView
+    private lateinit var btnSidebarTopNewTab: Button
+    private lateinit var btnSidebarTopSplit: Button
+
+    // 듀얼 분할 브라우징
+    private lateinit var layoutSplitHost: LinearLayout
+    private lateinit var webViewContainerSplit: FrameLayout
+    private lateinit var viewSplitDivider: View
+    private var splitActive = false
+    private var splitTabId: String? = null
+    private var splitLeftRatio = 0.5f
+
+    // 리서치 캔버스
+    private lateinit var layoutResearchCanvas: LinearLayout
+    private lateinit var canvasBoardHost: FrameLayout
+    private var canvasView: ResearchCanvasView? = null
+
+    // 사이드바 목록 패널
+    private var sidebarListType = "bag"
     private lateinit var tvSidebarPageTitle: TextView
     private lateinit var tvSidebarPageUrl: TextView
     private lateinit var tvSidebarAiResult: TextView
@@ -342,6 +357,7 @@ class MainActivity : AppCompatActivity() {
         // 상단 바
         layoutTopBar = findViewById(R.id.layoutTopBar)
         layoutAddressBar = findViewById(R.id.layoutAddressBar)
+        layoutTopBar.setBackgroundResource(R.drawable.bg_glass_surface)
         ivUrlIcon = findViewById(R.id.ivUrlIcon)
         tvTopSecurityBadge = findViewById(R.id.tvTopSecurityBadge)
         etBrowserUrl = findViewById(R.id.etBrowserUrl)
@@ -390,20 +406,7 @@ class MainActivity : AppCompatActivity() {
         btnToggleSidebar = findViewById(R.id.btnToggleSidebar)
         tvSidebarBtnText = findViewById(R.id.tvSidebarBtnText)
 
-        // 미디어 자동 감지 저장 칩
-        btnQuickMediaDownloadChip = findViewById(R.id.btnQuickMediaDownloadChip)
-        ivMediaChipIcon = findViewById(R.id.ivMediaChipIcon)
-        tvMediaChipText = findViewById(R.id.tvMediaChipText)
-
-        // 유튜브 PIP 칩 (롱클릭 시 미디어 저장)
-        btnQuickYoutubePipChip = findViewById(R.id.btnQuickYoutubePipChip)
-        ivYoutubePipIcon = findViewById(R.id.ivYoutubePipIcon)
-        tvYoutubePipText = findViewById(R.id.tvYoutubePipText)
-        btnQuickYoutubePipChip.setOnClickListener { enterYoutubePip() }
-        btnQuickYoutubePipChip.setOnLongClickListener {
-            showYoutubeDownloadDialog()
-            true
-        }
+        // 미디어 저장/PIP 칩은 v2.2.0에서 전면 제거되었습니다
 
         // 주소창 제안 오버레이
         layoutSearchSuggestions = findViewById(R.id.layoutSearchSuggestions)
@@ -415,6 +418,7 @@ class MainActivity : AppCompatActivity() {
 
         // 하단 바
         layoutBottomBar = findViewById(R.id.layoutBottomBar)
+        layoutBottomBar.setBackgroundResource(R.drawable.bg_glass_surface)
         btnNavBack = findViewById(R.id.btnNavBack)
         btnNavForward = findViewById(R.id.btnNavForward)
         btnNavCreamy = findViewById(R.id.btnNavCreamy)
@@ -434,6 +438,18 @@ class MainActivity : AppCompatActivity() {
         layoutTabBookmarksContent = findViewById(R.id.layoutTabBookmarksContent)
         layoutTabSettingsContent = findViewById(R.id.layoutTabSettingsContent)
         layoutSidebarSettingsContainer = findViewById(R.id.layoutSidebarSettingsContainer)
+        layoutTabListContent = findViewById(R.id.layoutTabListContent)
+        tvSidebarListTitle = findViewById(R.id.tvSidebarListTitle)
+        layoutSidebarListContainer = findViewById(R.id.layoutSidebarListContainer)
+        btnSidebarListAction = findViewById(R.id.btnSidebarListAction)
+        btnSidebarListBack = findViewById(R.id.btnSidebarListBack)
+        btnSidebarTopNewTab = findViewById(R.id.btnSidebarTopNewTab)
+        btnSidebarTopSplit = findViewById(R.id.btnSidebarTopSplit)
+        layoutSplitHost = findViewById(R.id.layoutSplitHost)
+        webViewContainerSplit = findViewById(R.id.webViewContainerSplit)
+        viewSplitDivider = findViewById(R.id.viewSplitDivider)
+        layoutResearchCanvas = findViewById(R.id.layoutResearchCanvas)
+        canvasBoardHost = findViewById(R.id.canvasBoardHost)
         tvSidebarPageTitle = findViewById(R.id.tvSidebarPageTitle)
         tvSidebarPageUrl = findViewById(R.id.tvSidebarPageUrl)
         tvSidebarAiResult = findViewById(R.id.tvSidebarAiResult)
@@ -506,7 +522,7 @@ class MainActivity : AppCompatActivity() {
 
         wv.isFocusable = true
         wv.isFocusableInTouchMode = true
-        wv.addJavascriptInterface(WebAppInterface(this), "AndroidCreamApp")
+        wv.addJavascriptInterface(WebAppInterface(this, wv), "AndroidCreamApp")
 
         wv.settings.apply {
             javaScriptEnabled = true
@@ -574,21 +590,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            override fun onLoadResource(view: WebView?, url: String?) {
-                super.onLoadResource(view, url)
-                if (view != null && isMediaFileUrl(url)) {
-                    val tab = findTabByWebView(view)
-                    if (tab != null) {
-                        tab.mediaUrl = url
-                        if (view == getCurrentWebView()) runOnUiThread { updateMediaChip() }
-                    }
-                }
-            }
-
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 findTabByWebView(view)?.mediaUrl = null
-                if (view == getCurrentWebView()) updateMediaChip()
                 // 사이트별 PC/모바일 버전 기억을 적용한다
                 if (view != null && !url.isNullOrBlank() && (url.startsWith("http://") || url.startsWith("https://"))) {
                     val wantDesktop = isDesktopSitePreferred(url)
@@ -772,11 +776,15 @@ class MainActivity : AppCompatActivity() {
         manageInactiveTabs()
         updateTabBadge()
         saveTabsToPrefs()
+        if (splitActive) layoutSplitPanes()
         if (isTabletLayout()) renderTabletTabStrip()
     }
 
     private fun switchTab(index: Int) {
         if (index !in tabs.indices) return
+        if (splitActive && splitTab()?.id == tabs[index].id) {
+            exitSplitView(false)
+        }
 
         if (activeTabIndex in tabs.indices) {
             tabs[activeTabIndex].webView.visibility = View.GONE
@@ -803,15 +811,16 @@ class MainActivity : AppCompatActivity() {
         swipeRefresh.isEnabled = false
 
         manageInactiveTabs()
+        if (splitActive) layoutSplitPanes()
         if (isTabletLayout()) renderTabletTabStrip()
-        updateMediaChip()
     }
 
     private fun closeTab(index: Int) {
         if (index !in tabs.indices) return
 
         val tabToRemove = tabs[index]
-        webViewContainer.removeView(tabToRemove.webView)
+        if (splitActive && tabToRemove.id == splitTabId) exitSplitView(false)
+        (tabToRemove.webView.parent as? ViewGroup)?.removeView(tabToRemove.webView)
         tabToRemove.webView.destroy()
         tabs.removeAt(index)
 
@@ -824,13 +833,14 @@ class MainActivity : AppCompatActivity() {
             switchTab(activeTabIndex)
         }
         updateTabBadge()
+        if (splitActive) layoutSplitPanes()
         if (isTabletLayout()) renderTabletTabStrip()
     }
 
     private fun closeAllTabsInMode(isSecurityMode: Boolean) {
         val toRemove = tabs.filter { it.isSecurity == isSecurityMode }
         for (tab in toRemove) {
-            webViewContainer.removeView(tab.webView)
+            (tab.webView.parent as? ViewGroup)?.removeView(tab.webView)
             tab.webView.destroy()
             tabs.remove(tab)
         }
@@ -864,7 +874,7 @@ class MainActivity : AppCompatActivity() {
     private fun closeAllInactiveTabs(isSecurityMode: Boolean) {
         val toRemove = tabs.filter { it.isSecurity == isSecurityMode && it.isInactive }
         for (tab in toRemove) {
-            webViewContainer.removeView(tab.webView)
+            (tab.webView.parent as? ViewGroup)?.removeView(tab.webView)
             tab.webView.destroy()
             tabs.remove(tab)
         }
@@ -881,8 +891,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyTabModeTheme(isSecurity: Boolean) {
         if (isSecurity) {
-            layoutTopBar.setBackgroundColor(Color.parseColor("#09090B"))
-            layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#18181B"))
+            layoutTopBar.backgroundTintList = glassTint(Color.parseColor("#09090B"))
+            layoutAddressBar.backgroundTintList = glassTint(omniboxTint(Color.parseColor("#18181B")), 226)
             etBrowserUrl.setTextColor(Color.WHITE)
             etBrowserUrl.setHintTextColor(Color.parseColor("#71717A"))
             tvTopSecurityBadge.visibility = View.VISIBLE
@@ -894,7 +904,7 @@ class MainActivity : AppCompatActivity() {
             btnTopForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
             btnTopReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
             btnTopHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
-            layoutBottomBar.setBackgroundColor(Color.parseColor("#0D0F12"))
+            layoutBottomBar.backgroundTintList = glassTint(Color.parseColor("#0D0F12"))
             btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
             btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
             btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -994,10 +1004,6 @@ class MainActivity : AppCompatActivity() {
 
         btnNavTabs.setOnClickListener {
             showTabManagerDialog()
-        }
-
-        btnQuickMediaDownloadChip.setOnClickListener {
-            downloadDetectedMedia()
         }
     }
 
@@ -1311,6 +1317,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             // 탭 그룹별 렌더링
+    
             val renderedGroups = mutableSetOf<String>()
 
             for (i in tabs.indices) {
@@ -2507,9 +2514,7 @@ class MainActivity : AppCompatActivity() {
         val menuItemTranslate = view.findViewById<LinearLayout>(R.id.menuItemTranslate)
         val menuItemDesktop = view.findViewById<LinearLayout>(R.id.menuItemDesktop)
         val tvDesktopModeStatus = view.findViewById<TextView>(R.id.tvDesktopModeStatus)
-        val menuItemPip = view.findViewById<LinearLayout>(R.id.menuItemPip)
-        val menuItemYoutubeSave = view.findViewById<LinearLayout>(R.id.menuItemYoutubeSave)
-        val tvYoutubeSaveStatus = view.findViewById<TextView>(R.id.tvYoutubeSaveStatus)
+        val menuItemMacro = view.findViewById<LinearLayout>(R.id.menuItemMacro)
         val menuItemCapture = view.findViewById<LinearLayout>(R.id.menuItemCapture)
         val menuItemFindInPage = view.findViewById<LinearLayout>(R.id.menuItemFindInPage)
         val menuItemPrint = view.findViewById<LinearLayout>(R.id.menuItemPrint)
@@ -2576,15 +2581,9 @@ class MainActivity : AppCompatActivity() {
             toggleDesktopMode()
         }
 
-        menuItemPip?.setOnClickListener {
+        menuItemMacro?.setOnClickListener {
             dialog.dismiss()
-            if (isYoutubeVideoPage(getCurrentWebView().url)) enterYoutubePip() else enterPipMode()
-        }
-        menuItemYoutubeSave?.alpha = if (isYoutubeVideoPage(getCurrentWebView().url)) 1f else 0.45f
-        tvYoutubeSaveStatus?.text = if (isYoutubeVideoPage(getCurrentWebView().url)) "MP4 / 음원" else "유튜브 전용"
-        menuItemYoutubeSave?.setOnClickListener {
-            dialog.dismiss()
-            showYoutubeDownloadDialog()
+            showMacroDialog()
         }
 
         menuItemCapture?.setOnClickListener {
@@ -2776,6 +2775,20 @@ class MainActivity : AppCompatActivity() {
         return (dp * resources.displayMetrics.density).roundToInt()
     }
 
+    // ---------- 글래스모피즘(프로스티드 글래스) 색상 유틸 ----------
+    private fun glass(color: Int, alpha: Int = 236): Int {
+        return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
+    }
+
+    private fun glassTint(color: Int, alpha: Int = 236): ColorStateList {
+        return ColorStateList.valueOf(glass(color, alpha))
+    }
+
+    private fun omniboxTint(color: Int): Int {
+        return if (Color.luminance(color) < 0.35f) mixColor(color, Color.WHITE, 0.08f)
+        else mixColor(color, Color.BLACK, 0.02f)
+    }
+
     private data class TabStripColors(
         val stripBg: String,
         val activeBg: String,
@@ -2835,6 +2848,24 @@ class MainActivity : AppCompatActivity() {
 
         layoutTabletTabStrip.setBackgroundColor(Color.parseColor(colors.stripBg))
         layoutTabletTabsContainer.removeAllViews()
+
+        // [+ 그룹] 버튼은 탭들의 가장 앞(왼쪽)에 배치합니다
+        val groupItem = layoutInflater.inflate(R.layout.item_tablet_new_group, layoutTabletTabsContainer, false)
+        groupItem.findViewById<ImageView>(R.id.ivTabletNewGroupIcon)?.imageTintList = ColorStateList.valueOf(inactiveText)
+        groupItem.findViewById<TextView>(R.id.tvTabletNewGroupLabel)?.setTextColor(inactiveText)
+        groupItem.backgroundTintList = ColorStateList.valueOf(activeBg)
+        val groupParams = groupItem.layoutParams as LinearLayout.LayoutParams
+        groupParams.height = dpToPx(28)
+        groupParams.bottomMargin = dpToPx(7)
+        groupParams.marginEnd = dpToPx(6)
+        groupItem.layoutParams = groupParams
+        groupItem.setOnClickListener {
+            if (tabs.isNotEmpty()) {
+                showGroupPickerDialog(getCurrentTab(), forNewGroup = true) { renderTabletTabStrip() }
+            }
+        }
+        btnTabletNewGroup = groupItem
+        layoutTabletTabsContainer.addView(groupItem)
 
         val renderedGroups = mutableSetOf<String>()
 
@@ -2921,18 +2952,6 @@ class MainActivity : AppCompatActivity() {
         btnTabletNewTab = addItem
         layoutTabletTabsContainer.addView(addItem)
 
-        // 새 탭 그룹 만들기 버튼
-        val groupItem = layoutInflater.inflate(R.layout.item_tablet_new_group, layoutTabletTabsContainer, false)
-        groupItem.findViewById<ImageView>(R.id.ivTabletNewGroupIcon)?.imageTintList = ColorStateList.valueOf(inactiveText)
-        groupItem.findViewById<TextView>(R.id.tvTabletNewGroupLabel)?.setTextColor(inactiveText)
-        groupItem.backgroundTintList = ColorStateList.valueOf(inactiveBg)
-        groupItem.setOnClickListener {
-            if (tabs.isNotEmpty()) {
-                showGroupPickerDialog(getCurrentTab(), forNewGroup = true) { renderTabletTabStrip() }
-            }
-        }
-        btnTabletNewGroup = groupItem
-        layoutTabletTabsContainer.addView(groupItem)
 
         layoutTabletTabStrip.post { layoutTabletTabStrip.scrollTo(savedScroll, 0) }
     }
@@ -3118,8 +3137,9 @@ class MainActivity : AppCompatActivity() {
             R.id.btnSidebarMenuBag, R.id.btnSidebarMenuDownloads, R.id.btnSidebarMenuHistory,
             R.id.btnSidebarMenuSecurity, R.id.btnSidebarMenuFind, R.id.btnSidebarMenuReader,
             R.id.btnSidebarMenuTranslate, R.id.btnSidebarMenuDesktop, R.id.btnSidebarMenuPrint,
-            R.id.btnSidebarMenuSavePdf, R.id.btnSidebarMenuCapture, R.id.btnSidebarMenuPip,
-            R.id.btnSidebarMenuYoutube, R.id.btnSidebarMenuSettings
+            R.id.btnSidebarMenuSavePdf, R.id.btnSidebarMenuCapture, R.id.btnSidebarMenuQrCode,
+            R.id.btnSidebarMenuMacro, R.id.btnSidebarMenuCanvas, R.id.btnSidebarMenuSplit,
+            R.id.btnSidebarMenuSettings
         )
         for (menuId in menuIds) {
             findViewById<TextView>(menuId)?.apply {
@@ -3288,12 +3308,127 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun sidebarTextRow(
+        title: String,
+        subtitle: String,
+        hint: String,
+        value: String,
+        isPassword: Boolean = false,
+        onSave: (String) -> Unit
+    ): LinearLayout {
+        val palette = sidebarPalette(getAppThemeMode())
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dpToPx(6) }
+        }
+        box.addView(TextView(this).apply {
+            text = title
+            textSize = 12.5f
+            setTextColor(palette.textPrimary)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+        box.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 10.5f
+            setTextColor(palette.textSecondary)
+            setPadding(0, dpToPx(1), 0, dpToPx(5))
+        })
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val input = EditText(this).apply {
+            this.hint = hint
+            setText(value)
+            textSize = 12f
+            setSingleLine(true)
+            setTextColor(palette.textPrimary)
+            setHintTextColor(palette.textSecondary)
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            setBackgroundResource(palette.inputDrawable)
+            inputType = if (isPassword) android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            else android.text.InputType.TYPE_CLASS_TEXT
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val save = TextView(this).apply {
+            text = "저장"
+            textSize = 11f
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            setBackgroundResource(R.drawable.bg_pill_badge)
+            backgroundTintList = ColorStateList.valueOf(palette.accentBg)
+            setTextColor(palette.accentFg)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dpToPx(5) }
+            setOnClickListener {
+                onSave(input.text.toString().trim())
+                hideKeyboard(input)
+                Toast.makeText(this@MainActivity, "저장했습니다", Toast.LENGTH_SHORT).show()
+            }
+        }
+        row.addView(input)
+        row.addView(save)
+        box.addView(row)
+        return box
+    }
+
+    private fun sidebarButtonRow(buttons: List<Pair<String, () -> Unit>>): LinearLayout {
+        val palette = sidebarPalette(getAppThemeMode())
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dpToPx(6) }
+        }
+        for ((index, pair) in buttons.withIndex()) {
+            val (label, action) = pair
+            val btn = Button(this).apply {
+                text = label
+                textSize = 11f
+                isAllCaps = false
+                setTextColor(if (index == 0) palette.accentFg else palette.textPrimary)
+                backgroundTintList = ColorStateList.valueOf(if (index == 0) palette.accentBg else palette.headerBg)
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(38), 1f).apply { marginEnd = dpToPx(5) }
+                setOnClickListener { action() }
+            }
+            row.addView(btn)
+        }
+        return row
+    }
+
     private fun renderSidebarSettingsPanel() {
         if (!::layoutSidebarSettingsContainer.isInitialized) return
         val palette = sidebarPalette(getAppThemeMode())
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val container = layoutSidebarSettingsContainer
         container.removeAllViews()
 
+        // 1. 사용자 이름
+        container.addView(sidebarSectionLabel("사용자 이름"))
+        container.addView(
+            sidebarTextRow(
+                "홈 인사말에 표시될 이름",
+                "시작 페이지의 인사말과 브리핑에 사용됩니다.",
+                "이름 입력",
+                getUserNickname()
+            ) { name ->
+                if (name.isNotBlank()) {
+                    setUserNickname(name)
+                    for (tab in tabs) {
+                        if (tab.webView.url == START_PAGE_URL) {
+                            tab.webView.evaluateJavascript("if (window.setUserName) window.setUserName('" + name.replace("'", " ") + "');", null)
+                        }
+                    }
+                }
+            }
+        )
+
+        // 2. 디자인 테마
         container.addView(sidebarSectionLabel("디자인 테마"))
         container.addView(
             sidebarChoiceRow(
@@ -3307,27 +3442,64 @@ class MainActivity : AppCompatActivity() {
             ) { key -> setAppThemeMode(key) }
         )
 
+        // 3. 커스텀 테마
         container.addView(sidebarSectionLabel("커스텀 테마 색상"))
         container.addView(
             sidebarChipScrollRow(
                 CUSTOM_ACCENTS,
                 getCustomAccentHex()
             ) { hex ->
-                setCustomTheme(hex, getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .getBoolean("custom_theme_is_dark", true))
+                setCustomTheme(hex, prefs.getBoolean("custom_theme_is_dark", true))
             }
         )
         container.addView(
             sidebarChoiceRow(
                 listOf("라이트" to "light", "다크" to "dark"),
-                if (getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                        .getBoolean("custom_theme_is_dark", true)
-                ) "dark" else "light"
-            ) { key ->
-                setCustomTheme(getCustomAccentHex(), key == "dark")
-            }
+                if (prefs.getBoolean("custom_theme_is_dark", true)) "dark" else "light"
+            ) { key -> setCustomTheme(getCustomAccentHex(), key == "dark") }
         )
 
+        // 4. 시작 페이지
+        container.addView(sidebarSectionLabel("홈 시작 페이지"))
+        container.addView(
+            sidebarChoiceRow(
+                listOf(
+                    "Creamy 홈" to "home",
+                    "네이버" to "naver",
+                    "구글" to "google",
+                    "사용자 지정" to "custom"
+                ),
+                getStartPageType()
+            ) { key ->
+                setStartPageSettings(key, getCustomStartPageUrl())
+                renderSidebarSettingsPanel()
+            }
+        )
+        container.addView(
+            sidebarTextRow(
+                "사용자 지정 주소",
+                "시작 페이지를 '사용자 지정'으로 선택했을 때 열립니다.",
+                "https://...",
+                getCustomStartPageUrl()
+            ) { url -> setStartPageSettings(getStartPageType(), url) }
+        )
+
+        // 5. 검색 엔진
+        container.addView(sidebarSectionLabel("기본 검색 엔진"))
+        container.addView(
+            sidebarChipScrollRow(
+                listOf(
+                    "Google" to "google",
+                    "Naver" to "naver",
+                    "Daum" to "daum",
+                    "Bing" to "bing",
+                    "DuckDuckGo" to "duckduckgo"
+                ),
+                getSearchEngine()
+            ) { key -> setSearchEngine(key) }
+        )
+
+        // 6. 번역
         container.addView(sidebarSectionLabel("번역"))
         container.addView(
             sidebarChipScrollRow(
@@ -3343,6 +3515,7 @@ class MainActivity : AppCompatActivity() {
             ) { enabled -> setAutoTranslateEnabled(enabled) }
         )
 
+        // 7. 브라우징
         container.addView(sidebarSectionLabel("브라우징"))
         container.addView(
             sidebarSwitchRow(
@@ -3371,10 +3544,7 @@ class MainActivity : AppCompatActivity() {
                 "다른 앱을 써도 소리 유지",
                 isBackgroundAudioEnabled()
             ) { enabled ->
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putBoolean("background_audio_enabled", enabled)
-                    .apply()
+                prefs.edit().putBoolean("background_audio_enabled", enabled).apply()
             }
         )
         container.addView(
@@ -3386,14 +3556,21 @@ class MainActivity : AppCompatActivity() {
         )
         container.addView(
             sidebarSwitchRow(
+                "버튼 누름 반응 효과",
+                "버튼과 항목을 터치할 때 바운스 애니메이션 표시",
+                isTouchAnimationEnabled()
+            ) { enabled ->
+                prefs.edit().putBoolean("touch_animation_enabled", enabled).apply()
+                if (enabled) applyTouchAnimationToAll(findViewById(android.R.id.content))
+            }
+        )
+        container.addView(
+            sidebarSwitchRow(
                 "새 탭 컬러 아이콘",
                 "사이트 공식 컬러 로고 표시",
                 isColorFaviconsEnabled()
             ) { enabled ->
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putBoolean("use_color_favicons", enabled)
-                    .apply()
+                prefs.edit().putBoolean("use_color_favicons", enabled).apply()
                 for (tab in tabs) {
                     if (tab.url == START_PAGE_URL) {
                         tab.webView.evaluateJavascript(
@@ -3404,7 +3581,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         )
+        container.addView(
+            sidebarSwitchRow(
+                "Material You 다이내믹 컬러",
+                "시스템 배경화면 색상을 앱 테마에 적용",
+                isMaterialYouEnabled()
+            ) { enabled ->
+                setMaterialYouEnabled(enabled)
+                recreate()
+            }
+        )
 
+        // 8. 글자 크기
         container.addView(sidebarSectionLabel("웹페이지 글자 크기"))
         container.addView(
             sidebarChoiceRow(
@@ -3415,6 +3603,69 @@ class MainActivity : AppCompatActivity() {
                 setTextZoom(zoom)
                 for (tab in tabs) tab.webView.settings.textZoom = zoom
             }
+        )
+
+        // 9. 시작페이지 배경 이미지
+        container.addView(sidebarSectionLabel("시작페이지 배경 이미지"))
+        container.addView(TextView(this).apply {
+            text = if (hasCustomStartBackground()) "현재 배경 이미지가 적용되어 있습니다." else "갤러리 이미지를 홈 화면 배경으로 사용합니다."
+            textSize = 10.5f
+            setTextColor(palette.textSecondary)
+            setPadding(0, dpToPx(2), 0, dpToPx(2))
+        })
+        container.addView(
+            sidebarButtonRow(
+                listOf(
+                    "배경 이미지 변경" to { pickCustomBackgroundImage() },
+                    "배경 초기화" to {
+                        clearCustomStartBackground()
+                        post { renderSidebarSettingsPanel() }
+                    }
+                )
+            )
+        )
+
+        // 10. 알림 카테고리
+        container.addView(sidebarSectionLabel("알림 카테고리"))
+        container.addView(
+            sidebarSwitchRow(
+                "다운로드 완료 알림",
+                "파일 다운로드가 끝나면 알림",
+                prefs.getBoolean("notif_download", true)
+            ) { on -> prefs.edit().putBoolean("notif_download", on).apply() }
+        )
+        container.addView(
+            sidebarSwitchRow(
+                "보안 연결 경고 알림",
+                "안전하지 않은 연결을 감지하면 알림",
+                prefs.getBoolean("notif_security", true)
+            ) { on -> prefs.edit().putBoolean("notif_security", on).apply() }
+        )
+        container.addView(
+            sidebarSwitchRow(
+                "백그라운드 탭 절전 알림",
+                "절전 전환된 탭을 알려줍니다",
+                prefs.getBoolean("notif_tabs", false)
+            ) { on -> prefs.edit().putBoolean("notif_tabs", on).apply() }
+        )
+        container.addView(
+            sidebarSwitchRow(
+                "브라우징 팁 및 공지 알림",
+                "새 기능과 사용 팁 안내",
+                prefs.getBoolean("notif_tips", true)
+            ) { on -> prefs.edit().putBoolean("notif_tips", on).apply() }
+        )
+
+        // 11. AI 엔진
+        container.addView(sidebarSectionLabel("AI 엔진"))
+        container.addView(
+            sidebarTextRow(
+                "DeepSeek API Key",
+                "키가 없어도 내장 Creamy AI가 기본 처리합니다.",
+                "sk-...",
+                prefs.getString("deepseek_api_key", "") ?: "",
+                isPassword = true
+            ) { key -> prefs.edit().putString("deepseek_api_key", key).apply() }
         )
 
         val openAllButton = Button(this).apply {
@@ -3557,307 +3808,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---------- 동영상 및 미디어 자동 감지 다운로더 ----------
-    private fun isMediaFileUrl(url: String?): Boolean {
-        if (url.isNullOrBlank()) return false
-        val path = try {
-            Uri.parse(url).path?.lowercase(Locale.ROOT) ?: ""
-        } catch (e: Exception) {
-            ""
-        }
-        if (path.isBlank()) return false
-        val extensions = listOf(".mp4", ".webm", ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".mov")
-        return extensions.any { path.endsWith(it) }
-    }
-
-    private fun updateMediaChip() {
-        if (!::btnQuickMediaDownloadChip.isInitialized) return
-        if (tabs.isEmpty()) {
-            btnQuickMediaDownloadChip.visibility = View.GONE
-            return
-        }
-        val media = getCurrentTab().mediaUrl
-        if (media.isNullOrBlank()) {
-            btnQuickMediaDownloadChip.visibility = View.GONE
-            return
-        }
-        val lower = media.lowercase(Locale.ROOT)
-        val isAudio = lower.endsWith(".mp3") || lower.endsWith(".m4a") || lower.endsWith(".aac") ||
-            lower.endsWith(".ogg") || lower.endsWith(".wav")
-        tvMediaChipText.text = if (isAudio) "음원 저장" else "동영상 저장"
-        btnQuickMediaDownloadChip.visibility = View.VISIBLE
-    }
-
-    private fun downloadDetectedMedia() {
-        if (tabs.isEmpty()) return
-        val tab = getCurrentTab()
-        val media = tab.mediaUrl
-        if (media.isNullOrBlank()) {
-            Toast.makeText(this, "이 페이지에서 저장할 미디어를 찾지 못했습니다", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val lower = media.lowercase(Locale.ROOT)
-        val mime = when {
-            lower.endsWith(".mp4") -> "video/mp4"
-            lower.endsWith(".webm") -> "video/webm"
-            lower.endsWith(".mov") -> "video/quicktime"
-            lower.endsWith(".mp3") -> "audio/mpeg"
-            lower.endsWith(".m4a") -> "audio/mp4"
-            lower.endsWith(".aac") -> "audio/aac"
-            lower.endsWith(".ogg") -> "audio/ogg"
-            lower.endsWith(".wav") -> "audio/wav"
-            else -> "application/octet-stream"
-        }
-        startDownloadFile(media, "", mime, 0L)
-        tab.mediaUrl = null
-        updateMediaChip()
-    }
-
-    // ---------- 유튜브 전용: 백그라운드 재생·PIP·미디어 저장 ----------
-    private fun isYoutubeUrl(url: String?): Boolean {
-        if (url.isNullOrBlank()) return false
-        return try {
-            val host = Uri.parse(url).host?.lowercase(Locale.ROOT) ?: return false
-            host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" || host.endsWith(".youtu.be")
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun isYoutubeVideoPage(url: String?): Boolean {
-        if (!isYoutubeUrl(url)) return false
-        val u = url ?: return false
-        return u.contains("/watch") || u.contains("/shorts/") || u.contains("/live/") ||
-            (Uri.parse(u).host?.endsWith("youtu.be") == true)
-    }
-
-    // 유튜브가 백그라운드 전환을 감지해 자동 일시정지하는 동작을 차단한다
-    private fun injectYoutubeBackgroundAudio(wv: WebView) {
-        if (!isBackgroundAudioEnabled()) return
-        val script = """
-            (function() {
-              try {
-                Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
-                Object.defineProperty(document, 'visibilityState', { get: function() { return 'visible'; }, configurable: true });
-                document.hasFocus = function() { return true; };
-                window.addEventListener('visibilitychange', function(e) { e.stopImmediatePropagation(); }, true);
-                window.addEventListener('webkitvisibilitychange', function(e) { e.stopImmediatePropagation(); }, true);
-                window.addEventListener('blur', function(e) { e.stopImmediatePropagation(); }, true);
-                window.__creamBackgroundAudio = true;
-              } catch (e) {}
-            })();
-        """.trimIndent()
-        wv.evaluateJavascript(script, null)
-    }
-
-    private fun updateYoutubePipChip(url: String?) {
-        if (!::btnQuickYoutubePipChip.isInitialized) return
-        val show = isYoutubeVideoPage(url)
-        btnQuickYoutubePipChip.visibility = if (show) View.VISIBLE else View.GONE
-        if (!show) return
-        val theme = getAppThemeMode()
-        val dark = theme.endsWith("-dark")
-        val bg = if (theme.startsWith("theme-custom")) {
-            mixColor(getCustomAccentColor(), if (dark) Color.BLACK else Color.WHITE, if (dark) 0.68f else 0.86f)
-        } else if (dark) Color.parseColor("#262930") else Color.parseColor("#E5E7EB")
-        val fg = if (dark) Color.WHITE else Color.parseColor("#111111")
-        btnQuickYoutubePipChip.backgroundTintList = ColorStateList.valueOf(bg)
-        ivYoutubePipIcon.imageTintList = ColorStateList.valueOf(fg)
-        tvYoutubePipText.setTextColor(fg)
-    }
-
-    private fun enterYoutubePip() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            Toast.makeText(this, "이 안드로이드 버전에서는 PIP가 지원되지 않습니다", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val wv = getCurrentWebView()
-        val query = "(function(){try{var v=document.querySelector('video');if(!v)return '';var r=v.getBoundingClientRect();return Math.round(r.width)+'x'+Math.round(r.height);}catch(e){return '';}})();"
-        wv.evaluateJavascript(query) { raw ->
-            val builder = PictureInPictureParams.Builder()
-            val size = decodeJavascriptString(raw)
-            val parts = size.split("x")
-            if (parts.size == 2) {
-                val width = parts[0].toIntOrNull() ?: 0
-                val height = parts[1].toIntOrNull() ?: 0
-                if (width > 0 && height > 0) {
-                    try {
-                        builder.setAspectRatio(android.util.Rational(width, height))
-                    } catch (e: Exception) {}
-                }
-            }
-            try {
-                enterPictureInPictureMode(builder.build())
-            } catch (e: Exception) {
-                Toast.makeText(this, "PIP 모드를 시작할 수 없습니다", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun youtubeStreamInfoScript(): String = """
-        (function() {
-          try {
-            var pr = window.ytInitialPlayerResponse;
-            if (!pr || !pr.streamingData) {
-              return JSON.stringify({ error: 'no_player_response' });
-            }
-            var sd = pr.streamingData;
-            var formats = (sd.formats || []).concat(sd.adaptiveFormats || []);
-            var out = {
-              title: (pr.videoDetails && pr.videoDetails.title) || document.title || 'youtube',
-              video: null,
-              audio: null,
-              videoCount: 0,
-              audioCount: 0
-            };
-            for (var i = 0; i < formats.length; i++) {
-              var f = formats[i];
-              if (!f.url) continue;
-              var mime = f.mimeType || '';
-              if (mime.indexOf('video/mp4') === 0) {
-                out.videoCount++;
-                var isMuxed = !!(f.audioQuality);
-                if (!out.video && isMuxed) {
-                  out.video = { url: f.url, label: f.qualityLabel || 'MP4', size: parseInt(f.contentLength || '0', 10) || 0 };
-                }
-              }
-              if (mime.indexOf('audio/') === 0) {
-                out.audioCount++;
-                if (!out.audio) {
-                  var ext = mime.indexOf('audio/webm') === 0 ? 'webm' : 'm4a';
-                  out.audio = { url: f.url, label: (f.audioQuality || 'audio'), size: parseInt(f.contentLength || '0', 10) || 0, ext: ext };
-                }
-              }
-            }
-            if (!out.video) {
-              for (var j = 0; j < formats.length; j++) {
-                var g = formats[j];
-                if (g.url && (g.mimeType || '').indexOf('video/mp4') === 0) {
-                  out.video = { url: g.url, label: g.qualityLabel || 'MP4', size: parseInt(g.contentLength || '0', 10) || 0 };
-                  break;
-                }
-              }
-            }
-            return JSON.stringify(out);
-          } catch (e) {
-            return JSON.stringify({ error: String(e) });
-          }
-        })();
-    """.trimIndent()
-
-    private fun sanitizeFileName(raw: String): String {
-        val cleaned = raw.replace(Regex("[\\\\/:*?\"<>|]"), " ").replace("\n", " ").trim()
-        val sliced = if (cleaned.length > 60) cleaned.substring(0, 60) else cleaned
-        return if (sliced.isBlank()) "youtube_media" else sliced
-    }
-
-    private fun startNamedDownload(url: String, filename: String, mimetype: String, contentLength: Long) {
-        try {
-            val request = DownloadManager.Request(Uri.parse(url)).apply {
-                setMimeType(mimetype)
-                setTitle(filename)
-                setDescription("Cream Browser에서 다운로드 중...")
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
-                val cookie = CookieManager.getInstance().getCookie(url)
-                if (!cookie.isNullOrBlank()) addRequestHeader("Cookie", cookie)
-                addRequestHeader("User-Agent", getCurrentWebView().settings.userAgentString)
-                addRequestHeader("Referer", "https://www.youtube.com/")
-            }
-            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-            dm?.enqueue(request)
-            saveDownloadItem(
-                DownloadedFileItem(
-                    filename, url,
-                    Environment.DIRECTORY_DOWNLOADS + "/" + filename,
-                    contentLength, System.currentTimeMillis()
-                )
-            )
-            Toast.makeText(this, "다운로드를 시작합니다: " + filename, Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "다운로드 요청 실패: " + (e.message ?: ""), Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun showYoutubeDownloadDialog() {
-        val wv = getCurrentWebView()
-        if (!isYoutubeVideoPage(wv.url)) {
-            Toast.makeText(this, "유튜브 동영상 페이지에서만 사용할 수 있습니다", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val dialog = createConfiguredBottomSheetDialog()
-        val view = layoutInflater.inflate(R.layout.dialog_youtube_download, null)
-        dialog.setContentView(view)
-        applyTouchAnimationToAll(view)
-
-        val tvTitle = view.findViewById<TextView>(R.id.tvYoutubeVideoTitle)
-        val tvStatus = view.findViewById<TextView>(R.id.tvYoutubeDownloadStatus)
-        val btnVideo = view.findViewById<Button>(R.id.btnYoutubeSaveVideo)
-        val btnAudio = view.findViewById<Button>(R.id.btnYoutubeSaveAudio)
-
-        tvTitle.text = wv.title ?: "유튜브 동영상"
-        btnVideo.isEnabled = false
-        btnAudio.isEnabled = false
-        btnVideo.alpha = 0.5f
-        btnAudio.alpha = 0.5f
-
-        wv.evaluateJavascript(youtubeStreamInfoScript()) { raw ->
-            var videoUrl: String? = null
-            var audioUrl: String? = null
-            var audioExt = "m4a"
-            var baseName = "youtube_media"
-            var titleText = wv.title ?: "유튜브 동영상"
-            var errorText: String? = null
-            try {
-                val obj = JSONObject(decodeJavascriptString(raw))
-                if (obj.has("error")) {
-                    errorText = obj.optString("error")
-                } else {
-                    titleText = obj.optString("title", titleText)
-                    baseName = sanitizeFileName(titleText)
-                    val v = obj.optJSONObject("video")
-                    if (v != null) videoUrl = v.optString("url", "").ifBlank { null }
-                    val a = obj.optJSONObject("audio")
-                    if (a != null) {
-                        audioUrl = a.optString("url", "").ifBlank { null }
-                        audioExt = a.optString("ext", "m4a")
-                    }
-                }
-            } catch (e: Exception) {
-                errorText = e.message
-            }
-
-            tvTitle.text = titleText
-            btnVideo.isEnabled = videoUrl != null
-            btnAudio.isEnabled = audioUrl != null
-            btnVideo.alpha = if (videoUrl != null) 1f else 0.45f
-            btnAudio.alpha = if (audioUrl != null) 1f else 0.45f
-            tvStatus.text = when {
-                videoUrl != null && audioUrl != null -> "동영상(MP4)과 원본 음원을 저장할 수 있습니다. 음원은 MP3 변환 없이 원본 트랙으로 저장됩니다."
-                videoUrl != null -> "동영상(MP4)만 저장할 수 있습니다. 이 영상은 음원 트랙이 분리되어 있지 않습니다."
-                audioUrl != null -> "음원 트랙만 저장할 수 있습니다. 화면 영상은 제공되지 않습니다."
-                errorText != null -> "이 영상의 스트림 정보를 읽지 못했습니다. 재생을 한 번 시작한 뒤 다시 시도해 주세요."
-                else -> "저장 가능한 스트림을 찾지 못했습니다. 유튜브 정책으로 제한된 영상일 수 있습니다."
-            }
-
-            btnVideo.setOnClickListener {
-                val target = videoUrl ?: return@setOnClickListener
-                startNamedDownload(target, baseName + ".mp4", "video/mp4", 0L)
-                dialog.dismiss()
-            }
-            btnAudio.setOnClickListener {
-                val target = audioUrl ?: return@setOnClickListener
-                val mime = if (audioExt == "webm") "audio/webm" else "audio/mp4"
-                startNamedDownload(target, baseName + "." + audioExt, mime, 0L)
-                dialog.dismiss()
-            }
-        }
-
-        view.findViewById<ImageView>(R.id.btnCloseYoutubeDownload)?.setOnClickListener { dialog.dismiss() }
-        dialog.show()
-    }
-
-    // ---------- 데이터 절약 모드 ----------
     private fun isDataSaverEnabled(): Boolean {
         return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean("data_saver_enabled", false)
@@ -5183,6 +5133,7 @@ class MainActivity : AppCompatActivity() {
         layoutTabBookmarksContent.visibility = View.GONE
         layoutTabMenuContent.visibility = View.GONE
         layoutTabSettingsContent.visibility = View.GONE
+        layoutTabListContent.visibility = View.GONE
 
         fun highlight(target: TextView) {
             target.setBackgroundResource(R.drawable.bg_pill_badge)
@@ -5203,6 +5154,10 @@ class MainActivity : AppCompatActivity() {
                 highlight(btnTabSettings)
                 layoutTabSettingsContent.visibility = View.VISIBLE
                 renderSidebarSettingsPanel()
+            }
+            "list" -> {
+                highlight(btnTabMenu)
+                layoutTabListContent.visibility = View.VISIBLE
             }
             else -> {
                 highlight(btnTabAi)
@@ -5231,6 +5186,7 @@ class MainActivity : AppCompatActivity() {
                 "menu" -> layoutTabMenuContent.visibility == View.VISIBLE
                 "bookmarks" -> layoutTabBookmarksContent.visibility == View.VISIBLE
                 "settings" -> layoutTabSettingsContent.visibility == View.VISIBLE
+                "list" -> layoutTabListContent.visibility == View.VISIBLE
                 else -> layoutTabAiContent.visibility == View.VISIBLE
             }
             if (!isCurrentTabActive) {
@@ -5275,6 +5231,14 @@ class MainActivity : AppCompatActivity() {
             renderSidebarSettingsPanel()
         }
 
+        btnSidebarTopNewTab.setOnClickListener { addNewTab() }
+        btnSidebarTopSplit.setOnClickListener { showSplitViewDialog() }
+        btnSidebarListBack.setOnClickListener {
+            sidebarListType = "bag"
+            switchSidebarTab("menu")
+        }
+        btnSidebarListAction.setOnClickListener { renderSidebarList() }
+
         // 사이드바 메뉴 패널의 모든 기능 연결
         findViewById<Button>(R.id.btnSidebarQuickNewTab)?.setOnClickListener { addNewTab() }
         findViewById<Button>(R.id.btnSidebarQuickReload)?.setOnClickListener { getCurrentWebView().reload() }
@@ -5285,10 +5249,10 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "북마크에 저장되었습니다.", Toast.LENGTH_SHORT).show()
         }
 
-        findViewById<TextView>(R.id.btnSidebarMenuBag)?.setOnClickListener { showBagDialog() }
-        findViewById<TextView>(R.id.btnSidebarMenuDownloads)?.setOnClickListener { showDownloadsDialog() }
-        findViewById<TextView>(R.id.btnSidebarMenuHistory)?.setOnClickListener { showHistoryDialog() }
-        findViewById<TextView>(R.id.btnSidebarMenuSecurity)?.setOnClickListener { showSecurityInfoDialog() }
+        findViewById<TextView>(R.id.btnSidebarMenuBag)?.setOnClickListener { openSidebarList("bag") }
+        findViewById<TextView>(R.id.btnSidebarMenuDownloads)?.setOnClickListener { openSidebarList("downloads") }
+        findViewById<TextView>(R.id.btnSidebarMenuHistory)?.setOnClickListener { openSidebarList("history") }
+        findViewById<TextView>(R.id.btnSidebarMenuSecurity)?.setOnClickListener { openSidebarList("security") }
         findViewById<TextView>(R.id.btnSidebarMenuFind)?.setOnClickListener { showFindInPageDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuReader)?.setOnClickListener { showReaderModeDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuTranslate)?.setOnClickListener { togglePageTranslation() }
@@ -5297,8 +5261,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btnSidebarMenuSavePdf)?.setOnClickListener { saveWebPageAsPdf() }
         findViewById<TextView>(R.id.btnSidebarMenuQrCode)?.setOnClickListener { showQrCodeDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuCapture)?.setOnClickListener { captureFullPageScreenshot() }
-        findViewById<TextView>(R.id.btnSidebarMenuPip)?.setOnClickListener { enterPipMode() }
-        findViewById<TextView>(R.id.btnSidebarMenuYoutube)?.setOnClickListener { showYoutubeDownloadDialog() }
+        findViewById<TextView>(R.id.btnSidebarMenuMacro)?.setOnClickListener { openSidebarList("macro") }
+        findViewById<TextView>(R.id.btnSidebarMenuCanvas)?.setOnClickListener { openResearchCanvas() }
+        findViewById<TextView>(R.id.btnSidebarMenuSplit)?.setOnClickListener { showSplitViewDialog() }
         findViewById<TextView>(R.id.btnSidebarMenuSettings)?.setOnClickListener { showSettingsDialog() }
 
         btnSidebarQuickSummary.setOnClickListener {
@@ -5486,7 +5451,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             btnQuickTranslateChip.visibility = View.GONE
         }
-        updateYoutubePipChip(if (isStart) null else url)
     }
 
     private fun hideKeyboard(view: View) {
@@ -5737,8 +5701,8 @@ class MainActivity : AppCompatActivity() {
         val chipBg = if (isDark) mixColor(accent, Color.BLACK, 0.68f) else mixColor(accent, Color.WHITE, 0.86f)
         val barBg = if (isDark) topBg else Color.WHITE
 
-        layoutTopBar.setBackgroundColor(topBg)
-        layoutAddressBar.backgroundTintList = ColorStateList.valueOf(addressBg)
+        layoutTopBar.backgroundTintList = glassTint(topBg)
+        layoutAddressBar.backgroundTintList = glassTint(omniboxTint(addressBg), 226)
         etBrowserUrl.setTextColor(textColor)
         etBrowserUrl.setHintTextColor(hintColor)
         for (icon in intArrayOf(
@@ -5747,7 +5711,7 @@ class MainActivity : AppCompatActivity() {
         )) {
             (findViewById<View>(icon) as? ImageView)?.imageTintList = ColorStateList.valueOf(textColor)
         }
-        layoutBottomBar.setBackgroundColor(barBg)
+        layoutBottomBar.backgroundTintList = glassTint(barBg)
         for (icon in intArrayOf(R.id.btnNavBack, R.id.btnNavForward, R.id.btnNavHome)) {
             (findViewById<View>(icon) as? ImageView)?.imageTintList = ColorStateList.valueOf(textColor)
         }
@@ -5765,10 +5729,6 @@ class MainActivity : AppCompatActivity() {
         rootLayout.setBackgroundColor(if (isDark) mixColor(accent, Color.BLACK, 0.95f) else mixColor(accent, Color.WHITE, 0.93f))
         layoutSearchSuggestions.setBackgroundColor(if (isDark) mixColor(accent, Color.BLACK, 0.85f) else Color.WHITE)
 
-        val mediaChipBg = if (isDark) mixColor(accent, Color.BLACK, 0.68f) else mixColor(accent, Color.WHITE, 0.86f)
-        btnQuickMediaDownloadChip.backgroundTintList = ColorStateList.valueOf(mediaChipBg)
-        tvMediaChipText.setTextColor(textColor)
-        ivMediaChipIcon.imageTintList = ColorStateList.valueOf(textColor)
         progressBar.progressTintList = ColorStateList.valueOf(accent)
         tvTopSecurityBadge.backgroundTintList = ColorStateList.valueOf(accent)
         tvTopSecurityBadge.setTextColor(onAccent)
@@ -5989,8 +5949,8 @@ class MainActivity : AppCompatActivity() {
             applyCustomThemeToViews(theme.endsWith("-dark"))
         } else when (theme) {
             "theme-default-dark" -> {
-                layoutTopBar.setBackgroundColor(Color.parseColor("#000000"))
-                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#16191E"))
+                layoutTopBar.backgroundTintList = glassTint(Color.parseColor("#000000"))
+                layoutAddressBar.backgroundTintList = glassTint(omniboxTint(Color.parseColor("#16191E")), 226)
                 etBrowserUrl.setTextColor(Color.WHITE)
                 etBrowserUrl.setHintTextColor(Color.parseColor("#767C88"))
                 ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -6000,7 +5960,7 @@ class MainActivity : AppCompatActivity() {
                 btnTopHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnTopMenu.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnMobileReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
-                layoutBottomBar.setBackgroundColor(Color.parseColor("#000000"))
+                layoutBottomBar.backgroundTintList = glassTint(Color.parseColor("#000000"))
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -6016,8 +5976,8 @@ class MainActivity : AppCompatActivity() {
                 layoutSidebar.setBackgroundColor(Color.parseColor("#121418"))
             }
             "theme-default-light" -> {
-                layoutTopBar.setBackgroundColor(Color.parseColor("#E5E7EB"))
-                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FFFFFF"))
+                layoutTopBar.backgroundTintList = glassTint(Color.parseColor("#E5E7EB"))
+                layoutAddressBar.backgroundTintList = glassTint(omniboxTint(Color.parseColor("#FFFFFF")), 226)
                 etBrowserUrl.setTextColor(Color.parseColor("#111111"))
                 etBrowserUrl.setHintTextColor(Color.parseColor("#666666"))
                 ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
@@ -6027,7 +5987,7 @@ class MainActivity : AppCompatActivity() {
                 btnTopHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 btnTopMenu.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 btnMobileReload.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
-                layoutBottomBar.setBackgroundColor(Color.parseColor("#FFFFFF"))
+                layoutBottomBar.backgroundTintList = glassTint(Color.parseColor("#FFFFFF"))
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#111111"))
@@ -6043,8 +6003,8 @@ class MainActivity : AppCompatActivity() {
                 layoutSidebar.setBackgroundColor(Color.parseColor("#F9FAFB"))
             }
             "theme-pink-dark" -> {
-                layoutTopBar.setBackgroundColor(Color.parseColor("#261316"))
-                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#331B20"))
+                layoutTopBar.backgroundTintList = glassTint(Color.parseColor("#261316"))
+                layoutAddressBar.backgroundTintList = glassTint(omniboxTint(Color.parseColor("#331B20")), 226)
                 etBrowserUrl.setTextColor(Color.parseColor("#FFFFFF"))
                 etBrowserUrl.setHintTextColor(Color.parseColor("#D9A5AF"))
                 ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -6054,7 +6014,7 @@ class MainActivity : AppCompatActivity() {
                 btnTopHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnTopMenu.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnMobileReload.imageTintList = ColorStateList.valueOf(Color.WHITE)
-                layoutBottomBar.setBackgroundColor(Color.parseColor("#261316"))
+                layoutBottomBar.backgroundTintList = glassTint(Color.parseColor("#261316"))
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.WHITE)
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.WHITE)
@@ -6070,8 +6030,8 @@ class MainActivity : AppCompatActivity() {
                 layoutSidebar.setBackgroundColor(Color.parseColor("#221013"))
             }
             "theme-pink-light" -> {
-                layoutTopBar.setBackgroundColor(Color.parseColor("#FAD2D9"))
-                layoutAddressBar.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FFFFFF"))
+                layoutTopBar.backgroundTintList = glassTint(Color.parseColor("#FAD2D9"))
+                layoutAddressBar.backgroundTintList = glassTint(omniboxTint(Color.parseColor("#FFFFFF")), 226)
                 etBrowserUrl.setTextColor(Color.parseColor("#6E343D"))
                 etBrowserUrl.setHintTextColor(Color.parseColor("#9C5D66"))
                 ivUrlIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
@@ -6081,7 +6041,7 @@ class MainActivity : AppCompatActivity() {
                 btnTopHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 btnTopMenu.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 btnMobileReload.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
-                layoutBottomBar.setBackgroundColor(Color.parseColor("#FFFFFF"))
+                layoutBottomBar.backgroundTintList = glassTint(Color.parseColor("#FFFFFF"))
                 btnNavBack.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 btnNavForward.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
                 btnNavHome.imageTintList = ColorStateList.valueOf(Color.parseColor("#6E343D"))
@@ -6103,29 +6063,11 @@ class MainActivity : AppCompatActivity() {
             applyWebDarkModeToAllTabs()
             updateDesktopMenuLabels()
             if (isTabletLayout()) renderTabletTabStrip()
-            if (::btnQuickYoutubePipChip.isInitialized && tabs.isNotEmpty()) {
-                updateYoutubePipChip(getCurrentWebView().url)
-            }
             return
         }
 
         val isDarkTheme = theme.endsWith("-dark")
         val isPinkTheme = theme.startsWith("theme-pink")
-        val chipTextColor = when {
-            isDarkTheme -> Color.WHITE
-            isPinkTheme -> Color.parseColor("#6E343D")
-            else -> Color.parseColor("#111111")
-        }
-        val chipBgColor = when {
-            !isDarkTheme && isPinkTheme -> Color.parseColor("#FCE7EC")
-            !isDarkTheme -> Color.parseColor("#E5E7EB")
-            isPinkTheme -> Color.parseColor("#3D2228")
-            else -> Color.parseColor("#262930")
-        }
-        btnQuickMediaDownloadChip.backgroundTintList = ColorStateList.valueOf(chipBgColor)
-        tvMediaChipText.setTextColor(chipTextColor)
-        ivMediaChipIcon.imageTintList = ColorStateList.valueOf(chipTextColor)
-
         val windowBg = when (theme) {
             "theme-default-light" -> "#F4F5F7"
             "theme-pink-light" -> "#FFF5F7"
@@ -6144,9 +6086,6 @@ class MainActivity : AppCompatActivity() {
         applyWebDarkModeToAllTabs()
         updateDesktopMenuLabels()
         if (isTabletLayout()) renderTabletTabStrip()
-        if (::btnQuickYoutubePipChip.isInitialized && tabs.isNotEmpty()) {
-            updateYoutubePipChip(getCurrentWebView().url)
-        }
     }
 
     private fun saveTabsToPrefs() {
@@ -6331,41 +6270,6 @@ class MainActivity : AppCompatActivity() {
 
         renderFolders()
         renderBookmarks()
-    }
-
-    private fun enterPipMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val params = PictureInPictureParams.Builder().build()
-                enterPictureInPictureMode(params)
-            } catch (e: Exception) {
-                Toast.makeText(this, "PIP 모드를 시작할 수 없습니다", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            Toast.makeText(this, "이 안드로이드 버전에서는 PIP가 지원되지 않습니다", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (isInPictureInPictureMode) {
-            layoutTopBar.visibility = View.GONE
-            layoutBottomBar.visibility = View.GONE
-            layoutSidebar.visibility = View.GONE
-            progressBar.visibility = View.GONE
-        } else {
-            layoutTopBar.visibility = View.VISIBLE
-            if (!isTabletLayout()) {
-                layoutBottomBar.visibility = View.VISIBLE
-            }
-        }
-    }
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (customView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            enterPipMode()
-        }
     }
 
     override fun onActionModeStarted(mode: ActionMode?) {
@@ -6619,7 +6523,1049 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    inner class WebAppInterface(private val activity: MainActivity) {
+    // ==================== v2.2.0: 시작페이지 위젯용 네이티브 HTTP 브리지 ====================
+
+    private val httpCache = mutableMapOf<String, Pair<Long, String>>()
+
+    private fun httpGetCached(url: String): String? {
+        val now = System.currentTimeMillis()
+        httpCache[url]?.let { (time, body) ->
+            if (now - time < 60_000L) return body
+        }
+        val body = httpGet(url) ?: return null
+        httpCache[url] = now to body
+        if (httpCache.size > 40) {
+            httpCache.keys.take(10).forEach { httpCache.remove(it) }
+        }
+        return body
+    }
+
+    private fun httpGet(url: String, timeoutMs: Int = 12000): String? {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = URL(url).openConnection() as HttpURLConnection
+            conn.connectTimeout = timeoutMs
+            conn.readTimeout = timeoutMs
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent", MOBILE_USER_AGENT)
+            conn.setRequestProperty("Accept", "*/*")
+            if (conn.responseCode !in 200..299) {
+                null
+            } else {
+                val encoding = conn.contentEncoding
+                val stream = if (encoding != null && encoding.contains("gzip", true)) {
+                    java.util.zip.GZIPInputStream(conn.inputStream)
+                } else conn.inputStream
+                val buffer = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(8192)
+                var total = 0
+                while (total < 400_000) {
+                    val read = stream.read(chunk)
+                    if (read <= 0) break
+                    buffer.write(chunk, 0, read)
+                    total += read
+                }
+                stream.close()
+                String(buffer.toByteArray(), Charsets.UTF_8)
+            }
+        } catch (e: Exception) {
+            null
+        } finally {
+            try { conn?.disconnect() } catch (e: Exception) {}
+        }
+    }
+
+    // ==================== v2.2.0: 듀얼 분할 브라우징 ====================
+
+    private fun splitTab(): WebTab? = splitTabId?.let { id -> tabs.find { it.id == id } }
+
+    private fun showSplitViewDialog() {
+        if (!isTabletLayout()) {
+            Toast.makeText(this, "분할 브라우징은 태블릿 가로 화면에서 사용할 수 있습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val palette = sidebarPalette(getAppThemeMode())
+        val dialog = createConfiguredBottomSheetDialog()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(20), dpToPx(18), dpToPx(20), dpToPx(20))
+            setBackgroundResource(R.drawable.bg_bottom_sheet)
+        }
+        container.addView(TextView(this).apply {
+            text = "듀얼 분할 브라우징"
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(palette.textPrimary)
+        })
+        container.addView(TextView(this).apply {
+            text = "화면을 나눠 두 개의 웹페이지를 동시에 띄웁니다. 오른쪽에 열 탭을 고르세요."
+            textSize = 11.5f
+            setTextColor(palette.textSecondary)
+            setPadding(0, dpToPx(4), 0, dpToPx(10))
+        })
+
+        var pendingRatio = splitLeftRatio
+        val ratioRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val ratioChips = mutableListOf<Pair<TextView, Float>>()
+        val applyRatioStyles = {
+            for ((chip, ratio) in ratioChips) {
+                val selected = kotlin.math.abs(ratio - pendingRatio) < 0.01f
+                chip.setBackgroundResource(R.drawable.bg_pill_badge)
+                chip.backgroundTintList = ColorStateList.valueOf(if (selected) palette.accentBg else palette.headerBg)
+                chip.setTextColor(if (selected) palette.accentFg else palette.textSecondary)
+            }
+        }
+        for ((label, ratio) in listOf("5 : 5" to 0.5f, "7 : 3" to 0.7f, "3 : 7" to 0.3f)) {
+            val chip = TextView(this).apply {
+                text = label
+                textSize = 11.5f
+                gravity = android.view.Gravity.CENTER
+                setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dpToPx(6) }
+                setBackgroundResource(R.drawable.bg_pill_badge)
+                setOnClickListener { pendingRatio = ratio; applyRatioStyles() }
+            }
+            ratioChips.add(chip to ratio)
+            ratioRow.addView(chip)
+        }
+        applyRatioStyles()
+        container.addView(ratioRow)
+
+        val listBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dpToPx(10) }
+        }
+        for (i in tabs.indices) {
+            val tab = tabs[i]
+            if (i == activeTabIndex) continue
+            val row = TextView(this).apply {
+                text = (if (tab.title.isBlank()) "새 탭" else tab.title) + "  ·  " + shortHost(tab.webView.url ?: tab.url)
+                textSize = 12.5f
+                setTextColor(palette.textPrimary)
+                setPadding(dpToPx(10), dpToPx(12), dpToPx(10), dpToPx(12))
+                setBackgroundResource(palette.inputDrawable)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpToPx(6) }
+                setOnClickListener {
+                    startSplitView(i, pendingRatio)
+                    dialog.dismiss()
+                }
+            }
+            listBox.addView(row)
+        }
+        if (tabs.size <= 1) {
+            listBox.addView(TextView(this).apply {
+                text = "오른쪽에 열 다른 탭이 없습니다. 새 탭을 먼저 열어 주세요."
+                textSize = 11.5f
+                setTextColor(palette.textSecondary)
+                setPadding(dpToPx(4), dpToPx(10), dpToPx(4), dpToPx(10))
+            })
+        }
+        container.addView(listBox)
+
+        if (splitActive) {
+            val stop = Button(this).apply {
+                text = "분할 화면 종료"
+                textSize = 12f
+                isAllCaps = false
+                setTextColor(palette.textPrimary)
+                backgroundTintList = ColorStateList.valueOf(palette.headerBg)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(42)).apply { topMargin = dpToPx(8) }
+                setOnClickListener {
+                    exitSplitView(true)
+                    dialog.dismiss()
+                }
+            }
+            container.addView(stop)
+        }
+
+        dialog.setContentView(container)
+        dialog.show()
+    }
+
+    private fun shortHost(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        return try {
+            val host = Uri.parse(url).host ?: return url
+            host.removePrefix("www.")
+        } catch (e: Exception) {
+            url
+        }
+    }
+
+    private fun startSplitView(index: Int, leftRatio: Float = 0.5f) {
+        if (!isTabletLayout() || index !in tabs.indices) return
+        if (index == activeTabIndex) {
+            Toast.makeText(this, "왼쪽 화면과 다른 탭을 선택해 주세요", Toast.LENGTH_SHORT).show()
+            return
+        }
+        splitActive = true
+        splitTabId = tabs[index].id
+        splitLeftRatio = leftRatio.coerceIn(0.3f, 0.7f)
+        layoutSplitPanes()
+        renderTabletTabStrip()
+    }
+
+    private fun layoutSplitPanes() {
+        if (!::webViewContainerSplit.isInitialized) return
+        val right = splitTab()
+        if (!splitActive || right == null || !tabs.contains(right) || !isTabletLayout()) {
+            if (splitActive) exitSplitView(false)
+            return
+        }
+        val leftWv = getCurrentWebView()
+        if (leftWv.parent !== webViewContainer) {
+            (leftWv.parent as? ViewGroup)?.removeView(leftWv)
+            webViewContainer.addView(leftWv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+        if (right.webView.parent !== webViewContainerSplit) {
+            (right.webView.parent as? ViewGroup)?.removeView(right.webView)
+            webViewContainerSplit.addView(right.webView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+        leftWv.visibility = View.VISIBLE
+        right.webView.visibility = View.VISIBLE
+        (webViewContainer.layoutParams as? LinearLayout.LayoutParams)?.weight = splitLeftRatio
+        (webViewContainerSplit.layoutParams as? LinearLayout.LayoutParams)?.weight = 1f - splitLeftRatio
+        webViewContainerSplit.visibility = View.VISIBLE
+        viewSplitDivider.visibility = View.VISIBLE
+    }
+
+    private fun exitSplitView(notify: Boolean) {
+        if (!splitActive) return
+        val right = splitTab()
+        splitActive = false
+        splitTabId = null
+        if (right != null && right.webView.parent === webViewContainerSplit) {
+            webViewContainerSplit.removeView(right.webView)
+            webViewContainer.addView(right.webView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            right.webView.visibility = View.GONE
+        }
+        if (::webViewContainerSplit.isInitialized) webViewContainerSplit.visibility = View.GONE
+        if (::viewSplitDivider.isInitialized) viewSplitDivider.visibility = View.GONE
+        (webViewContainer.layoutParams as? LinearLayout.LayoutParams)?.weight = 1f
+        (webViewContainerSplit.layoutParams as? LinearLayout.LayoutParams)?.weight = 1f
+        if (notify) Toast.makeText(this, "분할 화면을 종료했습니다", Toast.LENGTH_SHORT).show()
+        if (isTabletLayout()) renderTabletTabStrip()
+    }
+
+    // ==================== v2.2.0: 원클릭 웹 액션 매크로 ====================
+
+    data class MacroStep(val url: String, val title: String)
+
+    data class BrowserMacro(val id: String, val name: String, val steps: List<MacroStep>)
+
+    private fun getMacros(): MutableList<BrowserMacro> {
+        val raw = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("browser_macros", "[]") ?: "[]"
+        val list = mutableListOf<BrowserMacro>()
+        try {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val stepsArr = o.optJSONArray("steps") ?: JSONArray()
+                val steps = mutableListOf<MacroStep>()
+                for (j in 0 until stepsArr.length()) {
+                    val so = stepsArr.getJSONObject(j)
+                    steps.add(MacroStep(so.optString("url", ""), so.optString("title", "")))
+                }
+                list.add(BrowserMacro(o.optString("id", "macro_$i"), o.optString("name", "매크로"), steps))
+            }
+        } catch (e: Exception) {
+        }
+        return list
+    }
+
+    private fun saveMacros(list: List<BrowserMacro>) {
+        val arr = JSONArray()
+        for (m in list) {
+            val stepsArr = JSONArray()
+            for (st in m.steps) {
+                stepsArr.put(JSONObject().apply {
+                    put("url", st.url)
+                    put("title", st.title)
+                })
+            }
+            arr.put(JSONObject().apply {
+                put("id", m.id)
+                put("name", m.name)
+                put("steps", stepsArr)
+            })
+        }
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString("browser_macros", arr.toString())
+            .apply()
+    }
+
+    private fun currentJourneySteps(): List<MacroStep> {
+        val list = mutableListOf<MacroStep>()
+        for (tab in tabs) {
+            val u = tab.webView.url ?: tab.url
+            if (u.isBlank() || u.startsWith("file:///android_asset/")) continue
+            if (u == START_PAGE_URL || u == START_PAGE_SECURITY_URL) continue
+            list.add(MacroStep(u, if (tab.title.isBlank()) shortHost(u) else tab.title))
+        }
+        return list
+    }
+
+    private fun askMacroName(initial: String, onDone: (String) -> Unit) {
+        val palette = sidebarPalette(getAppThemeMode())
+        val input = EditText(this).apply {
+            setText(initial)
+            setSingleLine(true)
+            textSize = 13f
+            setTextColor(palette.textPrimary)
+            setHintTextColor(palette.textSecondary)
+            hint = "매크로 이름"
+            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+            setBackgroundResource(palette.inputDrawable)
+        }
+        val holder = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(20), dpToPx(16), dpToPx(20), dpToPx(8))
+            addView(TextView(this@MainActivity).apply {
+                text = "지금 열려 있는 탭 순서를 한 번에 실행하는 숏컷으로 저장합니다."
+                textSize = 11.5f
+                setTextColor(palette.textSecondary)
+                setPadding(0, 0, 0, dpToPx(10))
+            })
+            addView(input)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("웹 액션 매크로 만들기")
+            .setView(holder)
+            .setPositiveButton("저장") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotBlank()) onDone(name)
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun createMacroFromCurrentTabs() {
+        val steps = currentJourneySteps()
+        if (steps.isEmpty()) {
+            Toast.makeText(this, "저장할 웹페이지 탭이 없습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
+        askMacroName(steps.first().title.take(18)) { name ->
+            val list = getMacros()
+            list.add(BrowserMacro("macro_" + System.currentTimeMillis(), name, steps))
+            saveMacros(list)
+            Toast.makeText(this, "'$name' 매크로를 저장했습니다", Toast.LENGTH_SHORT).show()
+            if (currentSidebarTab == "list" && sidebarListType == "macro") renderSidebarList()
+        }
+    }
+
+    private fun runMacro(macro: BrowserMacro) {
+        if (macro.steps.isEmpty()) {
+            Toast.makeText(this, "실행할 단계가 없습니다", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "매크로 실행: ${macro.name}", Toast.LENGTH_SHORT).show()
+        addNewTab(macro.steps.first().url, makeActive = true)
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var index = 1
+        val runner = object : Runnable {
+            override fun run() {
+                if (isFinishing || index >= macro.steps.size) return
+                getCurrentWebView().loadUrl(macro.steps[index].url)
+                index++
+                if (index < macro.steps.size) handler.postDelayed(this, 2400L)
+            }
+        }
+        if (macro.steps.size > 1) handler.postDelayed(runner, 2600L)
+    }
+
+    private fun showMacroDialog() {
+        val palette = sidebarPalette(getAppThemeMode())
+        val dialog = createConfiguredBottomSheetDialog()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(20), dpToPx(18), dpToPx(20), dpToPx(20))
+            setBackgroundResource(R.drawable.bg_bottom_sheet)
+        }
+        container.addView(TextView(this).apply {
+            text = "원클릭 웹 액션 매크로"
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(palette.textPrimary)
+        })
+        container.addView(TextView(this).apply {
+            text = "자주 가는 동선을 탭 순서대로 묶어 한 번에 실행합니다."
+            textSize = 11.5f
+            setTextColor(palette.textSecondary)
+            setPadding(0, dpToPx(4), 0, dpToPx(10))
+        })
+
+        val macros = getMacros()
+        if (macros.isEmpty()) {
+            container.addView(TextView(this).apply {
+                text = "저장된 매크로가 없습니다. 아래 버튼으로 지금 열린 탭들을 묶어 보세요."
+                textSize = 12f
+                setTextColor(palette.textSecondary)
+                setPadding(0, dpToPx(6), 0, dpToPx(10))
+            })
+        }
+        for (macro in macros) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+                setBackgroundResource(palette.inputDrawable)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpToPx(6) }
+            }
+            row.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(this@MainActivity).apply {
+                    text = macro.name
+                    textSize = 13f
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    setTextColor(palette.textPrimary)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = macro.steps.size.toString() + "단계 · " + macro.steps.joinToString(" → ") { it.title.take(10) }
+                    textSize = 10.5f
+                    setTextColor(palette.textSecondary)
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+            })
+            row.addView(TextView(this).apply {
+                text = "실행"
+                textSize = 11.5f
+                setPadding(dpToPx(10), dpToPx(7), dpToPx(10), dpToPx(7))
+                setBackgroundResource(R.drawable.bg_pill_badge)
+                backgroundTintList = ColorStateList.valueOf(palette.accentBg)
+                setTextColor(palette.accentFg)
+                setOnClickListener {
+                    dialog.dismiss()
+                    runMacro(macro)
+                }
+            })
+            row.addView(TextView(this).apply {
+                text = "삭제"
+                textSize = 11.5f
+                setTextColor(palette.textSecondary)
+                setPadding(dpToPx(10), dpToPx(7), dpToPx(4), dpToPx(7))
+                setOnClickListener {
+                    val list = getMacros().filter { it.id != macro.id }
+                    saveMacros(list)
+                    dialog.dismiss()
+                    showMacroDialog()
+                }
+            })
+            container.addView(row)
+        }
+
+        val create = Button(this).apply {
+            text = "현재 탭들로 매크로 만들기"
+            textSize = 12.5f
+            isAllCaps = false
+            setTextColor(palette.accentFg)
+            backgroundTintList = ColorStateList.valueOf(palette.accentBg)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(44)).apply { topMargin = dpToPx(10) }
+            setOnClickListener {
+                dialog.dismiss()
+                createMacroFromCurrentTabs()
+            }
+        }
+        container.addView(create)
+
+        dialog.setContentView(container)
+        dialog.show()
+    }
+
+    // ==================== v2.2.0: 사이드바 인라인 목록 패널 ====================
+
+    private fun openSidebarList(type: String) {
+        if (!isTabletLayout() || !::layoutSidebar.isInitialized || layoutSidebar.visibility != View.VISIBLE) {
+            when (type) {
+                "bag" -> showBagDialog()
+                "downloads" -> showDownloadsDialog()
+                "history" -> showHistoryDialog()
+                "security" -> showSecurityInfoDialog()
+                "macro" -> showMacroDialog()
+            }
+            return
+        }
+        sidebarListType = type
+        switchSidebarTab("list")
+        renderSidebarList()
+    }
+
+    private fun sidebarListRow(title: String, subtitle: String, actions: List<Pair<String, () -> Unit>>): LinearLayout {
+        val palette = sidebarPalette(getAppThemeMode())
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            setBackgroundResource(palette.cardDrawable)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpToPx(6) }
+        }
+        row.addView(TextView(this).apply {
+            text = title
+            textSize = 12.5f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor(palette.textPrimary)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        row.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 10.5f
+            setTextColor(palette.textSecondary)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(0, dpToPx(2), 0, 0)
+        })
+        if (actions.isNotEmpty()) {
+            val actionRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dpToPx(6), 0, 0)
+            }
+            for ((label, action) in actions) {
+                actionRow.addView(TextView(this).apply {
+                    text = label
+                    textSize = 10.5f
+                    setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5))
+                    setBackgroundResource(R.drawable.bg_pill_badge)
+                    backgroundTintList = ColorStateList.valueOf(palette.headerBg)
+                    setTextColor(palette.textPrimary)
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dpToPx(5) }
+                    setOnClickListener { action() }
+                })
+            }
+            row.addView(actionRow)
+        }
+        return row
+    }
+
+    private fun renderSidebarList() {
+        if (!::layoutSidebarListContainer.isInitialized) return
+        val palette = sidebarPalette(getAppThemeMode())
+        val container = layoutSidebarListContainer
+        container.removeAllViews()
+        btnSidebarListAction.visibility = View.GONE
+        when (sidebarListType) {
+            "bag" -> {
+                tvSidebarListTitle.text = "My Bag"
+                val items = getSavedBagItems()
+                btnSidebarListAction.text = "현재 페이지 담기"
+                btnSidebarListAction.visibility = View.VISIBLE
+                btnSidebarListAction.setOnClickListener {
+                    addCurrentPageToBag()
+                    renderSidebarList()
+                }
+                if (items.isEmpty()) {
+                    container.addView(TextView(this).apply {
+                        text = "아직 스크랩한 항목이 없습니다. 링크·이미지·텍스트를 My Bag에 담아 보세요."
+                        textSize = 11.5f
+                        setTextColor(palette.textSecondary)
+                    })
+                }
+                for (item in items) {
+                    container.addView(sidebarListRow(item.title, item.type + " · " + shortHost(item.sourceUrl), listOf(
+                        "열기" to { if (item.type == "image") loadWebQuery(item.content) else loadWebQuery(item.content) },
+                        "복사" to {
+                            val clip = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            clip?.setPrimaryClip(android.content.ClipData.newPlainText("My Bag", item.content))
+                            Toast.makeText(this, "복사했습니다", Toast.LENGTH_SHORT).show()
+                        },
+                        "삭제" to { deleteBagItem(item.id); renderSidebarList() }
+                    )))
+                }
+            }
+            "downloads" -> {
+                tvSidebarListTitle.text = "다운로드"
+                val items = getSavedDownloads()
+                btnSidebarListAction.text = "전체 삭제"
+                btnSidebarListAction.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+                btnSidebarListAction.setOnClickListener { clearDownloads(); renderSidebarList() }
+                if (items.isEmpty()) {
+                    container.addView(TextView(this).apply {
+                        text = "다운로드한 파일이 없습니다."
+                        textSize = 11.5f
+                        setTextColor(palette.textSecondary)
+                    })
+                }
+                for (file in items) {
+                    val sizeText = if (file.size > 0) String.format("%.1f MB", file.size / 1024f / 1024f) else shortHost(file.url)
+                    container.addView(sidebarListRow(file.filename, sizeText, listOf(
+                        "열기" to { openDownloadedFile(file) },
+                        "삭제" to {
+                            deleteDownloadItem(file.filename)
+                            runCatching { File(file.path).delete() }
+                            renderSidebarList()
+                        }
+                    )))
+                }
+            }
+            "history" -> {
+                tvSidebarListTitle.text = "방문 기록"
+                val items = getSavedHistory()
+                btnSidebarListAction.text = "전체 삭제"
+                btnSidebarListAction.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+                btnSidebarListAction.setOnClickListener {
+                    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().remove("saved_history_json").apply()
+                    renderSidebarList()
+                    Toast.makeText(this, "방문 기록을 모두 지웠습니다", Toast.LENGTH_SHORT).show()
+                }
+                if (items.isEmpty()) {
+                    container.addView(TextView(this).apply {
+                        text = "방문 기록이 없습니다."
+                        textSize = 11.5f
+                        setTextColor(palette.textSecondary)
+                    })
+                }
+                for (entry in items) {
+                    container.addView(sidebarListRow(entry.title, shortHost(entry.url), listOf(
+                        "열기" to { loadWebQuery(entry.url) }
+                    )))
+                }
+            }
+            "security" -> {
+                tvSidebarListTitle.text = "보안 현황"
+                val url = getCurrentWebView().url ?: ""
+                val isHttps = url.startsWith("https://")
+                val host = shortHost(url)
+                val cookieCount = try {
+                    CookieManager.getInstance().getCookie(url)?.split(";")?.count { it.isNotBlank() } ?: 0
+                } catch (e: Exception) { 0 }
+                val secureCount = try {
+                    CookieManager.getInstance().getCookie(url)?.split(";")?.count { it.contains("secure", true) } ?: 0
+                } catch (e: Exception) { 0 }
+                container.addView(sidebarListRow(
+                    if (isHttps) "HTTPS 보안 연결" else "보안 연결 아님",
+                    host.ifBlank { "현재 페이지 없음" },
+                    listOf("상세 보기" to { showSecurityInfoDialog() })
+                ))
+                container.addView(sidebarListRow("SSL 인증서", if (isHttps) "TLS 암호화 연결 · 인증서 유효" else "암호화되지 않은 연결", emptyList()))
+                container.addView(sidebarListRow("쿠키", "전체 " + cookieCount + "개 · 보안 쿠키 " + secureCount + "개", emptyList()))
+                container.addView(sidebarListRow("보안 탭", "쿠키와 기록을 남기지 않는 비공개 탭", listOf("새 보안 탭" to { addNewTab(START_PAGE_URL, true, isSecurity = true) })))
+                container.addView(sidebarListRow("추적 차단", if (isAdBlockEnabled()) "광고·트래커 차단 켜짐" else "광고·트래커 차단 꺼짐", listOf("전환" to {
+                    setAdBlockEnabled(!isAdBlockEnabled())
+                    getCurrentWebView().reload()
+                    renderSidebarList()
+                })))
+            }
+            "macro" -> {
+                tvSidebarListTitle.text = "웹 액션 매크로"
+                val macros = getMacros()
+                btnSidebarListAction.text = "현재 탭으로 만들기"
+                btnSidebarListAction.visibility = View.VISIBLE
+                btnSidebarListAction.setOnClickListener { createMacroFromCurrentTabs() }
+                if (macros.isEmpty()) {
+                    container.addView(TextView(this).apply {
+                        text = "자주 쓰는 동선을 탭 순서대로 묶어 두면 한 번에 열 수 있습니다."
+                        textSize = 11.5f
+                        setTextColor(palette.textSecondary)
+                    })
+                }
+                for (macro in macros) {
+                    container.addView(sidebarListRow(
+                        macro.name,
+                        macro.steps.size.toString() + "단계 · " + macro.steps.joinToString(" → ") { it.title.take(12) },
+                        listOf(
+                            "실행" to { runMacro(macro) },
+                            "삭제" to {
+                                saveMacros(getMacros().filter { it.id != macro.id })
+                                renderSidebarList()
+                            }
+                        )
+                    ))
+                }
+            }
+        }
+    }
+
+    // ==================== v2.2.0: My Bag 리서치 캔버스 ====================
+
+    data class CanvasCard(
+        val id: String,
+        var kind: String,
+        var title: String,
+        var body: String,
+        var url: String,
+        var x: Float,
+        var y: Float
+    )
+
+    private fun getCanvasCards(): MutableList<CanvasCard> {
+        val raw = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("research_canvas_cards", "[]") ?: "[]"
+        val list = mutableListOf<CanvasCard>()
+        try {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(CanvasCard(
+                    o.optString("id", "card_$i"),
+                    o.optString("kind", "memo"),
+                    o.optString("title", ""),
+                    o.optString("body", ""),
+                    o.optString("url", ""),
+                    o.optDouble("x", 0.0).toFloat(),
+                    o.optDouble("y", 0.0).toFloat()
+                ))
+            }
+        } catch (e: Exception) {
+        }
+        return list
+    }
+
+    private fun getCanvasLinks(): MutableList<Pair<String, String>> {
+        val raw = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("research_canvas_links", "[]") ?: "[]"
+        val list = mutableListOf<Pair<String, String>>()
+        try {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val pair = arr.getJSONArray(i)
+                list.add(pair.getString(0) to pair.getString(1))
+            }
+        } catch (e: Exception) {
+        }
+        return list
+    }
+
+    private fun saveCanvasState(cards: List<CanvasCard>, links: List<Pair<String, String>>) {
+        val cardArr = JSONArray()
+        for (c in cards) {
+            cardArr.put(JSONObject().apply {
+                put("id", c.id)
+                put("kind", c.kind)
+                put("title", c.title)
+                put("body", c.body)
+                put("url", c.url)
+                put("x", c.x.toDouble())
+                put("y", c.y.toDouble())
+            })
+        }
+        val linkArr = JSONArray()
+        for (l in links) {
+            linkArr.put(JSONArray().apply {
+                put(l.first)
+                put(l.second)
+            })
+        }
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString("research_canvas_cards", cardArr.toString())
+            .putString("research_canvas_links", linkArr.toString())
+            .apply()
+    }
+
+    private fun openResearchCanvas() {
+        layoutResearchCanvas.visibility = View.VISIBLE
+        layoutResearchCanvas.alpha = 0f
+        layoutResearchCanvas.animate().alpha(1f).setDuration(200).start()
+        val palette = sidebarPalette(getAppThemeMode())
+        findViewById<View>(R.id.layoutCanvasHeader)?.setBackgroundColor(palette.headerBg)
+        findViewById<TextView>(R.id.tvCanvasHint)?.setTextColor(palette.textSecondary)
+        findViewById<TextView>(R.id.tvCanvasHint)?.setBackgroundColor(palette.bg)
+        findViewById<TextView>(R.id.tvCanvasTitle)?.setTextColor(palette.textPrimary)
+        findViewById<ImageView>(R.id.btnCanvasClose)?.imageTintList = ColorStateList.valueOf(palette.textPrimary)
+        layoutResearchCanvas.setBackgroundColor(palette.bg)
+        if (canvasView == null) {
+            val v = ResearchCanvasView(this)
+            canvasBoardHost.addView(v, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            canvasView = v
+        }
+        canvasView?.reload()
+    }
+
+    private fun closeResearchCanvas() {
+        layoutResearchCanvas.animate().alpha(0f).setDuration(160).withEndAction {
+            layoutResearchCanvas.visibility = View.GONE
+        }.start()
+        canvasView?.persist()
+    }
+
+    private fun addMemoToCanvas() {
+        val palette = sidebarPalette(getAppThemeMode())
+        val input = EditText(this).apply {
+            hint = "메모 내용"
+            textSize = 13f
+            setTextColor(palette.textPrimary)
+            setHintTextColor(palette.textSecondary)
+            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+            setBackgroundResource(palette.inputDrawable)
+        }
+        val holder = FrameLayout(this).apply {
+            setPadding(dpToPx(20), dpToPx(16), dpToPx(20), dpToPx(8))
+            addView(input)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("메모 카드 추가")
+            .setView(holder)
+            .setPositiveButton("추가") { _, _ ->
+                val text = input.text.toString().trim()
+                if (text.isNotBlank()) {
+                    val view = canvasView ?: return@setPositiveButton
+                    view.addCard(CanvasCard(
+                        "memo_" + System.currentTimeMillis(),
+                        "memo",
+                        if (text.length > 18) text.take(18) else text,
+                        text,
+                        "",
+                        view.nextX(),
+                        view.nextY()
+                    ))
+                }
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun addBagCardsToCanvas() {
+        val view = canvasView ?: return
+        val existing = view.cardIds()
+        val items = getSavedBagItems()
+        var added = 0
+        for (item in items) {
+            if (existing.contains(item.id)) continue
+            view.addCard(CanvasCard(
+                item.id,
+                "bag",
+                item.title,
+                item.content,
+                item.sourceUrl,
+                view.nextX(),
+                view.nextY()
+            ))
+            added++
+        }
+        Toast.makeText(
+            this,
+            if (added == 0) "이미 모든 Bag 항목이 캔버스에 있습니다" else added.toString() + "개 카드를 추가했습니다",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+
+    private fun openDownloadedFile(file: DownloadedFileItem) {
+        try {
+            val f = File(file.path)
+            if (!f.exists()) {
+                Toast.makeText(this, "파일을 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val uri = FileProvider.getUriForFile(this, "com.cream.browser.fileprovider", f)
+            val mime = android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(f.extension.lowercase(Locale.ROOT)) ?: "*/*"
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "파일을 열 수 없습니다", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private inner class ResearchCanvasView(context: Context) : View(context) {
+        private val cards = mutableListOf<CanvasCard>()
+        private val links = mutableListOf<Pair<String, String>>()
+        private var dragging: CanvasCard? = null
+        private var dragDx = 0f
+        private var dragDy = 0f
+        private var linkMode = false
+        private var linkSource: String? = null
+        private var cardW = 0f
+        private var cardH = 0f
+        private val density = resources.displayMetrics.density
+
+        private val cardPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val titlePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 12.5f * density
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        private val bodyPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 10.5f * density
+        }
+        private val linkPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            strokeWidth = 2f * density
+            style = android.graphics.Paint.Style.STROKE
+        }
+
+        init {
+            reload()
+        }
+
+        fun reload() {
+            cards.clear()
+            links.clear()
+            cards.addAll(getCanvasCards())
+            links.addAll(getCanvasLinks())
+            invalidate()
+        }
+
+        fun persist() {
+            saveCanvasState(cards, links)
+        }
+
+        fun cardIds(): Set<String> = cards.map { it.id }.toSet()
+
+        fun nextX(): Float = 24f * density + ((cards.size % 3) * 36f * density)
+        fun nextY(): Float = 24f * density + ((cards.size % 4) * 30f * density)
+
+        fun addCard(card: CanvasCard) {
+            cards.add(card)
+            persist()
+            invalidate()
+        }
+
+        fun setLinkMode(enabled: Boolean) {
+            linkMode = enabled
+            linkSource = null
+            invalidate()
+        }
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            cardW = (w * 0.30f).coerceIn(150f * density, 230f * density)
+            cardH = 78f * density
+            if (cards.any { it.x == 0f && it.y == 0f }) {
+                cards.forEachIndexed { i, c ->
+                    if (c.x == 0f && c.y == 0f) {
+                        c.x = nextX() + (i % 2) * cardW * 0.9f
+                        c.y = nextY() + (i / 2) * (cardH + 18f * density)
+                    }
+                    c.x = c.x.coerceIn(0f, (w - cardW).coerceAtLeast(0f))
+                    c.y = c.y.coerceIn(0f, (h - cardH).coerceAtLeast(0f))
+                }
+            }
+        }
+
+        private fun hit(x: Float, y: Float): CanvasCard? =
+            cards.lastOrNull { x >= it.x && x <= it.x + cardW && y >= it.y && y <= it.y + cardH }
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val hitCard = hit(event.x, event.y)
+                    if (linkMode) {
+                        if (hitCard != null) {
+                            val src = linkSource
+                            if (src == null) {
+                                linkSource = hitCard.id
+                            } else if (src != hitCard.id) {
+                                links.add(src to hitCard.id)
+                                linkSource = null
+                                persist()
+                            }
+                            invalidate()
+                        }
+                        return true
+                    }
+                    if (hitCard != null) {
+                        dragging = hitCard
+                        dragDx = event.x - hitCard.x
+                        dragDy = event.y - hitCard.y
+                        cards.remove(hitCard)
+                        cards.add(hitCard)
+                        invalidate()
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    dragging?.let { c ->
+                        c.x = (event.x - dragDx).coerceIn(0f, (width - cardW).coerceAtLeast(0f))
+                        c.y = (event.y - dragDy).coerceIn(0f, (height - cardH).coerceAtLeast(0f))
+                        invalidate()
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    dragging?.let {
+                        persist()
+                        if (event.eventTime - event.downTime < 180) {
+                            maybeOpen(it)
+                        }
+                    }
+                    dragging = null
+                    return true
+                }
+            }
+            return true
+        }
+
+        private var lastTapTime = 0L
+        private var lastTapCard: String? = null
+
+        private fun maybeOpen(card: CanvasCard) {
+            if (card.url.isBlank()) return
+            val now = System.currentTimeMillis()
+            if (lastTapCard == card.id && now - lastTapTime < 320) {
+                loadWebQuery(card.url)
+                closeResearchCanvas()
+            }
+            lastTapCard = card.id
+            lastTapTime = now
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val palette = sidebarPalette(getAppThemeMode())
+            if (cardW <= 0f) cardW = width * 0.3f
+            if (cardH <= 0f) cardH = 78f * density
+
+            linkPaint.color = palette.divider
+            for ((a, b) in links) {
+                val ca = cards.find { it.id == a }
+                val cb = cards.find { it.id == b }
+                if (ca != null && cb != null) {
+                    canvas.drawLine(ca.x + cardW / 2f, ca.y + cardH / 2f, cb.x + cardW / 2f, cb.y + cardH / 2f, linkPaint)
+                }
+            }
+
+            for (card in cards) {
+                val rect = android.graphics.RectF(card.x, card.y, card.x + cardW, card.y + cardH)
+                cardPaint.style = android.graphics.Paint.Style.FILL
+                cardPaint.color = palette.headerBg
+                canvas.drawRoundRect(rect, 8f * density, 8f * density, cardPaint)
+                cardPaint.style = android.graphics.Paint.Style.STROKE
+                cardPaint.strokeWidth = if (linkSource == card.id) 2.2f * density else 1f * density
+                cardPaint.color = if (linkSource == card.id) palette.accentBg else palette.divider
+                canvas.drawRoundRect(rect, 8f * density, 8f * density, cardPaint)
+
+                cardPaint.style = android.graphics.Paint.Style.FILL
+                cardPaint.color = if (card.kind == "memo") palette.accentBg else palette.divider
+                canvas.drawRoundRect(android.graphics.RectF(card.x, card.y, card.x + 4f * density, card.y + cardH), 2f * density, 2f * density, cardPaint)
+
+                titlePaint.color = palette.textPrimary
+                bodyPaint.color = palette.textSecondary
+                canvas.drawText(ellipsize(card.title, titlePaint, cardW - 18f * density), card.x + 12f * density, card.y + 24f * density, titlePaint)
+                var lineY = card.y + 42f * density
+                val body = if (card.kind == "memo") card.body else card.body
+                var remaining = body
+                var lineCount = 0
+                while (remaining.isNotEmpty() && lineCount < 2) {
+                    val line = takeLine(remaining, bodyPaint, cardW - 18f * density)
+                    canvas.drawText(line, card.x + 12f * density, lineY, bodyPaint)
+                    remaining = remaining.removePrefix(line).trimStart()
+                    lineY += 14f * density
+                    lineCount++
+                }
+                if (card.url.isNotBlank()) {
+                    canvas.drawText(shortHost(card.url), card.x + 12f * density, card.y + cardH - 9f * density, bodyPaint)
+                }
+            }
+        }
+
+        private fun ellipsize(text: String, paint: android.graphics.Paint, maxWidth: Float): String {
+            if (paint.measureText(text) <= maxWidth) return text
+            var end = text.length
+            while (end > 1 && paint.measureText(text.substring(0, end) + "…") > maxWidth) end--
+            return text.substring(0, end) + "…"
+        }
+
+        private fun takeLine(text: String, paint: android.graphics.Paint, maxWidth: Float): String {
+            if (paint.measureText(text) <= maxWidth) return text
+            var end = text.length
+            while (end > 1 && paint.measureText(text.substring(0, end)) > maxWidth) end--
+            return text.substring(0, end)
+        }
+    }
+
+    inner class WebAppInterface(private val activity: MainActivity, private val webView: WebView? = null) {
         @JavascriptInterface
         fun onTokenReceived(token: String) {
             activity.runOnUiThread {
@@ -6726,6 +7672,37 @@ class MainActivity : AppCompatActivity() {
                 activity.pickCustomBackgroundImage()
             }
         }
+
+
+        @JavascriptInterface
+        fun fetchUrl(url: String, callbackId: String) {
+            val target = webView ?: return
+            Thread {
+                val body = try { httpGetCached(url) } catch (e: Exception) { null }
+                val clipped = if (body != null && body.length > 320_000) body.substring(0, 320_000) else body
+                target.post {
+                    val payload = if (clipped == null) "null" else JSONObject.quote(clipped)
+                    val status = if (clipped == null) 0 else 200
+                    target.evaluateJavascript(
+                        "if (window.__creamyFetch) window.__creamyFetch(" + JSONObject.quote(callbackId) + ", " + status + ", " + payload + ");",
+                        null
+                    )
+                }
+            }.start()
+        }
+
+        @JavascriptInterface
+        fun openMacro() {
+            activity.runOnUiThread { activity.showMacroDialog() }
+        }
+
+        @JavascriptInterface
+        fun openResearchCanvas() {
+            activity.runOnUiThread { activity.openResearchCanvas() }
+        }
+
+        @JavascriptInterface
+        fun isTablet(): Boolean = activity.isTabletLayout()
 
         @JavascriptInterface
         fun clearCustomBackgroundImage() {
