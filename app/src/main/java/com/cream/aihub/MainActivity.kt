@@ -5263,6 +5263,21 @@ class MainActivity : AppCompatActivity() {
 
         btnSidebarTopNewTab.setOnClickListener { addNewTab() }
         btnSidebarTopSplit.setOnClickListener { showSplitViewDialog() }
+
+        findViewById<ImageView>(R.id.btnCanvasClose)?.setOnClickListener { closeResearchCanvas() }
+        findViewById<Button>(R.id.btnCanvasAddMemo)?.setOnClickListener { addMemoToCanvas() }
+        findViewById<Button>(R.id.btnCanvasAddBag)?.setOnClickListener { addBagCardsToCanvas() }
+        findViewById<Button>(R.id.btnCanvasLinkMode)?.setOnClickListener {
+            canvasView?.let { view ->
+                val enabled = !view.linkModeActive()
+                view.setLinkMode(enabled)
+                Toast.makeText(
+                    this,
+                    if (enabled) "연결 모드: 카드 두 장을 차례로 누르면 선이 그려집니다" else "연결 모드를 종료했습니다",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
         btnSidebarListBack.setOnClickListener {
             sidebarListType = "bag"
             switchSidebarTab("menu")
@@ -5636,6 +5651,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        if (::layoutResearchCanvas.isInitialized && layoutResearchCanvas.visibility == View.VISIBLE) {
+            closeResearchCanvas()
+            return
+        }
+
         if (customView != null) {
             customView?.let { rootLayout.removeView(it) }
             customView = null
@@ -7440,6 +7460,8 @@ class MainActivity : AppCompatActivity() {
             persist()
             invalidate()
         }
+
+        fun linkModeActive(): Boolean = linkMode
 
         fun setLinkMode(enabled: Boolean) {
             linkMode = enabled
