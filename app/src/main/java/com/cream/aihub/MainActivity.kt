@@ -3678,7 +3678,9 @@ class MainActivity : AppCompatActivity() {
                 val width = parts[0].toIntOrNull() ?: 0
                 val height = parts[1].toIntOrNull() ?: 0
                 if (width > 0 && height > 0) {
-                    builder.setAspectRatio(android.util.Rational(width, height))
+                    try {
+                        builder.setAspectRatio(android.util.Rational(width, height))
+                    } catch (e: Exception) {}
                 }
             }
             try {
@@ -4077,6 +4079,9 @@ class MainActivity : AppCompatActivity() {
             layoutFoldersBar.removeAllViews()
             val folders = mutableListOf("전체")
             folders.addAll(getBookmarkFolders())
+            for (f in getSavedBookmarks().map { it.folder }) {
+                if (!folders.contains(f)) folders.add(f)
+            }
 
             for (f in folders) {
                 val chip = TextView(this).apply {
@@ -6193,6 +6198,9 @@ class MainActivity : AppCompatActivity() {
         layoutFolders.removeAllViews()
         val folders = mutableListOf("전체")
         folders.addAll(getBookmarkFolders())
+        for (folder in getSavedBookmarks().map { it.folder }) {
+            if (!folders.contains(folder)) folders.add(folder)
+        }
         if (!folders.contains(sidebarBookmarkFolder)) sidebarBookmarkFolder = "전체"
 
         fun renderBookmarks() {
