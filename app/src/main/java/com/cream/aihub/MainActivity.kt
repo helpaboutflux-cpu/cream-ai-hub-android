@@ -1434,8 +1434,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun tabSheetBackground(p: TabSheetPalette): GradientDrawable {
         return GradientDrawable().apply {
-            // v2.4.1: 반투명 글래스 톤으로 뒷배경 블러가 은은하게 투영되게 한다
-            setColor(withAlpha(p.sheet, 0.96f))
+            // v2.4.2: 반투명 글래스 (라이트 75% / 다크 78%) 로 뒷배경 블러가 시트 전면에 비친다
+            setColor(withAlpha(p.sheet, if (p.isDarkSheet) 0.78f else 0.75f))
             setStroke(dpToPx(1), p.stroke)
             cornerRadii = floatArrayOf(
                 dpToPx(28).toFloat(), dpToPx(28).toFloat(),
@@ -2558,27 +2558,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     // v2.4.1: One UI에서 시스템 창 블러가 꺼져 있어도 뒷배경이 흐려지도록 본문 뷰에 직접 블러를 건다
+    // v2.4.2: 18f(약 6dp)는 시트가 반투명해진 뒤로 너무 얕아서 dp 기준 16dp 가우시안으로 넓힌다
+    private fun mainContentBlurRadiusPx(): Float {
+        return dpToPx(16).toFloat()
+    }
+
     private fun applyMainContentBlur(enabled: Boolean) {
         if (!::rootLayout.isInitialized) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         try {
+            val radius = mainContentBlurRadiusPx()
             rootLayout.setRenderEffect(
-                if (enabled) RenderEffect.createBlurEffect(18f, 18f, Shader.TileMode.CLAMP) else null
+                if (enabled) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP) else null
             )
         } catch (e: Exception) {
         }
     }
 
-    // v2.4.1: 공용 시트용 반투명 글래스 서피스 (상단 라운드, 라이트 톤)
-    private fun glassSheetBackground(): GradientDrawable {
+    // v2.4.2: 공용 시트용 반투명 글래스 서피스 (상단 라운드, 라이트 75% / 다크 78% 불투명)
+    private fun glassSheetBackground(dark: Boolean = false): GradientDrawable {
         return GradientDrawable().apply {
             cornerRadii = floatArrayOf(
                 dpToPx(28).toFloat(), dpToPx(28).toFloat(),
                 dpToPx(28).toFloat(), dpToPx(28).toFloat(),
                 0f, 0f, 0f, 0f
             )
-            setColor(withAlpha(Color.WHITE, 0.96f))
-            setStroke(dpToPx(1), Color.parseColor("#E4E4E7"))
+            if (dark) {
+                setColor(withAlpha(Color.parseColor("#16181D"), 0.78f))
+                setStroke(dpToPx(1), Color.parseColor("#333842"))
+            } else {
+                setColor(withAlpha(Color.WHITE, 0.75f))
+                setStroke(dpToPx(1), Color.parseColor("#E4E4E7"))
+            }
         }
     }
 
@@ -2586,7 +2597,7 @@ class MainActivity : AppCompatActivity() {
     private fun applyFloatingBlur(dialog: Dialog?) {
         val window = dialog?.window ?: return
         try {
-            window.setDimAmount(0.38f)
+            window.setDimAmount(0.18f)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
                 val attrs = window.attributes
@@ -3706,8 +3717,8 @@ class MainActivity : AppCompatActivity() {
         val radii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
         val base = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-            // v2.4.1: 반투명 글래스 톤으로 뒷배경 블러가 은은하게 투영되게 한다
-            setColor(withAlpha(p.sheetBg, 0.96f))
+            // v2.4.2: 반투명 글래스 (라이트 75% / 다크 78%) 로 뒷배경 블러가 시트 전면에 비친다
+            setColor(withAlpha(p.sheetBg, if (p.isDark) 0.78f else 0.75f))
             cornerRadii = radii
         }
         val tint = p.gradientTint ?: return base
