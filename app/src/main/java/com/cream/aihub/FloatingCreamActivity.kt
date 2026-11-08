@@ -2,9 +2,11 @@ package com.cream.aihub
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -31,6 +33,14 @@ class FloatingCreamActivity : AppCompatActivity() {
             val height = (dm.heightPixels * 0.75).toInt()
             w.setLayout(width, height)
             w.setGravity(Gravity.CENTER)
+            // 플로팅 창 뒤의 웹페이지를 은은하게 블러 처리한다 (Android 12+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                w.setDimAmount(0.38f)
+                val attrs = w.attributes
+                attrs.blurBehindRadius = (18 * dm.density).toInt()
+                w.attributes = attrs
+            }
         }
 
         webView = findViewById(R.id.floatingWebView)

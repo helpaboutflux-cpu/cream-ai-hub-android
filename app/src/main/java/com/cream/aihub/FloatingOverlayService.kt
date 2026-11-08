@@ -117,6 +117,11 @@ class FloatingOverlayService : Service() {
             gravity = Gravity.CENTER
             x = 0
             y = 0
+            // 플로팅 창 뒤 배경을 은은하게 블러 처리한다 (Android 12+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                blurBehindRadius = (18 * displayMetrics.density).toInt()
+            }
         }
 
         val header = floatingView?.findViewById<LinearLayout>(R.id.layoutFloatingHeader)
