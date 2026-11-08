@@ -227,12 +227,15 @@ class MainActivity : AppCompatActivity() {
     private var sidebarListType = "bag"
     private lateinit var tvSidebarPageTitle: TextView
     private lateinit var tvSidebarPageUrl: TextView
+    private lateinit var tvSidebarAiTitle: TextView
+    private lateinit var ivSidebarAiLogo: ImageView
     private lateinit var tvSidebarAiResult: TextView
     private lateinit var btnSidebarQuickSummary: Button
     private lateinit var btnSidebarQuickQuestions: Button
-    private lateinit var btnSidebarQuickTranslate: Button
+    private lateinit var btnSidebarQuickInfo: Button
     private lateinit var etSidebarQuery: EditText
-    private lateinit var btnSidebarSend: Button
+    private lateinit var btnSidebarSend: ImageView
+    private lateinit var btnSidebarMic: ImageView
 
     // 탭 및 그룹 상태
     private val tabs = mutableListOf<WebTab>()
@@ -452,12 +455,15 @@ class MainActivity : AppCompatActivity() {
         canvasBoardHost = findViewById(R.id.canvasBoardHost)
         tvSidebarPageTitle = findViewById(R.id.tvSidebarPageTitle)
         tvSidebarPageUrl = findViewById(R.id.tvSidebarPageUrl)
+        tvSidebarAiTitle = findViewById(R.id.tvSidebarAiTitle)
+        ivSidebarAiLogo = findViewById(R.id.ivSidebarAiLogo)
         tvSidebarAiResult = findViewById(R.id.tvSidebarAiResult)
         btnSidebarQuickSummary = findViewById(R.id.btnSidebarQuickSummary)
         btnSidebarQuickQuestions = findViewById(R.id.btnSidebarQuickQuestions)
-        btnSidebarQuickTranslate = findViewById(R.id.btnSidebarQuickTranslate)
+        btnSidebarQuickInfo = findViewById(R.id.btnSidebarQuickInfo)
         etSidebarQuery = findViewById(R.id.etSidebarQuery)
         btnSidebarSend = findViewById(R.id.btnSidebarSend)
+        btnSidebarMic = findViewById(R.id.btnSidebarMic)
 
         // 태블릿 상단 가로 탭 스트립
         layoutTabletTabStrip = findViewById(R.id.layoutTabletTabStrip)
@@ -2048,11 +2054,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun createConfiguredBottomSheetDialog(): BottomSheetDialog {
+    private fun createConfiguredBottomSheetDialog(transparentBackground: Boolean = false): BottomSheetDialog {
         val dialog = BottomSheetDialog(this)
         dialog.setOnShowListener {
             val bottomSheet = dialog.findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
             if (bottomSheet != null) {
+                if (transparentBackground) bottomSheet.setBackgroundColor(Color.TRANSPARENT)
                 val behavior = BottomSheetBehavior.from(bottomSheet)
                 behavior.state = BottomSheetBehavior.STATE_EXPANDED
                 behavior.skipCollapsed = true
@@ -2999,6 +3006,223 @@ class MainActivity : AppCompatActivity() {
         val pageCardDrawable: Int
     )
 
+    // ---------- AI 표면(바텀시트·사이드바) 공통 팔레트 ----------
+    private data class AiSurfacePalette(
+        val sheetBg: Int,
+        val cardBg: Int,
+        val cardStroke: Int,
+        val cardSelectedBg: Int,
+        val inputBg: Int,
+        val inputStroke: Int,
+        val resultBg: Int,
+        val resultStroke: Int,
+        val textPrimary: Int,
+        val textSecondary: Int,
+        val accent: Int,
+        val accentFg: Int,
+        val handle: Int,
+        val gradientTint: Int?,
+        val isDark: Boolean
+    )
+
+    private fun withAlpha(color: Int, alpha: Float): Int {
+        val a = (255f * minOf(1f, maxOf(0f, alpha))).roundToInt()
+        return Color.argb(a, Color.red(color), Color.green(color), Color.blue(color))
+    }
+
+    private fun aiSurface(theme: String): AiSurfacePalette {
+        if (theme.startsWith("theme-custom")) {
+            val accent = getCustomAccentColor()
+            val dark = theme.endsWith("-dark")
+            return if (dark) AiSurfacePalette(
+                sheetBg = mixColor(accent, Color.BLACK, 0.93f),
+                cardBg = mixColor(accent, Color.BLACK, 0.86f),
+                cardStroke = mixColor(accent, Color.WHITE, 0.16f),
+                cardSelectedBg = mixColor(accent, Color.BLACK, 0.78f),
+                inputBg = mixColor(accent, Color.BLACK, 0.86f),
+                inputStroke = mixColor(accent, Color.WHITE, 0.14f),
+                resultBg = mixColor(accent, Color.BLACK, 0.90f),
+                resultStroke = mixColor(accent, Color.WHITE, 0.13f),
+                textPrimary = Color.parseColor("#F4F4F5"),
+                textSecondary = Color.parseColor("#A1A1AA"),
+                accent = accent,
+                accentFg = contrastOn(accent),
+                handle = mixColor(accent, Color.WHITE, 0.30f),
+                gradientTint = accent,
+                isDark = true
+            ) else AiSurfacePalette(
+                sheetBg = mixColor(accent, Color.WHITE, 0.97f),
+                cardBg = mixColor(accent, Color.WHITE, 0.91f),
+                cardStroke = mixColor(accent, Color.WHITE, 0.80f),
+                cardSelectedBg = mixColor(accent, Color.WHITE, 0.85f),
+                inputBg = mixColor(accent, Color.WHITE, 0.94f),
+                inputStroke = mixColor(accent, Color.WHITE, 0.82f),
+                resultBg = mixColor(accent, Color.WHITE, 0.95f),
+                resultStroke = mixColor(accent, Color.WHITE, 0.84f),
+                textPrimary = Color.parseColor("#111111"),
+                textSecondary = Color.parseColor("#71717A"),
+                accent = accent,
+                accentFg = contrastOn(accent),
+                handle = mixColor(accent, Color.WHITE, 0.70f),
+                gradientTint = accent,
+                isDark = false
+            )
+        }
+        return when (theme) {
+            "theme-default-light" -> AiSurfacePalette(
+                sheetBg = Color.parseColor("#FFFFFF"),
+                cardBg = Color.parseColor("#F7F7F8"),
+                cardStroke = Color.parseColor("#E4E4E7"),
+                cardSelectedBg = Color.parseColor("#F0F0F1"),
+                inputBg = Color.parseColor("#F4F4F5"),
+                inputStroke = Color.parseColor("#E4E4E7"),
+                resultBg = Color.parseColor("#FAFAFA"),
+                resultStroke = Color.parseColor("#E4E4E7"),
+                textPrimary = Color.parseColor("#111111"),
+                textSecondary = Color.parseColor("#71717A"),
+                accent = Color.parseColor("#09090B"),
+                accentFg = Color.WHITE,
+                handle = Color.parseColor("#D4D4D8"),
+                gradientTint = null,
+                isDark = false
+            )
+            "theme-pink-dark" -> AiSurfacePalette(
+                sheetBg = Color.parseColor("#221013"),
+                cardBg = Color.parseColor("#2C161A"),
+                cardStroke = Color.parseColor("#4A2A31"),
+                cardSelectedBg = Color.parseColor("#351A20"),
+                inputBg = Color.parseColor("#2A1418"),
+                inputStroke = Color.parseColor("#45262D"),
+                resultBg = Color.parseColor("#1F0F12"),
+                resultStroke = Color.parseColor("#3D2228"),
+                textPrimary = Color.WHITE,
+                textSecondary = Color.parseColor("#D9A5AF"),
+                accent = Color.parseColor("#F4B8C4"),
+                accentFg = Color.parseColor("#2B1216"),
+                handle = Color.parseColor("#5A343C"),
+                gradientTint = Color.parseColor("#F4B8C4"),
+                isDark = true
+            )
+            "theme-pink-light" -> AiSurfacePalette(
+                sheetBg = Color.parseColor("#FFFFFF"),
+                cardBg = Color.parseColor("#FFF4F7"),
+                cardStroke = Color.parseColor("#F3D6DC"),
+                cardSelectedBg = Color.parseColor("#FCE7EC"),
+                inputBg = Color.parseColor("#FCEEF2"),
+                inputStroke = Color.parseColor("#F3D6DC"),
+                resultBg = Color.parseColor("#FFF8FA"),
+                resultStroke = Color.parseColor("#F3D6DC"),
+                textPrimary = Color.parseColor("#6E343D"),
+                textSecondary = Color.parseColor("#9C5D66"),
+                accent = Color.parseColor("#6E343D"),
+                accentFg = Color.WHITE,
+                handle = Color.parseColor("#EBC0C8"),
+                gradientTint = Color.parseColor("#EC4899"),
+                isDark = false
+            )
+            else -> AiSurfacePalette(
+                sheetBg = Color.parseColor("#16181D"),
+                cardBg = Color.parseColor("#1E2127"),
+                cardStroke = Color.parseColor("#2A2E35"),
+                cardSelectedBg = Color.parseColor("#24272E"),
+                inputBg = Color.parseColor("#1B1E23"),
+                inputStroke = Color.parseColor("#2A2E35"),
+                resultBg = Color.parseColor("#15171B"),
+                resultStroke = Color.parseColor("#262930"),
+                textPrimary = Color.parseColor("#F4F4F5"),
+                textSecondary = Color.parseColor("#A1A1AA"),
+                accent = Color.WHITE,
+                accentFg = Color.parseColor("#0B0C0E"),
+                handle = Color.parseColor("#3F434A"),
+                gradientTint = null,
+                isDark = true
+            )
+        }
+    }
+
+    private fun aiRoundRect(fill: Int, stroke: Int?, radiusDp: Int): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            setColor(fill)
+            cornerRadius = dpToPx(radiusDp).toFloat()
+            if (stroke != null) setStroke(dpToPx(1), stroke)
+        }
+    }
+
+    // 상단에만 은은하게 번지는 액센트 틴트 (커스텀·핑크 테마에서만, 기본 테마는 솔리드)
+    private fun aiAccentGradient(tint: Int, isDark: Boolean): android.graphics.drawable.GradientDrawable {
+        val top = if (isDark) 0.22f else 0.16f
+        return android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(withAlpha(tint, top), withAlpha(tint, 0.06f), withAlpha(tint, 0f))
+        )
+    }
+
+    private fun aiSheetBackground(p: AiSurfacePalette): android.graphics.drawable.Drawable {
+        val r = dpToPx(28).toFloat()
+        val radii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+        val base = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            setColor(p.sheetBg)
+            cornerRadii = radii
+        }
+        val tint = p.gradientTint ?: return base
+        val wash = aiAccentGradient(tint, p.isDark).apply { cornerRadii = radii }
+        return android.graphics.drawable.LayerDrawable(arrayOf<android.graphics.drawable.Drawable>(base, wash))
+    }
+
+    private fun aiTabWash(p: AiSurfacePalette): android.graphics.drawable.Drawable? {
+        val tint = p.gradientTint ?: return null
+        return aiAccentGradient(tint, p.isDark)
+    }
+
+    private fun applyAiTitleText(tv: TextView, p: AiSurfacePalette) {
+        tv.setTextColor(p.textPrimary)
+        tv.post {
+            val tint = p.gradientTint
+            if (tint != null && tv.width > 0) {
+                val soft = if (p.isDark) mixColor(tint, Color.WHITE, 0.42f) else mixColor(tint, Color.BLACK, 0.30f)
+                tv.paint.shader = android.graphics.LinearGradient(
+                    0f, 0f, tv.width.toFloat(), 0f,
+                    intArrayOf(tint, soft, tint), null, android.graphics.Shader.TileMode.CLAMP
+                )
+            } else {
+                tv.paint.shader = null
+            }
+            tv.invalidate()
+        }
+    }
+
+    private fun styleAiQuickCard(btn: Button, p: AiSurfacePalette, selected: Boolean) {
+        btn.backgroundTintList = ColorStateList.valueOf(if (selected) p.cardSelectedBg else p.cardBg)
+        btn.setTextColor(p.textPrimary)
+        (btn as? MaterialButton)?.let { mb ->
+            mb.strokeColor = ColorStateList.valueOf(if (selected) p.accent else p.cardStroke)
+            mb.iconTint = ColorStateList.valueOf(p.textPrimary)
+        }
+    }
+
+    private fun applyAiSidebarSurfaces(theme: String) {
+        val p = aiSurface(theme)
+        layoutTabAiContent.background = aiTabWash(p)
+        ivSidebarAiLogo.imageTintList = ColorStateList.valueOf(p.textPrimary)
+        applyAiTitleText(tvSidebarAiTitle, p)
+        tvSidebarPageTitle.setTextColor(p.textSecondary)
+        tvSidebarPageUrl.setTextColor(p.textSecondary)
+        findViewById<View>(R.id.scrollSidebarChat)?.background = aiRoundRect(p.resultBg, p.resultStroke, 18)
+        tvSidebarAiResult.setTextColor(p.textPrimary)
+        for (id in intArrayOf(R.id.btnSidebarQuickSummary, R.id.btnSidebarQuickQuestions, R.id.btnSidebarQuickInfo)) {
+            val b = findViewById<Button>(id)
+            styleAiQuickCard(b, p, false)
+        }
+        findViewById<View>(R.id.layoutSidebarInput)?.background = aiRoundRect(p.inputBg, null, 24)
+        etSidebarQuery.setTextColor(p.textPrimary)
+        etSidebarQuery.setHintTextColor(p.textSecondary)
+        btnSidebarMic.imageTintList = ColorStateList.valueOf(p.textSecondary)
+        btnSidebarSend.backgroundTintList = ColorStateList.valueOf(p.accent)
+        btnSidebarSend.imageTintList = ColorStateList.valueOf(p.accentFg)
+    }
+
     private fun sidebarPalette(theme: String): SidebarPalette {
         if (theme.startsWith("theme-custom")) {
             val accent = getCustomAccentColor()
@@ -3092,31 +3316,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvSidebarTitle)?.setTextColor(palette.textPrimary)
         findViewById<ImageView>(R.id.btnCloseSidebar)?.imageTintList = ColorStateList.valueOf(palette.textSecondary)
 
-        findViewById<View>(R.id.layoutSidebarPageCard)?.setBackgroundResource(palette.pageCardDrawable)
-        findViewById<TextView>(R.id.tvSidebarPageLabel)?.setTextColor(palette.textSecondary)
-        findViewById<TextView>(R.id.tvSidebarPageTitle)?.setTextColor(palette.textPrimary)
-        findViewById<TextView>(R.id.tvSidebarPageUrl)?.setTextColor(palette.textSecondary)
-
-        findViewById<View>(R.id.scrollSidebarChat)?.setBackgroundResource(palette.cardDrawable)
-        tvSidebarAiResult.setTextColor(palette.textPrimary)
-
-        (btnSidebarQuickSummary as? MaterialButton)?.apply {
-            backgroundTintList = ColorStateList.valueOf(palette.accentBg)
-            setTextColor(palette.accentFg)
-        }
-        for (chipId in intArrayOf(R.id.btnSidebarQuickQuestions, R.id.btnSidebarQuickTranslate)) {
-            (findViewById<View>(chipId) as? MaterialButton)?.apply {
-                setTextColor(palette.textPrimary)
-                strokeColor = ColorStateList.valueOf(palette.divider)
-                backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
-            }
-        }
-
-        etSidebarQuery.setTextColor(palette.textPrimary)
-        etSidebarQuery.setHintTextColor(palette.textSecondary)
-        etSidebarQuery.setBackgroundResource(palette.inputDrawable)
-        btnSidebarSend.backgroundTintList = ColorStateList.valueOf(palette.accentBg)
-        btnSidebarSend.setTextColor(palette.accentFg)
+        applyAiSidebarSurfaces(theme)
 
         findViewById<View>(R.id.viewSidebarMenuDividerTop)?.setBackgroundColor(palette.divider)
         findViewById<View>(R.id.viewSidebarMenuDividerBottom)?.setBackgroundColor(palette.divider)
@@ -5245,6 +5445,7 @@ class MainActivity : AppCompatActivity() {
                 .start()
             isSidebarOpen = true
             switchSidebarTab(tab)
+            applyAiTitleText(tvSidebarAiTitle, aiSurface(getAppThemeMode()))
             extractPageTextForSidebar()
         } else {
             val isCurrentTabActive = when (tab) {
@@ -5347,17 +5548,30 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btnSidebarMenuSettings)?.setOnClickListener { showSettingsDialog() }
 
         btnSidebarQuickSummary.setOnClickListener {
-            val currentWv = getCurrentWebView()
-            val title = currentWv.title ?: "현재 페이지"
-            tvSidebarAiResult.text = "Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $title\n\n1. 이 페이지의 주요 흐름과 핵심 데이터를 분석했습니다.\n2. 전체 본문 중 중요 요점과 맥락을 파악했습니다.\n3. 상세한 심층 질문은 아래 입력창에 남겨주세요."
+            tvSidebarAiResult.text = aiSummarySample(getCurrentWebView().title ?: "현재 페이지")
+            selectSidebarAiCard(R.id.btnSidebarQuickSummary)
+            (findViewById<View>(R.id.scrollSidebarChat) as? android.widget.ScrollView)?.scrollTo(0, 0)
         }
 
         btnSidebarQuickQuestions.setOnClickListener {
-            tvSidebarAiResult.text = "이 페이지 추천 질문:\n\n1. '이 글의 핵심 결론이 뭐야?'\n2. '주요 장단점 정리해줘'\n3. '관련된 최신 트렌드는?'"
+            tvSidebarAiResult.text = aiQuestionsSample()
+            selectSidebarAiCard(R.id.btnSidebarQuickQuestions)
+            (findViewById<View>(R.id.scrollSidebarChat) as? android.widget.ScrollView)?.scrollTo(0, 0)
         }
 
-        btnSidebarQuickTranslate.setOnClickListener {
-            togglePageTranslation()
+        btnSidebarQuickInfo.setOnClickListener {
+            val currentWv = getCurrentWebView()
+            tvSidebarAiResult.text = aiPageInfoSample(
+                currentWv.url ?: START_PAGE_URL,
+                currentWv.title ?: "현재 페이지",
+                getCurrentTab().isSecurity
+            )
+            selectSidebarAiCard(R.id.btnSidebarQuickInfo)
+            (findViewById<View>(R.id.scrollSidebarChat) as? android.widget.ScrollView)?.scrollTo(0, 0)
+        }
+
+        btnSidebarMic.setOnClickListener {
+            tvSidebarAiResult.text = "음성 입력은 준비 중입니다.\n\n아래 입력창에 직접 적어 주세요."
         }
 
         btnSidebarSend.setOnClickListener {
@@ -5372,68 +5586,169 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun selectSidebarAiCard(selectedId: Int) {
+        val p = aiSurface(getAppThemeMode())
+        for (id in intArrayOf(R.id.btnSidebarQuickSummary, R.id.btnSidebarQuickQuestions, R.id.btnSidebarQuickInfo)) {
+            styleAiQuickCard(findViewById(id), p, id == selectedId)
+        }
+    }
+
+    // ---------- AI 예시 응답 (UI 확인용) ----------
+    private fun aiSummarySample(title: String): String {
+        return "요약\n\n'$title' 페이지의 핵심을 세 줄로 정리했습니다.\n\n1. 문서가 다루는 주제와 목적을 먼저 짚었습니다.\n2. 반복되는 주장과 그 근거를 하나로 묶었습니다.\n3. 마지막에 남는 결론과 다음 단계를 뽑았습니다.\n\n예시 화면입니다. 요약 엔진 연결은 다음 단계에서 붙입니다."
+    }
+
+    private fun aiQuestionsSample(): String {
+        return "핵심 질문\n\n이 페이지에서 바로 물어볼 만한 질문입니다.\n\n1. 이 문서의 핵심 결론은 무엇인가요?\n2. 가장 중요한 근거 세 가지는 무엇인가요?\n3. 지금 바로 해야 할 일은 무엇인가요?\n\n아래 입력창에 궁금한 점을 적어 보세요."
+    }
+
+    private fun aiPageInfoSample(url: String, title: String, isSecurity: Boolean): String {
+        val protocol = when {
+            url.startsWith("https://") -> "HTTPS · 암호화된 연결"
+            url.startsWith("http://") -> "HTTP · 암호화되지 않음"
+            else -> "내부 페이지"
+        }
+        var cookieCount = 0
+        var secureCookieCount = 0
+        try {
+            val raw = CookieManager.getInstance().getCookie(url)
+            if (!raw.isNullOrBlank()) {
+                val parts = raw.split(";").filter { it.isNotBlank() }
+                cookieCount = parts.size
+                secureCookieCount = parts.count { it.contains("secure", true) }
+            }
+        } catch (e: Exception) {
+        }
+        val host = try { Uri.parse(url).host ?: url } catch (e: Exception) { url }
+        val secureText = if (secureCookieCount > 0) " (보안 쿠키 ${secureCookieCount}개)" else ""
+        val cookieText = if (cookieCount > 0) "${cookieCount}개$secureText" else "없음"
+        return "페이지 정보\n\n제목: $title\n도메인: $host\n연결: $protocol\n쿠키: $cookieText" +
+            "\n보안 탭: " + (if (isSecurity) "사용 중" else "사용 안 함") +
+            "\n\n인증서와 쿠키 상태는 보안 메뉴에서 더 자세히 볼 수 있습니다."
+    }
+
     private fun showCreamyBottomSheet(initialQuery: String? = null) {
-        val dialog = createConfiguredBottomSheetDialog()
+        val dialog = createConfiguredBottomSheetDialog(transparentBackground = true)
         val view = layoutInflater.inflate(R.layout.dialog_summary_bottom_sheet, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
 
+        val palette = aiSurface(getAppThemeMode())
+        view.background = aiSheetBackground(palette)
+
+        val ivSheetLogo = view.findViewById<ImageView>(R.id.ivSheetLogo)
         val tvSheetTitle = view.findViewById<TextView>(R.id.tvSheetTitle)
-        val tvEngineStatus = view.findViewById<TextView>(R.id.tvEngineStatus)
         val tvSharedUrl = view.findViewById<TextView>(R.id.tvSharedUrl)
-        val btnOpenWebChat = view.findViewById<TextView>(R.id.btnOpenWebChat)
+        val btnSheetMenu = view.findViewById<ImageView>(R.id.btnSheetMenu)
         val btnCloseSheet = view.findViewById<ImageView>(R.id.btnCloseSheet)
         val tvSummaryResult = view.findViewById<TextView>(R.id.tvSummaryResult)
+        val scrollSheetResult = view.findViewById<androidx.core.widget.NestedScrollView>(R.id.scrollSheetResult)
+        val layoutSheetInput = view.findViewById<View>(R.id.layoutSheetInput)
         val etSheetQuery = view.findViewById<EditText>(R.id.etSheetQuery)
-        val btnSheetSend = view.findViewById<Button>(R.id.btnSheetSend)
+        val btnSheetMic = view.findViewById<ImageView>(R.id.btnSheetMic)
+        val btnSheetSend = view.findViewById<ImageView>(R.id.btnSheetSend)
         val btnQuickSummary = view.findViewById<Button>(R.id.btnQuickSummary)
         val btnQuickQuestions = view.findViewById<Button>(R.id.btnQuickQuestions)
-        val btnQuickTranslate = view.findViewById<Button>(R.id.btnQuickTranslate)
-        val btnLoadHistory = view.findViewById<Button>(R.id.btnLoadHistory)
+        val btnQuickPageInfo = view.findViewById<Button>(R.id.btnQuickPageInfo)
+
+        // 테마 적용
+        view.findViewById<View>(R.id.viewSheetHandle).backgroundTintList = ColorStateList.valueOf(palette.handle)
+        btnSheetMenu.imageTintList = ColorStateList.valueOf(palette.textSecondary)
+        btnCloseSheet.imageTintList = ColorStateList.valueOf(palette.textSecondary)
+        ivSheetLogo.imageTintList = ColorStateList.valueOf(palette.textPrimary)
+        applyAiTitleText(tvSheetTitle, palette)
+        tvSharedUrl.setTextColor(palette.textSecondary)
+        styleAiQuickCard(btnQuickSummary, palette, false)
+        styleAiQuickCard(btnQuickQuestions, palette, false)
+        styleAiQuickCard(btnQuickPageInfo, palette, false)
+        scrollSheetResult.background = aiRoundRect(palette.resultBg, palette.resultStroke, 18)
+        tvSummaryResult.setTextColor(palette.textPrimary)
+        layoutSheetInput.background = aiRoundRect(palette.inputBg, null, 27)
+        etSheetQuery.setTextColor(palette.textPrimary)
+        etSheetQuery.setHintTextColor(palette.textSecondary)
+        btnSheetMic.imageTintList = ColorStateList.valueOf(palette.textSecondary)
+        btnSheetSend.backgroundTintList = ColorStateList.valueOf(palette.accent)
+        btnSheetSend.imageTintList = ColorStateList.valueOf(palette.accentFg)
+        view.findViewById<ProgressBar>(R.id.sheetProgressBar)?.indeterminateTintList = ColorStateList.valueOf(palette.accent)
 
         val currentTab = getCurrentTab()
         val currentTitle = currentTab.webView.title ?: "현재 페이지"
         val currentUrl = currentTab.webView.url ?: START_PAGE_URL
+        val isStartPage = currentUrl == START_PAGE_URL || currentUrl == START_PAGE_SECURITY_URL
+        val host = try { Uri.parse(currentUrl).host ?: currentUrl } catch (e: Exception) { currentUrl }
+
+        tvSharedUrl.text = if (isStartPage) "Creamy 시작 페이지" else "$currentTitle · $host"
+        tvSummaryResult.text = "요약, 핵심 질문, 페이지 정보 중 하나를 눌러 보세요."
 
         if (!initialQuery.isNullOrBlank()) {
             etSheetQuery.setText(initialQuery)
             tvSummaryResult.text = "질문: $initialQuery\n\nCreamy 답변: [$currentTitle] 페이지에서 선택한 내용을 바탕으로 분석을 진행 중입니다."
         }
 
-        tvSheetTitle.text = "Creamy AI"
-        tvEngineStatus.text = "인텔리전트 웹 어시스턴트"
-        tvSharedUrl.text = if (currentUrl == START_PAGE_URL || currentUrl == START_PAGE_SECURITY_URL) "Cream Browser 시작 페이지" else "$currentTitle · $currentUrl"
-
-        btnOpenWebChat.setOnClickListener {
-            dialog.dismiss()
-            loadWebQuery(CREAMY_URL)
+        fun selectCard(selectedId: Int) {
+            styleAiQuickCard(btnQuickSummary, palette, R.id.btnQuickSummary == selectedId)
+            styleAiQuickCard(btnQuickQuestions, palette, R.id.btnQuickQuestions == selectedId)
+            styleAiQuickCard(btnQuickPageInfo, palette, R.id.btnQuickPageInfo == selectedId)
+            scrollSheetResult.scrollTo(0, 0)
         }
 
         btnCloseSheet.setOnClickListener { dialog.dismiss() }
 
+        btnSheetMenu.setOnClickListener { anchor ->
+            val popup = android.widget.PopupMenu(this, anchor)
+            popup.menu.add(0, 1, 0, "웹 채팅에서 계속하기")
+            popup.menu.add(0, 2, 1, "대화 기록 불러오기")
+            popup.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    1 -> {
+                        dialog.dismiss()
+                        loadWebQuery(CREAMY_URL)
+                    }
+                    2 -> {
+                        tvSummaryResult.text = "이전 대화 기록을 불러오는 중입니다."
+                        selectCard(-1)
+                    }
+                }
+                true
+            }
+            popup.show()
+        }
+
         btnQuickSummary.setOnClickListener {
-            tvSummaryResult.text = "Creamy가 페이지 핵심을 분석 중입니다...\n\n제목: $currentTitle\n\n1. 웹페이지의 본문 핵심 정보와 주요 맥락을 파악했습니다.\n2. 중요 데이터와 세부 결론을 3줄로 간결히 정리했습니다.\n3. 상세한 질문이나 추가 조사가 필요하시면 아래에 질문을 남겨주세요."
+            tvSummaryResult.text = aiSummarySample(currentTitle)
+            selectCard(R.id.btnQuickSummary)
         }
 
         btnQuickQuestions.setOnClickListener {
-            tvSummaryResult.text = "이 페이지 추천 질문:\n\n1. '이 글의 핵심 내용 3가지만 뽑아줘'\n2. '주요 장단점과 시사점은 뭐야?'\n3. '관련된 최신 트렌드 알려줘'"
+            tvSummaryResult.text = aiQuestionsSample()
+            selectCard(R.id.btnQuickQuestions)
         }
 
-        btnQuickTranslate.setOnClickListener {
-            dialog.dismiss()
-            togglePageTranslation()
+        btnQuickPageInfo.setOnClickListener {
+            tvSummaryResult.text = aiPageInfoSample(currentUrl, currentTitle, currentTab.isSecurity)
+            selectCard(R.id.btnQuickPageInfo)
         }
 
-        btnLoadHistory.setOnClickListener {
-            tvSummaryResult.text = "Creamy 대화 기록과 연동 중입니다."
+        btnSheetMic.setOnClickListener {
+            tvSummaryResult.text = "음성 입력은 준비 중입니다.\n\n아래 입력창에 직접 적어 주세요."
         }
 
         btnSheetSend.setOnClickListener {
             val q = etSheetQuery.text.toString().trim()
             if (q.isNotEmpty()) {
-                tvSummaryResult.text = "질문: $q\n\nCreamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요!"
+                tvSummaryResult.text = "질문: $q\n\nCreamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요."
                 etSheetQuery.setText("")
                 hideKeyboard(etSheetQuery)
+                selectCard(-1)
+            }
+        }
+
+        etSheetQuery.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
+                btnSheetSend.performClick()
+                true
+            } else {
+                false
             }
         }
 
