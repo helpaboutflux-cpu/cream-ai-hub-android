@@ -5752,6 +5752,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         dialog.show()
     }
 
