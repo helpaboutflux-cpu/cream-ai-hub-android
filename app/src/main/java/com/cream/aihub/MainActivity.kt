@@ -1707,7 +1707,7 @@ class MainActivity : AppCompatActivity() {
 
                 val favicon = tab.webView.favicon
                 if (favicon != null) {
-                    ivFavicon.setImageBitmap(Bitmap.createScaledBitmap(favicon, dpToPx(18).coerceAtLeast(1), dpToPx(18).coerceAtLeast(1), true))
+                    ivFavicon.setImageBitmap(Bitmap.createScaledBitmap(favicon, dpToPx(20).coerceAtLeast(1), dpToPx(20).coerceAtLeast(1), true))
                     ivFavicon.imageTintList = null
                 } else {
                     ivFavicon.setImageResource(R.drawable.ic_tabs)
