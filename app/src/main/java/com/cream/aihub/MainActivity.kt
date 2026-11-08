@@ -18,6 +18,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
@@ -1432,7 +1434,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun tabSheetBackground(p: TabSheetPalette): GradientDrawable {
         return GradientDrawable().apply {
-            setColor(p.sheet)
+            // v2.4.1: 반투명 글래스 톤으로 뒷배경 블러가 은은하게 투영되게 한다
+            setColor(withAlpha(p.sheet, 0.96f))
+            setStroke(dpToPx(1), p.stroke)
             cornerRadii = floatArrayOf(
                 dpToPx(28).toFloat(), dpToPx(28).toFloat(),
                 dpToPx(28).toFloat(), dpToPx(28).toFloat(),
@@ -1514,7 +1518,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTabManagerDialog() {
-        val dialog = createConfiguredBottomSheetDialog(transparentBackground = true)
+        val dialog = createConfiguredBottomSheetDialog(transparentBackground = true, customBackground = true)
         val view = layoutInflater.inflate(R.layout.dialog_tab_manager, null)
         // 카드 목록이 가중치로 늘어나도록 시트 높이를 화면 기준으로 고정한다
         val metrics = resources.displayMetrics
@@ -2523,7 +2527,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun createConfiguredBottomSheetDialog(transparentBackground: Boolean = false): BottomSheetDialog {
+    private fun createConfiguredBottomSheetDialog(
+        transparentBackground: Boolean = true,
+        customBackground: Boolean = false
+    ): BottomSheetDialog {
         val dialog = BottomSheetDialog(this)
         // 모든 플로팅 창에 은은한 유리 블러를 깐다 (Android 12+ 크로스 윈도우 블러)
         applyFloatingBlur(dialog)
@@ -2536,10 +2543,43 @@ class MainActivity : AppCompatActivity() {
                 behavior.skipCollapsed = true
                 behavior.isHideable = true
                 applyTabletDialogWidth(bottomSheet)
+                // v2.4.1: 전용 팔레트가 없는 공용 시트에는 반투명 글래스 서피스를 씌운다
+                if (!customBackground) {
+                    bottomSheet.getChildAt(0)?.let { content ->
+                        content.background = glassSheetBackground()
+                    }
+                }
             }
             applyFloatingBlur(dialog)
+            applyMainContentBlur(true)
         }
+        dialog.setOnDismissListener { applyMainContentBlur(false) }
         return dialog
+    }
+
+    // v2.4.1: One UI에서 시스템 창 블러가 꺼져 있어도 뒷배경이 흐려지도록 본문 뷰에 직접 블러를 건다
+    private fun applyMainContentBlur(enabled: Boolean) {
+        if (!::rootLayout.isInitialized) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        try {
+            rootLayout.setRenderEffect(
+                if (enabled) RenderEffect.createBlurEffect(18f, 18f, Shader.TileMode.CLAMP) else null
+            )
+        } catch (e: Exception) {
+        }
+    }
+
+    // v2.4.1: 공용 시트용 반투명 글래스 서피스 (상단 라운드, 라이트 톤)
+    private fun glassSheetBackground(): GradientDrawable {
+        return GradientDrawable().apply {
+            cornerRadii = floatArrayOf(
+                dpToPx(28).toFloat(), dpToPx(28).toFloat(),
+                dpToPx(28).toFloat(), dpToPx(28).toFloat(),
+                0f, 0f, 0f, 0f
+            )
+            setColor(withAlpha(Color.WHITE, 0.96f))
+            setStroke(dpToPx(1), Color.parseColor("#E4E4E7"))
+        }
     }
 
     // 플로팅 창 뒤 배경을 약하게 블러 처리해 글래스모피즘 느낌을 준다
@@ -2561,6 +2601,8 @@ class MainActivity : AppCompatActivity() {
     private fun AlertDialog.Builder.showWithBlur(): AlertDialog {
         val dialog = create()
         applyFloatingBlur(dialog)
+        dialog.setOnShowListener { applyMainContentBlur(true) }
+        dialog.setOnDismissListener { applyMainContentBlur(false) }
         dialog.show()
         applyFloatingBlur(dialog)
         return dialog
@@ -3664,7 +3706,8 @@ class MainActivity : AppCompatActivity() {
         val radii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
         val base = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-            setColor(p.sheetBg)
+            // v2.4.1: 반투명 글래스 톤으로 뒷배경 블러가 은은하게 투영되게 한다
+            setColor(withAlpha(p.sheetBg, 0.96f))
             cornerRadii = radii
         }
         val tint = p.gradientTint ?: return base
@@ -4695,7 +4738,10 @@ class MainActivity : AppCompatActivity() {
             currentWv.clearMatches()
             dialog.dismiss()
         }
-        dialog.setOnDismissListener { currentWv.clearMatches() }
+        dialog.setOnDismissListener {
+            applyMainContentBlur(false)
+            currentWv.clearMatches()
+        }
         dialog.show()
     }
 
@@ -5957,6 +6003,7 @@ class MainActivity : AppCompatActivity() {
             else -> {
                 highlight(btnTabAi)
                 layoutTabAiContent.visibility = View.VISIBLE
+                resetSidebarAiResult()
             }
         }
     }
@@ -6084,30 +6131,29 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btnSidebarMenuSettings)?.setOnClickListener { showSettingsDialog() }
 
         btnSidebarQuickSummary.setOnClickListener {
-            tvSidebarAiResult.text = aiSummarySample(getCurrentWebView().title ?: "현재 페이지")
+            showSidebarAiResult(aiSummarySample(getCurrentWebView().title ?: "현재 페이지"))
             selectSidebarAiCard(R.id.btnSidebarQuickSummary)
-            (findViewById<View>(R.id.scrollSidebarChat) as? android.widget.ScrollView)?.scrollTo(0, 0)
         }
 
         btnSidebarQuickQuestions.setOnClickListener {
-            tvSidebarAiResult.text = aiQuestionsSample()
+            showSidebarAiResult(aiQuestionsSample())
             selectSidebarAiCard(R.id.btnSidebarQuickQuestions)
-            (findViewById<View>(R.id.scrollSidebarChat) as? android.widget.ScrollView)?.scrollTo(0, 0)
         }
 
         btnSidebarQuickInfo.setOnClickListener {
             val currentWv = getCurrentWebView()
-            tvSidebarAiResult.text = aiPageInfoSample(
-                currentWv.url ?: START_PAGE_URL,
-                currentWv.title ?: "현재 페이지",
-                getCurrentTab().isSecurity
+            showSidebarAiResult(
+                aiPageInfoSample(
+                    currentWv.url ?: START_PAGE_URL,
+                    currentWv.title ?: "현재 페이지",
+                    getCurrentTab().isSecurity
+                )
             )
             selectSidebarAiCard(R.id.btnSidebarQuickInfo)
-            (findViewById<View>(R.id.scrollSidebarChat) as? android.widget.ScrollView)?.scrollTo(0, 0)
         }
 
         btnSidebarMic.setOnClickListener {
-            tvSidebarAiResult.text = "음성 입력은 준비 중입니다.\n\n아래 입력창에 직접 적어 주세요."
+            showSidebarAiResult("음성 입력은 준비 중입니다.\n\n아래 입력창에 직접 적어 주세요.")
         }
 
         btnSidebarSend.setOnClickListener {
@@ -6115,11 +6161,24 @@ class MainActivity : AppCompatActivity() {
             if (q.isNotEmpty()) {
                 val currentWv = getCurrentWebView()
                 val currentTitle = currentWv.title ?: "현재 페이지"
-                tvSidebarAiResult.text = "질문: $q\n\n답변: [$currentTitle] 페이지의 맥락을 고려하여 Creamy가 신속하게 분석했습니다. 원본 웹페이지를 실시간으로 참조하며 최적의 답변을 생성 중입니다."
+                showSidebarAiResult("질문: $q\n\n답변: [$currentTitle] 페이지의 맥락을 고려하여 Creamy가 신속하게 분석했습니다. 원본 웹페이지를 실시간으로 참조하며 최적의 답변을 생성 중입니다.")
                 etSidebarQuery.setText("")
                 hideKeyboard(etSidebarQuery)
             }
         }
+    }
+
+    // v2.4.1: 결과가 생겼을 때만 결과 박스를 보여준다 (초기에는 입력창이 버튼 바로 아래에 붙는다)
+    private fun showSidebarAiResult(text: String) {
+        tvSidebarAiResult.text = text
+        (findViewById<View>(R.id.scrollSidebarChat) as? View)?.visibility = View.VISIBLE
+        (findViewById<View>(R.id.scrollSidebarChat) as? android.widget.ScrollView)?.scrollTo(0, 0)
+    }
+
+    private fun resetSidebarAiResult() {
+        (findViewById<View>(R.id.scrollSidebarChat) as? View)?.visibility = View.GONE
+        tvSidebarAiResult.text = ""
+        selectSidebarAiCard(-1)
     }
 
     private fun selectSidebarAiCard(selectedId: Int) {
@@ -6164,7 +6223,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCreamyBottomSheet(initialQuery: String? = null) {
-        val dialog = createConfiguredBottomSheetDialog(transparentBackground = true)
+        val dialog = createConfiguredBottomSheetDialog(transparentBackground = true, customBackground = true)
         val view = layoutInflater.inflate(R.layout.dialog_summary_bottom_sheet, null)
         dialog.setContentView(view)
         applyTouchAnimationToAll(view)
@@ -6214,11 +6273,19 @@ class MainActivity : AppCompatActivity() {
         val host = try { Uri.parse(currentUrl).host ?: currentUrl } catch (e: Exception) { currentUrl }
 
         tvSharedUrl.text = if (isStartPage) "Creamy 시작 페이지" else "$currentTitle · $host"
-        tvSummaryResult.text = "요약, 핵심 질문, 페이지 정보 중 하나를 눌러 보세요."
+        // v2.4.1: 초기에는 결과 박스를 숨기고 실제 요약·질문이 있을 때만 보여준다
+        scrollSheetResult.visibility = View.GONE
+        tvSummaryResult.text = ""
+
+        fun showSheetResult(text: String) {
+            tvSummaryResult.text = text
+            scrollSheetResult.visibility = View.VISIBLE
+            scrollSheetResult.scrollTo(0, 0)
+        }
 
         if (!initialQuery.isNullOrBlank()) {
             etSheetQuery.setText(initialQuery)
-            tvSummaryResult.text = "질문: $initialQuery\n\nCreamy 답변: [$currentTitle] 페이지에서 선택한 내용을 바탕으로 분석을 진행 중입니다."
+            showSheetResult("질문: $initialQuery\n\nCreamy 답변: [$currentTitle] 페이지에서 선택한 내용을 바탕으로 분석을 진행 중입니다.")
         }
 
         fun selectCard(selectedId: Int) {
@@ -6241,7 +6308,7 @@ class MainActivity : AppCompatActivity() {
                         loadWebQuery(CREAMY_URL)
                     }
                     2 -> {
-                        tvSummaryResult.text = "이전 대화 기록을 불러오는 중입니다."
+                        showSheetResult("이전 대화 기록을 불러오는 중입니다.")
                         selectCard(-1)
                     }
                 }
@@ -6251,28 +6318,28 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnQuickSummary.setOnClickListener {
-            tvSummaryResult.text = aiSummarySample(currentTitle)
+            showSheetResult(aiSummarySample(currentTitle))
             selectCard(R.id.btnQuickSummary)
         }
 
         btnQuickQuestions.setOnClickListener {
-            tvSummaryResult.text = aiQuestionsSample()
+            showSheetResult(aiQuestionsSample())
             selectCard(R.id.btnQuickQuestions)
         }
 
         btnQuickPageInfo.setOnClickListener {
-            tvSummaryResult.text = aiPageInfoSample(currentUrl, currentTitle, currentTab.isSecurity)
+            showSheetResult(aiPageInfoSample(currentUrl, currentTitle, currentTab.isSecurity))
             selectCard(R.id.btnQuickPageInfo)
         }
 
         btnSheetMic.setOnClickListener {
-            tvSummaryResult.text = "음성 입력은 준비 중입니다.\n\n아래 입력창에 직접 적어 주세요."
+            showSheetResult("음성 입력은 준비 중입니다.\n\n아래 입력창에 직접 적어 주세요.")
         }
 
         btnSheetSend.setOnClickListener {
             val q = etSheetQuery.text.toString().trim()
             if (q.isNotEmpty()) {
-                tvSummaryResult.text = "질문: $q\n\nCreamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요."
+                showSheetResult("질문: $q\n\nCreamy 답변: [$currentTitle] 페이지의 맥락을 고려하여 신속하게 분석했습니다. 필요한 추가 정보나 작업이 있으시면 언제든 말씀해주세요.")
                 etSheetQuery.setText("")
                 hideKeyboard(etSheetQuery)
                 selectCard(-1)
@@ -7426,7 +7493,7 @@ class MainActivity : AppCompatActivity() {
             etSidebarQuery.setText(text)
             val currentWv = getCurrentWebView()
             val currentTitle = currentWv.title ?: "현재 페이지"
-            tvSidebarAiResult.text = "질문: $text\n\n답변: [$currentTitle] 페이지에서 선택한 내용을 바탕으로 Creamy가 분석을 진행 중입니다."
+            showSidebarAiResult("질문: $text\n\n답변: [$currentTitle] 페이지에서 선택한 내용을 바탕으로 Creamy가 분석을 진행 중입니다.")
         } else {
             showCreamyBottomSheet(text)
         }
@@ -8580,7 +8647,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val dialog = createConfiguredBottomSheetDialog(transparentBackground = true)
+        val dialog = createConfiguredBottomSheetDialog(transparentBackground = true, customBackground = true)
         val view = layoutInflater.inflate(R.layout.dialog_web_scrap, null)
         dialog.setContentView(view)
 
