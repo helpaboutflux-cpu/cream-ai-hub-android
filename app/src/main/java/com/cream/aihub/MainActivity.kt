@@ -594,6 +594,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 링크·이미지를 이 창 안으로 끌어다 놓으면 새 탭/분할 화면에서 연다
+        wv.setOnDragListener { _, event -> handleMainContainerDrop(event) }
+
         wv.setOnScrollChangeListener { _, _, scrollY, _, _ ->
             if (wv == getCurrentWebView()) {
                 val isStart = wv.url == START_PAGE_URL || wv.url == START_PAGE_SECURITY_URL || wv.url?.startsWith("file:///android_asset/") == true
@@ -8847,11 +8850,14 @@ class MainActivity : AppCompatActivity() {
 
     // ===== v2.4.0: 링크·이미지 드래그 앤 드롭 =====
 
+    // 드래그 앤 드롭
+    private val webDragToken = Any()
+
     private fun startWebDrag(source: View, url: String, label: String): Boolean {
         return try {
             val clip = ClipData.newPlainText(label, url)
             val shadow = buildWebDragShadow(label, url)
-            source.startDragAndDrop(clip, shadow, null, 0)
+            source.startDragAndDrop(clip, shadow, webDragToken, 0)
             true
         } catch (e: Exception) {
             false
@@ -8894,6 +8900,8 @@ class MainActivity : AppCompatActivity() {
     private fun handleMainContainerDrop(event: DragEvent): Boolean {
         when (event.action) {
             DragEvent.ACTION_DRAG_STARTED -> {
+                // 이 앱에서 시작한 링크·이미지 드래그만 받고, 외부 텍스트 드롭은 웹뷰에 그대로 넘긴다
+                if (event.localState !== webDragToken) return false
                 return event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
             }
             DragEvent.ACTION_DROP -> {
