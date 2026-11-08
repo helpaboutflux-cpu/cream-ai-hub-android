@@ -1693,7 +1693,7 @@ class MainActivity : AppCompatActivity() {
                 if (preview != null && !preview.isRecycled) {
                     val rounded = RoundedBitmapDrawableFactory.create(resources, preview)
                     rounded.cornerRadius = dpToPx(12).toFloat()
-                    rounded.isAntiAlias = true
+                    rounded.setAntiAlias(true)
                     ivThumb.setImageDrawable(rounded)
                     ivPlaceholder.visibility = View.GONE
                 } else {
