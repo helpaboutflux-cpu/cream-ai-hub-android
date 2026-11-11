@@ -285,6 +285,14 @@
             <a id="btnDownloadReceived" href="#" download class="block w-full text-center py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition flex items-center justify-center space-x-2"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg><span>내 기기에 파일 저장</span></a>
           </div>
 
+          <!-- Instant Image Preview Box -->
+          <div id="receiveImagePreviewBox" class="hidden p-3.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 space-y-2">
+            <span class="text-xs font-semibold text-neutral-500">수신 이미지 미리보기</span>
+            <div class="rounded-xl overflow-hidden max-h-64 flex items-center justify-center bg-black/5 dark:bg-black/40 p-1">
+              <img id="receivedImageEl" src="" alt="수신 이미지" class="max-h-60 object-contain rounded-lg">
+            </div>
+          </div>
+
           <!-- Received Text Preview Card -->
           <div id="receiveTextPreviewBox" class="hidden p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 space-y-2">
             <div class="flex items-center justify-between">
@@ -661,6 +669,9 @@
       const chunkSize = 32 * 1024; // 32KB: optimal WebRTC SCTP chunk size for speed and stability
       let offset = 0;
       const reader = new FileReader();
+      const transferStartTime = Date.now();
+      let lastSpeedCalcTime = transferStartTime;
+      let lastSpeedCalcBytes = 0;
 
       function sendSlice() {
         if (!conn.open) {
@@ -670,6 +681,7 @@
 
         if (offset >= selectedFile.size) {
           conn.send({ type: 'done' });
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
           document.getElementById('sendStatusText').textContent = '전송 완료되었습니다!';
           document.getElementById('sendProgressBar').style.width = '100%';
           document.getElementById('sendProgressPercent').textContent = '100%';
@@ -705,7 +717,18 @@
           const percent = Math.min(100, Math.round((offset / selectedFile.size) * 100));
           document.getElementById('sendProgressBar').style.width = percent + '%';
           document.getElementById('sendProgressPercent').textContent = percent + '%';
-          document.getElementById('sendStatusText').textContent = '파일 전송 중 (' + percent + '%): ' + selectedFile.name;
+
+          const now = Date.now();
+          const timeDiff = (now - lastSpeedCalcTime) / 1000;
+          if (timeDiff >= 0.4) {
+            const bytesDiff = offset - lastSpeedCalcBytes;
+            const speedMBps = ((bytesDiff / timeDiff) / (1024 * 1024)).toFixed(1);
+            const remainingBytes = selectedFile.size - offset;
+            const etaSec = bytesDiff > 0 ? Math.ceil(remainingBytes / (bytesDiff / timeDiff)) : 0;
+            document.getElementById('sendStatusText').textContent = '파일 전송 중 (' + percent + '% · ' + speedMBps + ' MB/s · ' + etaSec + '초 남음): ' + selectedFile.name;
+            lastSpeedCalcTime = now;
+            lastSpeedCalcBytes = offset;
+          }
         } catch (err) {
           console.error('Send chunk error:', err);
         }
@@ -781,6 +804,7 @@
           } else if (data.type === 'done') {
             const blob = new Blob(receivedChunks, { type: (receivedMeta && receivedMeta.mime) || 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
             document.getElementById('receiveStatusText').textContent = '파일 수신 완료!';
             document.getElementById('receiveProgressBar').style.width = '100%';
             document.getElementById('receiveProgressPercent').textContent = '100%';
@@ -801,6 +825,16 @@
                   previewBox.classList.remove('hidden');
                 }
               }).catch(e => {});
+            }
+
+            // Image instant preview
+            if (receivedMeta && (receivedMeta.mime && receivedMeta.mime.startsWith('image/') || receivedMeta.name.match(/\.(png|jpe?g|gif|webp|svg)$/i))) {
+              const previewBox = document.getElementById('receiveImagePreviewBox');
+              const previewImg = document.getElementById('receivedImageEl');
+              if (previewBox && previewImg) {
+                previewImg.src = url;
+                previewBox.classList.remove('hidden');
+              }
             }
 
             saveStoredDrop({

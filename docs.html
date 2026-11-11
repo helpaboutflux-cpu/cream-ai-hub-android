@@ -243,6 +243,9 @@
           <button onclick="insertMd('- [ ] ', '')" class="px-2.5 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800" title="할 일">Task</button>
           <button onclick="insertMd('| 항목 | 내용 |\n| --- | --- |\n| 예시 | 값 |\n', '')" class="px-2.5 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800" title="테이블">Table</button>
           <button onclick="insertMd('\n---\n', '')" class="px-2.5 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800" title="구분선">HR</button>
+          <span class="text-neutral-300 dark:text-neutral-700">|</span>
+          <button onclick="insertLink()" class="px-2.5 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 font-medium text-emerald-600 dark:text-emerald-400" title="링크 삽입">Link</button>
+          <button onclick="insertImage()" class="px-2.5 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 font-medium text-emerald-600 dark:text-emerald-400" title="이미지 삽입">Img</button>
         </div>
 
         <!-- Textarea -->
@@ -262,14 +265,31 @@
       </div>
 
       <!-- Right: Reader Preview Pane -->
-      <div id="previewPane" class="flex flex-col rounded-3xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border border-emerald-200/70 dark:border-emerald-900/60 shadow-xl shadow-emerald-500/5 overflow-hidden">
+      <div id="previewPane" class="flex flex-col rounded-3xl bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border border-emerald-200/70 dark:border-emerald-900/60 shadow-xl shadow-emerald-500/5 overflow-hidden relative">
+        <div id="readingProgressBar" class="h-1 bg-gradient-to-r from-emerald-500 to-teal-400 w-0 transition-all duration-75"></div>
         <div class="p-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between text-xs text-neutral-500">
-          <span class="font-semibold text-neutral-700 dark:text-neutral-300">실시간 독자 뷰 (Reader View)</span>
-          <button onclick="printDoc()" class="text-xs hover:text-neutral-900 dark:hover:text-white transition">PDF 인쇄</button>
+          <div class="flex items-center space-x-2">
+            <span class="font-semibold text-neutral-700 dark:text-neutral-300">실시간 독자 뷰 (Reader View)</span>
+            <span id="fontSizeBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">기본 크기</span>
+          </div>
+          <div class="flex items-center space-x-1.5 sm:space-x-2">
+            <button onclick="cycleFontSize()" class="px-2 py-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition font-mono" title="글자 크기">크기</button>
+            <button onclick="copyRawMarkdown()" id="btnCopyRawMd" class="px-2.5 py-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition font-medium" title="마크다운 원본 복사">MD 복사</button>
+            <button onclick="printDoc()" class="px-2.5 py-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition font-medium">PDF 인쇄</button>
+          </div>
         </div>
-        <div class="flex-1 p-6 sm:p-10 overflow-y-auto">
+        <div id="previewScrollContainer" onscroll="handlePreviewScroll()" class="flex-1 p-6 sm:p-10 overflow-y-auto">
+          <div id="tocContainer" class="hidden mb-6 p-4 rounded-2xl bg-neutral-100/90 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700/60 text-xs space-y-2">
+            <div class="flex items-center justify-between font-bold text-neutral-700 dark:text-neutral-300">
+              <span class="flex items-center space-x-1.5">
+                <svg class="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                <span>목차 (Table of Contents)</span>
+              </span>
+            </div>
+            <div id="tocList" class="space-y-1.5 text-neutral-600 dark:text-neutral-400"></div>
+          </div>
           <h1 id="previewTitle" class="text-2xl sm:text-3xl font-extrabold tracking-tight pb-4 border-b border-neutral-200 dark:border-neutral-800 mb-6">제목 없음</h1>
-          <div id="markdownRender" class="prose-custom text-neutral-800 dark:text-neutral-200"></div>
+          <div id="markdownRender" class="prose-custom text-neutral-800 dark:text-neutral-200 text-sm"></div>
         </div>
       </div>
     </div>
@@ -426,8 +446,43 @@ function launchDocument() {
       const title = document.getElementById('docTitleInput').value.trim() || '제목 없음';
       const body = document.getElementById('markdownInput').value;
 
-      document.getElementById('previewTitle').textContent = title;
+      // Avoid duplicate title if markdown already starts with # Title
+      const firstLineMatch = body.trim().match(/^#\s+(.+)$/m);
+      const prevTitleEl = document.getElementById('previewTitle');
+      if (firstLineMatch && (firstLineMatch[1].trim() === title || title === 'FLUX Docs 시작하기')) {
+        if (prevTitleEl) prevTitleEl.classList.add('hidden');
+      } else {
+        if (prevTitleEl) {
+          prevTitleEl.classList.remove('hidden');
+          prevTitleEl.textContent = title;
+        }
+      }
+
       document.getElementById('markdownRender').innerHTML = marked.parse(body);
+
+      // TOC generation
+      const headings = body.match(/^#{2,3}\s+(.+)$/gm);
+      const tocContainer = document.getElementById('tocContainer');
+      const tocList = document.getElementById('tocList');
+      if (headings && headings.length >= 2 && tocContainer && tocList) {
+        tocList.innerHTML = '';
+        headings.forEach(h => {
+          const isH3 = h.startsWith('### ');
+          const text = h.replace(/^#{2,3}\s+/, '').trim();
+          const item = document.createElement('div');
+          item.className = (isH3 ? 'pl-4 text-[11px] text-neutral-500' : 'font-medium text-neutral-700 dark:text-neutral-300') + ' hover:text-emerald-500 cursor-pointer transition';
+          item.textContent = (isH3 ? '• ' : '') + text;
+          item.onclick = () => {
+            const matches = Array.from(document.getElementById('markdownRender').querySelectorAll('h2, h3'));
+            const target = matches.find(el => el.textContent.trim() === text);
+            if (target) target.scrollIntoView({ behavior: 'smooth' });
+          };
+          tocList.appendChild(item);
+        });
+        tocContainer.classList.remove('hidden');
+      } else if (tocContainer) {
+        tocContainer.classList.add('hidden');
+      }
 
       // Stats
       const chars = body.length;
@@ -437,6 +492,66 @@ function launchDocument() {
       document.getElementById('charCount').textContent = chars + ' 글자';
       document.getElementById('wordCount').textContent = words + ' 단어';
       document.getElementById('readTime').textContent = '예상 ' + minutes + '분';
+    }
+
+    function handlePreviewScroll() {
+      const container = document.getElementById('previewScrollContainer');
+      const bar = document.getElementById('readingProgressBar');
+      if (!container || !bar) return;
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      const percent = maxScroll > 0 ? (container.scrollTop / maxScroll) * 100 : 0;
+      bar.style.width = Math.min(100, Math.max(0, percent)) + '%';
+    }
+
+    let fontSizeLevel = 1;
+    function cycleFontSize() {
+      fontSizeLevel = (fontSizeLevel + 1) % 3;
+      const render = document.getElementById('markdownRender');
+      const badge = document.getElementById('fontSizeBadge');
+      if (!render) return;
+      render.classList.remove('text-xs', 'text-sm', 'text-base');
+      if (fontSizeLevel === 0) {
+        render.classList.add('text-xs');
+        if (badge) badge.textContent = '작게';
+      } else if (fontSizeLevel === 1) {
+        render.classList.add('text-sm');
+        if (badge) badge.textContent = '기본 크기';
+      } else {
+        render.classList.add('text-base');
+        if (badge) badge.textContent = '크게';
+      }
+    }
+
+    function copyRawMarkdown() {
+      const body = document.getElementById('markdownInput').value;
+      navigator.clipboard.writeText(body).then(() => {
+        const btn = document.getElementById('btnCopyRawMd');
+        if (btn) {
+          const original = btn.textContent;
+          btn.textContent = '복사 완료!';
+          btn.classList.add('text-emerald-600', 'dark:text-emerald-400', 'font-bold');
+          setTimeout(() => {
+            btn.textContent = original;
+            btn.classList.remove('text-emerald-600', 'dark:text-emerald-400', 'font-bold');
+          }, 1500);
+        }
+      }).catch(err => {
+        alert('클립보드 복사 권한이 필요합니다.');
+      });
+    }
+
+    function insertLink() {
+      const url = prompt('연결할 웹 주소를 입력하세요 (예: https://example.com):');
+      if (url) {
+        insertMd('[링크 텍스트](', url.trim() + ')');
+      }
+    }
+
+    function insertImage() {
+      const url = prompt('삽입할 이미지 URL을 입력하세요:');
+      if (url) {
+        insertMd('![이미지 설명](', url.trim() + ')');
+      }
     }
 
     function insertMd(prefix, suffix) {
