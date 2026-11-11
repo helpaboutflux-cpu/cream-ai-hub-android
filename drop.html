@@ -569,7 +569,9 @@
 
     function initSenderPeer(code) {
       const peerId = 'flux-drop-' + code;
-      if (senderPeer) senderPeer.destroy();
+      if (senderPeer) {
+        try { senderPeer.destroy(); } catch (e) {}
+      }
 
       senderPeer = new Peer(peerId, { debug: 1 });
 
@@ -581,8 +583,24 @@
         senderConn = conn;
         document.getElementById('sendStatusText').textContent = '수신자 연결됨! 파일 전송 준비 중...';
 
-        conn.on('open', () => {
+        const startTransfer = () => {
+          if (conn._transferStarted) return;
+          conn._transferStarted = true;
           sendFileChunks(conn);
+        };
+
+        // If connection is already open, start transfer immediately
+        if (conn.open) {
+          setTimeout(startTransfer, 50);
+        } else {
+          conn.on('open', startTransfer);
+        }
+
+        // Also start transfer if receiver sends ready ping
+        conn.on('data', (msg) => {
+          if (msg && msg.type === 'ready') {
+            startTransfer();
+          }
         });
       });
 
@@ -602,39 +620,67 @@
         mime: selectedFile.type
       });
 
-      const chunkSize = 64 * 1024; // 64KB
+      const chunkSize = 32 * 1024; // 32KB: optimal WebRTC SCTP chunk size for speed and stability
       let offset = 0;
       const reader = new FileReader();
 
-      function readSlice() {
+      function sendSlice() {
+        if (!conn.open) {
+          console.warn('Connection closed during transfer');
+          return;
+        }
+
+        if (offset >= selectedFile.size) {
+          conn.send({ type: 'done' });
+          document.getElementById('sendStatusText').textContent = '전송 완료되었습니다!';
+          document.getElementById('sendProgressBar').style.width = '100%';
+          document.getElementById('sendProgressPercent').textContent = '100%';
+
+          saveStoredDrop({
+            id: 'drop_' + Date.now(),
+            type: 'send',
+            name: selectedFile.name,
+            size: selectedFile.size,
+            date: new Date().toLocaleDateString('ko-KR')
+          });
+          return;
+        }
+
+        // WebRTC bufferedAmount flow control (backpressure)
+        const dc = conn.dataChannel || conn._dc;
+        if (dc && dc.bufferedAmount > 256 * 1024) {
+          setTimeout(sendSlice, 20);
+          return;
+        }
+
         const slice = selectedFile.slice(offset, offset + chunkSize);
         reader.readAsArrayBuffer(slice);
       }
 
       reader.onload = function(e) {
-        conn.send({
-          type: 'chunk',
-          data: e.target.result
-        });
-        offset += e.target.result.byteLength;
-        const percent = Math.min(100, Math.round((offset / selectedFile.size) * 100));
-        document.getElementById('sendProgressBar').style.width = percent + '%';
-        document.getElementById('sendProgressPercent').textContent = percent + '%';
-
-        if (offset < selectedFile.size) {
-          readSlice();
-        } else {
-          conn.send({ type: 'done' });
-          document.getElementById('sendStatusText').textContent = '전송 완료되었습니다!';
+        try {
+          conn.send({
+            type: 'chunk',
+            data: e.target.result
+          });
+          offset += e.target.result.byteLength;
+          const percent = Math.min(100, Math.round((offset / selectedFile.size) * 100));
+          document.getElementById('sendProgressBar').style.width = percent + '%';
+          document.getElementById('sendProgressPercent').textContent = percent + '%';
+          document.getElementById('sendStatusText').textContent = '파일 전송 중 (' + percent + '%): ' + selectedFile.name;
+        } catch (err) {
+          console.error('Send chunk error:', err);
         }
+        sendSlice();
       };
 
-      readSlice();
+      sendSlice();
     }
 
     // Receiver Logic
     let receivedChunks = [];
     let receivedMeta = null;
+    let receivedBytes = 0;
 
     function connectAndReceive() {
       const code = document.getElementById('inputPairCode').value.trim();
@@ -647,42 +693,62 @@
       document.getElementById('receiveStatusBox').classList.remove('hidden');
       document.getElementById('receiveStatusText').textContent = '보내는 기기(' + code + ')에 연결 중...';
 
-      if (receiverPeer) receiverPeer.destroy();
+      if (receiverPeer) {
+        try { receiverPeer.destroy(); } catch (e) {}
+      }
       receiverPeer = new Peer();
 
       receiverPeer.on('open', () => {
         receiverConn = receiverPeer.connect(targetPeerId, { reliable: true });
 
         receiverConn.on('open', () => {
-          document.getElementById('receiveStatusText').textContent = '연결 성공! 전송 대기 중...';
+          document.getElementById('receiveStatusText').textContent = '연결 성공! 파일 수신 대기 중...';
+          // Send ready ping to sender so transfer starts immediately
+          try {
+            receiverConn.send({ type: 'ready' });
+          } catch (e) {}
         });
 
         receiverConn.on('data', (data) => {
+          if (!data) return;
+
           if (data.type === 'meta') {
             receivedMeta = data;
             receivedChunks = [];
+            receivedBytes = 0;
             document.getElementById('receiveStatusText').textContent = '수신 중: ' + data.name;
           } else if (data.type === 'chunk') {
             receivedChunks.push(data.data);
+            const chunkLen = (data.data && (data.data.byteLength || data.data.length)) || 0;
+            receivedBytes += chunkLen;
+
             if (receivedMeta && receivedMeta.size > 0) {
-              const currentBytes = receivedChunks.reduce((acc, c) => acc + c.byteLength, 0);
-              const percent = Math.min(100, Math.round((currentBytes / receivedMeta.size) * 100));
+              const percent = Math.min(100, Math.round((receivedBytes / receivedMeta.size) * 100));
               document.getElementById('receiveProgressBar').style.width = percent + '%';
               document.getElementById('receiveProgressPercent').textContent = percent + '%';
+              document.getElementById('receiveStatusText').textContent = '수신 중 (' + percent + '%): ' + receivedMeta.name;
             }
           } else if (data.type === 'done') {
-            const blob = new Blob(receivedChunks, { type: receivedMeta.mime || 'application/octet-stream' });
+            const blob = new Blob(receivedChunks, { type: (receivedMeta && receivedMeta.mime) || 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
             document.getElementById('receiveStatusText').textContent = '파일 수신 완료!';
             document.getElementById('receiveProgressBar').style.width = '100%';
             document.getElementById('receiveProgressPercent').textContent = '100%';
 
-            document.getElementById('receivedFileName').textContent = receivedMeta.name;
-            document.getElementById('receivedFileSize').textContent = formatFileSize(receivedMeta.size);
+            document.getElementById('receivedFileName').textContent = receivedMeta ? receivedMeta.name : '수신 파일';
+            document.getElementById('receivedFileSize').textContent = formatFileSize(receivedBytes);
             const dlBtn = document.getElementById('btnDownloadReceived');
             dlBtn.href = url;
-            dlBtn.download = receivedMeta.name;
+            dlBtn.download = receivedMeta ? receivedMeta.name : 'flux-file';
             document.getElementById('receiveDownloadCard').classList.remove('hidden');
+
+            saveStoredDrop({
+              id: 'drop_' + Date.now(),
+              type: 'receive',
+              name: receivedMeta ? receivedMeta.name : '수신 파일',
+              size: receivedBytes,
+              date: new Date().toLocaleDateString('ko-KR')
+            });
           }
         });
 
@@ -745,7 +811,13 @@
       }
 
       const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
+      const hash = window.location.hash;
+      let code = params.get('code');
+      if (!code && hash && hash.includes('code=')) {
+        const m = hash.match(/code=([0-9]{6})/);
+        if (m) code = m[1];
+      }
+
       if (code && code.length === 6) {
         switchDropTab('maker');
         switchMode('receive');

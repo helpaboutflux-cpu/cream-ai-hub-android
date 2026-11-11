@@ -209,6 +209,9 @@
         <input type="text" id="docTitleInput" placeholder="문서 제목을 입력하세요..." class="w-full font-bold text-base sm:text-lg bg-transparent border-0 outline-none text-neutral-900 dark:text-white placeholder:text-neutral-400">
       </div>
       <div class="flex items-center space-x-2 self-end sm:self-auto">
+        <button id="btnMobileToggleView" onclick="toggleViewMode()" class="lg:hidden px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+          <span id="viewToggleText">미리보기</span>
+        </button>
         <button onclick="publishDocument()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition">
           <div class="flex items-center space-x-1.5"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg><span>1초 웹 발행</span></div>
         </button>
@@ -480,14 +483,19 @@ function launchDocument() {
       const toggleText = document.getElementById('viewToggleText');
 
       if (view === 'preview') {
-        editor.classList.add('hidden', 'lg:flex');
-        preview.classList.remove('hidden');
-        preview.classList.add('flex');
-        toggleText.textContent = '편집기 보기';
+        if (editor) editor.classList.add('hidden', 'lg:flex');
+        if (preview) {
+          preview.classList.remove('hidden');
+          preview.classList.add('flex');
+        }
+        if (toggleText) toggleText.textContent = '편집기 보기';
       } else {
-        editor.classList.remove('hidden');
-        preview.classList.add('hidden', 'lg:flex');
-        toggleText.textContent = '미리보기';
+        if (editor) editor.classList.remove('hidden');
+        if (preview) {
+          preview.classList.add('hidden', 'lg:flex');
+          preview.classList.remove('flex');
+        }
+        if (toggleText) toggleText.textContent = '미리보기';
       }
     }
 
@@ -679,6 +687,15 @@ const shareUrl = window.location.origin + window.location.pathname + '#doc=' + c
       const liveUrl = window.location.origin + window.location.pathname + '#doc=' + compressed;
       document.getElementById('publishedLinkInput').value = liveUrl;
 
+      // Save to projects history
+      saveStoredDoc({
+        id: 'doc_' + Date.now(),
+        title,
+        shareUrl: liveUrl,
+        charCount: body.length,
+        date: new Date().toLocaleDateString('ko-KR')
+      });
+
       // QR Code
       const qrBox = document.getElementById('docQrCode');
       qrBox.innerHTML = '';
@@ -772,10 +789,49 @@ const shareUrl = window.location.origin + window.location.pathname + '#doc=' + c
     }
 
     
+    function loadDocumentFromHash() {
+      const hash = window.location.hash;
+      const params = new URLSearchParams(window.location.search);
+      let compressed = null;
+
+      if (hash && hash.includes('doc=')) {
+        const m = hash.match(/doc=([^&]+)/);
+        if (m) compressed = m[1];
+      } else if (params.has('doc')) {
+        compressed = params.get('doc');
+      }
+
+      if (compressed) {
+        try {
+          const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
+          if (decompressed) {
+            const data = JSON.parse(decompressed);
+            const title = data.title || '발행된 문서';
+            const body = data.body || '';
+
+            const titleInp = document.getElementById('docTitleInput');
+            const mdInp = document.getElementById('markdownInput');
+            if (titleInp) titleInp.value = title;
+            if (mdInp) mdInp.value = body;
+
+            renderMarkdown();
+            switchDocsTab('maker');
+
+            if (window.innerWidth < 1024) {
+              setMobileView('preview');
+            }
+            return true;
+          }
+        } catch (e) {
+          console.warn('Failed to parse published document hash:', e);
+        }
+      }
+      return false;
+    }
+
     // Initialize Tab & Reader
     window.addEventListener('DOMContentLoaded', () => {
       initTheme();
-      initEditor();
       updateDocsProjectsBadge();
 
       const docInput = document.getElementById('docTitleInput');
@@ -787,16 +843,24 @@ const shareUrl = window.location.origin + window.location.pathname + '#doc=' + c
         });
       }
 
-      const hash = window.location.hash;
       const params = new URLSearchParams(window.location.search);
-      if (hash.startsWith('#doc=') || params.has('doc')) {
+      const isDocLoaded = loadDocumentFromHash();
+
+      if (!isDocLoaded) {
+        initEditor();
+        if (params.get('tab') === 'maker') {
+          switchDocsTab('maker');
+        } else if (params.get('tab') === 'projects') {
+          switchDocsTab('projects');
+        } else {
+          switchDocsTab('home');
+        }
+      }
+    });
+
+    window.addEventListener('hashchange', () => {
+      if (window.location.hash.includes('doc=')) {
         loadDocumentFromHash();
-      } else if (params.get('tab') === 'maker') {
-        switchDocsTab('maker');
-      } else if (params.get('tab') === 'projects') {
-        switchDocsTab('projects');
-      } else {
-        switchDocsTab('home');
       }
     });
   </script>
