@@ -284,6 +284,15 @@
             </div>
             <a id="btnDownloadReceived" href="#" download class="block w-full text-center py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition flex items-center justify-center space-x-2"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg><span>내 기기에 파일 저장</span></a>
           </div>
+
+          <!-- Received Text Preview Card -->
+          <div id="receiveTextPreviewBox" class="hidden p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-mono text-neutral-500">수신된 텍스트 내용</span>
+              <button onclick="copyReceivedText()" class="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline">텍스트 복사</button>
+            </div>
+            <textarea id="receivedTextContent" readonly rows="4" class="w-full p-3 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-xs font-mono select-all outline-none leading-relaxed"></textarea>
+          </div>
         </div>
       </div>
     </section>
@@ -567,13 +576,35 @@
       });
     }
 
+    const peerIceConfig = {
+      debug: 1,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' }
+        ],
+        iceCandidatePoolSize: 10
+      }
+    };
+
+    function copyReceivedText() {
+      const box = document.getElementById('receivedTextContent');
+      if (box) {
+        navigator.clipboard.writeText(box.value).then(() => {
+          alert('수신된 텍스트가 복사되었습니다.');
+        });
+      }
+    }
+
     function initSenderPeer(code) {
       const peerId = 'flux-drop-' + code;
       if (senderPeer) {
         try { senderPeer.destroy(); } catch (e) {}
       }
 
-      senderPeer = new Peer(peerId, { debug: 1 });
+      senderPeer = new Peer(peerId, peerIceConfig);
 
       senderPeer.on('open', (id) => {
         document.getElementById('sendStatusText').textContent = '수신자 연결 대기 중... (코드: ' + code + ')';
@@ -594,6 +625,13 @@
           setTimeout(startTransfer, 50);
         } else {
           conn.on('open', startTransfer);
+        }
+
+        if (conn.dataChannel) {
+          if (conn.dataChannel.readyState === 'open') {
+            setTimeout(startTransfer, 50);
+          }
+          conn.dataChannel.addEventListener('open', startTransfer);
         }
 
         // Also start transfer if receiver sends ready ping
@@ -696,18 +734,30 @@
       if (receiverPeer) {
         try { receiverPeer.destroy(); } catch (e) {}
       }
-      receiverPeer = new Peer();
+      receiverPeer = new Peer(peerIceConfig);
 
       receiverPeer.on('open', () => {
         receiverConn = receiverPeer.connect(targetPeerId, { reliable: true });
 
-        receiverConn.on('open', () => {
+        const onConnected = () => {
           document.getElementById('receiveStatusText').textContent = '연결 성공! 파일 수신 대기 중...';
-          // Send ready ping to sender so transfer starts immediately
           try {
             receiverConn.send({ type: 'ready' });
           } catch (e) {}
-        });
+        };
+
+        if (receiverConn.open) {
+          onConnected();
+        } else {
+          receiverConn.on('open', onConnected);
+        }
+
+        if (receiverConn.dataChannel) {
+          if (receiverConn.dataChannel.readyState === 'open') {
+            onConnected();
+          }
+          receiverConn.dataChannel.addEventListener('open', onConnected);
+        }
 
         receiverConn.on('data', (data) => {
           if (!data) return;
@@ -741,6 +791,17 @@
             dlBtn.href = url;
             dlBtn.download = receivedMeta ? receivedMeta.name : 'flux-file';
             document.getElementById('receiveDownloadCard').classList.remove('hidden');
+
+            if (receivedMeta && (receivedMeta.mime === 'text/plain' || receivedMeta.name.endsWith('.txt'))) {
+              blob.text().then(txt => {
+                const previewBox = document.getElementById('receiveTextPreviewBox');
+                const contentBox = document.getElementById('receivedTextContent');
+                if (previewBox && contentBox) {
+                  contentBox.value = txt;
+                  previewBox.classList.remove('hidden');
+                }
+              }).catch(e => {});
+            }
 
             saveStoredDrop({
               id: 'drop_' + Date.now(),
