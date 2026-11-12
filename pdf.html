@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUX PDF - 브라우저 로컬 무제한 PDF 병합·분할·변환 종합 도구함</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            },
+            ruby: {
+              50: '#fff1f2',
+              100: '#ffe4e6',
+              200: '#fecdd3',
+              400: '#fb7185',
+              500: '#f43f5e',
+              600: '#e11d48',
+              700: '#be123c',
+              800: '#9f1239',
+              900: '#881337',
+              950: '#4c0519'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- PDF-Lib for 100% Client-Side In-Browser PDF Manipulation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <!-- JSZip for Multiple Split Page Bundling -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Floating Glowing Orbs */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.16;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+    .orb-ruby-1 {
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, #e11d48 0%, #be123c 55%, transparent 75%);
+      top: -120px;
+      left: -120px;
+      animation: orbFloat1 20s ease-in-out infinite alternate;
+    }
+    .orb-ruby-2 {
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #9f1239 0%, #e11d48 55%, transparent 75%);
+      bottom: -100px;
+      right: -100px;
+      animation: orbFloat2 24s ease-in-out infinite alternate;
+    }
+    .orb-ruby-3 {
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, #f43f5e 0%, #fb7185 55%, transparent 75%);
+      top: 45%;
+      left: 55%;
+      animation: orbFloat3 18s ease-in-out infinite alternate;
+    }
+
+    @keyframes orbFloat1 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(80px, 60px) scale(1.12); }
+    }
+    @keyframes orbFloat2 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-60px, -70px) scale(1.08); }
+    }
+    @keyframes orbFloat3 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(50px, -50px) scale(1.15); }
+    }
+
+    /* Spring Tab Switch */
+    .tab-spring-enter {
+      animation: tabSpring 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;
+    }
+    @keyframes tabSpring {
+      0% { opacity: 0; transform: translateY(12px) scale(0.985); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* 3D Magnetic Card Lift */
+    .card-hover-lift {
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s ease, border-color 0.2s ease;
+      will-change: transform;
+    }
+    .card-hover-lift:hover {
+      transform: translateY(-6px) scale(1.012);
+      box-shadow: 0 18px 30px -10px rgba(225, 29, 72, 0.15);
+    }
+    .dark .card-hover-lift:hover {
+      box-shadow: 0 18px 32px -10px rgba(225, 29, 72, 0.25);
+    }
+
+    /* Button Shimmer */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 40%;
+      height: 200%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+      transform: rotate(25deg);
+      animation: shimmerLoop 5s infinite;
+    }
+    @keyframes shimmerLoop {
+      0% { left: -60%; }
+      20% { left: 140%; }
+      100% { left: 140%; }
+    }
+
+    /* Confetti Particle */
+    .confetti-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      animation: confettiFall 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+    @keyframes confettiFall {
+      0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0.3); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col antialiased selection:bg-rose-500 selection:text-white relative">
+
+  <!-- Ambient Glow Orbs -->
+  <div class="ambient-orb orb-ruby-1"></div>
+  <div class="ambient-orb orb-ruby-2"></div>
+  <div class="ambient-orb orb-ruby-3"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchPdfTab('home')">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-600 to-red-600 text-white flex items-center justify-center shadow-md shadow-rose-500/20">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-base tracking-tight text-neutral-900 dark:text-white">FLUX PDF</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 font-semibold border border-rose-200 dark:border-rose-800/60">로컬 무제한 엔진</span>
+          </div>
+          <span class="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">PDF 병합 · 분할/추출 · 이미지 변환 · 회전 정리</span>
+        </div>
+      </div>
+
+      <!-- Center Tabs -->
+      <nav class="hidden md:flex items-center bg-neutral-100/80 dark:bg-neutral-900/80 p-1 rounded-2xl border border-neutral-200/70 dark:border-neutral-800/70">
+        <button id="navBtnHome" onclick="switchPdfTab('home')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-white bg-rose-600 shadow-sm">
+          홈
+        </button>
+        <button id="navBtnStudio" onclick="switchPdfTab('studio')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          스튜디오
+        </button>
+        <button id="navBtnStorage" onclick="switchPdfTab('storage')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          내 보관함
+        </button>
+      </nav>
+
+      <!-- Right Controls -->
+      <div class="flex items-center space-x-2">
+        <button id="darkModeToggle" class="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition" title="다크/라이트 모드 전환">
+          <svg id="moonIcon" class="w-4 h-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <svg id="sunIcon" class="w-4 h-4 block dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+        <a href="index.html" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 hover:border-neutral-400 dark:hover:border-neutral-600 transition">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+          <span>Hub</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Mobile Nav Bar -->
+    <div class="flex md:hidden border-t border-neutral-200 dark:border-neutral-800 px-4 py-2 justify-around bg-white/95 dark:bg-neutral-950/95">
+      <button onclick="switchPdfTab('home')" class="text-xs font-semibold py-1 px-3 rounded-lg text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50" id="mobileNavHome">홈</button>
+      <button onclick="switchPdfTab('studio')" class="text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500" id="mobileNavStudio">스튜디오</button>
+      <button onclick="switchPdfTab('storage')" class="text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500" id="mobileNavStorage">보관함</button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 relative z-10">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: HOME (소개 및 4대 핵심 도구 퀵 스타트) -->
+    <!-- ========================================== -->
+    <section id="pdfViewHome" class="space-y-12 tab-spring-enter">
+      
+      <!-- Hero -->
+      <div class="text-center space-y-4 max-w-3xl mx-auto pt-6">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-semibold">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          <span>100% 기기 로컬 처리 · 파일 유출 제로 · 완전 무료 무제한</span>
+        </div>
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-neutral-950 dark:text-white leading-tight">
+          브라우저에서 완성하는 <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-rose-600 via-red-500 to-rose-400 bg-clip-text text-transparent">안전한 로컬 PDF 종합 도구</span>
+        </h1>
+        <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+          과제나 서류를 외부 서버에 업로드하지 않고 사용자 브라우저 내부에서 100% 연산합니다. 일일 횟수 제한이나 결제 유도 없이 병합, 분할, 이미지 변환, 회전까지 자유롭게 처리하세요.
+        </p>
+        <div class="pt-3 flex flex-wrap items-center justify-center gap-3">
+          <button onclick="openPdfTool('merge')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-sm shadow-lg shadow-rose-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+            <span>PDF 병합 시작하기</span>
+          </button>
+          <button onclick="openPdfTool('img2pdf')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            <span>이미지를 PDF로 변환</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feature Highlights 4-Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <div onclick="openPdfTool('merge')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
+          <div class="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+          </div>
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">PDF 파일 병합</h3>
+            <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
+          </div>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            여러 개의 PDF 문서를 드래그하여 원하는 순서대로 묶어 단일 PDF 파일로 합칩니다.
+          </p>
+        </div>
+
+        <div onclick="openPdfTool('split')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
+          <div class="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+          </div>
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">PDF 분할 및 추출</h3>
+            <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
+          </div>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            특정 페이지만 골라 추출하거나, 전체 문서를 개별 1장씩 분리해 ZIP으로 다운로드합니다.
+          </p>
+        </div>
+
+        <div onclick="openPdfTool('img2pdf')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
+          <div class="w-9 h-9 rounded-xl bg-orange-100 dark:bg-orange-950 text-orange-600 dark:text-orange-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          </div>
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">이미지 to PDF 변환</h3>
+            <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
+          </div>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            스마트폰 촬영 사진이나 이미지들을 규격 A4 크기에 딱 맞춘 정갈한 PDF로 1초 변환합니다.
+          </p>
+        </div>
+
+        <div onclick="openPdfTool('rotate')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
+          <div class="w-9 h-9 rounded-xl bg-pink-100 dark:bg-pink-950 text-pink-600 dark:text-pink-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+          </div>
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">페이지 회전 및 정리</h3>
+            <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
+          </div>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            뒤집힌 스캔 문서를 90도 회전하거나 불필요한 백지 페이지를 선별 삭제하여 정리합니다.
+          </p>
+        </div>
+
+      </div>
+
+      <!-- Security Comparison Banner -->
+      <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-gradient-to-r from-rose-50/50 via-white to-red-50/50 dark:from-rose-950/20 dark:via-neutral-900 dark:to-red-950/20 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div class="space-y-1.5 text-center md:text-left">
+          <span class="text-xs font-bold text-rose-600 dark:text-rose-400 tracking-wider uppercase font-mono">Zero Server Upload</span>
+          <h3 class="text-lg font-bold text-neutral-900 dark:text-white">개인 서류와 과제가 외부 서버에 절대 전송되지 않습니다</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            모든 PDF 연산은 WebAssembly와 Canvas를 통해 브라우저 내부 메모리에서만 이루어지며, 브라우저를 닫는 즉시 완벽 소멸합니다.
+          </p>
+        </div>
+        <button onclick="switchPdfTab('studio')" class="px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-950 font-bold text-xs shrink-0 transition shadow-sm">
+          스튜디오 열기
+        </button>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: STUDIO (실제 작업 공간) -->
+    <!-- ========================================== -->
+    <section id="pdfViewStudio" class="hidden space-y-6 tab-spring-enter">
+
+      <!-- Sub-tool Tabs Navigation -->
+      <div class="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-100 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800">
+        <button onclick="selectStudioTool('merge')" id="toolTabMerge" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-white bg-rose-600 shadow-sm">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+          <span>PDF 병합</span>
+        </button>
+        <button onclick="selectStudioTool('split')" id="toolTabSplit" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+          <span>PDF 분할 및 추출</span>
+        </button>
+        <button onclick="selectStudioTool('img2pdf')" id="toolTabImg2pdf" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          <span>이미지 to PDF</span>
+        </button>
+        <button onclick="selectStudioTool('rotate')" id="toolTabRotate" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+          <span>회전 및 정리</span>
+        </button>
+      </div>
+
+      <!-- ==================================== -->
+      <!-- TOOL 1: MERGE PDF -->
+      <!-- ==================================== -->
+      <div id="panelMerge" class="space-y-6">
+        
+        <!-- Dropzone -->
+        <div id="mergeDropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleMergeDrop(event)" onclick="document.getElementById('mergeFileInput').click()" class="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-rose-500 dark:hover:border-rose-500 rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition bg-white/50 dark:bg-neutral-900/50 backdrop-blur-sm space-y-3 group">
+          <input type="file" id="mergeFileInput" multiple accept="application/pdf" class="hidden" onchange="handleMergeFileSelect(event)">
+          <div class="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center group-hover:scale-110 transition-transform">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+          </div>
+          <div class="space-y-1">
+            <p class="font-bold text-sm text-neutral-800 dark:text-neutral-200">합칠 PDF 파일들을 여기에 드래그하거나 클릭하여 추가하세요</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">여러 개의 PDF 파일을 한 번에 선택할 수 있습니다 (순서 자유 변경 가능)</p>
+          </div>
+        </div>
+
+        <!-- File List Container -->
+        <div id="mergeListContainer" class="hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="font-bold text-sm text-neutral-900 dark:text-white">병합할 파일 목록</span>
+              <span id="mergeFileCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 font-bold">0개</span>
+            </div>
+            <button onclick="document.getElementById('mergeFileInput').click()" class="text-xs text-rose-600 dark:text-rose-400 font-semibold hover:underline flex items-center space-x-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>파일 더 추가하기</span>
+            </button>
+          </div>
+
+          <!-- Items Stack -->
+          <div id="mergeItemsList" class="space-y-2"></div>
+
+          <!-- Action Bar -->
+          <div class="p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3 w-full sm:w-auto">
+              <label class="text-xs font-semibold text-neutral-600 dark:text-neutral-400 shrink-0">출력 파일명:</label>
+              <input type="text" id="mergeOutputName" value="flux-merged.pdf" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-xs font-mono w-full sm:w-56 focus:outline-none focus:border-rose-500">
+            </div>
+            <div class="flex items-center space-x-2 w-full sm:w-auto">
+              <button onclick="clearMergeList()" class="px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+                초기화
+              </button>
+              <button onclick="executeMergePdf()" id="btnExecuteMerge" class="btn-shimmer flex-1 sm:flex-initial px-6 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 flex items-center justify-center space-x-2">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+                <span>PDF 하나로 병합하기</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Result Card -->
+        <div id="mergeResultCard" class="hidden p-6 rounded-3xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/50 dark:bg-rose-950/20 space-y-4">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-500/30">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div>
+              <h4 class="font-bold text-sm text-neutral-900 dark:text-white">PDF 병합이 성공적으로 완료되었습니다!</h4>
+              <p id="mergeResultSummary" class="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">총 0페이지 · 0.0 MB</p>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 pt-2">
+            <a id="mergeDownloadBtn" download="flux-merged.pdf" class="btn-shimmer px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-500/25 flex items-center space-x-2">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>병합된 PDF 다운로드</span>
+            </a>
+            <button onclick="resetMergeTool()" class="px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+              새로운 파일 합치기
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================================== -->
+      <!-- TOOL 2: SPLIT & EXTRACT -->
+      <!-- ==================================== -->
+      <div id="panelSplit" class="hidden space-y-6">
+        
+        <!-- Dropzone -->
+        <div id="splitDropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleSplitDrop(event)" onclick="document.getElementById('splitFileInput').click()" class="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-rose-500 dark:hover:border-rose-500 rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition bg-white/50 dark:bg-neutral-900/50 backdrop-blur-sm space-y-3 group">
+          <input type="file" id="splitFileInput" accept="application/pdf" class="hidden" onchange="handleSplitFileSelect(event)">
+          <div class="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center group-hover:scale-110 transition-transform">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+          </div>
+          <div class="space-y-1">
+            <p class="font-bold text-sm text-neutral-800 dark:text-neutral-200">분할하거나 추출할 PDF 파일을 선택하세요</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">PDF 파일 1개를 업로드하면 페이지별 분할 옵션이 열립니다</p>
+          </div>
+        </div>
+
+        <!-- Split Options Container -->
+        <div id="splitOptionsContainer" class="hidden space-y-6">
+          
+          <!-- Loaded File Badge -->
+          <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs">
+                PDF
+              </div>
+              <div>
+                <p id="splitFileName" class="font-bold text-sm text-neutral-900 dark:text-white truncate max-w-xs sm:max-w-md">문서.pdf</p>
+                <p id="splitFileMeta" class="text-xs text-neutral-500 font-mono">총 0페이지 · 0.0 MB</p>
+              </div>
+            </div>
+            <button onclick="resetSplitTool()" class="text-xs text-neutral-500 hover:text-rose-600 transition">다른 파일 선택</button>
+          </div>
+
+          <!-- Mode Picker -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            
+            <div onclick="selectSplitMode('range')" id="splitModeRangeCard" class="card-hover-lift cursor-pointer p-5 rounded-2xl border-2 border-rose-500 bg-rose-50/30 dark:bg-rose-950/20 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-rose-600 dark:text-rose-400">모드 1</span>
+                <div class="w-4 h-4 rounded-full border-2 border-rose-600 flex items-center justify-center p-0.5">
+                  <div class="w-2 h-2 rounded-full bg-rose-600"></div>
+                </div>
+              </div>
+              <h4 class="font-bold text-sm text-neutral-900 dark:text-white">특정 페이지만 골라 추출</h4>
+              <p class="text-xs text-neutral-500 dark:text-neutral-400">원하는 페이지 범위(예: 1-3, 5, 8)를 입력해 새 PDF 파일로 만듭니다.</p>
+            </div>
+
+            <div onclick="selectSplitMode('all')" id="splitModeAllCard" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-neutral-500">모드 2</span>
+                <div class="w-4 h-4 rounded-full border border-neutral-400"></div>
+              </div>
+              <h4 class="font-bold text-sm text-neutral-900 dark:text-white">모든 페이지 낱장 분리 (ZIP)</h4>
+              <p class="text-xs text-neutral-500 dark:text-neutral-400">모든 페이지를 각각 1장씩 단일 PDF로 분할해 하나의 압축 ZIP 파일로 받습니다.</p>
+            </div>
+
+          </div>
+
+          <!-- Mode 1 Input Section -->
+          <div id="splitRangeInputSection" class="p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-3">
+            <label class="block text-xs font-bold text-neutral-800 dark:text-neutral-200">추출할 페이지 번호 / 범위 입력:</label>
+            <input type="text" id="splitPageRangeInput" placeholder="예: 1-3, 5, 7-9" class="w-full px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-sm font-mono focus:outline-none focus:border-rose-500">
+            <p class="text-[11px] text-neutral-500">쉼표(,)로 구분하며 하이픈(-)으로 연속 범위를 지정합니다. (문서 총 페이지: <span id="splitRangeTotalHint" class="font-bold text-rose-600">0</span>)</p>
+          </div>
+
+          <!-- Execute Split Button -->
+          <div class="flex justify-end">
+            <button onclick="executeSplitPdf()" id="btnExecuteSplit" class="btn-shimmer px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 flex items-center space-x-2">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><line x1="20" y1="4" x2="8.12" y2="15.88"></line><line x1="14.47" y1="14.48" x2="20" y2="20"></line><line x1="8.12" y1="8.12" x2="12" y2="12"></line></svg>
+              <span>분할 / 추출 실행하기</span>
+            </button>
+          </div>
+
+          <!-- Split Result Card -->
+          <div id="splitResultCard" class="hidden p-6 rounded-3xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/50 dark:bg-rose-950/20 space-y-4">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-500/30">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div>
+                <h4 class="font-bold text-sm text-neutral-900 dark:text-white">추출 및 분할이 성공적으로 완료되었습니다!</h4>
+                <p id="splitResultSummary" class="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">완료 내역 준비됨</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 pt-2">
+              <a id="splitDownloadBtn" class="btn-shimmer px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-500/25 flex items-center space-x-2 cursor-pointer">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span id="splitDownloadBtnText">추출된 파일 다운로드</span>
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ==================================== -->
+      <!-- TOOL 3: IMAGE TO PDF -->
+      <!-- ==================================== -->
+      <div id="panelImg2pdf" class="hidden space-y-6">
+        
+        <!-- Dropzone -->
+        <div id="img2pdfDropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleImg2PdfDrop(event)" onclick="document.getElementById('img2pdfFileInput').click()" class="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-rose-500 dark:hover:border-rose-500 rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition bg-white/50 dark:bg-neutral-900/50 backdrop-blur-sm space-y-3 group">
+          <input type="file" id="img2pdfFileInput" multiple accept="image/png,image/jpeg,image/webp" class="hidden" onchange="handleImg2PdfSelect(event)">
+          <div class="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center group-hover:scale-110 transition-transform">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+          </div>
+          <div class="space-y-1">
+            <p class="font-bold text-sm text-neutral-800 dark:text-neutral-200">PDF로 묶을 사진/이미지 파일들을 여기에 드래그하세요</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">JPG, PNG, WebP 사진 여러 장을 한 번에 추가할 수 있습니다</p>
+          </div>
+        </div>
+
+        <!-- Images List & Settings -->
+        <div id="img2pdfConfigContainer" class="hidden space-y-6">
+          
+          <!-- Image Thumbnails Grid -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-neutral-900 dark:text-white">추가된 이미지 목록 (<span id="img2pdfCountBadge">0</span>장)</span>
+              <button onclick="document.getElementById('img2pdfFileInput').click()" class="text-xs text-rose-600 dark:text-rose-400 font-semibold hover:underline flex items-center space-x-1">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>사진 더 추가하기</span>
+              </button>
+            </div>
+
+            <div id="img2pdfThumbsGrid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3"></div>
+          </div>
+
+          <!-- Page Settings Panel -->
+          <div class="p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-neutral-700 dark:text-neutral-300">용지 규격:</label>
+              <select id="img2pdfPageSize" class="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-xs font-medium focus:outline-none focus:border-rose-500">
+                <option value="a4">A4 표준 (210 x 297 mm)</option>
+                <option value="fit">원본 이미지 크기 그대로</option>
+                <option value="letter">US Letter (216 x 279 mm)</option>
+              </select>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-neutral-700 dark:text-neutral-300">용지 방향:</label>
+              <select id="img2pdfOrientation" class="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-xs font-medium focus:outline-none focus:border-rose-500">
+                <option value="portrait">세로형 (Portrait)</option>
+                <option value="landscape">가로형 (Landscape)</option>
+              </select>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-neutral-700 dark:text-neutral-300">페이지 여백:</label>
+              <select id="img2pdfMargin" class="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-xs font-medium focus:outline-none focus:border-rose-500">
+                <option value="none">여백 없음 (꽉 채움)</option>
+                <option value="small">좁은 여백 (10mm)</option>
+                <option value="normal">표준 여백 (20mm)</option>
+              </select>
+            </div>
+
+          </div>
+
+          <!-- Action Bar -->
+          <div class="flex items-center justify-between">
+            <button onclick="clearImg2PdfList()" class="px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+              목록 비우기
+            </button>
+            <button onclick="executeImg2Pdf()" id="btnExecuteImg2Pdf" class="btn-shimmer px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 flex items-center space-x-2">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+              <span>PDF 문서로 변환 생성</span>
+            </button>
+          </div>
+
+          <!-- Img2Pdf Result Card -->
+          <div id="img2pdfResultCard" class="hidden p-6 rounded-3xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/50 dark:bg-rose-950/20 space-y-4">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-500/30">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div>
+                <h4 class="font-bold text-sm text-neutral-900 dark:text-white">이미지 변환이 성공적으로 완료되었습니다!</h4>
+                <p id="img2pdfResultSummary" class="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">총 0페이지 변환 완료</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 pt-2">
+              <a id="img2pdfDownloadBtn" download="flux-images.pdf" class="btn-shimmer px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-500/25 flex items-center space-x-2">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>변환된 PDF 다운로드</span>
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ==================================== -->
+      <!-- TOOL 4: ROTATE & ORGANIZE -->
+      <!-- ==================================== -->
+      <div id="panelRotate" class="hidden space-y-6">
+        
+        <!-- Dropzone -->
+        <div id="rotateDropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleRotateDrop(event)" onclick="document.getElementById('rotateFileInput').click()" class="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-rose-500 dark:hover:border-rose-500 rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition bg-white/50 dark:bg-neutral-900/50 backdrop-blur-sm space-y-3 group">
+          <input type="file" id="rotateFileInput" accept="application/pdf" class="hidden" onchange="handleRotateFileSelect(event)">
+          <div class="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center group-hover:scale-110 transition-transform">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+          </div>
+          <div class="space-y-1">
+            <p class="font-bold text-sm text-neutral-800 dark:text-neutral-200">회전하거나 정리할 PDF 파일을 선택하세요</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">페이지별 회전 각도 조절 및 불필요한 페이지 제외가 가능합니다</p>
+          </div>
+        </div>
+
+        <!-- Rotate Workspace -->
+        <div id="rotateWorkspace" class="hidden space-y-6">
+          
+          <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center space-x-3 w-full sm:w-auto">
+              <div class="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs">
+                PDF
+              </div>
+              <div>
+                <p id="rotateFileName" class="font-bold text-sm text-neutral-900 dark:text-white truncate max-w-xs">문서.pdf</p>
+                <p id="rotateFileMeta" class="text-xs text-neutral-500 font-mono">총 0페이지 로드됨</p>
+              </div>
+            </div>
+            
+            <!-- Batch Rotate Controls -->
+            <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+              <button onclick="rotateAllPages(90)" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition flex items-center space-x-1.5">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                <span>전체 90도 회전</span>
+              </button>
+              <button onclick="resetRotateTool()" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-500 hover:text-rose-600 transition">
+                다른 파일
+              </button>
+            </div>
+          </div>
+
+          <!-- Page Cards Grid -->
+          <div id="rotatePagesGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+
+          <!-- Execute Save Button -->
+          <div class="flex justify-end">
+            <button onclick="executeSaveRotatedPdf()" id="btnExecuteRotate" class="btn-shimmer px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 flex items-center space-x-2">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              <span>회전/정리된 PDF 저장하기</span>
+            </button>
+          </div>
+
+          <!-- Rotate Result Card -->
+          <div id="rotateResultCard" class="hidden p-6 rounded-3xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/50 dark:bg-rose-950/20 space-y-4">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-500/30">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div>
+                <h4 class="font-bold text-sm text-neutral-900 dark:text-white">정리된 PDF 파일이 완성되었습니다!</h4>
+                <p id="rotateResultSummary" class="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">저장 완료</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 pt-2">
+              <a id="rotateDownloadBtn" download="flux-organized.pdf" class="btn-shimmer px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-500/25 flex items-center space-x-2">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>정리된 PDF 다운로드</span>
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: STORAGE / HISTORY (내 보관함) -->
+    <!-- ========================================== -->
+    <section id="pdfViewStorage" class="hidden space-y-6 tab-spring-enter">
+      
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">최근 작업 이력</h2>
+          <p class="text-xs text-neutral-500">기기 로컬스토리지에 저장된 최근 작업 목록입니다</p>
+        </div>
+        <button onclick="clearStorageHistory()" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-500 hover:text-red-500 transition">
+          전체 비우기
+        </button>
+      </div>
+
+      <div id="storageHistoryList" class="space-y-3"></div>
+
+      <!-- Empty State -->
+      <div id="storageEmptyState" class="hidden p-12 text-center rounded-3xl border border-dashed border-neutral-200 dark:border-neutral-800 space-y-3">
+        <div class="w-10 h-10 rounded-2xl bg-neutral-100 dark:bg-neutral-900 text-neutral-400 mx-auto flex items-center justify-center">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        </div>
+        <p class="text-xs text-neutral-500 font-medium">아직 생성된 작업 이력이 없습니다. 스튜디오에서 첫 PDF 작업을 시작해 보세요.</p>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Footer with Cross-Links to 11 Standalone Products -->
+  <footer class="border-t border-neutral-200 dark:border-neutral-800/80 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md py-8 px-4 sm:px-6 mt-12 relative z-10 transition-colors">
+    <div class="max-w-6xl mx-auto space-y-4">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
+        <div class="flex items-center space-x-2">
+          <span class="font-bold text-neutral-800 dark:text-neutral-200">FLUX soft</span>
+          <span>·</span>
+          <span>100% 클라이언트 사이드 프라이버시 엔진</span>
+        </div>
+        <div class="flex items-center space-x-4">
+          <a href="index.html" class="hover:text-neutral-900 dark:hover:text-white transition">개발자 허브</a>
+          <span>·</span>
+          <a href="focus.html" class="hover:text-neutral-900 dark:hover:text-white transition">FLUX Focus</a>
+          <span>·</span>
+          <a href="compress.html" class="hover:text-neutral-900 dark:hover:text-white transition">FLUX Compress</a>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-900 text-[11px] text-neutral-400">
+        <span class="font-semibold text-neutral-500">패밀리 서비스:</span>
+        <a href="drop.html" class="hover:text-rose-500 transition">Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:text-rose-500 transition">Docs</a>
+        <span>·</span>
+        <a href="frame.html" class="hover:text-rose-500 transition">Frame</a>
+        <span>·</span>
+        <a href="form.html" class="hover:text-rose-500 transition">Form</a>
+        <span>·</span>
+        <a href="board.html" class="hover:text-rose-500 transition">Board</a>
+        <span>·</span>
+        <a href="secret.html" class="hover:text-rose-500 transition">Secret</a>
+        <span>·</span>
+        <a href="voice.html" class="hover:text-rose-500 transition">Voice</a>
+        <span>·</span>
+        <a href="qr.html" class="hover:text-rose-500 transition">QR & Lens</a>
+        <span>·</span>
+        <a href="compress.html" class="hover:text-rose-500 transition">Compress</a>
+        <span>·</span>
+        <a href="focus.html" class="hover:text-rose-500 transition">Focus</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Logic -->
+  <script>
+    // State
+    let currentPdfTab = 'home';
+    let currentStudioTool = 'merge';
+
+    // Tool 1: Merge State
+    let mergeFiles = []; // { id, name, size, bytes, pageCount }
+
+    // Tool 2: Split State
+    let splitFile = null; // { name, size, bytes, pageCount }
+    let splitMode = 'range'; // 'range' | 'all'
+
+    // Tool 3: Img2Pdf State
+    let img2pdfFiles = []; // { id, name, size, dataUrl, bytes, width, height }
+
+    // Tool 4: Rotate State
+    let rotateFile = null; // { name, size, bytes, pageCount }
+    let rotatePageSettings = []; // array of { pageNum, rotation: 0|90|180|270, keep: boolean }
+
+    // ============================================
+    // NAVIGATION
+    // ============================================
+    function switchPdfTab(tabName) {
+      currentPdfTab = tabName;
+      ['home', 'studio', 'storage'].forEach(t => {
+        const view = document.getElementById('pdfView' + capitalize(t));
+        if (view) {
+          if (t === tabName) {
+            view.classList.remove('hidden');
+          } else {
+            view.classList.add('hidden');
+          }
+        }
+      });
+
+      // Update Desktop Nav Buttons
+      const tabs = ['Home', 'Studio', 'Storage'];
+      tabs.forEach(t => {
+        const btn = document.getElementById('navBtn' + t);
+        if (btn) {
+          if (t.toLowerCase() === tabName) {
+            btn.className = 'px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-white bg-rose-600 shadow-sm';
+          } else {
+            btn.className = 'px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white';
+          }
+        }
+      });
+
+      // Update Mobile Nav
+      tabs.forEach(t => {
+        const mBtn = document.getElementById('mobileNav' + t);
+        if (mBtn) {
+          if (t.toLowerCase() === tabName) {
+            mBtn.className = 'text-xs font-semibold py-1 px-3 rounded-lg text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50';
+          } else {
+            mBtn.className = 'text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500';
+          }
+        }
+      });
+
+      if (tabName === 'storage') {
+        renderStorageHistory();
+      }
+    }
+
+    function openPdfTool(toolName) {
+      switchPdfTab('studio');
+      selectStudioTool(toolName);
+    }
+
+    function selectStudioTool(toolName) {
+      currentStudioTool = toolName;
+      const tools = ['merge', 'split', 'img2pdf', 'rotate'];
+      tools.forEach(t => {
+        const panel = document.getElementById('panel' + capitalize(t));
+        const tabBtn = document.getElementById('toolTab' + capitalize(t));
+        if (panel) {
+          if (t === toolName) {
+            panel.classList.remove('hidden');
+          } else {
+            panel.classList.add('hidden');
+          }
+        }
+        if (tabBtn) {
+          if (t === toolName) {
+            tabBtn.className = 'px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-white bg-rose-600 shadow-sm';
+          } else {
+            tabBtn.className = 'px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white';
+          }
+        }
+      });
+    }
+
+    // ============================================
+    // TOOL 1: MERGE PDF LOGIC
+    // ============================================
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    function handleDragLeave(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function handleMergeDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer && e.dataTransfer.files) {
+        addMergeFiles(Array.from(e.dataTransfer.files));
+      }
+    }
+
+    function handleMergeFileSelect(e) {
+      if (e.target.files) {
+        addMergeFiles(Array.from(e.target.files));
+      }
+    }
+
+    async function addMergeFiles(files) {
+      const pdfs = files.filter(f => f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf');
+      if (pdfs.length === 0) return;
+
+      for (const file of pdfs) {
+        try {
+          const buffer = await file.arrayBuffer();
+          const pdfDoc = await PDFLib.PDFDocument.load(buffer);
+          const pageCount = pdfDoc.getPageCount();
+          mergeFiles.push({
+            id: 'f_' + Math.random().toString(36).substr(2, 9),
+            name: file.name,
+            size: file.size,
+            bytes: buffer,
+            pageCount: pageCount
+          });
+        } catch (err) {
+          console.error('PDF 로드 실패:', file.name, err);
+        }
+      }
+
+      renderMergeList();
+    }
+
+    function renderMergeList() {
+      const container = document.getElementById('mergeListContainer');
+      const list = document.getElementById('mergeItemsList');
+      const badge = document.getElementById('mergeFileCountBadge');
+
+      if (mergeFiles.length === 0) {
+        container.classList.add('hidden');
+        return;
+      }
+
+      container.classList.remove('hidden');
+      badge.textContent = mergeFiles.length + '개 파일';
+      list.innerHTML = '';
+
+      mergeFiles.forEach((file, index) => {
+        const item = document.createElement('div');
+        item.className = 'p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center justify-between gap-3';
+        item.innerHTML = `
+          <div class="flex items-center space-x-3 truncate">
+            <span class="w-6 h-6 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-xs font-mono font-bold flex items-center justify-center shrink-0">
+              ${index + 1}
+            </span>
+            <div class="truncate">
+              <p class="font-bold text-xs text-neutral-900 dark:text-white truncate">${escapeHtml(file.name)}</p>
+              <p class="text-[11px] text-neutral-500 font-mono">${file.pageCount}페이지 · ${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-1 shrink-0">
+            <button onclick="moveMergeFile(${index}, -1)" ${index === 0 ? 'disabled class="opacity-30 p-1.5"' : 'class="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-400"'} title="위로 이동">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+            </button>
+            <button onclick="moveMergeFile(${index}, 1)" ${index === mergeFiles.length - 1 ? 'disabled class="opacity-30 p-1.5"' : 'class="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-400"'} title="아래로 이동">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <button onclick="removeMergeFile(${index})" class="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-lg text-neutral-400 hover:text-red-500 transition" title="삭제">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    function moveMergeFile(index, dir) {
+      const target = index + dir;
+      if (target < 0 || target >= mergeFiles.length) return;
+      const temp = mergeFiles[index];
+      mergeFiles[index] = mergeFiles[target];
+      mergeFiles[target] = temp;
+      renderMergeList();
+    }
+
+    function removeMergeFile(index) {
+      mergeFiles.splice(index, 1);
+      renderMergeList();
+    }
+
+    function clearMergeList() {
+      mergeFiles = [];
+      renderMergeList();
+      document.getElementById('mergeResultCard').classList.add('hidden');
+    }
+
+    async function executeMergePdf() {
+      if (mergeFiles.length < 2) {
+        alert('병합할 PDF 파일을 최소 2개 이상 추가해 주세요.');
+        return;
+      }
+
+      const btn = document.getElementById('btnExecuteMerge');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '병합 연산 중...';
+
+      try {
+        const mergedPdf = await PDFLib.PDFDocument.create();
+        let totalPages = 0;
+
+        for (const f of mergeFiles) {
+          const doc = await PDFLib.PDFDocument.load(f.bytes);
+          const indices = doc.getPageIndices();
+          const copiedPages = await mergedPdf.copyPages(doc, indices);
+          copiedPages.forEach(p => mergedPdf.addPage(p));
+          totalPages += indices.length;
+        }
+
+        const mergedBytes = await mergedPdf.save();
+        const blob = new Blob([mergedBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const outName = (document.getElementById('mergeOutputName').value.trim() || 'flux-merged.pdf');
+        const dlBtn = document.getElementById('mergeDownloadBtn');
+        dlBtn.href = url;
+        dlBtn.download = outName.endsWith('.pdf') ? outName : outName + '.pdf';
+
+        const summary = document.getElementById('mergeResultSummary');
+        summary.textContent = `총 ${totalPages}페이지 합침 완료 · ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+
+        document.getElementById('mergeResultCard').classList.remove('hidden');
+        triggerConfetti();
+
+        // Save History
+        saveTaskHistory({
+          type: '병합',
+          title: outName,
+          meta: `${mergeFiles.length}개 파일 → ${totalPages}페이지 (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
+        });
+      } catch (err) {
+        console.error('병합 실패:', err);
+        alert('PDF 병합 중 오류가 발생했습니다: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    function resetMergeTool() {
+      clearMergeList();
+      document.getElementById('mergeResultCard').classList.add('hidden');
+    }
+
+    // ============================================
+    // TOOL 2: SPLIT PDF LOGIC
+    // ============================================
+    function handleSplitDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        loadSplitFile(e.dataTransfer.files[0]);
+      }
+    }
+
+    function handleSplitFileSelect(e) {
+      if (e.target.files && e.target.files[0]) {
+        loadSplitFile(e.target.files[0]);
+      }
+    }
+
+    async function loadSplitFile(file) {
+      if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+        alert('PDF 파일만 선택 가능합니다.');
+        return;
+      }
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const pdfDoc = await PDFLib.PDFDocument.load(buffer);
+        const pageCount = pdfDoc.getPageCount();
+
+        splitFile = {
+          name: file.name,
+          size: file.size,
+          bytes: buffer,
+          pageCount: pageCount
+        };
+
+        document.getElementById('splitDropzone').classList.add('hidden');
+        document.getElementById('splitOptionsContainer').classList.remove('hidden');
+        document.getElementById('splitFileName').textContent = file.name;
+        document.getElementById('splitFileMeta').textContent = `총 ${pageCount}페이지 · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+        document.getElementById('splitRangeTotalHint').textContent = pageCount + '페이지';
+        document.getElementById('splitPageRangeInput').value = pageCount > 1 ? `1-${Math.min(pageCount, 3)}` : '1';
+        document.getElementById('splitResultCard').classList.add('hidden');
+      } catch (err) {
+        console.error('분할 파일 로드 오류:', err);
+        alert('PDF 파일을 읽을 수 없습니다: ' + err.message);
+      }
+    }
+
+    function selectSplitMode(mode) {
+      splitMode = mode;
+      const rangeCard = document.getElementById('splitModeRangeCard');
+      const allCard = document.getElementById('splitModeAllCard');
+      const rangeInputSection = document.getElementById('splitRangeInputSection');
+
+      if (mode === 'range') {
+        rangeCard.className = 'card-hover-lift cursor-pointer p-5 rounded-2xl border-2 border-rose-500 bg-rose-50/30 dark:bg-rose-950/20 space-y-2';
+        allCard.className = 'card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-2';
+        rangeInputSection.classList.remove('hidden');
+      } else {
+        rangeCard.className = 'card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-2';
+        allCard.className = 'card-hover-lift cursor-pointer p-5 rounded-2xl border-2 border-rose-500 bg-rose-50/30 dark:bg-rose-950/20 space-y-2';
+        rangeInputSection.classList.add('hidden');
+      }
+    }
+
+    function resetSplitTool() {
+      splitFile = null;
+      document.getElementById('splitDropzone').classList.remove('hidden');
+      document.getElementById('splitOptionsContainer').classList.add('hidden');
+      document.getElementById('splitResultCard').classList.add('hidden');
+      document.getElementById('splitFileInput').value = '';
+    }
+
+    async function executeSplitPdf() {
+      if (!splitFile) return;
+
+      const btn = document.getElementById('btnExecuteSplit');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '분할 처리 중...';
+
+      try {
+        const srcDoc = await PDFLib.PDFDocument.load(splitFile.bytes);
+        const totalPages = srcDoc.getPageCount();
+
+        if (splitMode === 'range') {
+          // Parse page range input (1-based index)
+          const rangeStr = document.getElementById('splitPageRangeInput').value.trim();
+          const targetIndices = parsePageRange(rangeStr, totalPages);
+
+          if (targetIndices.length === 0) {
+            alert('유효한 페이지 범위를 입력해 주세요. (예: 1-3, 5)');
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            return;
+          }
+
+          const newDoc = await PDFLib.PDFDocument.create();
+          const copied = await newDoc.copyPages(srcDoc, targetIndices);
+          copied.forEach(p => newDoc.addPage(p));
+
+          const outBytes = await newDoc.save();
+          const blob = new Blob([outBytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+
+          const dlBtn = document.getElementById('splitDownloadBtn');
+          dlBtn.href = url;
+          const outName = splitFile.name.replace(/\.pdf$/i, '') + '-extracted.pdf';
+          dlBtn.download = outName;
+          document.getElementById('splitDownloadBtnText').textContent = '추출된 PDF 다운로드';
+
+          document.getElementById('splitResultSummary').textContent = `${targetIndices.length}개 페이지 추출 완료 · ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+          document.getElementById('splitResultCard').classList.remove('hidden');
+          triggerConfetti();
+
+          saveTaskHistory({
+            type: '분할/추출',
+            title: outName,
+            meta: `${totalPages}페이지 중 ${targetIndices.length}페이지 추출 (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
+          });
+
+        } else {
+          // Split all pages into individual PDFs and zip them
+          const zip = new JSZip();
+          const baseName = splitFile.name.replace(/\.pdf$/i, '');
+
+          for (let i = 0; i < totalPages; i++) {
+            const singleDoc = await PDFLib.PDFDocument.create();
+            const [copied] = await singleDoc.copyPages(srcDoc, [i]);
+            singleDoc.addPage(copied);
+            const singleBytes = await singleDoc.save();
+            const padNum = String(i + 1).padStart(String(totalPages).length, '0');
+            zip.file(`${baseName}-page-${padNum}.pdf`, singleBytes);
+          }
+
+          const zipBlob = await zip.generateAsync({ type: 'blob' });
+          const zipUrl = URL.createObjectURL(zipBlob);
+
+          const dlBtn = document.getElementById('splitDownloadBtn');
+          dlBtn.href = zipUrl;
+          const outZipName = `${baseName}-split-pages.zip`;
+          dlBtn.download = outZipName;
+          document.getElementById('splitDownloadBtnText').textContent = '분할 압축 ZIP 다운로드';
+
+          document.getElementById('splitResultSummary').textContent = `총 ${totalPages}장 개별 분할 압축 완료 · ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`;
+          document.getElementById('splitResultCard').classList.remove('hidden');
+          triggerConfetti();
+
+          saveTaskHistory({
+            type: '낱장 분할',
+            title: outZipName,
+            meta: `전체 ${totalPages}장 개별 PDF로 분할 압축 (${(zipBlob.size / 1024 / 1024).toFixed(2)} MB)`
+          });
+        }
+      } catch (err) {
+        console.error('분할 오류:', err);
+        alert('분할 처리 중 오류가 발생했습니다: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    function parsePageRange(str, maxPages) {
+      const indices = new Set();
+      const parts = str.split(',');
+      for (const part of parts) {
+        const p = part.trim();
+        if (!p) continue;
+        if (p.includes('-')) {
+          const [startStr, endStr] = p.split('-');
+          const start = parseInt(startStr.trim(), 10);
+          const end = parseInt(endStr.trim(), 10);
+          if (!isNaN(start) && !isNaN(end)) {
+            const s = Math.max(1, Math.min(start, end));
+            const e = Math.min(maxPages, Math.max(start, end));
+            for (let i = s; i <= e; i++) {
+              indices.add(i - 1);
+            }
+          }
+        } else {
+          const num = parseInt(p, 10);
+          if (!isNaN(num) && num >= 1 && num <= maxPages) {
+            indices.add(num - 1);
+          }
+        }
+      }
+      return Array.from(indices).sort((a, b) => a - b);
+    }
+
+    // ============================================
+    // TOOL 3: IMAGE TO PDF LOGIC
+    // ============================================
+    function handleImg2PdfDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer && e.dataTransfer.files) {
+        addImg2PdfFiles(Array.from(e.dataTransfer.files));
+      }
+    }
+
+    function handleImg2PdfSelect(e) {
+      if (e.target.files) {
+        addImg2PdfFiles(Array.from(e.target.files));
+      }
+    }
+
+    async function addImg2PdfFiles(files) {
+      const valid = files.filter(f => f.type.startsWith('image/'));
+      if (valid.length === 0) return;
+
+      for (const file of valid) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const dimensions = await getImageDimensions(dataUrl);
+        img2pdfFiles.push({
+          id: 'img_' + Math.random().toString(36).substr(2, 9),
+          file: file,
+          name: file.name,
+          size: file.size,
+          dataUrl: dataUrl,
+          width: dimensions.width,
+          height: dimensions.height
+        });
+      }
+
+      renderImg2PdfGrid();
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function getImageDimensions(dataUrl) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        img.src = dataUrl;
+      });
+    }
+
+    function renderImg2PdfGrid() {
+      const container = document.getElementById('img2pdfConfigContainer');
+      const grid = document.getElementById('img2pdfThumbsGrid');
+      const badge = document.getElementById('img2pdfCountBadge');
+
+      if (img2pdfFiles.length === 0) {
+        container.classList.add('hidden');
+        return;
+      }
+
+      container.classList.remove('hidden');
+      badge.textContent = img2pdfFiles.length;
+      grid.innerHTML = '';
+
+      img2pdfFiles.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-1.5 relative group';
+        card.innerHTML = `
+          <div class="aspect-[3/4] bg-neutral-100 dark:bg-neutral-800 rounded-lg overflow-hidden flex items-center justify-center relative">
+            <img src="${item.dataUrl}" class="w-full h-full object-contain">
+            <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/70 text-white font-mono text-[9px] font-bold">
+              #${index + 1}
+            </span>
+            <button onclick="removeImg2PdfItem(${index})" class="absolute top-1 right-1 p-1 rounded-md bg-red-600 text-white opacity-0 group-hover:opacity-100 transition" title="삭제">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <p class="text-[10px] font-medium text-neutral-800 dark:text-neutral-200 truncate">${escapeHtml(item.name)}</p>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function removeImg2PdfItem(index) {
+      img2pdfFiles.splice(index, 1);
+      renderImg2PdfGrid();
+    }
+
+    function clearImg2PdfList() {
+      img2pdfFiles = [];
+      renderImg2PdfGrid();
+      document.getElementById('img2pdfResultCard').classList.add('hidden');
+    }
+
+    async function executeImg2Pdf() {
+      if (img2pdfFiles.length === 0) {
+        alert('변환할 이미지를 최소 1장 이상 추가해 주세요.');
+        return;
+      }
+
+      const btn = document.getElementById('btnExecuteImg2Pdf');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'PDF 생성 중...';
+
+      try {
+        const pdfDoc = await PDFLib.PDFDocument.create();
+        const pageSizeOpt = document.getElementById('img2pdfPageSize').value;
+        const orientOpt = document.getElementById('img2pdfOrientation').value;
+        const marginOpt = document.getElementById('img2pdfMargin').value;
+
+        // Base points: A4 is 595.28 x 841.89 points
+        let pWidth = orientOpt === 'portrait' ? 595.28 : 841.89;
+        let pHeight = orientOpt === 'portrait' ? 841.89 : 595.28;
+
+        if (pageSizeOpt === 'letter') {
+          pWidth = orientOpt === 'portrait' ? 612.0 : 792.0;
+          pHeight = orientOpt === 'portrait' ? 792.0 : 612.0;
+        }
+
+        let margin = 0;
+        if (marginOpt === 'small') margin = 28.35; // ~10mm
+        if (marginOpt === 'normal') margin = 56.70; // ~20mm
+
+        for (const item of img2pdfFiles) {
+          // Convert image to PNG/JPEG bytes
+          const imgBytes = await convertImageToBytes(item);
+          let embeddedImg;
+
+          if (item.file.type === 'image/jpeg' || item.file.type === 'image/jpg') {
+            embeddedImg = await pdfDoc.embedJpg(imgBytes);
+          } else {
+            embeddedImg = await pdfDoc.embedPng(imgBytes);
+          }
+
+          let pageW = pWidth;
+          let pageH = pHeight;
+
+          if (pageSizeOpt === 'fit') {
+            pageW = item.width;
+            pageH = item.height;
+            const page = pdfDoc.addPage([pageW, pageH]);
+            page.drawImage(embeddedImg, { x: 0, y: 0, width: pageW, height: pageH });
+          } else {
+            const page = pdfDoc.addPage([pageW, pageH]);
+            const availW = pageW - margin * 2;
+            const availH = pageH - margin * 2;
+
+            const scale = Math.min(availW / item.width, availH / item.height, 1.0);
+            const drawW = item.width * scale;
+            const drawH = item.height * scale;
+
+            const x = margin + (availW - drawW) / 2;
+            const y = margin + (availH - drawH) / 2;
+
+            page.drawImage(embeddedImg, { x, y, width: drawW, height: drawH });
+          }
+        }
+
+        const outBytes = await pdfDoc.save();
+        const blob = new Blob([outBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const dlBtn = document.getElementById('img2pdfDownloadBtn');
+        dlBtn.href = url;
+        dlBtn.download = `flux-images-${img2pdfFiles.length}p.pdf`;
+
+        document.getElementById('img2pdfResultSummary').textContent = `총 ${img2pdfFiles.length}장 A4 PDF 변환 완료 · ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+        document.getElementById('img2pdfResultCard').classList.remove('hidden');
+        triggerConfetti();
+
+        saveTaskHistory({
+          type: '이미지→PDF',
+          title: `flux-images-${img2pdfFiles.length}p.pdf`,
+          meta: `${img2pdfFiles.length}장 사진 결합 (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
+        });
+      } catch (err) {
+        console.error('이미지 변환 실패:', err);
+        alert('이미지 PDF 변환 중 오류가 발생했습니다: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    function convertImageToBytes(item) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+
+          if (item.file.type === 'image/jpeg' || item.file.type === 'image/jpg') {
+            canvas.toBlob(blob => {
+              blob.arrayBuffer().then(resolve).catch(reject);
+            }, 'image/jpeg', 0.95);
+          } else {
+            canvas.toBlob(blob => {
+              blob.arrayBuffer().then(resolve).catch(reject);
+            }, 'image/png');
+          }
+        };
+        img.onerror = reject;
+        img.src = item.dataUrl;
+      });
+    }
+
+    // ============================================
+    // TOOL 4: ROTATE & ORGANIZE LOGIC
+    // ============================================
+    function handleRotateDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        loadRotateFile(e.dataTransfer.files[0]);
+      }
+    }
+
+    function handleRotateFileSelect(e) {
+      if (e.target.files && e.target.files[0]) {
+        loadRotateFile(e.target.files[0]);
+      }
+    }
+
+    async function loadRotateFile(file) {
+      if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+        alert('PDF 파일만 선택 가능합니다.');
+        return;
+      }
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const pdfDoc = await PDFLib.PDFDocument.load(buffer);
+        const pageCount = pdfDoc.getPageCount();
+
+        rotateFile = {
+          name: file.name,
+          size: file.size,
+          bytes: buffer,
+          pageCount: pageCount
+        };
+
+        rotatePageSettings = [];
+        for (let i = 0; i < pageCount; i++) {
+          rotatePageSettings.push({
+            pageNum: i + 1,
+            rotation: 0,
+            keep: true
+          });
+        }
+
+        document.getElementById('rotateDropzone').classList.add('hidden');
+        document.getElementById('rotateWorkspace').classList.remove('hidden');
+        document.getElementById('rotateFileName').textContent = file.name;
+        document.getElementById('rotateFileMeta').textContent = `총 ${pageCount}페이지 로드됨`;
+        document.getElementById('rotateResultCard').classList.add('hidden');
+
+        renderRotatePagesGrid();
+      } catch (err) {
+        console.error('회전 파일 로드 오류:', err);
+        alert('PDF 파일을 로드할 수 없습니다: ' + err.message);
+      }
+    }
+
+    function renderRotatePagesGrid() {
+      const grid = document.getElementById('rotatePagesGrid');
+      grid.innerHTML = '';
+
+      rotatePageSettings.forEach((p, idx) => {
+        const card = document.createElement('div');
+        card.className = `p-3 rounded-2xl border ${p.keep ? 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900' : 'border-red-300 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20 opacity-60'} space-y-2 relative`;
+        card.innerHTML = `
+          <div class="aspect-[3/4] bg-neutral-100 dark:bg-neutral-800 rounded-xl overflow-hidden flex flex-col items-center justify-center p-3 relative text-center">
+            <div style="transform: rotate(${p.rotation}deg); transition: transform 0.25s ease;" class="w-12 h-16 rounded border-2 border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex items-center justify-center shadow-sm">
+              <span class="text-[11px] font-bold text-neutral-400">P.${p.pageNum}</span>
+            </div>
+            <span class="absolute bottom-1 right-2 text-[9px] font-mono text-neutral-400">${p.rotation}°</span>
+          </div>
+
+          <div class="flex items-center justify-between gap-1 pt-1">
+            <span class="text-xs font-bold text-neutral-800 dark:text-neutral-200">#${p.pageNum}</span>
+            <div class="flex items-center space-x-1">
+              <button onclick="rotateSinglePage(${idx}, 90)" class="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400" title="90도 회전">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+              </button>
+              <button onclick="toggleKeepPage(${idx})" class="p-1 rounded-lg ${p.keep ? 'text-neutral-400 hover:text-red-500' : 'text-red-500 bg-red-100 dark:bg-red-950/60'}" title="${p.keep ? '이 페이지 삭제 제외' : '삭제 취소'}">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function rotateSinglePage(idx, deg) {
+      rotatePageSettings[idx].rotation = (rotatePageSettings[idx].rotation + deg) % 360;
+      renderRotatePagesGrid();
+    }
+
+    function rotateAllPages(deg) {
+      rotatePageSettings.forEach(p => {
+        p.rotation = (p.rotation + deg) % 360;
+      });
+      renderRotatePagesGrid();
+    }
+
+    function toggleKeepPage(idx) {
+      rotatePageSettings[idx].keep = !rotatePageSettings[idx].keep;
+      renderRotatePagesGrid();
+    }
+
+    function resetRotateTool() {
+      rotateFile = null;
+      rotatePageSettings = [];
+      document.getElementById('rotateDropzone').classList.remove('hidden');
+      document.getElementById('rotateWorkspace').classList.add('hidden');
+      document.getElementById('rotateResultCard').classList.add('hidden');
+      document.getElementById('rotateFileInput').value = '';
+    }
+
+    async function executeSaveRotatedPdf() {
+      if (!rotateFile) return;
+
+      const keptPages = rotatePageSettings.filter(p => p.keep);
+      if (keptPages.length === 0) {
+        alert('최소 1개 이상의 페이지를 남겨두어야 합니다.');
+        return;
+      }
+
+      const btn = document.getElementById('btnExecuteRotate');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'PDF 저장 중...';
+
+      try {
+        const srcDoc = await PDFLib.PDFDocument.load(rotateFile.bytes);
+        const newDoc = await PDFLib.PDFDocument.create();
+
+        for (let i = 0; i < rotatePageSettings.length; i++) {
+          const setting = rotatePageSettings[i];
+          if (setting.keep) {
+            const [copied] = await newDoc.copyPages(srcDoc, [i]);
+            const currentAngle = copied.getRotation().angle;
+            const newAngle = (currentAngle + setting.rotation) % 360;
+            copied.setRotation(PDFLib.degrees(newAngle));
+            newDoc.addPage(copied);
+          }
+        }
+
+        const outBytes = await newDoc.save();
+        const blob = new Blob([outBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const dlBtn = document.getElementById('rotateDownloadBtn');
+        dlBtn.href = url;
+        const outName = rotateFile.name.replace(/\.pdf$/i, '') + '-organized.pdf';
+        dlBtn.download = outName;
+
+        document.getElementById('rotateResultSummary').textContent = `총 ${keptPages.length}페이지 정리 완료 · ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
+        document.getElementById('rotateResultCard').classList.remove('hidden');
+        triggerConfetti();
+
+        saveTaskHistory({
+          type: '회전/정리',
+          title: outName,
+          meta: `총 ${keptPages.length}페이지 저장 (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
+        });
+      } catch (err) {
+        console.error('회전 저장 오류:', err);
+        alert('저장 중 오류가 발생했습니다: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    // ============================================
+    // STORAGE / HISTORY LOGIC
+    // ============================================
+    function saveTaskHistory(task) {
+      try {
+        const history = JSON.parse(localStorage.getItem('flux_pdf_history') || '[]');
+        history.unshift({
+          id: 'tsk_' + Date.now(),
+          type: task.type,
+          title: task.title,
+          meta: task.meta,
+          time: new Date().toLocaleString('ko-KR')
+        });
+        localStorage.setItem('flux_pdf_history', JSON.stringify(history.slice(0, 30)));
+      } catch (e) {
+        console.error('기록 저장 실패:', e);
+      }
+    }
+
+    function renderStorageHistory() {
+      const list = document.getElementById('storageHistoryList');
+      const empty = document.getElementById('storageEmptyState');
+      const history = JSON.parse(localStorage.getItem('flux_pdf_history') || '[]');
+
+      if (history.length === 0) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      list.innerHTML = '';
+
+      history.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = 'p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center justify-between gap-4';
+        row.innerHTML = `
+          <div class="flex items-center space-x-3 truncate">
+            <span class="text-[10px] font-mono font-bold px-2 py-1 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 shrink-0">
+              ${escapeHtml(item.type)}
+            </span>
+            <div class="truncate">
+              <p class="font-bold text-xs text-neutral-900 dark:text-white truncate">${escapeHtml(item.title)}</p>
+              <p class="text-[11px] text-neutral-500 font-mono">${escapeHtml(item.meta)}</p>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2 shrink-0">
+            <span class="text-[10px] text-neutral-400 font-mono hidden sm:inline">${escapeHtml(item.time)}</span>
+            <button onclick="deleteHistoryItem(${index})" class="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-red-500 transition" title="삭제">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    function deleteHistoryItem(index) {
+      const history = JSON.parse(localStorage.getItem('flux_pdf_history') || '[]');
+      history.splice(index, 1);
+      localStorage.setItem('flux_pdf_history', JSON.stringify(history));
+      renderStorageHistory();
+    }
+
+    function clearStorageHistory() {
+      if (confirm('최근 작업 이력을 모두 비우시겠습니까?')) {
+        localStorage.removeItem('flux_pdf_history');
+        renderStorageHistory();
+      }
+    }
+
+    // ============================================
+    // UTILITIES
+    // ============================================
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    // Confetti Explosion
+    function triggerConfetti() {
+      const colors = ['#e11d48', '#f43f5e', '#fb7185', '#be123c', '#9f1239', '#fda4af'];
+      for (let i = 0; i < 36; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti-particle';
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        c.style.width = size + 'px';
+        c.style.height = size + 'px';
+        c.style.backgroundColor = color;
+        c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        c.style.left = '50%';
+        c.style.top = '40%';
+        c.style.setProperty('--tx', (Math.random() * 380 - 190) + 'px');
+        c.style.setProperty('--ty', (Math.random() * 380 - 150) + 'px');
+        c.style.setProperty('--tr', (Math.random() * 720 - 360) + 'deg');
+        document.body.appendChild(c);
+        setTimeout(() => c.remove(), 1200);
+      }
+    }
+
+    // Init
+    window.addEventListener('DOMContentLoaded', () => {
+      // Dark Mode toggle
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+          localStorage.setItem('flux_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        });
+      }
+
+      // Check saved theme
+      const savedTheme = localStorage.getItem('flux_theme');
+      if (savedTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+    });
+  </script>
+</body>
+</html>
