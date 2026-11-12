@@ -922,6 +922,8 @@
         <a href="pdf.html" class="hover:text-rose-500 transition">PDF</a>
         <span>·</span>
         <a href="focus.html" class="hover:text-rose-500 transition">Focus</a>
+        <span>·</span>
+        <a href="news.html" class="hover:text-rose-500 transition">News</a>
       </div>
     </div>
   </footer>
@@ -1088,6 +1090,19 @@
       document.getElementById('editorCurrentPageNum').textContent = pageNum;
       document.getElementById('editorZoomLabel').textContent = Math.round(editorScale * 100) + '%';
 
+      // Update thumbnail active highlight
+      for (let t = 1; t <= editorTotalPages; t++) {
+        const card = document.getElementById(`editorThumbCard_${t}`);
+        if (card) {
+          if (t === pageNum) {
+            card.className = 'p-1.5 rounded-xl border border-rose-500 bg-rose-50/50 dark:bg-rose-950/40 ring-2 ring-rose-500/20 cursor-pointer transition text-center space-y-1 group relative';
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          } else {
+            card.className = 'p-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 cursor-pointer hover:border-rose-400 transition text-center space-y-1 group relative';
+          }
+        }
+      }
+
       const page = await editorPdfDoc.getPage(pageNum);
       const viewport = page.getViewport({ scale: editorScale * 1.5 });
 
@@ -1147,19 +1162,58 @@
 
     async function renderThumbnails() {
       const list = document.getElementById('editorThumbnailsList');
+      if (!list || !editorPdfDoc) return;
       list.innerHTML = '';
 
-      for (let i = 1; i <= Math.min(editorTotalPages, 20); i++) {
+      for (let i = 1; i <= editorTotalPages; i++) {
         const thumbCard = document.createElement('div');
-        thumbCard.className = `p-2 rounded-xl border ${i === editorCurrentPage ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-950/40' : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'} cursor-pointer hover:border-rose-400 transition text-center space-y-1`;
+        thumbCard.id = `editorThumbCard_${i}`;
+        thumbCard.className = `p-1.5 rounded-xl border ${i === editorCurrentPage ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-950/40 ring-2 ring-rose-500/20' : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'} cursor-pointer hover:border-rose-400 transition text-center space-y-1 group relative`;
         thumbCard.onclick = () => renderEditorPage(i);
-        thumbCard.innerHTML = `
-          <div class="aspect-[3/4] bg-neutral-100 dark:bg-neutral-800 rounded flex items-center justify-center text-[11px] font-bold text-neutral-400">
-            P.${i}
-          </div>
-          <span class="text-[10px] font-mono text-neutral-500">#${i}</span>
-        `;
+
+        const canvasBox = document.createElement('div');
+        canvasBox.className = 'w-full aspect-[3/4] bg-neutral-100 dark:bg-neutral-800 rounded-lg overflow-hidden flex items-center justify-center relative shadow-sm border border-neutral-200/60 dark:border-neutral-800/60';
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'text-[11px] font-mono font-bold text-neutral-400 dark:text-neutral-500 flex items-center space-x-1';
+        placeholder.innerHTML = `<span>P.${i}</span>`;
+        canvasBox.appendChild(placeholder);
+
+        const canvas = document.createElement('canvas');
+        canvas.className = 'w-full h-full object-contain hidden transition-opacity duration-200';
+        canvasBox.appendChild(canvas);
+
+        const label = document.createElement('div');
+        label.className = 'flex items-center justify-between px-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400';
+        label.innerHTML = `<span class="font-bold">P.${i}</span><span>#${i}</span>`;
+
+        thumbCard.appendChild(canvasBox);
+        thumbCard.appendChild(label);
         list.appendChild(thumbCard);
+
+        // 비동기로 실제 PDF 페이지 썸네일 캔버스 렌더링
+        (async (pNum, cEl, pEl) => {
+          try {
+            const page = await editorPdfDoc.getPage(pNum);
+            const origViewport = page.getViewport({ scale: 1.0 });
+            const thumbScale = 140 / origViewport.width;
+            const thumbViewport = page.getViewport({ scale: thumbScale });
+
+            cEl.width = thumbViewport.width;
+            cEl.height = thumbViewport.height;
+
+            const ctx = cEl.getContext('2d');
+            await page.render({
+              canvasContext: ctx,
+              viewport: thumbViewport
+            }).promise;
+
+            pEl.classList.add('hidden');
+            cEl.classList.remove('hidden');
+          } catch (err) {
+            console.warn(`P.${pNum} 썸네일 렌더 실패:`, err);
+          }
+        })(i, canvas, placeholder);
       }
     }
 
