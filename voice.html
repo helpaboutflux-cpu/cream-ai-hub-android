@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUX Voice - 서버 없는 실시간 음성 전사 & 오디오 레코더</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Floating Glowing Orbs */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.18;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+    .orb-rose-1 {
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, #f43f5e 0%, #e11d48 55%, transparent 75%);
+      top: -120px;
+      left: -120px;
+      animation: orbFloat1 20s ease-in-out infinite alternate;
+    }
+    .orb-rose-2 {
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #fb7185 0%, #f43f5e 55%, transparent 75%);
+      bottom: 60px;
+      right: -100px;
+      animation: orbFloat2 24s ease-in-out infinite alternate;
+    }
+    .orb-rose-3 {
+      width: 350px;
+      height: 350px;
+      background: radial-gradient(circle, #e11d48 0%, #fb7185 55%, transparent 75%);
+      top: 45%;
+      left: 38%;
+      animation: orbFloat3 28s ease-in-out infinite alternate;
+    }
+
+    @keyframes orbFloat1 {
+      0% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+      50% { transform: translate(70px, 90px) scale(1.18) rotate(45deg); }
+      100% { transform: translate(-50px, 130px) scale(0.92) rotate(90deg); }
+    }
+    @keyframes orbFloat2 {
+      0% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+      50% { transform: translate(-90px, -70px) scale(1.22) rotate(-50deg); }
+      100% { transform: translate(50px, -100px) scale(0.88) rotate(-100deg); }
+    }
+    @keyframes orbFloat3 {
+      0% { transform: translate(0px, 0px) scale(1); }
+      50% { transform: translate(60px, -50px) scale(1.12); }
+      100% { transform: translate(-60px, 70px) scale(0.94); }
+    }
+
+    /* Animated Gradient Flow Text */
+    .animate-gradient-text {
+      background-size: 200% auto;
+      animation: gradientFlow 4.5s linear infinite;
+    }
+    @keyframes gradientFlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* Shimmer Effect on CTA Buttons */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 60%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+      transform: skewX(-20deg);
+      animation: btnShimmer 2.8s infinite ease-in-out;
+    }
+    @keyframes btnShimmer {
+      0% { left: -100%; }
+      40%, 100% { left: 200%; }
+    }
+
+    /* Tab Entrance Spring Animation */
+    .tab-enter-active {
+      animation: tabSpringEnter 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    @keyframes tabSpringEnter {
+      0% { opacity: 0; transform: translateY(22px) scale(0.97); }
+      70% { transform: translateY(-3px) scale(1.006); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Interactive Buttons & Micro-interactions */
+    button, .btn-interactive, a.btn-interactive {
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, background-color 0.2s ease, border-color 0.2s ease;
+    }
+    button:hover, .btn-interactive:hover {
+      transform: translateY(-2.5px) scale(1.02);
+    }
+    button:active, .btn-interactive:active {
+      transform: translateY(0px) scale(0.94);
+    }
+
+    /* 3D Magnetic Card Lift */
+    .card-hover-lift {
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s ease, border-color 0.28s ease;
+      will-change: transform;
+    }
+    .card-hover-lift:hover {
+      transform: translateY(-6px) scale(1.018);
+      box-shadow: 0 16px 32px -8px rgba(244, 63, 94, 0.18);
+    }
+
+    /* Live Recording Pulse */
+    .recording-pulse {
+      animation: recPulse 1.8s infinite;
+    }
+    @keyframes recPulse {
+      0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.6); }
+      70% { box-shadow: 0 0 0 18px rgba(244, 63, 94, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }
+    }
+
+    /* Confetti Particle */
+    .confetti-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      border-radius: 3px;
+      animation: confettiFall 2.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+    @keyframes confettiFall {
+      0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+      100% { opacity: 0; transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(0.2); }
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen transition-colors duration-200 flex flex-col">
+  <!-- Ambient Floating Glowing Orbs -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+    <div class="ambient-orb orb-rose-1"></div>
+    <div class="ambient-orb orb-rose-2"></div>
+    <div class="ambient-orb orb-rose-3"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border-b border-rose-200/80 dark:border-neutral-800 shadow-sm">
+    <div class="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchVoiceTab('home')">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-600 to-red-500 text-white font-black flex items-center justify-center text-sm shadow-md shadow-rose-500/25">V</div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-base tracking-tight text-neutral-900 dark:text-white">FLUX Voice</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 font-bold border border-rose-200 dark:border-rose-800/60">v1.0</span>
+          </div>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400">FLUX soft 실시간 음성 전사 스튜디오</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs (홈 | 메이커 | 내 보관함) -->
+      <nav class="hidden sm:flex items-center p-1 rounded-2xl bg-neutral-100/90 dark:bg-neutral-950/90 border border-neutral-200/80 dark:border-neutral-800 text-xs font-medium space-x-1 shadow-sm">
+        <button id="voiceTabBtnHome" onclick="switchVoiceTab('home')" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold">
+          <svg class="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          <span>홈 (Home)</span>
+        </button>
+        <button id="voiceTabBtnMaker" onclick="switchVoiceTab('maker')" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium">
+          <svg class="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+          <span>음성 스튜디오 (Maker)</span>
+        </button>
+        <button id="voiceTabBtnProjects" onclick="switchVoiceTab('projects')" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium">
+          <svg class="w-3.5 h-3.5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span>내 전사 기록 (<span id="voiceSavedCountBadge">0</span>)</span>
+        </button>
+      </nav>
+
+      <!-- Right Controls -->
+      <div class="flex items-center space-x-2">
+        <a href="index.html" class="flex items-center space-x-1 text-xs px-2.5 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span class="hidden md:inline">Developer Hub</span>
+        </a>
+        <button id="darkModeToggle" class="p-2 rounded-xl text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+          <svg class="w-4 h-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          <svg class="w-4 h-4 block dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Sub Navigation -->
+  <div class="sm:hidden flex items-center justify-around border-b border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 py-2 px-3 text-xs">
+    <button onclick="switchVoiceTab('home')" id="mobileVoiceTabHome" class="flex items-center space-x-1 font-bold text-rose-600 dark:text-rose-400">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+      <span>홈</span>
+    </button>
+    <button onclick="switchVoiceTab('maker')" id="mobileVoiceTabMaker" class="flex items-center space-x-1 text-neutral-500">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path></svg>
+      <span>스튜디오</span>
+    </button>
+    <button onclick="switchVoiceTab('projects')" id="mobileVoiceTabProjects" class="flex items-center space-x-1 text-neutral-500">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span>보관함</span>
+    </button>
+  </div>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-8 relative z-10 flex flex-col">
+
+    <!-- 1. Home View -->
+    <section id="voiceViewHome" class="space-y-8 tab-enter-active">
+      <!-- Hero Banner -->
+      <div class="relative overflow-hidden rounded-3xl p-8 sm:p-12 border border-rose-200/90 dark:border-neutral-800 bg-gradient-to-br from-rose-50/80 via-white to-red-50/80 dark:from-neutral-900/90 dark:via-neutral-900/40 dark:to-rose-950/40 shadow-sm text-center space-y-4">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 text-xs font-semibold border border-rose-200 dark:border-rose-800">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
+          <span>FLUX soft 실시간 음성 전사 스튜디오</span>
+        </div>
+        <h1 class="text-3xl sm:text-5xl font-black tracking-tight text-neutral-900 dark:text-white">
+          음성을 실시간 텍스트로 <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-rose-600 via-red-500 to-rose-500 bg-clip-text text-transparent animate-gradient-text">무제한 전사 & 오디오 레코더</span>
+        </h1>
+        <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+          유료 외부 API 없이 브라우저 내장 Web Speech 인식기를 활용해 발화 내용을 실시간 자막과 타임스탬프로 기록합니다. 회의록, 강의, 마크다운 문서로 즉시 저장하세요.
+        </p>
+        <div class="pt-2 flex flex-wrap items-center justify-center gap-3">
+          <button onclick="switchVoiceTab('maker')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-sm shadow-lg shadow-rose-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path></svg>
+            <span>녹음 & 전사 시작하기</span>
+          </button>
+          <button onclick="switchVoiceTab('projects')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span>내 전사 기록 보기</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feature Highlights -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">0원 무제한 STT 엔진</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            클라우드 유료 전사 서비스 없이 브라우저 내장 하드웨어 가속 음성인식 엔진으로 무제한 전사합니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">실시간 파형 오디오 시각화</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            Web Audio API 기반 캔버스 주파수 분석기로 마이크 음량과 발화 리듬을 실시간 애니메이션으로 보여줍니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">타임스탬프 마크다운 내보내기</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            문장별 경과 시간 타임스탬프가 자동 기록되며 회의록 마크다운, 텍스트, 원본 오디오를 한 번에 저장합니다.
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Preset Starters -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">추천 전사 시나리오</h2>
+          <span class="text-xs text-neutral-500">클릭 즉시 스튜디오에 서식이 준비됩니다</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div onclick="loadVoiceScenario('meeting')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 font-bold">비즈니스 회의록</span>
+              <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">시작 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">팀 주간 회의 실시간 기록</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              회의 안건, 참석자, 시간대별 발화 내용을 타임스탬프와 함께 정갈하게 정리합니다.
+            </p>
+          </div>
+
+          <div onclick="loadVoiceScenario('lecture')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 font-bold">수업 및 강의</span>
+              <span class="text-xs text-red-600 dark:text-red-400 font-bold group-hover:translate-x-1 transition-transform">시작 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">학교 수업 및 세미나 요약</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              교수님이나 강사의 음성을 놓치지 않고 텍스트로 받아 적어 시험 대비 노트를 만듭니다.
+            </p>
+          </div>
+
+          <div onclick="loadVoiceScenario('memo')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 font-bold">음성 메모</span>
+              <span class="text-xs text-amber-600 dark:text-amber-400 font-bold group-hover:translate-x-1 transition-transform">시작 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">떠오른 생각 빠른 구술</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              키보드를 치기 번거로울 때 말로 아이디어를 빠르게 쏟아내고 마크다운으로 저장합니다.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Maker View -->
+    <section id="voiceViewMaker" class="hidden space-y-6 tab-enter-active">
+      
+      <!-- Studio Header Card -->
+      <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+        
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+          <!-- Title Input -->
+          <div class="flex items-center space-x-2 flex-1 min-w-[200px]">
+            <input id="voiceTitleInput" type="text" value="제목 없는 음성 회의록" class="bg-transparent font-bold text-base text-neutral-900 dark:text-white focus:outline-none focus:border-b-2 focus:border-rose-500 px-1 py-0.5 w-full max-w-sm transition">
+          </div>
+
+          <!-- Language Selector & Auto-scroll Toggle -->
+          <div class="flex items-center space-x-2 text-xs">
+            <select id="voiceLangSelect" class="bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-neutral-700 dark:text-neutral-300 font-medium focus:outline-none">
+              <option value="ko-KR">한국어 (ko-KR)</option>
+              <option value="en-US">English (en-US)</option>
+              <option value="ja-JP">日本語 (ja-JP)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Recording Controls & Real-time Visualizer -->
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1">
+          
+          <!-- Record Button & Timer -->
+          <div class="flex items-center space-x-4">
+            <button id="voiceRecordMainBtn" onclick="toggleVoiceRecording()" class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-rose-600 to-red-500 hover:from-rose-500 hover:to-red-400 text-white font-bold flex items-center justify-center shadow-lg shadow-rose-500/25 transition-transform active:scale-95">
+              <svg id="voiceRecIconMic" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+              <svg id="voiceRecIconStop" class="w-6 h-6 hidden text-white" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+            </button>
+
+            <div>
+              <div class="flex items-center space-x-2">
+                <span id="voiceRecStatusDot" class="w-2.5 h-2.5 rounded-full bg-neutral-400"></span>
+                <span id="voiceRecStatusText" class="font-bold text-sm text-neutral-700 dark:text-neutral-300">녹음 대기 중</span>
+              </div>
+              <p id="voiceTimerDisplay" class="font-mono text-2xl font-black text-neutral-900 dark:text-white tracking-wider">00:00:00</p>
+            </div>
+          </div>
+
+          <!-- Real-time Frequency Waveform Canvas -->
+          <div class="w-full sm:w-64 h-14 bg-neutral-100 dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-1 flex items-center justify-center overflow-hidden">
+            <canvas id="voiceVisualizerCanvas" class="w-full h-full block"></canvas>
+          </div>
+
+          <!-- Quick Action Buttons -->
+          <div class="flex items-center space-x-1.5 w-full sm:w-auto justify-end">
+            <button onclick="saveVoiceProject()" class="px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-800 hover:border-rose-500 text-xs font-semibold transition flex items-center space-x-1">
+              <svg class="w-3.5 h-3.5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              <span>저장</span>
+            </button>
+            <button onclick="exportVoiceMarkdown()" class="btn-shimmer px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-sm flex items-center space-x-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>마크다운 내보내기</span>
+            </button>
+            <button onclick="copyAllVoiceTranscript()" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-800 hover:text-rose-500 transition" title="텍스트 전체 복사">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            <button onclick="clearVoiceTranscript()" class="p-2 rounded-xl text-neutral-400 hover:text-rose-500 transition" title="전사 비우기">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Live Statistics Bar -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+        <div class="p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+          <p class="text-[10px] text-neutral-500">총 발화 시간</p>
+          <p id="statVoiceTime" class="font-mono font-bold text-base text-neutral-900 dark:text-white">00:00</p>
+        </div>
+        <div class="p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+          <p class="text-[10px] text-neutral-500">생성된 문단</p>
+          <p id="statVoiceParagraphs" class="font-mono font-bold text-base text-neutral-900 dark:text-white">0개</p>
+        </div>
+        <div class="p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+          <p class="text-[10px] text-neutral-500">총 글자 수</p>
+          <p id="statVoiceChars" class="font-mono font-bold text-base text-neutral-900 dark:text-white">0자</p>
+        </div>
+        <div class="p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+          <p class="text-[10px] text-neutral-500">단어 수</p>
+          <p id="statVoiceWords" class="font-mono font-bold text-base text-neutral-900 dark:text-white">0개</p>
+        </div>
+      </div>
+
+      <!-- Live Transcript Output Area -->
+      <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4 min-h-[380px] flex flex-col">
+        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
+          <span class="text-xs font-bold text-neutral-700 dark:text-neutral-300">실시간 전사 타임라인</span>
+          <span class="text-[11px] text-neutral-400">문장을 클릭하여 직접 수정할 수 있습니다</span>
+        </div>
+
+        <!-- Transcript Blocks Container -->
+        <div id="voiceTranscriptContainer" class="flex-1 space-y-3 overflow-y-auto max-h-[480px] pr-1">
+          <!-- Initial placeholder -->
+          <div id="voiceEmptyPlaceholder" class="py-16 text-center space-y-2 text-neutral-400">
+            <svg class="w-8 h-8 mx-auto text-neutral-300 dark:text-neutral-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
+            <p class="text-xs">상단의 녹음 버튼을 누르고 마이크에 대고 말씀하시면 여기에 타임스탬프와 함께 실시간 전사됩니다.</p>
+          </div>
+        </div>
+
+        <!-- Real-time Interim Live Preview Bubble -->
+        <div id="voiceInterimBox" class="hidden p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 font-medium italic animate-pulse">
+          <span class="font-mono text-[10px] mr-1.5 px-1.5 py-0.5 rounded bg-rose-200 dark:bg-rose-900 font-bold">인식 중</span>
+          <span id="voiceInterimText">...</span>
+        </div>
+
+        <!-- Audio Player if recorded -->
+        <div id="voiceAudioPlayerContainer" class="hidden pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-3">
+          <audio id="voiceRecordedAudioPlayer" controls class="w-full max-w-md h-9"></audio>
+          <button onclick="downloadRecordedAudioFile()" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-semibold text-neutral-700 dark:text-neutral-300 flex items-center space-x-1 shrink-0">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>오디오 다운로드</span>
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 3. Projects View -->
+    <section id="voiceViewProjects" class="hidden space-y-6 tab-enter-active">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">내 음성 전사 보관함</h2>
+          <p class="text-xs text-neutral-500">브라우저 로컬 저장소에 보관된 회의록 및 전사 기록입니다.</p>
+        </div>
+        <button onclick="switchVoiceTab('maker')" class="btn-shimmer px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-sm flex items-center space-x-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>새 음성 기록</span>
+        </button>
+      </div>
+
+      <div id="voiceProjectsList" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Rendered via JS -->
+      </div>
+
+      <div id="voiceProjectsEmpty" class="hidden py-16 text-center space-y-3">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-400 flex items-center justify-center">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path></svg>
+        </div>
+        <p class="text-sm font-semibold text-neutral-600 dark:text-neutral-400">보관된 전사 기록이 없습니다</p>
+        <p class="text-xs text-neutral-500">음성 스튜디오에서 전사 후 저장 버튼을 누르면 안전하게 보관됩니다.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 text-center text-xs text-neutral-500 mt-auto bg-white/50 dark:bg-neutral-900/50">
+    <div class="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center space-x-2">
+        <span class="text-neutral-900 dark:text-white font-semibold">FLUX Voice</span>
+        <span>—</span>
+        <span>FLUX soft 실시간 음성 전사 스튜디오</span>
+      </div>
+      <div class="flex items-center space-x-3 text-neutral-400 text-xs flex-wrap justify-center">
+        <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+        <span>·</span>
+        <a href="board.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Board</a>
+        <span>·</span>
+        <a href="secret.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Secret</a>
+        <span>·</span>
+        <a href="drop.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Docs</a>
+        <span>·</span>
+        <a href="frame.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Frame</a>
+        <span>·</span>
+        <a href="form.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Form</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Script -->
+  <script>
+    // State
+    let isRecording = false;
+    let recognition = null;
+    let mediaRecorder = null;
+    let audioStream = null;
+    let recordedAudioChunks = [];
+    let recordedAudioBlob = null;
+    let audioContext = null;
+    let analyserNode = null;
+    let animFrameId = null;
+
+    let timerInterval = null;
+    let elapsedSeconds = 0;
+
+    let transcriptItems = []; // { id, timestamp, text }
+
+    function initVoiceApp() {
+      // Dark Mode toggle
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+        });
+      }
+
+      initVisualizerPlaceholder();
+      updateProjectsBadge();
+    }
+
+    function initVisualizerPlaceholder() {
+      const cvs = document.getElementById('voiceVisualizerCanvas');
+      if (!cvs) return;
+      const ctx = cvs.getContext('2d');
+      cvs.width = cvs.clientWidth * (window.devicePixelRatio || 1);
+      cvs.height = cvs.clientHeight * (window.devicePixelRatio || 1);
+
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      const bars = 24;
+      const step = cvs.width / bars;
+      ctx.fillStyle = '#f43f5e33';
+      for (let i = 0; i < bars; i++) {
+        const h = 4;
+        ctx.fillRect(i * step + 2, (cvs.height - h) / 2, step - 4, h);
+      }
+    }
+
+    // Speech Recognition & MediaRecorder
+    async function toggleVoiceRecording() {
+      if (isRecording) {
+        stopVoiceRecording();
+      } else {
+        await startVoiceRecording();
+      }
+    }
+
+    async function startVoiceRecording() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert('현재 브라우저가 Web Speech API를 지원하지 않습니다. Chrome, 삼성 인터넷, Edge 브라우저를 이용해 주세요.');
+        return;
+      }
+
+      try {
+        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        alert('마이크 접근 권한이 필요합니다. 브라우저 설정에서 마이크를 허용해 주세요.');
+        return;
+      }
+
+      // Initialize Web Audio API Analyser for live wave
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(audioStream);
+        analyserNode = audioContext.createAnalyser();
+        analyserNode.fftSize = 64;
+        source.connect(analyserNode);
+        startVisualizerLoop();
+      } catch (e) {
+        console.warn('AudioContext failed', e);
+      }
+
+      // Initialize MediaRecorder
+      try {
+        recordedAudioChunks = [];
+        mediaRecorder = new MediaRecorder(audioStream);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) recordedAudioChunks.push(e.data);
+        };
+        mediaRecorder.onstop = () => {
+          recordedAudioBlob = new Blob(recordedAudioChunks, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(recordedAudioBlob);
+          const player = document.getElementById('voiceRecordedAudioPlayer');
+          player.src = audioUrl;
+          document.getElementById('voiceAudioPlayerContainer').classList.remove('hidden');
+        };
+        mediaRecorder.start();
+      } catch (e) {
+        console.warn('MediaRecorder error', e);
+      }
+
+      // Initialize SpeechRecognition
+      const lang = document.getElementById('voiceLangSelect').value || 'ko-KR';
+      recognition = new SpeechRecognition();
+      recognition.lang = lang;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        isRecording = true;
+        updateRecordingUI(true);
+        startTimer();
+      };
+
+      recognition.onresult = (event) => {
+        let interimText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            const finalTranscript = res[0].transcript.trim();
+            if (finalTranscript) {
+              addTranscriptBlock(formatTime(elapsedSeconds), finalTranscript);
+            }
+          } else {
+            interimText += res[0].transcript;
+          }
+        }
+
+        const interimBox = document.getElementById('voiceInterimBox');
+        const interimSpan = document.getElementById('voiceInterimText');
+        if (interimText.trim()) {
+          interimSpan.textContent = interimText;
+          interimBox.classList.remove('hidden');
+        } else {
+          interimBox.classList.add('hidden');
+        }
+      };
+
+      recognition.onerror = (e) => {
+        console.warn('Recognition error:', e.error);
+        if (e.error === 'not-allowed') {
+          stopVoiceRecording();
+          alert('마이크 접근이 거부되었습니다.');
+        }
+      };
+
+      recognition.onend = () => {
+        // Automatically restart if user hasn't stopped
+        if (isRecording) {
+          try {
+            recognition.start();
+          } catch (e) {
+            stopVoiceRecording();
+          }
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (err) {
+        console.error('Failed to start recognition', err);
+      }
+    }
+
+    function stopVoiceRecording() {
+      isRecording = false;
+      stopTimer();
+      updateRecordingUI(false);
+
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+        recognition = null;
+      }
+
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch (e) {}
+      }
+
+      if (audioStream) {
+        audioStream.getTracks().forEach(t => t.stop());
+        audioStream = null;
+      }
+
+      if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
+      }
+
+      document.getElementById('voiceInterimBox').classList.add('hidden');
+      initVisualizerPlaceholder();
+    }
+
+    function updateRecordingUI(recording) {
+      const btn = document.getElementById('voiceRecordMainBtn');
+      const micIcon = document.getElementById('voiceRecIconMic');
+      const stopIcon = document.getElementById('voiceRecIconStop');
+      const dot = document.getElementById('voiceRecStatusDot');
+      const text = document.getElementById('voiceRecStatusText');
+
+      if (recording) {
+        btn.classList.add('recording-pulse');
+        micIcon.classList.add('hidden');
+        stopIcon.classList.remove('hidden');
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping';
+        text.textContent = '실시간 녹음 및 전사 중...';
+      } else {
+        btn.classList.remove('recording-pulse');
+        micIcon.classList.remove('hidden');
+        stopIcon.classList.add('hidden');
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-neutral-400';
+        text.textContent = '녹음 종료 (대기 중)';
+      }
+    }
+
+    function startTimer() {
+      stopTimer();
+      elapsedSeconds = 0;
+      updateTimerDisplay();
+      timerInterval = setInterval(() => {
+        elapsedSeconds++;
+        updateTimerDisplay();
+      }, 1000);
+    }
+
+    function stopTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+
+    function updateTimerDisplay() {
+      document.getElementById('voiceTimerDisplay').textContent = formatFullTime(elapsedSeconds);
+      document.getElementById('statVoiceTime').textContent = formatTime(elapsedSeconds);
+    }
+
+    function formatTime(totalSec) {
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    }
+
+    function formatFullTime(totalSec) {
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    }
+
+    // Visualizer Loop
+    function startVisualizerLoop() {
+      const cvs = document.getElementById('voiceVisualizerCanvas');
+      if (!cvs || !analyserNode) return;
+      const ctx = cvs.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      cvs.width = cvs.clientWidth * dpr;
+      cvs.height = cvs.clientHeight * dpr;
+
+      const bufferLength = analyserNode.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        if (!isRecording) return;
+        animFrameId = requestAnimationFrame(draw);
+        analyserNode.getByteFrequencyData(dataArray);
+
+        ctx.clearRect(0, 0, cvs.width, cvs.height);
+        const bars = 22;
+        const step = cvs.width / bars;
+
+        for (let i = 0; i < bars; i++) {
+          const val = dataArray[i * 1] || 10;
+          const percent = val / 255;
+          const barHeight = Math.max(4, percent * cvs.height * 0.85);
+
+          const grad = ctx.createLinearGradient(0, cvs.height, 0, 0);
+          grad.addColorStop(0, '#f43f5e');
+          grad.addColorStop(1, '#fb7185');
+          ctx.fillStyle = grad;
+
+          ctx.fillRect(i * step + 2, (cvs.height - barHeight) / 2, step - 4, barHeight);
+        }
+      }
+      draw();
+    }
+
+    // Transcript Management
+    function addTranscriptBlock(timeStr, text) {
+      document.getElementById('voiceEmptyPlaceholder').classList.add('hidden');
+      const id = 'block_' + Date.now();
+      const item = { id, timestamp: timeStr, text };
+      transcriptItems.push(item);
+
+      const container = document.getElementById('voiceTranscriptContainer');
+      const el = document.createElement('div');
+      el.id = id;
+      el.className = 'p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 space-y-1 transition hover:border-neutral-300 dark:hover:border-neutral-700';
+      el.innerHTML = `
+        <div class="flex items-center justify-between text-[11px] font-mono text-rose-600 dark:text-rose-400 font-bold">
+          <span>[${timeStr}]</span>
+          <button onclick="deleteTranscriptBlock('${id}')" class="text-neutral-400 hover:text-rose-500 transition">삭제</button>
+        </div>
+        <p contenteditable="true" onblur="updateTranscriptText('${id}', this.innerText)" class="text-sm text-neutral-900 dark:text-white leading-relaxed focus:outline-none focus:bg-white dark:focus:bg-neutral-900 px-1 py-0.5 rounded transition">
+          ${escapeHtml(text)}
+        </p>
+      `;
+      container.appendChild(el);
+      container.scrollTop = container.scrollHeight;
+
+      updateStats();
+    }
+
+    function updateTranscriptText(id, newText) {
+      const it = transcriptItems.find(x => x.id === id);
+      if (it) it.text = newText.trim();
+      updateStats();
+    }
+
+    function deleteTranscriptBlock(id) {
+      transcriptItems = transcriptItems.filter(x => x.id !== id);
+      const el = document.getElementById(id);
+      if (el) el.remove();
+      if (transcriptItems.length === 0) {
+        document.getElementById('voiceEmptyPlaceholder').classList.remove('hidden');
+      }
+      updateStats();
+    }
+
+    function clearVoiceTranscript() {
+      if (transcriptItems.length === 0) return;
+      if (confirm('전체 전사 내용을 비우시겠습니까?')) {
+        transcriptItems = [];
+        const container = document.getElementById('voiceTranscriptContainer');
+        container.innerHTML = `
+          <div id="voiceEmptyPlaceholder" class="py-16 text-center space-y-2 text-neutral-400">
+            <svg class="w-8 h-8 mx-auto text-neutral-300 dark:text-neutral-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path></svg>
+            <p class="text-xs">상단의 녹음 버튼을 누르고 마이크에 대고 말씀하시면 여기에 타임스탬프와 함께 실시간 전사됩니다.</p>
+          </div>
+        `;
+        updateStats();
+      }
+    }
+
+    function updateStats() {
+      const pCount = transcriptItems.length;
+      let totalChars = 0;
+      let totalWords = 0;
+
+      transcriptItems.forEach(it => {
+        totalChars += it.text.length;
+        totalWords += it.text.split(/\s+/).filter(Boolean).length;
+      });
+
+      document.getElementById('statVoiceParagraphs').textContent = pCount + '개';
+      document.getElementById('statVoiceChars').textContent = totalChars + '자';
+      document.getElementById('statVoiceWords').textContent = totalWords + '개';
+    }
+
+    // Scenarios
+    function loadVoiceScenario(type) {
+      switchVoiceTab('maker');
+      clearVoiceTranscript();
+
+      if (type === 'meeting') {
+        document.getElementById('voiceTitleInput').value = '팀 주간 회의 실시간 기록';
+        addTranscriptBlock('00:00', '주간 회의를 시작하겠습니다. 금주 주요 배포 일정과 신규 기능 현황을 공유합니다.');
+        addTranscriptBlock('00:15', '첫 번째 안건: FLUX soft 3대 신규 도구(Board, Secret, Voice)의 상용 출시 및 품질 검증 건입니다.');
+      } else if (type === 'lecture') {
+        document.getElementById('voiceTitleInput').value = '컴퓨터 공학 및 시스템 강의 노트';
+        addTranscriptBlock('00:00', '오늘 강의에서는 브라우저 샌드박스와 Web Crypto API의 보안 원리를 다룹니다.');
+        addTranscriptBlock('00:22', 'AES-GCM 알고리즘은 인증 태그를 함께 생성하여 데이터 무결성을 보장합니다.');
+      } else if (type === 'memo') {
+        document.getElementById('voiceTitleInput').value = '아이디어 음성 메모';
+        addTranscriptBlock('00:00', '새로운 서비스 아이디어: 스마트폰과 태블릿을 연동하는 실시간 캔버스 공유 스튜디오.');
+      }
+    }
+
+    // Tab switching
+    function switchVoiceTab(tab) {
+      document.getElementById('voiceViewHome').classList.add('hidden');
+      document.getElementById('voiceViewMaker').classList.add('hidden');
+      document.getElementById('voiceViewProjects').classList.add('hidden');
+
+      ['Home', 'Maker', 'Projects'].forEach(t => {
+        const btn = document.getElementById('voiceTabBtn' + t);
+        if (btn) {
+          btn.className = 'flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium';
+        }
+      });
+
+      const activeBtn = document.getElementById('voiceTabBtn' + tab.charAt(0).toUpperCase() + tab.slice(1));
+      if (activeBtn) {
+        activeBtn.className = 'flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold';
+      }
+
+      if (tab === 'home') {
+        document.getElementById('voiceViewHome').classList.remove('hidden');
+      } else if (tab === 'maker') {
+        document.getElementById('voiceViewMaker').classList.remove('hidden');
+      } else if (tab === 'projects') {
+        document.getElementById('voiceViewProjects').classList.remove('hidden');
+        renderVoiceProjects();
+      }
+    }
+
+    // Projects storage
+    function saveVoiceProject() {
+      const title = document.getElementById('voiceTitleInput').value.trim() || '음성 전사 기록';
+      const id = 'vrec_' + Date.now();
+      const project = {
+        id: id,
+        title: title,
+        duration: formatTime(elapsedSeconds),
+        createdAt: new Date().toISOString(),
+        items: transcriptItems
+      };
+
+      const projects = getStoredVoiceProjects();
+      projects.unshift(project);
+      localStorage.setItem('flux_voice_projects', JSON.stringify(projects.slice(0, 30)));
+      updateProjectsBadge();
+      triggerConfetti();
+      alert('보관함에 안전하게 저장되었습니다.');
+    }
+
+    function getStoredVoiceProjects() {
+      try {
+        return JSON.parse(localStorage.getItem('flux_voice_projects') || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function updateProjectsBadge() {
+      const list = getStoredVoiceProjects();
+      const badge = document.getElementById('voiceSavedCountBadge');
+      if (badge) badge.textContent = list.length;
+    }
+
+    function renderVoiceProjects() {
+      const list = getStoredVoiceProjects();
+      const container = document.getElementById('voiceProjectsList');
+      const empty = document.getElementById('voiceProjectsEmpty');
+
+      if (list.length === 0) {
+        container.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      container.innerHTML = list.map(item => {
+        const dateStr = new Date(item.createdAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return `
+          <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex flex-col justify-between space-y-3">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 font-bold">시간 ${item.duration} · ${item.items.length}문단</span>
+                <span class="text-[11px] text-neutral-400">${dateStr}</span>
+              </div>
+              <h3 class="font-bold text-sm text-neutral-900 dark:text-white truncate">${escapeHtml(item.title)}</h3>
+            </div>
+            <div class="flex items-center space-x-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <button onclick="loadVoiceProject('${item.id}')" class="flex-1 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition text-center">
+                열기
+              </button>
+              <button onclick="deleteVoiceProject('${item.id}')" class="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition" title="삭제">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function loadVoiceProject(id) {
+      const list = getStoredVoiceProjects();
+      const proj = list.find(x => x.id === id);
+      if (!proj) return;
+
+      document.getElementById('voiceTitleInput').value = proj.title;
+      transcriptItems = [];
+      const container = document.getElementById('voiceTranscriptContainer');
+      container.innerHTML = '';
+
+      proj.items.forEach(it => {
+        addTranscriptBlock(it.timestamp, it.text);
+      });
+
+      switchVoiceTab('maker');
+    }
+
+    function deleteVoiceProject(id) {
+      if (!confirm('이 전사 기록을 보관함에서 삭제하시겠습니까?')) return;
+      let list = getStoredVoiceProjects();
+      list = list.filter(x => x.id !== id);
+      localStorage.setItem('flux_voice_projects', JSON.stringify(list));
+      updateProjectsBadge();
+      renderVoiceProjects();
+    }
+
+    // Export tools
+    function exportVoiceMarkdown() {
+      const title = document.getElementById('voiceTitleInput').value.trim() || '음성 전사 기록';
+      let md = '# ' + title + '\n\n';
+      md += '- **일시**: ' + new Date().toLocaleString('ko-KR') + '\n';
+      md += '- **발화 시간**: ' + formatTime(elapsedSeconds) + '\n';
+      md += '- **문단 수**: ' + transcriptItems.length + '개\n\n';
+      md += '## 전사 타임라인\n\n';
+
+      transcriptItems.forEach(it => {
+        md += '`[' + it.timestamp + ']` ' + it.text + '\n\n';
+      });
+
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = title + '.md';
+      a.click();
+      triggerConfetti();
+    }
+
+    function copyAllVoiceTranscript() {
+      let fullText = transcriptItems.map(it => '[' + it.timestamp + '] ' + it.text).join('\n\n');
+      navigator.clipboard.writeText(fullText);
+      alert('전체 전사 내용이 클립보드에 복사되었습니다.');
+    }
+
+    function downloadRecordedAudioFile() {
+      if (!recordedAudioBlob) return;
+      const title = document.getElementById('voiceTitleInput').value.trim() || 'voice-record';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(recordedAudioBlob);
+      a.download = title + '.webm';
+      a.click();
+    }
+
+    // Confetti effect
+    function triggerConfetti() {
+      const colors = ['#f43f5e', '#fb7185', '#e11d48', '#fda4af', '#ffe4e6'];
+      for (let i = 0; i < 35; i++) {
+        const p = document.createElement('div');
+        p.className = 'confetti-particle';
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        const tx = (Math.random() - 0.5) * 400 + 'px';
+        const ty = (Math.random() - 0.5) * 350 - 80 + 'px';
+        const rot = Math.random() * 720 - 360 + 'deg';
+
+        p.style.backgroundColor = color;
+        p.style.width = size + 'px';
+        p.style.height = size + 'px';
+        p.style.left = '50vw';
+        p.style.top = '40vh';
+        p.style.setProperty('--tx', tx);
+        p.style.setProperty('--ty', ty);
+        p.style.setProperty('--rot', rot);
+
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 2500);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    window.addEventListener('DOMContentLoaded', initVoiceApp);
+  </script>
+</body>
+</html>

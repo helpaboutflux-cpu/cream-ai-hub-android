@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUX Board - 서버 없는 인터랙티브 화이트보드 & 다이어그램 스튜디오</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Floating Glowing Orbs */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.18;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+    .orb-indigo-1 {
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, #6366f1 0%, #4f46e5 55%, transparent 75%);
+      top: -120px;
+      left: -120px;
+      animation: orbFloat1 20s ease-in-out infinite alternate;
+    }
+    .orb-indigo-2 {
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #818cf8 0%, #6366f1 55%, transparent 75%);
+      bottom: 60px;
+      right: -100px;
+      animation: orbFloat2 24s ease-in-out infinite alternate;
+    }
+    .orb-indigo-3 {
+      width: 350px;
+      height: 350px;
+      background: radial-gradient(circle, #4f46e5 0%, #818cf8 55%, transparent 75%);
+      top: 45%;
+      left: 38%;
+      animation: orbFloat3 28s ease-in-out infinite alternate;
+    }
+
+    @keyframes orbFloat1 {
+      0% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+      50% { transform: translate(70px, 90px) scale(1.18) rotate(45deg); }
+      100% { transform: translate(-50px, 130px) scale(0.92) rotate(90deg); }
+    }
+    @keyframes orbFloat2 {
+      0% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+      50% { transform: translate(-90px, -70px) scale(1.22) rotate(-50deg); }
+      100% { transform: translate(50px, -100px) scale(0.88) rotate(-100deg); }
+    }
+    @keyframes orbFloat3 {
+      0% { transform: translate(0px, 0px) scale(1); }
+      50% { transform: translate(60px, -50px) scale(1.12); }
+      100% { transform: translate(-60px, 70px) scale(0.94); }
+    }
+
+    /* Animated Gradient Flow Text */
+    .animate-gradient-text {
+      background-size: 200% auto;
+      animation: gradientFlow 4.5s linear infinite;
+    }
+    @keyframes gradientFlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* Shimmer Effect on CTA Buttons */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 60%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+      transform: skewX(-20deg);
+      animation: btnShimmer 2.8s infinite ease-in-out;
+    }
+    @keyframes btnShimmer {
+      0% { left: -100%; }
+      40%, 100% { left: 200%; }
+    }
+
+    /* Tab Entrance Spring Animation */
+    .tab-enter-active {
+      animation: tabSpringEnter 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    @keyframes tabSpringEnter {
+      0% { opacity: 0; transform: translateY(22px) scale(0.97); }
+      70% { transform: translateY(-3px) scale(1.006); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Interactive Buttons & Micro-interactions */
+    button, .btn-interactive, a.btn-interactive {
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, background-color 0.2s ease, border-color 0.2s ease;
+    }
+    button:hover, .btn-interactive:hover {
+      transform: translateY(-2.5px) scale(1.02);
+    }
+    button:active, .btn-interactive:active {
+      transform: translateY(0px) scale(0.94);
+    }
+
+    /* 3D Magnetic Card Lift */
+    .card-hover-lift {
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s ease, border-color 0.28s ease;
+      will-change: transform;
+    }
+    .card-hover-lift:hover {
+      transform: translateY(-6px) scale(1.018);
+      box-shadow: 0 16px 32px -8px rgba(99, 102, 241, 0.18);
+    }
+
+    /* Canvas Grid Pattern */
+    .board-grid-pattern {
+      background-size: 24px 24px;
+      background-image: radial-gradient(circle, rgba(99, 102, 241, 0.16) 1.2px, transparent 1.2px);
+    }
+    .dark .board-grid-pattern {
+      background-image: radial-gradient(circle, rgba(129, 140, 248, 0.18) 1.2px, transparent 1.2px);
+    }
+
+    /* Tool button active state */
+    .tool-btn.active {
+      background-color: #4f46e5;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+    }
+
+    /* Ripple Effect */
+    .ripple-wave {
+      position: absolute;
+      border-radius: 50%;
+      transform: scale(0);
+      animation: rippleAnim 0.6s linear;
+      background-color: rgba(99, 102, 241, 0.35);
+      pointer-events: none;
+    }
+    @keyframes rippleAnim {
+      to { transform: scale(4); opacity: 0; }
+    }
+
+    /* Confetti Particle */
+    .confetti-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      border-radius: 3px;
+      animation: confettiFall 2.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+    @keyframes confettiFall {
+      0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+      100% { opacity: 0; transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(0.2); }
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen transition-colors duration-200 flex flex-col">
+  <!-- Ambient Floating Glowing Orbs -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+    <div class="ambient-orb orb-indigo-1"></div>
+    <div class="ambient-orb orb-indigo-2"></div>
+    <div class="ambient-orb orb-indigo-3"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border-b border-indigo-200/80 dark:border-neutral-800 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchBoardTab('home')">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white font-black flex items-center justify-center text-sm shadow-md shadow-indigo-500/25">B</div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-base tracking-tight text-neutral-900 dark:text-white">FLUX Board</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-200 dark:border-indigo-800/60">v1.0</span>
+          </div>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400">FLUX soft 화이트보드 스튜디오</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs (홈 | 메이커 | 내 보관함) -->
+      <nav class="hidden sm:flex items-center p-1 rounded-2xl bg-neutral-100/90 dark:bg-neutral-950/90 border border-neutral-200/80 dark:border-neutral-800 text-xs font-medium space-x-1 shadow-sm">
+        <button id="boardTabBtnHome" onclick="switchBoardTab('home')" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold">
+          <svg class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          <span>홈 (Home)</span>
+        </button>
+        <button id="boardTabBtnMaker" onclick="switchBoardTab('maker')" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium">
+          <svg class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>보드 스튜디오 (Maker)</span>
+        </button>
+        <button id="boardTabBtnProjects" onclick="switchBoardTab('projects')" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium">
+          <svg class="w-3.5 h-3.5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span>내 보드 (<span id="boardSavedCountBadge">0</span>)</span>
+        </button>
+      </nav>
+
+      <!-- Right Controls -->
+      <div class="flex items-center space-x-2">
+        <a href="index.html" class="flex items-center space-x-1 text-xs px-2.5 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span class="hidden md:inline">Developer Hub</span>
+        </a>
+        <button id="darkModeToggle" class="p-2 rounded-xl text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+          <svg class="w-4 h-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          <svg class="w-4 h-4 block dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Sub Navigation -->
+  <div class="sm:hidden flex items-center justify-around border-b border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 py-2 px-3 text-xs">
+    <button onclick="switchBoardTab('home')" id="mobileBoardTabHome" class="flex items-center space-x-1 font-bold text-indigo-600 dark:text-indigo-400">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+      <span>홈</span>
+    </button>
+    <button onclick="switchBoardTab('maker')" id="mobileBoardTabMaker" class="flex items-center space-x-1 text-neutral-500">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      <span>스튜디오</span>
+    </button>
+    <button onclick="switchBoardTab('projects')" id="mobileBoardTabProjects" class="flex items-center space-x-1 text-neutral-500">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span>보관함</span>
+    </button>
+  </div>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 relative z-10 flex flex-col">
+
+    <!-- 1. Home View -->
+    <section id="boardViewHome" class="space-y-8 tab-enter-active">
+      <!-- Hero Banner -->
+      <div class="relative overflow-hidden rounded-3xl p-8 sm:p-12 border border-indigo-200/90 dark:border-neutral-800 bg-gradient-to-br from-indigo-50/80 via-white to-violet-50/80 dark:from-neutral-900/90 dark:via-neutral-900/40 dark:to-indigo-950/40 shadow-sm text-center space-y-4">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 text-xs font-semibold border border-indigo-200 dark:border-indigo-800">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          <span>FLUX soft 화이트보드 & 다이어그램 스튜디오</span>
+        </div>
+        <h1 class="text-3xl sm:text-5xl font-black tracking-tight text-neutral-900 dark:text-white">
+          아이디어를 시각화하는 <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-indigo-600 via-violet-500 to-indigo-500 bg-clip-text text-transparent animate-gradient-text">경량 인터랙티브 화이트보드</span>
+        </h1>
+        <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+          설치나 가입 없이 브라우저에서 바로 와이어프레임, 플로우차트, 마인드맵을 그립니다. 고해상도 PNG 및 SVG 내보내기, URL 공유를 지원합니다.
+        </p>
+        <div class="pt-2 flex flex-wrap items-center justify-center gap-3">
+          <button onclick="switchBoardTab('maker')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-sm shadow-lg shadow-indigo-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>새 화이트보드 시작하기</span>
+          </button>
+          <button onclick="switchBoardTab('projects')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span>내 보관함 보기</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feature Highlights -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">0원 완전 서버리스</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            모든 렌더링과 저장이 클라이언트 브라우저 Canvas 및 로컬스토리지에서 이뤄져 데이터가 외부 서버에 남지 않습니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-8 h-8 rounded-xl bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">1초 고해상도 내보내기</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            투명 또는 화이트 배경의 고해상도 PNG 파일 다운로드와 클립보드 원클릭 복사, SVG 벡터 추출을 지원합니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">터치 및 스타일러스 최적화</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            스마트폰 터치 드로잉과 태블릿 S펜 필기 입력을 부드러운 스무딩 보간으로 자연스럽게 지원합니다.
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Starter Templates -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">추천 시작 템플릿</h2>
+          <span class="text-xs text-neutral-500">클릭 즉시 스튜디오에 로드됩니다</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <!-- Template 1 -->
+          <div onclick="loadBoardTemplate('wireframe')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-3 group hover:border-indigo-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold">와이어프레임</span>
+              <span class="text-xs text-indigo-600 dark:text-indigo-400 font-bold group-hover:translate-x-1 transition-transform">시작 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">모바일 앱 화면 구조도</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              헤더, 카드, 하단 바가 사전 배치된 모바일 앱 와이어프레임 템플릿입니다.
+            </p>
+          </div>
+
+          <!-- Template 2 -->
+          <div onclick="loadBoardTemplate('flowchart')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-3 group hover:border-indigo-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400 font-bold">플로우차트</span>
+              <span class="text-xs text-violet-600 dark:text-violet-400 font-bold group-hover:translate-x-1 transition-transform">시작 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">시스템 처리 흐름도</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              시작 노드, 조건 분기, 처리 결과가 화살표로 연결된 직관적인 플로우차트입니다.
+            </p>
+          </div>
+
+          <!-- Template 3 -->
+          <div onclick="loadBoardTemplate('mindmap')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-3 group hover:border-indigo-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-bold">마인드맵</span>
+              <span class="text-xs text-blue-600 dark:text-blue-400 font-bold group-hover:translate-x-1 transition-transform">시작 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">브레인스토밍 아이디어 맵</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              중심 주제를 기준으로 4대 핵심 축이 방사형으로 뻗어 나가는 아이디어 정리 서식입니다.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Maker View -->
+    <section id="boardViewMaker" class="hidden flex-1 flex flex-col space-y-3 tab-enter-active">
+      <!-- Top Studio Toolbar -->
+      <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm">
+        
+        <!-- Left: Project Title & Quick Status -->
+        <div class="flex items-center space-x-2">
+          <input id="boardTitleInput" type="text" value="제목 없는 화이트보드" class="bg-transparent font-bold text-sm text-neutral-900 dark:text-white focus:outline-none focus:border-b-2 focus:border-indigo-500 px-1 py-0.5 max-w-[180px] sm:max-w-xs transition">
+          <span id="boardSaveIndicator" class="text-[10px] font-mono text-neutral-400 px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800">로컬 자동보관</span>
+        </div>
+
+        <!-- Center: Tool Selector -->
+        <div class="flex items-center space-x-1 p-1 rounded-xl bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 overflow-x-auto max-w-full">
+          <!-- Select -->
+          <button id="toolBtnSelect" onclick="setBoardTool('select')" class="tool-btn active p-2 rounded-lg text-xs font-semibold transition" title="선택/이동">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 18 3-7 7-3L3 3z"></path></svg>
+          </button>
+          <!-- Pencil -->
+          <button id="toolBtnPencil" onclick="setBoardTool('pencil')" class="tool-btn p-2 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-400 transition" title="자유 손그림 펜">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
+          </button>
+          <!-- Rectangle -->
+          <button id="toolBtnRect" onclick="setBoardTool('rect')" class="tool-btn p-2 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-400 transition" title="직사각형">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+          </button>
+          <!-- Circle -->
+          <button id="toolBtnCircle" onclick="setBoardTool('circle')" class="tool-btn p-2 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-400 transition" title="원형">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg>
+          </button>
+          <!-- Arrow -->
+          <button id="toolBtnArrow" onclick="setBoardTool('arrow')" class="tool-btn p-2 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-400 transition" title="화살표 연결선">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </button>
+          <!-- Text -->
+          <button id="toolBtnText" onclick="setBoardTool('text')" class="tool-btn p-2 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-400 transition" title="텍스트 상자">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
+          </button>
+          <!-- Sticky Note -->
+          <button id="toolBtnNote" onclick="setBoardTool('note')" class="tool-btn p-2 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-400 transition" title="포스트잇 노트">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          </button>
+          <!-- Eraser -->
+          <button id="toolBtnEraser" onclick="setBoardTool('eraser')" class="tool-btn p-2 rounded-lg text-xs font-semibold text-neutral-600 dark:text-neutral-400 transition" title="지우개">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20H7L3 16C2 15 2 13 3 12L13 2L22 11L20 20Z"></path><path d="M11 17L18 10"></path></svg>
+          </button>
+        </div>
+
+        <!-- Right: Actions (Undo, Redo, Clear, Save, Export) -->
+        <div class="flex items-center space-x-1.5">
+          <button onclick="undoBoard()" class="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition" title="실행 취소">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+          </button>
+          <button onclick="redoBoard()" class="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition" title="다시 실행">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+          </button>
+          <button onclick="clearBoardCanvas()" class="p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition" title="전체 지우기">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+          <button onclick="saveCurrentBoard()" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-800 hover:border-indigo-500 text-xs font-semibold transition flex items-center space-x-1">
+            <svg class="w-3.5 h-3.5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            <span>저장</span>
+          </button>
+          <button onclick="exportBoardPNG()" class="btn-shimmer px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-sm flex items-center space-x-1">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>PNG 다운로드</span>
+          </button>
+          <button onclick="shareBoardLink()" class="px-2.5 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold hover:bg-indigo-100 transition flex items-center space-x-1" title="링크 공유">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+            <span class="hidden sm:inline">공유</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Secondary Style Toolbar (Color palette, Stroke Width) -->
+      <div class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-neutral-100/80 dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 text-xs">
+        <div class="flex items-center space-x-2">
+          <span class="text-neutral-500 text-[11px] font-medium">색상:</span>
+          <div id="boardColorPalette" class="flex items-center space-x-1.5">
+            <button onclick="setBoardColor('#4f46e5')" class="w-5 h-5 rounded-full bg-indigo-600 ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-neutral-900 transition-transform hover:scale-110"></button>
+            <button onclick="setBoardColor('#7c3aed')" class="w-5 h-5 rounded-full bg-violet-600 transition-transform hover:scale-110"></button>
+            <button onclick="setBoardColor('#0284c7')" class="w-5 h-5 rounded-full bg-sky-600 transition-transform hover:scale-110"></button>
+            <button onclick="setBoardColor('#059669')" class="w-5 h-5 rounded-full bg-emerald-600 transition-transform hover:scale-110"></button>
+            <button onclick="setBoardColor('#d97706')" class="w-5 h-5 rounded-full bg-amber-600 transition-transform hover:scale-110"></button>
+            <button onclick="setBoardColor('#e11d48')" class="w-5 h-5 rounded-full bg-rose-600 transition-transform hover:scale-110"></button>
+            <button onclick="setBoardColor('#1e293b')" class="w-5 h-5 rounded-full bg-slate-800 transition-transform hover:scale-110 border border-neutral-600"></button>
+            <button onclick="setBoardColor('#ffffff')" class="w-5 h-5 rounded-full bg-white transition-transform hover:scale-110 border border-neutral-300"></button>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-neutral-500 text-[11px] font-medium">굵기:</span>
+            <button onclick="setBoardStrokeWidth(2)" class="px-2 py-0.5 rounded bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 font-bold text-[11px]">2px</button>
+            <button onclick="setBoardStrokeWidth(4)" class="px-2 py-0.5 rounded bg-white dark:bg-neutral-800 border border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold text-[11px]">4px</button>
+            <button onclick="setBoardStrokeWidth(8)" class="px-2 py-0.5 rounded bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 font-bold text-[11px]">8px</button>
+          </div>
+
+          <div class="flex items-center space-x-1">
+            <button onclick="toggleBoardGrid()" class="px-2 py-0.5 rounded bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-[11px] text-neutral-600 dark:text-neutral-300">
+              격자 점
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas Area -->
+      <div id="canvasContainer" class="relative flex-1 min-h-[580px] rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-inner overflow-hidden board-grid-pattern cursor-crosshair">
+        <canvas id="mainBoardCanvas" class="absolute inset-0 w-full h-full block"></canvas>
+      </div>
+    </section>
+
+    <!-- 3. Projects View -->
+    <section id="boardViewProjects" class="hidden space-y-6 tab-enter-active">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">내 화이트보드 보관함</h2>
+          <p class="text-xs text-neutral-500">브라우저에 로컬 저장된 화이트보드 작업 목록입니다.</p>
+        </div>
+        <button onclick="switchBoardTab('maker')" class="btn-shimmer px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center space-x-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>새 보드 만들기</span>
+        </button>
+      </div>
+
+      <div id="boardProjectsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Rendered via JS -->
+      </div>
+
+      <div id="boardProjectsEmpty" class="hidden py-16 text-center space-y-3">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-400 flex items-center justify-center">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+        </div>
+        <p class="text-sm font-semibold text-neutral-600 dark:text-neutral-400">보관된 화이트보드가 없습니다</p>
+        <p class="text-xs text-neutral-500">스튜디오에서 작업 후 저장 버튼을 누르면 여기에 안전하게 보관됩니다.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Share Modal -->
+  <div id="boardShareModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-base text-neutral-900 dark:text-white">화이트보드 링크 공유</h3>
+        <button onclick="closeBoardShareModal()" class="text-neutral-400 hover:text-neutral-600 dark:hover:text-white">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <p class="text-xs text-neutral-500 leading-relaxed">
+        화이트보드 도형 데이터가 URL 해시에 압축되어 있어 서버 없이 링크만으로 동일한 화면을 복원할 수 있습니다.
+      </p>
+      <div class="flex items-center space-x-2">
+        <input id="boardShareUrlInput" type="text" readonly class="flex-1 bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-2 text-xs font-mono text-neutral-700 dark:text-neutral-300 select-all">
+        <button onclick="copyBoardShareUrl()" class="px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-500 transition">
+          복사
+        </button>
+      </div>
+      <div id="boardShareQrCode" class="flex justify-center p-3 bg-white rounded-2xl border border-neutral-200 w-fit mx-auto"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 text-center text-xs text-neutral-500 mt-auto bg-white/50 dark:bg-neutral-900/50">
+    <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center space-x-2">
+        <span class="text-neutral-900 dark:text-white font-semibold">FLUX Board</span>
+        <span>—</span>
+        <span>FLUX soft 화이트보드 & 다이어그램 스튜디오</span>
+      </div>
+      <div class="flex items-center space-x-3 text-neutral-400 text-xs flex-wrap justify-center">
+        <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+        <span>·</span>
+        <a href="drop.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Docs</a>
+        <span>·</span>
+        <a href="frame.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Frame</a>
+        <span>·</span>
+        <a href="form.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Form</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Script -->
+  <script>
+    // State
+    let currentBoardTool = 'pencil';
+    let currentBoardColor = '#4f46e5';
+    let currentBoardStrokeWidth = 4;
+    let boardElements = [];
+    let boardUndoStack = [];
+    let boardRedoStack = [];
+    let isDrawing = false;
+    let startX = 0;
+    let startY = 0;
+    let currentElement = null;
+    let selectedElementIndex = -1;
+
+    // Canvas references
+    let canvas = null;
+    let ctx = null;
+
+    function initBoardApp() {
+      canvas = document.getElementById('mainBoardCanvas');
+      ctx = canvas.getContext('2d');
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // Mouse & Touch events
+      canvas.addEventListener('mousedown', handlePointerDown);
+      window.addEventListener('mousemove', handlePointerMove);
+      window.addEventListener('mouseup', handlePointerUp);
+
+      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd);
+
+      // Dark Mode toggle
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+          redrawCanvas();
+        });
+      }
+
+      // Check URL Hash for shared board
+      loadBoardFromHash();
+      updateProjectsBadge();
+    }
+
+    function resizeCanvas() {
+      const container = document.getElementById('canvasContainer');
+      if (!container || !canvas) return;
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      redrawCanvas();
+    }
+
+    function setBoardTool(tool) {
+      currentBoardTool = tool;
+      document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById('toolBtn' + tool.charAt(0).toUpperCase() + tool.slice(1));
+      if (activeBtn) activeBtn.classList.add('active');
+    }
+
+    function setBoardColor(color) {
+      currentBoardColor = color;
+    }
+
+    function setBoardStrokeWidth(w) {
+      currentBoardStrokeWidth = w;
+    }
+
+    function toggleBoardGrid() {
+      const container = document.getElementById('canvasContainer');
+      container.classList.toggle('board-grid-pattern');
+    }
+
+    function getPointerPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+
+    function handlePointerDown(e) {
+      if (currentBoardTool === 'select') {
+        const pos = getPointerPos(e);
+        selectElementAt(pos.x, pos.y);
+        return;
+      }
+
+      isDrawing = true;
+      const pos = getPointerPos(e);
+      startX = pos.x;
+      startY = pos.y;
+
+      if (currentBoardTool === 'pencil') {
+        currentElement = {
+          type: 'pencil',
+          color: currentBoardColor,
+          width: currentBoardStrokeWidth,
+          points: [{ x: startX, y: startY }]
+        };
+      } else if (currentBoardTool === 'rect') {
+        currentElement = {
+          type: 'rect',
+          color: currentBoardColor,
+          width: currentBoardStrokeWidth,
+          x: startX,
+          y: startY,
+          w: 0,
+          h: 0
+        };
+      } else if (currentBoardTool === 'circle') {
+        currentElement = {
+          type: 'circle',
+          color: currentBoardColor,
+          width: currentBoardStrokeWidth,
+          x: startX,
+          y: startY,
+          rx: 0,
+          ry: 0
+        };
+      } else if (currentBoardTool === 'arrow') {
+        currentElement = {
+          type: 'arrow',
+          color: currentBoardColor,
+          width: currentBoardStrokeWidth,
+          x1: startX,
+          y1: startY,
+          x2: startX,
+          y2: startY
+        };
+      } else if (currentBoardTool === 'text') {
+        const textVal = prompt('화이트보드에 입력할 텍스트를 입력하세요:');
+        if (textVal && textVal.trim()) {
+          pushUndoState();
+          boardElements.push({
+            type: 'text',
+            color: currentBoardColor,
+            text: textVal.trim(),
+            x: startX,
+            y: startY,
+            size: currentBoardStrokeWidth * 5 + 12
+          });
+          redrawCanvas();
+        }
+        isDrawing = false;
+      } else if (currentBoardTool === 'note') {
+        const noteVal = prompt('포스트잇에 적을 내용을 입력하세요:');
+        if (noteVal && noteVal.trim()) {
+          pushUndoState();
+          boardElements.push({
+            type: 'note',
+            color: currentBoardColor,
+            text: noteVal.trim(),
+            x: startX,
+            y: startY,
+            w: 160,
+            h: 110
+          });
+          redrawCanvas();
+        }
+        isDrawing = false;
+      } else if (currentBoardTool === 'eraser') {
+        eraseElementAt(startX, startY);
+      }
+    }
+
+    function handlePointerMove(e) {
+      if (!isDrawing || !currentElement) return;
+      const pos = getPointerPos(e);
+
+      if (currentElement.type === 'pencil') {
+        currentElement.points.push({ x: pos.x, y: pos.y });
+      } else if (currentElement.type === 'rect') {
+        currentElement.w = pos.x - startX;
+        currentElement.h = pos.y - startY;
+      } else if (currentElement.type === 'circle') {
+        currentElement.rx = Math.abs(pos.x - startX);
+        currentElement.ry = Math.abs(pos.y - startY);
+      } else if (currentElement.type === 'arrow') {
+        currentElement.x2 = pos.x;
+        currentElement.y2 = pos.y;
+      } else if (currentBoardTool === 'eraser') {
+        eraseElementAt(pos.x, pos.y);
+      }
+
+      redrawCanvas();
+      if (currentElement && currentBoardTool !== 'eraser') {
+        drawElement(currentElement);
+      }
+    }
+
+    function handlePointerUp() {
+      if (!isDrawing) return;
+      isDrawing = false;
+      if (currentElement) {
+        pushUndoState();
+        boardElements.push(currentElement);
+        currentElement = null;
+        redrawCanvas();
+      }
+    }
+
+    // Touch handlers
+    function handleTouchStart(e) {
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        handlePointerDown(touch);
+      }
+    }
+
+    function handleTouchMove(e) {
+      if (e.touches.length === 1 && isDrawing) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        handlePointerMove(touch);
+      }
+    }
+
+    function handleTouchEnd() {
+      handlePointerUp();
+    }
+
+    // Canvas drawing
+    function redrawCanvas() {
+      if (!ctx || !canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      for (let i = 0; i < boardElements.length; i++) {
+        drawElement(boardElements[i]);
+      }
+    }
+
+    function drawElement(el) {
+      ctx.save();
+      ctx.strokeStyle = el.color || '#4f46e5';
+      ctx.fillStyle = el.color || '#4f46e5';
+      ctx.lineWidth = el.width || 4;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (el.type === 'pencil' && el.points && el.points.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(el.points[0].x, el.points[0].y);
+        for (let i = 1; i < el.points.length; i++) {
+          ctx.lineTo(el.points[i].x, el.points[i].y);
+        }
+        ctx.stroke();
+      } else if (el.type === 'rect') {
+        ctx.beginPath();
+        ctx.strokeRect(el.x, el.y, el.w, el.h);
+      } else if (el.type === 'circle') {
+        ctx.beginPath();
+        ctx.ellipse(el.x, el.y, Math.max(1, el.rx), Math.max(1, el.ry), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (el.type === 'arrow') {
+        ctx.beginPath();
+        ctx.moveTo(el.x1, el.y1);
+        ctx.lineTo(el.x2, el.y2);
+        ctx.stroke();
+
+        // Arrow head
+        const angle = Math.atan2(el.y2 - el.y1, el.x2 - el.x1);
+        const headlen = 12 + (el.width || 4);
+        ctx.beginPath();
+        ctx.moveTo(el.x2, el.y2);
+        ctx.lineTo(el.x2 - headlen * Math.cos(angle - Math.PI / 6), el.y2 - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(el.x2, el.y2);
+        ctx.lineTo(el.x2 - headlen * Math.cos(angle + Math.PI / 6), el.y2 - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+      } else if (el.type === 'text') {
+        ctx.font = 'bold ' + (el.size || 18) + 'px -apple-system, sans-serif';
+        ctx.fillText(el.text, el.x, el.y);
+      } else if (el.type === 'note') {
+        // Sticky note card
+        ctx.fillStyle = el.color + '22';
+        ctx.strokeStyle = el.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(el.x, el.y, el.w, el.h, 12) : ctx.rect(el.x, el.y, el.w, el.h);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#ffffff' : '#18181b';
+        ctx.font = '500 13px -apple-system, sans-serif';
+        wrapText(ctx, el.text, el.x + 12, el.y + 24, el.w - 24, 18);
+      }
+
+      ctx.restore();
+    }
+
+    function wrapText(context, text, x, y, maxWidth, lineHeight) {
+      const words = text.split(' ');
+      let line = '';
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        const metrics = context.measureText(testLine);
+        if (metrics.width > maxWidth && n > 0) {
+          context.fillText(line, x, y);
+          line = words[n] + ' ';
+          y += lineHeight;
+        } else {
+          line = testLine;
+        }
+      }
+      context.fillText(line, x, y);
+    }
+
+    function eraseElementAt(x, y) {
+      const threshold = 18;
+      for (let i = boardElements.length - 1; i >= 0; i--) {
+        const el = boardElements[i];
+        if (el.type === 'rect' && isInsideBox(x, y, el.x, el.y, el.w, el.h, threshold)) {
+          pushUndoState();
+          boardElements.splice(i, 1);
+          redrawCanvas();
+          break;
+        } else if (el.type === 'note' && isInsideBox(x, y, el.x, el.y, el.w, el.h, threshold)) {
+          pushUndoState();
+          boardElements.splice(i, 1);
+          redrawCanvas();
+          break;
+        } else if (el.type === 'text' && Math.hypot(x - el.x, y - el.y) < threshold * 2) {
+          pushUndoState();
+          boardElements.splice(i, 1);
+          redrawCanvas();
+          break;
+        } else if (el.type === 'pencil' && el.points) {
+          for (let p = 0; p < el.points.length; p++) {
+            if (Math.hypot(x - el.points[p].x, y - el.points[p].y) < threshold) {
+              pushUndoState();
+              boardElements.splice(i, 1);
+              redrawCanvas();
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    function isInsideBox(px, py, bx, by, bw, bh, pad) {
+      const minX = Math.min(bx, bx + bw) - pad;
+      const maxX = Math.max(bx, bx + bw) + pad;
+      const minY = Math.min(by, by + bh) - pad;
+      const maxY = Math.max(by, by + bh) + pad;
+      return px >= minX && px <= maxX && py >= minY && py <= maxY;
+    }
+
+    function selectElementAt(x, y) {
+      // Basic selection feedback
+      for (let i = boardElements.length - 1; i >= 0; i--) {
+        const el = boardElements[i];
+        if (el.x && el.y && Math.hypot(x - el.x, y - el.y) < 30) {
+          selectedElementIndex = i;
+          return;
+        }
+      }
+    }
+
+    // Undo / Redo
+    function pushUndoState() {
+      boardUndoStack.push(JSON.stringify(boardElements));
+      boardRedoStack = [];
+      if (boardUndoStack.length > 30) boardUndoStack.shift();
+    }
+
+    function undoBoard() {
+      if (boardUndoStack.length === 0) return;
+      boardRedoStack.push(JSON.stringify(boardElements));
+      const prevState = boardUndoStack.pop();
+      boardElements = JSON.parse(prevState);
+      redrawCanvas();
+    }
+
+    function redoBoard() {
+      if (boardRedoStack.length === 0) return;
+      boardUndoStack.push(JSON.stringify(boardElements));
+      const nextState = boardRedoStack.pop();
+      boardElements = JSON.parse(nextState);
+      redrawCanvas();
+    }
+
+    function clearBoardCanvas() {
+      if (boardElements.length === 0) return;
+      if (confirm('화이트보드의 모든 내용을 지우시겠습니까?')) {
+        pushUndoState();
+        boardElements = [];
+        redrawCanvas();
+      }
+    }
+
+    // Templates
+    function loadBoardTemplate(type) {
+      switchBoardTab('maker');
+      boardElements = [];
+      boardUndoStack = [];
+      boardRedoStack = [];
+
+      if (type === 'wireframe') {
+        document.getElementById('boardTitleInput').value = '모바일 앱 화면 와이어프레임';
+        // Phone frame
+        boardElements.push({ type: 'rect', color: '#4f46e5', width: 4, x: 120, y: 40, w: 280, h: 480 });
+        boardElements.push({ type: 'text', color: '#4f46e5', size: 16, text: '모바일 앱 메인 헤더', x: 140, y: 80 });
+        boardElements.push({ type: 'rect', color: '#7c3aed', width: 2, x: 140, y: 110, w: 240, h: 100 });
+        boardElements.push({ type: 'text', color: '#7c3aed', size: 14, text: '히어로 배너 카드', x: 180, y: 165 });
+        boardElements.push({ type: 'rect', color: '#0284c7', width: 2, x: 140, y: 230, w: 110, h: 80 });
+        boardElements.push({ type: 'rect', color: '#0284c7', width: 2, x: 270, y: 230, w: 110, h: 80 });
+        boardElements.push({ type: 'rect', color: '#059669', width: 2, x: 140, y: 330, w: 240, h: 60 });
+        boardElements.push({ type: 'note', color: '#d97706', text: '주요 액션 플로우: 배너 탭 시 상세 화면으로 부드럽게 전환', x: 440, y: 120, w: 200, h: 90 });
+        boardElements.push({ type: 'arrow', color: '#d97706', width: 3, x1: 440, y1: 165, x2: 380, y2: 165 });
+      } else if (type === 'flowchart') {
+        document.getElementById('boardTitleInput').value = '시스템 처리 흐름도';
+        boardElements.push({ type: 'rect', color: '#059669', width: 3, x: 100, y: 80, w: 140, h: 60 });
+        boardElements.push({ type: 'text', color: '#059669', size: 15, text: '사용자 요청 인입', x: 115, y: 115 });
+        boardElements.push({ type: 'arrow', color: '#059669', width: 3, x1: 240, y1: 110, x2: 320, y2: 110 });
+        boardElements.push({ type: 'rect', color: '#4f46e5', width: 3, x: 320, y: 80, w: 150, h: 60 });
+        boardElements.push({ type: 'text', color: '#4f46e5', size: 15, text: '토큰 및 권한 검증', x: 335, y: 115 });
+        boardElements.push({ type: 'arrow', color: '#4f46e5', width: 3, x1: 470, y1: 110, x2: 550, y2: 110 });
+        boardElements.push({ type: 'circle', color: '#7c3aed', width: 3, x: 620, y: 110, rx: 70, ry: 40 });
+        boardElements.push({ type: 'text', color: '#7c3aed', size: 15, text: '데이터 즉시 반환', x: 570, y: 115 });
+        boardElements.push({ type: 'note', color: '#0284c7', text: '인증 실패 시 즉시 401 에러 반환', x: 320, y: 200, w: 150, h: 70 });
+        boardElements.push({ type: 'arrow', color: '#0284c7', width: 2, x1: 395, y1: 140, x2: 395, y2: 200 });
+      } else if (type === 'mindmap') {
+        document.getElementById('boardTitleInput').value = '브레인스토밍 아이디어 맵';
+        boardElements.push({ type: 'circle', color: '#4f46e5', width: 4, x: 360, y: 220, rx: 90, ry: 50 });
+        boardElements.push({ type: 'text', color: '#4f46e5', size: 17, text: '핵심 서비스 기획', x: 305, y: 226 });
+
+        boardElements.push({ type: 'arrow', color: '#4f46e5', width: 3, x1: 270, y1: 220, x2: 160, y2: 120 });
+        boardElements.push({ type: 'rect', color: '#0284c7', width: 2, x: 60, y: 90, w: 120, h: 50 });
+        boardElements.push({ type: 'text', color: '#0284c7', size: 14, text: '사용자 가치', x: 80, y: 120 });
+
+        boardElements.push({ type: 'arrow', color: '#4f46e5', width: 3, x1: 450, y1: 220, x2: 560, y2: 120 });
+        boardElements.push({ type: 'rect', color: '#059669', width: 2, x: 540, y: 90, w: 120, h: 50 });
+        boardElements.push({ type: 'text', color: '#059669', size: 14, text: '0원 서버 인프라', x: 550, y: 120 });
+
+        boardElements.push({ type: 'arrow', color: '#4f46e5', width: 3, x1: 270, y1: 220, x2: 160, y2: 320 });
+        boardElements.push({ type: 'rect', color: '#d97706', width: 2, x: 60, y: 300, w: 120, h: 50 });
+        boardElements.push({ type: 'text', color: '#d97706', size: 14, text: '인터랙션 디자인', x: 70, y: 330 });
+
+        boardElements.push({ type: 'arrow', color: '#4f46e5', width: 3, x1: 450, y1: 220, x2: 560, y2: 320 });
+        boardElements.push({ type: 'rect', color: '#e11d48', width: 2, x: 540, y: 300, w: 120, h: 50 });
+        boardElements.push({ type: 'text', color: '#e11d48', size: 14, text: '상용 배포 전략', x: 555, y: 330 });
+      }
+
+      redrawCanvas();
+    }
+
+    // Tab switching
+    function switchBoardTab(tab) {
+      document.getElementById('boardViewHome').classList.add('hidden');
+      document.getElementById('boardViewMaker').classList.add('hidden');
+      document.getElementById('boardViewProjects').classList.add('hidden');
+
+      // Update Desktop Nav
+      ['Home', 'Maker', 'Projects'].forEach(t => {
+        const btn = document.getElementById('boardTabBtn' + t);
+        if (btn) {
+          btn.className = 'flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium';
+        }
+      });
+
+      const activeBtn = document.getElementById('boardTabBtn' + tab.charAt(0).toUpperCase() + tab.slice(1));
+      if (activeBtn) {
+        activeBtn.className = 'flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold';
+      }
+
+      if (tab === 'home') {
+        document.getElementById('boardViewHome').classList.remove('hidden');
+      } else if (tab === 'maker') {
+        document.getElementById('boardViewMaker').classList.remove('hidden');
+        setTimeout(resizeCanvas, 50);
+      } else if (tab === 'projects') {
+        document.getElementById('boardViewProjects').classList.remove('hidden');
+        renderBoardProjects();
+      }
+    }
+
+    // Projects storage
+    function saveCurrentBoard() {
+      const title = document.getElementById('boardTitleInput').value.trim() || '제목 없는 화이트보드';
+      const id = 'board_' + Date.now();
+      const project = {
+        id: id,
+        title: title,
+        updatedAt: new Date().toISOString(),
+        elementCount: boardElements.length,
+        elements: boardElements
+      };
+
+      const projects = getStoredBoardProjects();
+      projects.unshift(project);
+      localStorage.setItem('flux_board_projects', JSON.stringify(projects.slice(0, 30)));
+      updateProjectsBadge();
+      triggerConfetti();
+
+      const ind = document.getElementById('boardSaveIndicator');
+      ind.textContent = '보관함 저장 완료';
+      ind.classList.add('text-indigo-600', 'dark:text-indigo-400');
+      setTimeout(() => {
+        ind.textContent = '로컬 자동보관';
+        ind.classList.remove('text-indigo-600', 'dark:text-indigo-400');
+      }, 2000);
+    }
+
+    function getStoredBoardProjects() {
+      try {
+        return JSON.parse(localStorage.getItem('flux_board_projects') || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function updateProjectsBadge() {
+      const projects = getStoredBoardProjects();
+      const badge = document.getElementById('boardSavedCountBadge');
+      if (badge) badge.textContent = projects.length;
+    }
+
+    function renderBoardProjects() {
+      const projects = getStoredBoardProjects();
+      const list = document.getElementById('boardProjectsList');
+      const empty = document.getElementById('boardProjectsEmpty');
+
+      if (projects.length === 0) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      list.innerHTML = projects.map(p => {
+        const dateStr = new Date(p.updatedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return `
+          <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex flex-col justify-between space-y-3">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold">도형 ${p.elementCount || 0}개</span>
+                <span class="text-[11px] text-neutral-400">${dateStr}</span>
+              </div>
+              <h3 class="font-bold text-sm text-neutral-900 dark:text-white truncate">${escapeHtml(p.title)}</h3>
+            </div>
+            <div class="flex items-center space-x-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <button onclick="loadBoardProject('${p.id}')" class="flex-1 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition text-center">
+                열기
+              </button>
+              <button onclick="deleteBoardProject('${p.id}')" class="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition" title="삭제">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function loadBoardProject(id) {
+      const projects = getStoredBoardProjects();
+      const proj = projects.find(p => p.id === id);
+      if (!proj) return;
+      document.getElementById('boardTitleInput').value = proj.title;
+      boardElements = proj.elements || [];
+      boardUndoStack = [];
+      boardRedoStack = [];
+      switchBoardTab('maker');
+      redrawCanvas();
+    }
+
+    function deleteBoardProject(id) {
+      if (!confirm('이 화이트보드를 보관함에서 삭제하시겠습니까?')) return;
+      let projects = getStoredBoardProjects();
+      projects = projects.filter(p => p.id !== id);
+      localStorage.setItem('flux_board_projects', JSON.stringify(projects));
+      updateProjectsBadge();
+      renderBoardProjects();
+    }
+
+    // Export PNG
+    function exportBoardPNG() {
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = (document.getElementById('boardTitleInput').value.trim() || 'flux-board') + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      triggerConfetti();
+    }
+
+    // Share link with LZ-String
+    function shareBoardLink() {
+      const payload = {
+        title: document.getElementById('boardTitleInput').value.trim() || '화이트보드',
+        elements: boardElements
+      };
+      const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(payload));
+      const shareUrl = window.location.origin + window.location.pathname + '#board=' + compressed;
+
+      document.getElementById('boardShareUrlInput').value = shareUrl;
+      const qrContainer = document.getElementById('boardShareQrCode');
+      qrContainer.innerHTML = '';
+      new QRCode(qrContainer, {
+        text: shareUrl,
+        width: 140,
+        height: 140,
+        colorDark: '#4f46e5',
+        colorLight: '#ffffff'
+      });
+
+      document.getElementById('boardShareModal').classList.remove('hidden');
+      document.getElementById('boardShareModal').classList.add('flex');
+    }
+
+    function closeBoardShareModal() {
+      document.getElementById('boardShareModal').classList.add('hidden');
+      document.getElementById('boardShareModal').classList.remove('flex');
+    }
+
+    function copyBoardShareUrl() {
+      const input = document.getElementById('boardShareUrlInput');
+      input.select();
+      navigator.clipboard.writeText(input.value);
+      alert('공유 링크가 클립보드에 복사되었습니다.');
+    }
+
+    function loadBoardFromHash() {
+      const hash = window.location.hash;
+      if (hash && hash.includes('#board=')) {
+        try {
+          const comp = hash.split('#board=')[1];
+          const jsonStr = LZString.decompressFromEncodedURIComponent(comp);
+          if (jsonStr) {
+            const data = JSON.parse(jsonStr);
+            if (data.elements) {
+              boardElements = data.elements;
+              if (data.title) document.getElementById('boardTitleInput').value = data.title;
+              switchBoardTab('maker');
+              setTimeout(redrawCanvas, 100);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse board from hash', e);
+        }
+      }
+    }
+
+    // Confetti effect
+    function triggerConfetti() {
+      const colors = ['#6366f1', '#818cf8', '#4f46e5', '#a5b4fc', '#c7d2fe'];
+      for (let i = 0; i < 35; i++) {
+        const p = document.createElement('div');
+        p.className = 'confetti-particle';
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        const tx = (Math.random() - 0.5) * 400 + 'px';
+        const ty = (Math.random() - 0.5) * 350 - 80 + 'px';
+        const rot = Math.random() * 720 - 360 + 'deg';
+
+        p.style.backgroundColor = color;
+        p.style.width = size + 'px';
+        p.style.height = size + 'px';
+        p.style.left = '50vw';
+        p.style.top = '40vh';
+        p.style.setProperty('--tx', tx);
+        p.style.setProperty('--ty', ty);
+        p.style.setProperty('--rot', rot);
+
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 2500);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Init on DOM ready
+    window.addEventListener('DOMContentLoaded', initBoardApp);
+  </script>
+</body>
+</html>
