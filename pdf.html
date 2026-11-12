@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FLUX PDF - 브라우저 로컬 무제한 PDF 병합·분할·변환 종합 도구함</title>
+  <title>FLUX PDF - 브라우저 로컬 무제한 PDF 리더·편집·병합·분할 종합 도구함</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -37,8 +37,15 @@
       }
     }
   </script>
-  <!-- PDF-Lib for 100% Client-Side In-Browser PDF Manipulation -->
+  <!-- PDF-Lib for In-Browser PDF Manipulation & Export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <!-- PDF.js for Crystal-Clear Client-Side In-Browser Rendering & Reader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
   <!-- JSZip for Multiple Split Page Bundling -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
@@ -101,7 +108,7 @@
 
     /* Spring Tab Switch */
     .tab-spring-enter {
-      animation: tabSpring 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;
+      animation: tabSpring 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;
     }
     @keyframes tabSpring {
       0% { opacity: 0; transform: translateY(12px) scale(0.985); }
@@ -110,15 +117,27 @@
 
     /* 3D Magnetic Card Lift */
     .card-hover-lift {
-      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s ease, border-color 0.2s ease;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, border-color 0.2s ease;
       will-change: transform;
     }
     .card-hover-lift:hover {
-      transform: translateY(-6px) scale(1.012);
-      box-shadow: 0 18px 30px -10px rgba(225, 29, 72, 0.15);
+      transform: translateY(-5px) scale(1.015);
+      box-shadow: 0 16px 28px -8px rgba(225, 29, 72, 0.18);
     }
     .dark .card-hover-lift:hover {
-      box-shadow: 0 18px 32px -10px rgba(225, 29, 72, 0.25);
+      box-shadow: 0 16px 30px -8px rgba(225, 29, 72, 0.28);
+    }
+
+    /* Interactive Button Micro-Physics */
+    button, .btn-action {
+      transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease, background-color 0.15s ease;
+      will-change: transform;
+    }
+    button:hover, .btn-action:hover {
+      transform: translateY(-1.5px) scale(1.02);
+    }
+    button:active, .btn-action:active {
+      transform: scale(0.93) !important;
     }
 
     /* Button Shimmer */
@@ -133,14 +152,29 @@
       left: -60%;
       width: 40%;
       height: 200%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
       transform: rotate(25deg);
-      animation: shimmerLoop 5s infinite;
+      animation: shimmerLoop 4.5s infinite;
     }
     @keyframes shimmerLoop {
       0% { left: -60%; }
-      20% { left: 140%; }
+      22% { left: 140%; }
       100% { left: 140%; }
+    }
+
+    /* Global Click Ripple Effect */
+    .click-ripple {
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0);
+      animation: ripplePop 0.52s ease-out forwards;
+      z-index: 9999;
+      background: radial-gradient(circle, rgba(225, 29, 72, 0.45) 0%, rgba(225, 29, 72, 0) 75%);
+    }
+    @keyframes ripplePop {
+      0% { transform: translate(-50%, -50%) scale(0); opacity: 0.6; }
+      100% { transform: translate(-50%, -50%) scale(3.5); opacity: 0; }
     }
 
     /* Confetti Particle */
@@ -153,6 +187,14 @@
     @keyframes confettiFall {
       0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
       100% { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0.3); opacity: 0; }
+    }
+
+    /* PDF Reader Canvas Stage */
+    .canvas-stage-shadow {
+      box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.18);
+    }
+    .dark .canvas-stage-shadow {
+      box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.45);
     }
   </style>
 </head>
@@ -181,9 +223,9 @@
         <div class="flex flex-col">
           <div class="flex items-center space-x-2">
             <span class="font-bold text-base tracking-tight text-neutral-900 dark:text-white">FLUX PDF</span>
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 font-semibold border border-rose-200 dark:border-rose-800/60">로컬 무제한 엔진</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 font-semibold border border-rose-200 dark:border-rose-800/60">리더 & 편집 엔진</span>
           </div>
-          <span class="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">PDF 병합 · 분할/추출 · 이미지 변환 · 회전 정리</span>
+          <span class="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">PDF 뷰어 리더 · 서명/주석 편집 · 병합 · 분할/추출 · 변환</span>
         </div>
       </div>
 
@@ -225,7 +267,7 @@
   <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 relative z-10">
 
     <!-- ========================================== -->
-    <!-- TAB 1: HOME (소개 및 4대 핵심 도구 퀵 스타트) -->
+    <!-- TAB 1: HOME (소개 및 5대 핵심 도구 퀵 스타트) -->
     <!-- ========================================== -->
     <section id="pdfViewHome" class="space-y-12 tab-spring-enter">
       
@@ -237,26 +279,39 @@
         </div>
         <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-neutral-950 dark:text-white leading-tight">
           브라우저에서 완성하는 <br class="hidden sm:inline">
-          <span class="bg-gradient-to-r from-rose-600 via-red-500 to-rose-400 bg-clip-text text-transparent">안전한 로컬 PDF 종합 도구</span>
+          <span class="bg-gradient-to-r from-rose-600 via-red-500 to-rose-400 bg-clip-text text-transparent">안전한 로컬 PDF 리더 & 편집 도구</span>
         </h1>
         <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
-          과제나 서류를 외부 서버에 업로드하지 않고 사용자 브라우저 내부에서 100% 연산합니다. 일일 횟수 제한이나 결제 유도 없이 병합, 분할, 이미지 변환, 회전까지 자유롭게 처리하세요.
+          과제나 서류를 외부 서버에 전송하지 않고 브라우저에서 바로 열람하고 주석·서명을 추가합니다. 결제 유도 없이 뷰어 리더, 텍스트 삽입, 형광펜, 병합, 분할까지 자유롭게 처리하세요.
         </p>
         <div class="pt-3 flex flex-wrap items-center justify-center gap-3">
-          <button onclick="openPdfTool('merge')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-sm shadow-lg shadow-rose-500/25 flex items-center space-x-2">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-            <span>PDF 병합 시작하기</span>
+          <button onclick="openPdfTool('editor')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-sm shadow-lg shadow-rose-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            <span>PDF 리더 & 편집 열기</span>
           </button>
-          <button onclick="openPdfTool('img2pdf')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-            <span>이미지를 PDF로 변환</span>
+          <button onclick="openPdfTool('merge')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+            <span>PDF 병합 시작하기</span>
           </button>
         </div>
       </div>
 
-      <!-- Feature Highlights 4-Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Feature Highlights 5-Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         
+        <div onclick="openPdfTool('editor')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border-2 border-rose-500/60 bg-rose-50/20 dark:bg-rose-950/20 shadow-sm space-y-2 group hover:border-rose-500 transition">
+          <div class="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-500/25">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          </div>
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">PDF 리더 & 주석 편집</h3>
+            <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
+          </div>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            문서를 선명하게 열람하고, 손글씨 서명·형광펜·텍스트를 넣어 편집본으로 저장합니다.
+          </p>
+        </div>
+
         <div onclick="openPdfTool('merge')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-rose-500 transition">
           <div class="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
@@ -266,7 +321,7 @@
             <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
           </div>
           <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            여러 개의 PDF 문서를 드래그하여 원하는 순서대로 묶어 단일 PDF 파일로 합칩니다.
+            여러 개의 PDF 문서를 원하는 순서대로 드래그해 단일 파일로 묶어냅니다.
           </p>
         </div>
 
@@ -279,7 +334,7 @@
             <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
           </div>
           <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            특정 페이지만 골라 추출하거나, 전체 문서를 개별 1장씩 분리해 ZIP으로 다운로드합니다.
+            특정 페이지만 골라 추출하거나, 전 페이지를 낱장으로 분리해 ZIP으로 받습니다.
           </p>
         </div>
 
@@ -292,7 +347,7 @@
             <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
           </div>
           <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            스마트폰 촬영 사진이나 이미지들을 규격 A4 크기에 딱 맞춘 정갈한 PDF로 1초 변환합니다.
+            스마트폰 사진들을 규격 A4 크기에 맞춘 깔끔한 단일 PDF로 1초 변환합니다.
           </p>
         </div>
 
@@ -305,24 +360,10 @@
             <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">실행 →</span>
           </div>
           <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            뒤집힌 스캔 문서를 90도 회전하거나 불필요한 백지 페이지를 선별 삭제하여 정리합니다.
+            뒤집힌 스캔 문서를 회전하거나 불필요한 백지 페이지를 선별 삭제합니다.
           </p>
         </div>
 
-      </div>
-
-      <!-- Security Comparison Banner -->
-      <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-gradient-to-r from-rose-50/50 via-white to-red-50/50 dark:from-rose-950/20 dark:via-neutral-900 dark:to-red-950/20 flex flex-col md:flex-row items-center justify-between gap-6">
-        <div class="space-y-1.5 text-center md:text-left">
-          <span class="text-xs font-bold text-rose-600 dark:text-rose-400 tracking-wider uppercase font-mono">Zero Server Upload</span>
-          <h3 class="text-lg font-bold text-neutral-900 dark:text-white">개인 서류와 과제가 외부 서버에 절대 전송되지 않습니다</h3>
-          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            모든 PDF 연산은 WebAssembly와 Canvas를 통해 브라우저 내부 메모리에서만 이루어지며, 브라우저를 닫는 즉시 완벽 소멸합니다.
-          </p>
-        </div>
-        <button onclick="switchPdfTab('studio')" class="px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-950 font-bold text-xs shrink-0 transition shadow-sm">
-          스튜디오 열기
-        </button>
       </div>
 
     </section>
@@ -334,7 +375,11 @@
 
       <!-- Sub-tool Tabs Navigation -->
       <div class="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-100 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800">
-        <button onclick="selectStudioTool('merge')" id="toolTabMerge" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-white bg-rose-600 shadow-sm">
+        <button onclick="selectStudioTool('editor')" id="toolTabEditor" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-white bg-rose-600 shadow-sm">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          <span>PDF 리더 & 주석 편집</span>
+        </button>
+        <button onclick="selectStudioTool('merge')" id="toolTabMerge" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
           <span>PDF 병합</span>
         </button>
@@ -353,9 +398,122 @@
       </div>
 
       <!-- ==================================== -->
+      <!-- TOOL 0: PDF READER & EDITOR -->
+      <!-- ==================================== -->
+      <div id="panelEditor" class="space-y-6">
+        
+        <!-- Editor Dropzone -->
+        <div id="editorDropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleEditorDrop(event)" onclick="document.getElementById('editorFileInput').click()" class="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-rose-500 dark:hover:border-rose-500 rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition bg-white/50 dark:bg-neutral-900/50 backdrop-blur-sm space-y-3 group">
+          <input type="file" id="editorFileInput" accept="application/pdf" class="hidden" onchange="handleEditorFileSelect(event)">
+          <div class="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center group-hover:scale-110 transition-transform">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          </div>
+          <div class="space-y-1">
+            <p class="font-bold text-sm text-neutral-800 dark:text-neutral-200">열람하거나 서명/주석을 추가할 PDF 파일을 선택하세요</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">PDF.js 기반 0원 로컬 뷰어로 선명하게 열람하고 자유 펜·형광펜·텍스트를 편집합니다</p>
+          </div>
+        </div>
+
+        <!-- Editor & Reader Active Workspace -->
+        <div id="editorWorkspace" class="hidden space-y-4">
+          
+          <!-- Reader & Editor Top Toolbar -->
+          <div class="p-3 sm:p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            
+            <!-- Left: Page Navigator -->
+            <div class="flex items-center space-x-1.5">
+              <button onclick="navigateEditorPage(-1)" class="p-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400" title="이전 페이지">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <div class="flex items-center space-x-1 text-xs font-mono font-bold px-2">
+                <span id="editorCurrentPageNum" class="text-rose-600 dark:text-rose-400">1</span>
+                <span class="text-neutral-400">/</span>
+                <span id="editorTotalPageNum" class="text-neutral-600 dark:text-neutral-400">1</span>
+              </div>
+              <button onclick="navigateEditorPage(1)" class="p-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400" title="다음 페이지">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+
+            <!-- Center: Markup Tools Switcher -->
+            <div class="flex items-center space-x-1 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700">
+              <button onclick="setEditorMode('view')" id="btnToolView" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white bg-rose-600 shadow-sm flex items-center space-x-1" title="읽기 전용">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                <span class="hidden sm:inline">읽기</span>
+              </button>
+              <button onclick="setEditorMode('pen')" id="btnToolPen" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white flex items-center space-x-1" title="서명 & 자유 펜">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path></svg>
+                <span class="hidden sm:inline">서명/펜</span>
+              </button>
+              <button onclick="setEditorMode('highlight')" id="btnToolHighlight" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white flex items-center space-x-1" title="형광펜">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2l4 4-10 10H4v-4L14 2z"></path></svg>
+                <span class="hidden sm:inline">형광펜</span>
+              </button>
+              <button onclick="setEditorMode('text')" id="btnToolText" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white flex items-center space-x-1" title="텍스트 입력">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
+                <span class="hidden sm:inline">텍스트</span>
+              </button>
+            </div>
+
+            <!-- Color Palette & Undo -->
+            <div class="flex items-center space-x-2">
+              <div class="flex items-center space-x-1">
+                <button onclick="setEditorColor('#000000')" class="w-5 h-5 rounded-full bg-black border-2 border-white dark:border-neutral-800 shadow-sm" title="검정"></button>
+                <button onclick="setEditorColor('#e11d48')" class="w-5 h-5 rounded-full bg-rose-600 border-2 border-white dark:border-neutral-800 shadow-sm" title="루비 레드"></button>
+                <button onclick="setEditorColor('#2563eb')" class="w-5 h-5 rounded-full bg-blue-600 border-2 border-white dark:border-neutral-800 shadow-sm" title="블루"></button>
+                <button onclick="setEditorColor('#16a34a')" class="w-5 h-5 rounded-full bg-emerald-600 border-2 border-white dark:border-neutral-800 shadow-sm" title="그린"></button>
+              </div>
+              <button onclick="clearCurrentPageAnnotations()" class="p-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 hover:text-red-500" title="이 페이지 주석 지우기">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+              <button onclick="exportEditedPdf()" id="btnExportEditedPdf" class="btn-shimmer px-4 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 flex items-center space-x-1.5">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>편집본 저장</span>
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Reader Stage: Canvas Stage & Thumbnails Sidebar -->
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+            
+            <!-- Left: Thumbnail Strip (2 cols on desktop) -->
+            <div id="editorThumbnailsCol" class="hidden md:block md:col-span-2 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 max-h-[700px] overflow-y-auto space-y-2">
+              <span class="text-[11px] font-bold text-neutral-500 block mb-1">페이지 목록</span>
+              <div id="editorThumbnailsList" class="space-y-2"></div>
+            </div>
+
+            <!-- Center Stage: Canvas Overlay (10 cols on desktop) -->
+            <div class="col-span-12 md:col-span-10 p-4 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100/60 dark:bg-neutral-950/60 flex flex-col items-center justify-center overflow-x-auto min-h-[500px]">
+              
+              <!-- Zoom Indicator & Quick Switch -->
+              <div class="flex items-center space-x-2 mb-3 text-xs font-mono text-neutral-500">
+                <button onclick="changeEditorZoom(-0.2)" class="px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-900">-</button>
+                <span id="editorZoomLabel">100%</span>
+                <button onclick="changeEditorZoom(0.2)" class="px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-white dark:hover:bg-neutral-900">+</button>
+                <span class="text-[11px] text-neutral-400">· 마우스 또는 손가락으로 화면에 바로 서명하세요</span>
+              </div>
+
+              <!-- Canvas Layers Relative Wrapper -->
+              <div id="canvasViewportWrapper" class="relative canvas-stage-shadow rounded-xl overflow-hidden bg-white">
+                <!-- Base Layer: Rendered by PDF.js -->
+                <canvas id="pdfBaseCanvas" class="block"></canvas>
+                <!-- Interactive Overlay Layer: Freehand, text, highlight annotations -->
+                <canvas id="pdfAnnotationCanvas" class="absolute inset-0 cursor-crosshair"></canvas>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ==================================== -->
       <!-- TOOL 1: MERGE PDF -->
       <!-- ==================================== -->
-      <div id="panelMerge" class="space-y-6">
+      <div id="panelMerge" class="hidden space-y-6">
         
         <!-- Dropzone -->
         <div id="mergeDropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleMergeDrop(event)" onclick="document.getElementById('mergeFileInput').click()" class="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-rose-500 dark:hover:border-rose-500 rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition bg-white/50 dark:bg-neutral-900/50 backdrop-blur-sm space-y-3 group">
@@ -447,7 +605,6 @@
         <!-- Split Options Container -->
         <div id="splitOptionsContainer" class="hidden space-y-6">
           
-          <!-- Loaded File Badge -->
           <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center justify-between">
             <div class="flex items-center space-x-3">
               <div class="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center font-bold text-xs">
@@ -544,7 +701,6 @@
         <!-- Images List & Settings -->
         <div id="img2pdfConfigContainer" class="hidden space-y-6">
           
-          <!-- Image Thumbnails Grid -->
           <div class="space-y-3">
             <div class="flex items-center justify-between">
               <span class="font-bold text-sm text-neutral-900 dark:text-white">추가된 이미지 목록 (<span id="img2pdfCountBadge">0</span>장)</span>
@@ -653,7 +809,6 @@
               </div>
             </div>
             
-            <!-- Batch Rotate Controls -->
             <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
               <button onclick="rotateAllPages(90)" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition flex items-center space-x-1.5">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
@@ -665,10 +820,8 @@
             </div>
           </div>
 
-          <!-- Page Cards Grid -->
           <div id="rotatePagesGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
 
-          <!-- Execute Save Button -->
           <div class="flex justify-end">
             <button onclick="executeSaveRotatedPdf()" id="btnExecuteRotate" class="btn-shimmer px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 flex items-center space-x-2">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
@@ -676,7 +829,6 @@
             </button>
           </div>
 
-          <!-- Rotate Result Card -->
           <div id="rotateResultCard" class="hidden p-6 rounded-3xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/50 dark:bg-rose-950/20 space-y-4">
             <div class="flex items-center space-x-3">
               <div class="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-500/30">
@@ -767,6 +919,8 @@
         <span>·</span>
         <a href="compress.html" class="hover:text-rose-500 transition">Compress</a>
         <span>·</span>
+        <a href="pdf.html" class="hover:text-rose-500 transition">PDF</a>
+        <span>·</span>
         <a href="focus.html" class="hover:text-rose-500 transition">Focus</a>
       </div>
     </div>
@@ -776,7 +930,20 @@
   <script>
     // State
     let currentPdfTab = 'home';
-    let currentStudioTool = 'merge';
+    let currentStudioTool = 'editor'; // 'editor' | 'merge' | 'split' | 'img2pdf' | 'rotate'
+
+    // Tool 0: Reader & Editor State
+    let editorPdfDoc = null; // pdfjs doc
+    let editorRawBytes = null; // ArrayBuffer
+    let editorTotalPages = 0;
+    let editorCurrentPage = 1;
+    let editorScale = 1.0;
+    let editorMode = 'view'; // 'view' | 'pen' | 'highlight' | 'text'
+    let editorColor = '#000000';
+    let isDrawing = false;
+    let lastDrawX = 0;
+    let lastDrawY = 0;
+    const pageAnnotationData = {}; // pageNum -> dataURL
 
     // Tool 1: Merge State
     let mergeFiles = []; // { id, name, size, bytes, pageCount }
@@ -808,7 +975,6 @@
         }
       });
 
-      // Update Desktop Nav Buttons
       const tabs = ['Home', 'Studio', 'Storage'];
       tabs.forEach(t => {
         const btn = document.getElementById('navBtn' + t);
@@ -821,7 +987,6 @@
         }
       });
 
-      // Update Mobile Nav
       tabs.forEach(t => {
         const mBtn = document.getElementById('mobileNav' + t);
         if (mBtn) {
@@ -845,7 +1010,7 @@
 
     function selectStudioTool(toolName) {
       currentStudioTool = toolName;
-      const tools = ['merge', 'split', 'img2pdf', 'rotate'];
+      const tools = ['editor', 'merge', 'split', 'img2pdf', 'rotate'];
       tools.forEach(t => {
         const panel = document.getElementById('panel' + capitalize(t));
         const tabBtn = document.getElementById('toolTab' + capitalize(t));
@@ -864,6 +1029,352 @@
           }
         }
       });
+    }
+
+    // ============================================
+    // TOOL 0: PDF READER & EDITOR
+    // ============================================
+    function handleEditorDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        loadEditorFile(e.dataTransfer.files[0]);
+      }
+    }
+
+    function handleEditorFileSelect(e) {
+      if (e.target.files && e.target.files[0]) {
+        loadEditorFile(e.target.files[0]);
+      }
+    }
+
+    async function loadEditorFile(file) {
+      if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+        showToast('PDF 파일만 선택 가능합니다.');
+        return;
+      }
+
+      showToast('PDF 렌더링 중...');
+      try {
+        const buffer = await file.arrayBuffer();
+        editorRawBytes = buffer;
+
+        const loadingTask = pdfjsLib.getDocument({ data: buffer.slice(0) });
+        editorPdfDoc = await loadingTask.promise;
+        editorTotalPages = editorPdfDoc.numPages;
+        editorCurrentPage = 1;
+        editorScale = 1.0;
+
+        document.getElementById('editorDropzone').classList.add('hidden');
+        document.getElementById('editorWorkspace').classList.remove('hidden');
+        document.getElementById('editorTotalPageNum').textContent = editorTotalPages;
+
+        renderEditorPage(editorCurrentPage);
+        renderThumbnails();
+        showToast('PDF 열람 준비 완료');
+      } catch (err) {
+        console.error('PDF 로드 실패:', err);
+        showToast('PDF 열람 오류: ' + err.message);
+      }
+    }
+
+    async function renderEditorPage(pageNum) {
+      if (!editorPdfDoc) return;
+
+      // Save previous page annotations
+      saveCurrentAnnotationState();
+
+      editorCurrentPage = pageNum;
+      document.getElementById('editorCurrentPageNum').textContent = pageNum;
+      document.getElementById('editorZoomLabel').textContent = Math.round(editorScale * 100) + '%';
+
+      const page = await editorPdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: editorScale * 1.5 });
+
+      const baseCanvas = document.getElementById('pdfBaseCanvas');
+      const baseCtx = baseCanvas.getContext('2d');
+      baseCanvas.width = viewport.width;
+      baseCanvas.height = viewport.height;
+      baseCanvas.style.width = (viewport.width / 1.5) + 'px';
+      baseCanvas.style.height = (viewport.height / 1.5) + 'px';
+
+      const renderCtx = {
+        canvasContext: baseCtx,
+        viewport: viewport
+      };
+      await page.render(renderCtx).promise;
+
+      // Setup Overlay Annotation Canvas
+      const annoCanvas = document.getElementById('pdfAnnotationCanvas');
+      annoCanvas.width = viewport.width;
+      annoCanvas.height = viewport.height;
+      annoCanvas.style.width = (viewport.width / 1.5) + 'px';
+      annoCanvas.style.height = (viewport.height / 1.5) + 'px';
+
+      const annoCtx = annoCanvas.getContext('2d');
+      annoCtx.clearRect(0, 0, annoCanvas.width, annoCanvas.height);
+
+      // Restore saved annotations for this page
+      if (pageAnnotationData[pageNum]) {
+        const img = new Image();
+        img.onload = () => {
+          annoCtx.drawImage(img, 0, 0, annoCanvas.width, annoCanvas.height);
+        };
+        img.src = pageAnnotationData[pageNum];
+      }
+
+      setupDrawingEvents();
+    }
+
+    function saveCurrentAnnotationState() {
+      const annoCanvas = document.getElementById('pdfAnnotationCanvas');
+      if (annoCanvas && annoCanvas.width > 0) {
+        pageAnnotationData[editorCurrentPage] = annoCanvas.toDataURL('image/png');
+      }
+    }
+
+    function navigateEditorPage(dir) {
+      const target = editorCurrentPage + dir;
+      if (target < 1 || target > editorTotalPages) return;
+      renderEditorPage(target);
+    }
+
+    function changeEditorZoom(delta) {
+      const newScale = Math.min(2.4, Math.max(0.6, editorScale + delta));
+      editorScale = newScale;
+      renderEditorPage(editorCurrentPage);
+    }
+
+    async function renderThumbnails() {
+      const list = document.getElementById('editorThumbnailsList');
+      list.innerHTML = '';
+
+      for (let i = 1; i <= Math.min(editorTotalPages, 20); i++) {
+        const thumbCard = document.createElement('div');
+        thumbCard.className = `p-2 rounded-xl border ${i === editorCurrentPage ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-950/40' : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'} cursor-pointer hover:border-rose-400 transition text-center space-y-1`;
+        thumbCard.onclick = () => renderEditorPage(i);
+        thumbCard.innerHTML = `
+          <div class="aspect-[3/4] bg-neutral-100 dark:bg-neutral-800 rounded flex items-center justify-center text-[11px] font-bold text-neutral-400">
+            P.${i}
+          </div>
+          <span class="text-[10px] font-mono text-neutral-500">#${i}</span>
+        `;
+        list.appendChild(thumbCard);
+      }
+    }
+
+    function setEditorMode(mode) {
+      editorMode = mode;
+      const modes = ['view', 'pen', 'highlight', 'text'];
+      modes.forEach(m => {
+        const btn = document.getElementById('btnTool' + capitalize(m));
+        if (btn) {
+          if (m === mode) {
+            btn.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold text-white bg-rose-600 shadow-sm flex items-center space-x-1';
+          } else {
+            btn.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white flex items-center space-x-1';
+          }
+        }
+      });
+
+      const annoCanvas = document.getElementById('pdfAnnotationCanvas');
+      if (mode === 'view') {
+        annoCanvas.style.pointerEvents = 'none';
+      } else {
+        annoCanvas.style.pointerEvents = 'auto';
+        annoCanvas.style.cursor = mode === 'text' ? 'text' : 'crosshair';
+      }
+      showToast(`${capitalize(mode)} 모드 전환`);
+    }
+
+    function setEditorColor(color) {
+      editorColor = color;
+      showToast('펜 색상이 변경되었습니다');
+    }
+
+    function clearCurrentPageAnnotations() {
+      const annoCanvas = document.getElementById('pdfAnnotationCanvas');
+      const annoCtx = annoCanvas.getContext('2d');
+      annoCtx.clearRect(0, 0, annoCanvas.width, annoCanvas.height);
+      delete pageAnnotationData[editorCurrentPage];
+      showToast('현재 페이지 주석이 삭제되었습니다');
+    }
+
+    function setupDrawingEvents() {
+      const canvas = document.getElementById('pdfAnnotationCanvas');
+      const ctx = canvas.getContext('2d');
+
+      canvas.onmousedown = (e) => {
+        if (editorMode === 'view') return;
+
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.x) * scaleX;
+        const y = (e.clientY - rect.y) * scaleY;
+
+        if (editorMode === 'text') {
+          const text = prompt('삽입할 텍스트를 입력하세요:');
+          if (text) {
+            ctx.font = 'bold 22px sans-serif';
+            ctx.fillStyle = editorColor;
+            ctx.fillText(text, x, y);
+            saveCurrentAnnotationState();
+            showToast('텍스트가 삽입되었습니다');
+          }
+          return;
+        }
+
+        isDrawing = true;
+        lastDrawX = x;
+        lastDrawY = y;
+      };
+
+      canvas.onmousemove = (e) => {
+        if (!isDrawing || editorMode === 'view' || editorMode === 'text') return;
+
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.x) * scaleX;
+        const y = (e.clientY - rect.y) * scaleY;
+
+        ctx.beginPath();
+        ctx.moveTo(lastDrawX, lastDrawY);
+        ctx.lineTo(x, y);
+
+        if (editorMode === 'pen') {
+          ctx.strokeStyle = editorColor;
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = 1.0;
+        } else if (editorMode === 'highlight') {
+          ctx.strokeStyle = '#facc15'; // yellow highlighter
+          ctx.lineWidth = 20;
+          ctx.lineCap = 'square';
+          ctx.globalAlpha = 0.35;
+        }
+
+        ctx.stroke();
+        ctx.closePath();
+
+        lastDrawX = x;
+        lastDrawY = y;
+      };
+
+      canvas.onmouseup = () => {
+        if (isDrawing) {
+          isDrawing = false;
+          saveCurrentAnnotationState();
+        }
+      };
+
+      // Touch events for mobile/tablet stylus/finger support
+      canvas.ontouchstart = (e) => {
+        if (editorMode === 'view') return;
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        lastDrawX = (touch.clientX - rect.x) * scaleX;
+        lastDrawY = (touch.clientY - rect.y) * scaleY;
+        isDrawing = true;
+      };
+
+      canvas.ontouchmove = (e) => {
+        if (!isDrawing || editorMode === 'view') return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (touch.clientX - rect.x) * scaleX;
+        const y = (touch.clientY - rect.y) * scaleY;
+
+        ctx.beginPath();
+        ctx.moveTo(lastDrawX, lastDrawY);
+        ctx.lineTo(x, y);
+
+        if (editorMode === 'pen') {
+          ctx.strokeStyle = editorColor;
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          ctx.globalAlpha = 1.0;
+        } else if (editorMode === 'highlight') {
+          ctx.strokeStyle = '#facc15';
+          ctx.lineWidth = 20;
+          ctx.globalAlpha = 0.35;
+        }
+
+        ctx.stroke();
+        ctx.closePath();
+        lastDrawX = x;
+        lastDrawY = y;
+      };
+
+      canvas.ontouchend = () => {
+        if (isDrawing) {
+          isDrawing = false;
+          saveCurrentAnnotationState();
+        }
+      };
+    }
+
+    async function exportEditedPdf() {
+      if (!editorRawBytes) return;
+
+      saveCurrentAnnotationState();
+      const btn = document.getElementById('btnExportEditedPdf');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'PDF 내보내는 중...';
+      showToast('주석을 영구 합성하여 PDF를 생성합니다...');
+
+      try {
+        const pdfDoc = await PDFLib.PDFDocument.load(editorRawBytes);
+        const pages = pdfDoc.getPages();
+
+        for (let i = 0; i < pages.length; i++) {
+          const pageNum = i + 1;
+          const dataUrl = pageAnnotationData[pageNum];
+          if (dataUrl) {
+            const pngBytes = await fetch(dataUrl).then(res => res.arrayBuffer());
+            const embeddedPng = await pdfDoc.embedPng(pngBytes);
+            const page = pages[i];
+            page.drawImage(embeddedPng, {
+              x: 0,
+              y: 0,
+              width: page.getWidth(),
+              height: page.getHeight()
+            });
+          }
+        }
+
+        const outBytes = await pdfDoc.save();
+        const blob = new Blob([outBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'flux-edited-document.pdf';
+        a.click();
+
+        triggerConfetti();
+        showToast('편집된 PDF 다운로드가 시작되었습니다!');
+
+        saveTaskHistory({
+          type: '서명/편집',
+          title: 'flux-edited-document.pdf',
+          meta: `총 ${pages.length}페이지 주석 반영 완료 (${(blob.size / 1024 / 1024).toFixed(2)} MB)`
+        });
+      } catch (err) {
+        console.error('PDF 내보내기 실패:', err);
+        showToast('저장 오류: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
     }
 
     // ============================================
@@ -914,6 +1425,7 @@
       }
 
       renderMergeList();
+      showToast(`${pdfs.length}개 파일이 추가되었습니다`);
     }
 
     function renderMergeList() {
@@ -981,7 +1493,7 @@
 
     async function executeMergePdf() {
       if (mergeFiles.length < 2) {
-        alert('병합할 PDF 파일을 최소 2개 이상 추가해 주세요.');
+        showToast('병합할 PDF 파일을 2개 이상 추가해 주세요.');
         return;
       }
 
@@ -1016,8 +1528,8 @@
 
         document.getElementById('mergeResultCard').classList.remove('hidden');
         triggerConfetti();
+        showToast('PDF 병합이 완료되었습니다!');
 
-        // Save History
         saveTaskHistory({
           type: '병합',
           title: outName,
@@ -1025,7 +1537,7 @@
         });
       } catch (err) {
         console.error('병합 실패:', err);
-        alert('PDF 병합 중 오류가 발생했습니다: ' + err.message);
+        showToast('병합 오류: ' + err.message);
       } finally {
         btn.disabled = false;
         btn.innerHTML = origHtml;
@@ -1056,7 +1568,7 @@
 
     async function loadSplitFile(file) {
       if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-        alert('PDF 파일만 선택 가능합니다.');
+        showToast('PDF 파일만 선택 가능합니다.');
         return;
       }
 
@@ -1079,9 +1591,10 @@
         document.getElementById('splitRangeTotalHint').textContent = pageCount + '페이지';
         document.getElementById('splitPageRangeInput').value = pageCount > 1 ? `1-${Math.min(pageCount, 3)}` : '1';
         document.getElementById('splitResultCard').classList.add('hidden');
+        showToast('분할용 PDF가 로드되었습니다');
       } catch (err) {
         console.error('분할 파일 로드 오류:', err);
-        alert('PDF 파일을 읽을 수 없습니다: ' + err.message);
+        showToast('PDF 파일 읽기 오류: ' + err.message);
       }
     }
 
@@ -1123,12 +1636,11 @@
         const totalPages = srcDoc.getPageCount();
 
         if (splitMode === 'range') {
-          // Parse page range input (1-based index)
           const rangeStr = document.getElementById('splitPageRangeInput').value.trim();
           const targetIndices = parsePageRange(rangeStr, totalPages);
 
           if (targetIndices.length === 0) {
-            alert('유효한 페이지 범위를 입력해 주세요. (예: 1-3, 5)');
+            showToast('유효한 페이지 범위를 입력해 주세요. (예: 1-3, 5)');
             btn.disabled = false;
             btn.innerHTML = origHtml;
             return;
@@ -1151,6 +1663,7 @@
           document.getElementById('splitResultSummary').textContent = `${targetIndices.length}개 페이지 추출 완료 · ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
           document.getElementById('splitResultCard').classList.remove('hidden');
           triggerConfetti();
+          showToast('페이지 추출이 완료되었습니다!');
 
           saveTaskHistory({
             type: '분할/추출',
@@ -1159,7 +1672,6 @@
           });
 
         } else {
-          // Split all pages into individual PDFs and zip them
           const zip = new JSZip();
           const baseName = splitFile.name.replace(/\.pdf$/i, '');
 
@@ -1184,6 +1696,7 @@
           document.getElementById('splitResultSummary').textContent = `총 ${totalPages}장 개별 분할 압축 완료 · ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`;
           document.getElementById('splitResultCard').classList.remove('hidden');
           triggerConfetti();
+          showToast('모든 페이지 개별 분할 완료!');
 
           saveTaskHistory({
             type: '낱장 분할',
@@ -1193,7 +1706,7 @@
         }
       } catch (err) {
         console.error('분할 오류:', err);
-        alert('분할 처리 중 오류가 발생했습니다: ' + err.message);
+        showToast('분할 처리 오류: ' + err.message);
       } finally {
         btn.disabled = false;
         btn.innerHTML = origHtml;
@@ -1263,6 +1776,7 @@
       }
 
       renderImg2PdfGrid();
+      showToast(`${valid.length}개 이미지가 추가되었습니다`);
     }
 
     function readFileAsDataUrl(file) {
@@ -1328,7 +1842,7 @@
 
     async function executeImg2Pdf() {
       if (img2pdfFiles.length === 0) {
-        alert('변환할 이미지를 최소 1장 이상 추가해 주세요.');
+        showToast('변환할 이미지를 최소 1장 이상 추가해 주세요.');
         return;
       }
 
@@ -1343,7 +1857,6 @@
         const orientOpt = document.getElementById('img2pdfOrientation').value;
         const marginOpt = document.getElementById('img2pdfMargin').value;
 
-        // Base points: A4 is 595.28 x 841.89 points
         let pWidth = orientOpt === 'portrait' ? 595.28 : 841.89;
         let pHeight = orientOpt === 'portrait' ? 841.89 : 595.28;
 
@@ -1353,11 +1866,10 @@
         }
 
         let margin = 0;
-        if (marginOpt === 'small') margin = 28.35; // ~10mm
-        if (marginOpt === 'normal') margin = 56.70; // ~20mm
+        if (marginOpt === 'small') margin = 28.35;
+        if (marginOpt === 'normal') margin = 56.70;
 
         for (const item of img2pdfFiles) {
-          // Convert image to PNG/JPEG bytes
           const imgBytes = await convertImageToBytes(item);
           let embeddedImg;
 
@@ -1402,6 +1914,7 @@
         document.getElementById('img2pdfResultSummary').textContent = `총 ${img2pdfFiles.length}장 A4 PDF 변환 완료 · ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
         document.getElementById('img2pdfResultCard').classList.remove('hidden');
         triggerConfetti();
+        showToast('이미지가 PDF로 성공적으로 변환되었습니다!');
 
         saveTaskHistory({
           type: '이미지→PDF',
@@ -1410,7 +1923,7 @@
         });
       } catch (err) {
         console.error('이미지 변환 실패:', err);
-        alert('이미지 PDF 변환 중 오류가 발생했습니다: ' + err.message);
+        showToast('이미지 변환 오류: ' + err.message);
       } finally {
         btn.disabled = false;
         btn.innerHTML = origHtml;
@@ -1461,7 +1974,7 @@
 
     async function loadRotateFile(file) {
       if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
-        alert('PDF 파일만 선택 가능합니다.');
+        showToast('PDF 파일만 선택 가능합니다.');
         return;
       }
 
@@ -1493,9 +2006,10 @@
         document.getElementById('rotateResultCard').classList.add('hidden');
 
         renderRotatePagesGrid();
+        showToast('회전할 PDF가 로드되었습니다');
       } catch (err) {
         console.error('회전 파일 로드 오류:', err);
-        alert('PDF 파일을 로드할 수 없습니다: ' + err.message);
+        showToast('PDF 로드 오류: ' + err.message);
       }
     }
 
@@ -1540,6 +2054,7 @@
         p.rotation = (p.rotation + deg) % 360;
       });
       renderRotatePagesGrid();
+      showToast('전체 페이지가 회전되었습니다');
     }
 
     function toggleKeepPage(idx) {
@@ -1561,7 +2076,7 @@
 
       const keptPages = rotatePageSettings.filter(p => p.keep);
       if (keptPages.length === 0) {
-        alert('최소 1개 이상의 페이지를 남겨두어야 합니다.');
+        showToast('최소 1개 이상의 페이지를 남겨두어야 합니다.');
         return;
       }
 
@@ -1597,6 +2112,7 @@
         document.getElementById('rotateResultSummary').textContent = `총 ${keptPages.length}페이지 정리 완료 · ${(blob.size / 1024 / 1024).toFixed(2)} MB`;
         document.getElementById('rotateResultCard').classList.remove('hidden');
         triggerConfetti();
+        showToast('정리된 PDF 저장이 완료되었습니다!');
 
         saveTaskHistory({
           type: '회전/정리',
@@ -1605,7 +2121,7 @@
         });
       } catch (err) {
         console.error('회전 저장 오류:', err);
-        alert('저장 중 오류가 발생했습니다: ' + err.message);
+        showToast('저장 오류: ' + err.message);
       } finally {
         btn.disabled = false;
         btn.innerHTML = origHtml;
@@ -1684,21 +2200,47 @@
     }
 
     // ============================================
-    // UTILITIES
+    // INTERACTIVE TOAST & MICRO-INTERACTIONS
     // ============================================
-    function capitalize(str) {
-      return str.charAt(0).toUpperCase() + str.slice(1);
+    function showToast(msg) {
+      const existing = document.getElementById('fluxToastBox');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.id = 'fluxToastBox';
+      toast.className = 'fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-2xl bg-neutral-900/90 dark:bg-white/95 text-white dark:text-neutral-950 font-bold text-xs shadow-2xl backdrop-blur-md border border-neutral-700 dark:border-neutral-200 flex items-center space-x-2 animate-bounce';
+      toast.innerHTML = `<span>${escapeHtml(msg)}</span>`;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(8px)';
+        setTimeout(() => toast.remove(), 250);
+      }, 2000);
     }
 
-    function escapeHtml(str) {
-      if (!str) return '';
-      return str.replace(/[&<>'"]/g, tag => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        "'": '&#39;',
-        '"': '&quot;'
-      }[tag] || tag));
+    function initUniversalInteractions() {
+      // Click Ripple Effect & Haptics on all interactive elements
+      document.addEventListener('click', (e) => {
+        const target = e.target.closest('button, .card-hover-lift, a, input, select');
+        if (!target) return;
+
+        if (navigator.vibrate) {
+          try { navigator.vibrate(15); } catch(err){}
+        }
+
+        const ripple = document.createElement('div');
+        ripple.className = 'click-ripple';
+        ripple.style.left = e.clientX + 'px';
+        ripple.style.top = e.clientY + 'px';
+        ripple.style.width = '70px';
+        ripple.style.height = '70px';
+        document.body.appendChild(ripple);
+        setTimeout(() => {
+          if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+        }, 520);
+      });
     }
 
     // Confetti Explosion
@@ -1723,7 +2265,22 @@
       }
     }
 
-    // Init
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    // Init App
     window.addEventListener('DOMContentLoaded', () => {
       // Dark Mode toggle
       const darkToggle = document.getElementById('darkModeToggle');
@@ -1741,6 +2298,8 @@
       } else if (savedTheme === 'dark') {
         document.documentElement.classList.add('dark');
       }
+
+      initUniversalInteractions();
     });
   </script>
 </body>
