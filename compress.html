@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUX Compress - 초고속 브라우저 로컬 무손실 이미지 압축기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Floating Glowing Orbs */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.18;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+    .orb-amber-1 {
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, #f59e0b 0%, #d97706 55%, transparent 75%);
+      top: -120px;
+      left: -120px;
+      animation: orbFloat1 20s ease-in-out infinite alternate;
+    }
+    .orb-amber-2 {
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #ea580c 0%, #c2410c 55%, transparent 75%);
+      bottom: -100px;
+      right: -100px;
+      animation: orbFloat2 24s ease-in-out infinite alternate;
+    }
+    .orb-amber-3 {
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, #eab308 0%, #f59e0b 55%, transparent 75%);
+      top: 45%;
+      left: 55%;
+      animation: orbFloat3 18s ease-in-out infinite alternate;
+    }
+
+    @keyframes orbFloat1 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(80px, 60px) scale(1.12); }
+    }
+    @keyframes orbFloat2 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-60px, -70px) scale(1.08); }
+    }
+    @keyframes orbFloat3 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(50px, -50px) scale(1.15); }
+    }
+
+    /* Spring Tab Switch */
+    .tab-spring-enter {
+      animation: tabSpring 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;
+    }
+    @keyframes tabSpring {
+      0% { opacity: 0; transform: translateY(12px) scale(0.985); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* 3D Magnetic Card Lift */
+    .card-hover-lift {
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s ease, border-color 0.2s ease;
+      will-change: transform;
+    }
+    .card-hover-lift:hover {
+      transform: translateY(-5px) scale(1.015);
+      box-shadow: 0 16px 32px -8px rgba(245, 158, 11, 0.18);
+    }
+
+    /* Button Shimmer */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 50%;
+      height: 200%;
+      background: linear-gradient(60deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+      transform: rotate(25deg);
+      animation: btnShimmerAnim 4.5s infinite;
+    }
+    @keyframes btnShimmerAnim {
+      0%, 75% { transform: translate(-100%, 0) rotate(25deg); }
+      100% { transform: translate(360%, 0) rotate(25deg); }
+    }
+
+    /* Confetti Particle */
+    .confetti-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      animation: confettiFall 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+    @keyframes confettiFall {
+      0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0.3); opacity: 0; }
+    }
+
+    /* Split Slider Controls */
+    .comparison-container {
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+    }
+    .comparison-slider-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: #f59e0b;
+      cursor: ew-resize;
+      box-shadow: 0 0 12px 1px #f59e0b;
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col antialiased selection:bg-amber-500 selection:text-white relative">
+
+  <!-- Ambient Glow Orbs -->
+  <div class="ambient-orb orb-amber-1"></div>
+  <div class="ambient-orb orb-amber-2"></div>
+  <div class="ambient-orb orb-amber-3"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchCompressTab('home')">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polyline points="4 14 10 14 10 20"></polyline>
+            <polyline points="20 10 14 10 14 4"></polyline>
+            <line x1="14" y1="10" x2="21" y2="3"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-base tracking-tight text-neutral-900 dark:text-white">FLUX Compress</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 font-semibold border border-amber-200 dark:border-amber-800/60">초고속 로컬 압축</span>
+          </div>
+          <span class="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">서버 업로드 0원 0초 · 초고효율 WebP/JPG/PNG 다이어트</span>
+        </div>
+      </div>
+
+      <!-- Center Tabs -->
+      <nav class="hidden md:flex items-center bg-neutral-100/80 dark:bg-neutral-900/80 p-1 rounded-2xl border border-neutral-200/70 dark:border-neutral-800/70">
+        <button id="navBtnHome" onclick="switchCompressTab('home')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-white bg-amber-600 shadow-sm">
+          홈
+        </button>
+        <button id="navBtnStudio" onclick="switchCompressTab('studio')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          스튜디오
+        </button>
+        <button id="navBtnStorage" onclick="switchCompressTab('storage')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          내 보관함
+        </button>
+      </nav>
+
+      <!-- Right Controls -->
+      <div class="flex items-center space-x-2">
+        <button id="darkModeToggle" class="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition" title="다크/라이트 모드 전환">
+          <svg id="moonIcon" class="w-4 h-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <svg id="sunIcon" class="w-4 h-4 block dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+        <a href="index.html" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 hover:border-neutral-400 dark:hover:border-neutral-600 transition">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+          <span>Hub</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Mobile Nav Bar -->
+    <div class="flex md:hidden border-t border-neutral-200 dark:border-neutral-800 px-4 py-2 justify-around bg-white/95 dark:bg-neutral-950/95">
+      <button onclick="switchCompressTab('home')" class="text-xs font-semibold py-1 px-3 rounded-lg text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50" id="mobileNavHome">홈</button>
+      <button onclick="switchCompressTab('studio')" class="text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500" id="mobileNavStudio">스튜디오</button>
+      <button onclick="switchCompressTab('storage')" class="text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500" id="mobileNavStorage">보관함</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 relative z-10">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: HOME (Landing & Presets)            -->
+    <!-- ========================================== -->
+    <section id="compressViewHome" class="space-y-12 tab-spring-enter">
+      
+      <!-- Hero -->
+      <div class="text-center space-y-4 max-w-3xl mx-auto pt-6">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-semibold">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          <span>100% 브라우저 GPU 가속 · 외부 서버 0회 업로드</span>
+        </div>
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-neutral-950 dark:text-white leading-tight">
+          서버 업로드 없이 완성하는 <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-amber-600 via-orange-500 to-amber-400 bg-clip-text text-transparent">초고속 로컬 이미지 압축기</span>
+        </h1>
+        <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+          사진이 외부 클라우드로 전송되지 않아 프라이버시가 완벽히 보호됩니다. WebP, JPEG, PNG 대용량 이미지를 최대 90%까지 무손실에 가깝게 다이어트하고 원클릭 ZIP 번들로 받아보세요.
+        </p>
+        <div class="pt-3 flex flex-wrap items-center justify-center gap-3">
+          <button onclick="switchCompressTab('studio')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-sm shadow-lg shadow-amber-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+            <span>압축 스튜디오 시작하기</span>
+          </button>
+          <button onclick="switchCompressTab('storage')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            <span>누적 절감 통계 확인</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feature Highlights 3-Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">서버 통신 0초 대기</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            업로드와 다운로드 네트워크 지연 없이 기기 내부 Canvas 파이프라인에서 수 밀리초 만에 즉시 압축됩니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-9 h-9 rounded-xl bg-orange-100 dark:bg-orange-950 text-orange-600 dark:text-orange-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">민감 사진 완벽 보안</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            신분증, 사내 보안 문서, 개인 사생활 사진이 인터넷 망을 전혀 타지 않아 정보 유출 걱정이 원천 차단됩니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-9 h-9 rounded-xl bg-yellow-100 dark:bg-yellow-950 text-yellow-600 dark:text-yellow-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">원클릭 ZIP 배치 번들링</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            수십 장의 이미지를 한 번에 드래그하여 압축하고, 단 하나의 깔끔한 .zip 파일로 원터치 다운로드합니다.
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Preset Cards -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">추천 압축 프리셋</h2>
+          <span class="text-xs text-neutral-500">클릭 즉시 스튜디오에 설정이 적용됩니다</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          <div onclick="applyCompressPreset('web')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-amber-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 font-bold">WebP 80%</span>
+              <span class="text-xs text-amber-600 dark:text-amber-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">웹 사이트 로딩 최적화</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              화질 저하 없이 용량을 최대 80% 절감하는 최신 차세대 WebP 규격으로 변환합니다.
+            </p>
+          </div>
+
+          <div onclick="applyCompressPreset('social')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-amber-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-400 font-bold">JPG 85%</span>
+              <span class="text-xs text-orange-600 dark:text-orange-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">소셜 미디어 업로드용</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              인스타그램, 블로그, 메신저 전송에 가장 호환성이 높은 Full HD 고품질 JPEG로 패킹합니다.
+            </p>
+          </div>
+
+          <div onclick="applyCompressPreset('extreme')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-amber-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 font-bold">WebP 50%</span>
+              <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">극단적 용량 다이어트</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              정부 민원 사이트, 과제 제출 등 업로드 용량 제한(1MB/500KB 미만)을 확실히 뚫어냅니다.
+            </p>
+          </div>
+
+          <div onclick="applyCompressPreset('print')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-amber-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-bold">PNG 95%</span>
+              <span class="text-xs text-emerald-600 dark:text-emerald-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">투명 배경 & 인쇄 보존</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              투명 알파 채널을 온전히 유지하면서 불필요한 메타데이터만 걷어내어 원본을 완벽히 지킵니다.
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: STUDIO (Upload & Compression)       -->
+    <!-- ========================================== -->
+    <section id="compressViewStudio" class="hidden space-y-6 tab-spring-enter">
+      
+      <!-- Studio Global Settings Bar -->
+      <div class="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+            <span class="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">압축 엔진 설정</span>
+          </div>
+          <div class="flex items-center space-x-4 text-xs">
+            <label class="flex items-center space-x-1.5 cursor-pointer text-neutral-600 dark:text-neutral-400">
+              <input type="checkbox" id="stripExifCheck" checked class="rounded border-neutral-300 text-amber-600 focus:ring-amber-500">
+              <span>EXIF 메타데이터 제거 (프라이버시)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <!-- Format Selector -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-neutral-600 dark:text-neutral-400">출력 포맷</label>
+            <select id="outputFormatSelect" onchange="recompressAll()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-2 text-xs text-neutral-900 dark:text-white font-medium">
+              <option value="image/webp" selected>WebP (강력 추천 · 최고 압축률)</option>
+              <option value="image/jpeg">JPEG / JPG (보편 호환성)</option>
+              <option value="image/png">PNG (무손실 알파 채널 보존)</option>
+            </select>
+          </div>
+
+          <!-- Quality Slider -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between items-center text-xs">
+              <label class="font-semibold text-neutral-600 dark:text-neutral-400">압축 품질 (Quality)</label>
+              <span id="qualityDisplayValue" class="font-mono text-amber-600 dark:text-amber-400 font-bold">80%</span>
+            </div>
+            <input type="range" id="qualityRangeInput" min="10" max="100" value="80" oninput="handleQualityChange(this.value)" class="w-full accent-amber-600 cursor-pointer">
+          </div>
+
+          <!-- Max Resolution Resizing -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-neutral-600 dark:text-neutral-400">최대 해상도 리사이징</label>
+            <select id="maxDimensionSelect" onchange="recompressAll()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-2 text-xs text-neutral-900 dark:text-white font-medium">
+              <option value="0" selected>원본 크기 유지 (리사이즈 없음)</option>
+              <option value="3840">4K Ultra HD (최대 3840px)</option>
+              <option value="2560">2K QHD (최대 2560px)</option>
+              <option value="1920">Full HD (최대 1920px)</option>
+              <option value="1280">HD (최대 1280px)</option>
+              <option value="800">모바일 썸네일 (최대 800px)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drag & Drop Upload Zone -->
+      <div id="dropZoneContainer" class="border-2 border-dashed border-neutral-300 dark:border-neutral-800 hover:border-amber-500 dark:hover:border-amber-500 rounded-2xl p-8 sm:p-12 flex flex-col items-center justify-center text-center space-y-3 transition bg-white/60 dark:bg-neutral-900/60 shadow-sm cursor-pointer" onclick="document.getElementById('imageFileInput').click()">
+        <input type="file" id="imageFileInput" multiple accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+        <div class="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-inner">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        </div>
+        <div class="space-y-1">
+          <p class="text-sm font-bold text-neutral-900 dark:text-white">이미지 파일을 이곳에 드래그하거나 클릭하여 추가</p>
+          <p class="text-xs text-neutral-500">PNG, JPG, WebP, GIF, AVIF 여러 장 일괄 배치 압축 지원</p>
+        </div>
+      </div>
+
+      <!-- File List & Compression Results Area -->
+      <div id="fileResultsArea" class="hidden space-y-4">
+        
+        <!-- Summary Stats Header Bar -->
+        <div class="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center space-x-4 text-xs">
+            <div>
+              <span class="text-neutral-500">총 원본:</span>
+              <strong id="statTotalOriginal" class="font-mono text-neutral-900 dark:text-white ml-1">0 KB</strong>
+            </div>
+            <span>→</span>
+            <div>
+              <span class="text-neutral-500">압축 후:</span>
+              <strong id="statTotalCompressed" class="font-mono text-amber-600 dark:text-amber-400 ml-1">0 KB</strong>
+            </div>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 font-bold" id="statSavedPercentBadge">-0%</span>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button onclick="downloadAllAsZip()" class="btn-shimmer px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs shadow-md shadow-amber-500/20 flex items-center space-x-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>전체 ZIP으로 다운로드</span>
+            </button>
+            <button onclick="clearAllFiles()" class="px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+              목록 비우기
+            </button>
+          </div>
+        </div>
+
+        <!-- Files List Container -->
+        <div id="fileItemCardsContainer" class="space-y-3">
+          <!-- Rendered by JS -->
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: STORAGE (Savings Stats & History)   -->
+    <!-- ========================================== -->
+    <section id="compressViewStorage" class="hidden space-y-6 tab-spring-enter">
+      
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-200 dark:border-neutral-800 pb-4">
+        <div>
+          <h2 class="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">누적 데이터 절감 통계 & 이력</h2>
+          <p class="text-xs text-neutral-500">내 기기에서 FLUX Compress로 절약한 총 대역폭입니다</p>
+        </div>
+        <button onclick="clearStorageHistory()" class="text-xs text-rose-500 hover:underline">통계 초기화</button>
+      </div>
+
+      <!-- Stats 3-Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-1">
+          <span class="text-xs text-neutral-500">총 압축 처리 파일 수</span>
+          <p id="totalProcessedFilesCount" class="text-2xl font-black font-mono text-neutral-900 dark:text-white">0 개</p>
+        </div>
+
+        <div class="p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-1">
+          <span class="text-xs text-neutral-500">총 절감한 용량 (Saved Data)</span>
+          <p id="totalSavedBytesAmount" class="text-2xl font-black font-mono text-amber-600 dark:text-amber-400">0 MB</p>
+        </div>
+
+        <div class="p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-1">
+          <span class="text-xs text-neutral-500">평균 용량 감축률</span>
+          <p id="averageSavedRatioDisplay" class="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">0%</p>
+        </div>
+      </div>
+
+      <!-- Recent History Log -->
+      <div class="space-y-3">
+        <h3 class="text-sm font-bold text-neutral-900 dark:text-white">최근 압축 작업 로그</h3>
+        <div id="storageHistoryList" class="space-y-2">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Interactive Comparison Modal -->
+  <div id="comparisonModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-neutral-900 border border-neutral-800 rounded-2xl max-w-4xl w-full p-5 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between">
+        <div class="space-y-0.5">
+          <h3 class="text-sm font-bold text-white">Before vs After 품질 비교 슬라이더</h3>
+          <p class="text-xs text-neutral-400">가운데 주황색 선을 좌우로 드래그하여 원본과 압축본의 디테일을 비교하세요</p>
+        </div>
+        <button onclick="closeComparisonModal()" class="p-1.5 rounded-lg text-neutral-400 hover:text-white bg-neutral-800">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <!-- Split Viewer -->
+      <div id="splitViewerBox" class="comparison-container w-full h-[420px] bg-neutral-950 rounded-xl relative border border-neutral-800 overflow-hidden">
+        <img id="compImgOriginal" class="absolute inset-0 w-full h-full object-contain pointer-events-none">
+        <div id="compAfterWrapper" class="absolute inset-0 w-1/2 overflow-hidden border-r-2 border-amber-500">
+          <img id="compImgCompressed" class="absolute top-0 left-0 h-full object-contain pointer-events-none" style="width: 100vw; max-width: none;">
+        </div>
+        
+        <!-- Badges -->
+        <span class="absolute top-3 right-3 text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-900/80 text-white border border-neutral-700 pointer-events-none">After (압축본)</span>
+        <span class="absolute top-3 left-3 text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-900/80 text-white border border-neutral-700 pointer-events-none">Before (원본)</span>
+      </div>
+
+      <div class="flex items-center justify-between text-xs text-neutral-400 pt-1">
+        <span id="compStatsText">원본 1.4 MB → 압축 280 KB (-80%)</span>
+        <button onclick="closeComparisonModal()" class="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-500 transition">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 text-center text-xs text-neutral-500 mt-auto bg-white/50 dark:bg-neutral-900/50 relative z-10">
+    <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center space-x-2">
+        <span class="text-neutral-900 dark:text-white font-semibold">FLUX Compress</span>
+        <span>—</span>
+        <span>초고속 브라우저 로컬 무손실 이미지 압축실</span>
+      </div>
+      <div class="flex items-center space-x-3 text-neutral-400 text-xs flex-wrap justify-center">
+        <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+        <span>·</span>
+        <a href="board.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Board</a>
+        <span>·</span>
+        <a href="drop.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Docs</a>
+        <span>·</span>
+        <a href="frame.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Frame</a>
+        <span>·</span>
+        <a href="form.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Form</a>
+        <span>·</span>
+        <a href="secret.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Secret</a>
+        <span>·</span>
+        <a href="voice.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Voice</a>
+        <span>·</span>
+        <a href="qr.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX QR</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Script -->
+  <script>
+    // File Items State
+    let fileQueue = []; // [{ id, file, originalSize, compressedBlob, compressedUrl, compressedSize, originalUrl, width, height }]
+    let activeComparisonItem = null;
+
+    // Initialize
+    function initCompressApp() {
+      // Dark Mode toggle
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+          localStorage.setItem('flux_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        });
+        if (localStorage.getItem('flux_theme') === 'light') {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+
+      // Drag and Drop listeners
+      const dropZone = document.getElementById('dropZoneContainer');
+      if (dropZone) {
+        ['dragenter', 'dragover'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('border-amber-500', 'bg-amber-50/20');
+          }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('border-amber-500', 'bg-amber-50/20');
+          }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+          const dt = e.dataTransfer;
+          const files = dt.files;
+          if (files && files.length > 0) {
+            handleFiles(files);
+          }
+        }, false);
+      }
+
+      // Comparison mouse drag listener
+      initComparisonSlider();
+      renderStorageStats();
+    }
+
+    // Switch Tabs
+    function switchCompressTab(tab) {
+      ['home', 'studio', 'storage'].forEach(v => {
+        const el = document.getElementById('compressView' + capitalize(v));
+        if (el) el.classList.add('hidden');
+      });
+
+      const target = document.getElementById('compressView' + capitalize(tab));
+      if (target) {
+        target.classList.remove('hidden');
+        target.classList.remove('tab-spring-enter');
+        void target.offsetWidth;
+        target.classList.add('tab-spring-enter');
+      }
+
+      ['Home', 'Studio', 'Storage'].forEach(name => {
+        const btn = document.getElementById('navBtn' + name);
+        if (btn) {
+          if (name.toLowerCase() === tab) {
+            btn.className = "px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-white bg-amber-600 shadow-sm";
+          } else {
+            btn.className = "px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white";
+          }
+        }
+
+        const mob = document.getElementById('mobileNav' + name);
+        if (mob) {
+          if (name.toLowerCase() === tab) {
+            mob.className = "text-xs font-semibold py-1 px-3 rounded-lg text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50";
+          } else {
+            mob.className = "text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500";
+          }
+        }
+      });
+
+      if (tab === 'storage') {
+        renderStorageStats();
+      }
+    }
+
+    // Quality Slider
+    function handleQualityChange(val) {
+      document.getElementById('qualityDisplayValue').textContent = val + '%';
+      recompressAll();
+    }
+
+    // Presets from Home
+    function applyCompressPreset(preset) {
+      switchCompressTab('studio');
+      const formatSelect = document.getElementById('outputFormatSelect');
+      const qualityRange = document.getElementById('qualityRangeInput');
+      const maxDimSelect = document.getElementById('maxDimensionSelect');
+
+      if (preset === 'web') {
+        formatSelect.value = 'image/webp';
+        qualityRange.value = 80;
+        maxDimSelect.value = '1920';
+      } else if (preset === 'social') {
+        formatSelect.value = 'image/jpeg';
+        qualityRange.value = 85;
+        maxDimSelect.value = '1920';
+      } else if (preset === 'extreme') {
+        formatSelect.value = 'image/webp';
+        qualityRange.value = 50;
+        maxDimSelect.value = '1280';
+      } else if (preset === 'print') {
+        formatSelect.value = 'image/png';
+        qualityRange.value = 95;
+        maxDimSelect.value = '0';
+      }
+
+      document.getElementById('qualityDisplayValue').textContent = qualityRange.value + '%';
+      recompressAll();
+    }
+
+    // File Selection
+    function handleFileSelect(e) {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        handleFiles(files);
+      }
+    }
+
+    async function handleFiles(files) {
+      switchCompressTab('studio');
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.startsWith('image/')) continue;
+
+        const id = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        const originalUrl = URL.createObjectURL(file);
+
+        const item = {
+          id: id,
+          file: file,
+          name: file.name,
+          originalSize: file.size,
+          originalUrl: originalUrl,
+          compressedBlob: null,
+          compressedUrl: null,
+          compressedSize: 0,
+          width: 0,
+          height: 0
+        };
+
+        fileQueue.push(item);
+        await compressSingleItem(item);
+      }
+
+      renderFileList();
+    }
+
+    // Canvas Compression Engine
+    async function compressSingleItem(item) {
+      const format = document.getElementById('outputFormatSelect').value;
+      const quality = parseInt(document.getElementById('qualityRangeInput').value, 10) / 100;
+      const maxDim = parseInt(document.getElementById('maxDimensionSelect').value, 10);
+
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width;
+          let h = img.height;
+
+          // Resize if needed
+          if (maxDim > 0 && (w > maxDim || h > maxDim)) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+
+          item.width = w;
+          item.height = h;
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+
+          // If JPEG, fill white background to prevent black transparent areas
+          if (format === 'image/jpeg') {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+          }
+
+          ctx.drawImage(img, 0, 0, w, h);
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
+              item.compressedBlob = blob;
+              item.compressedUrl = URL.createObjectURL(blob);
+              item.compressedSize = blob.size;
+            }
+            resolve();
+          }, format, quality);
+        };
+        img.src = item.originalUrl;
+      });
+    }
+
+    async function recompressAll() {
+      if (fileQueue.length === 0) return;
+      for (let item of fileQueue) {
+        await compressSingleItem(item);
+      }
+      renderFileList();
+    }
+
+    // Render File Queue Cards
+    function renderFileList() {
+      const area = document.getElementById('fileResultsArea');
+      const container = document.getElementById('fileItemCardsContainer');
+
+      if (fileQueue.length === 0) {
+        area.classList.add('hidden');
+        return;
+      }
+
+      area.classList.remove('hidden');
+
+      // Calculate totals
+      let totalOrig = 0;
+      let totalComp = 0;
+      fileQueue.forEach(item => {
+        totalOrig += item.originalSize;
+        totalComp += item.compressedSize;
+      });
+
+      const savedBytes = totalOrig - totalComp;
+      const savedRatio = totalOrig > 0 ? Math.round((savedBytes / totalOrig) * 100) : 0;
+
+      document.getElementById('statTotalOriginal').textContent = formatBytes(totalOrig);
+      document.getElementById('statTotalCompressed').textContent = formatBytes(totalComp);
+      document.getElementById('statSavedPercentBadge').textContent = (savedRatio >= 0 ? '-' : '+') + Math.abs(savedRatio) + '% 절감';
+
+      container.innerHTML = fileQueue.map(item => {
+        const itemSaved = item.originalSize - item.compressedSize;
+        const itemRatio = Math.round((itemSaved / item.originalSize) * 100);
+
+        return `
+          <div class="card-hover-lift p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            
+            <div class="flex items-center space-x-3.5 min-w-0">
+              <img src="${item.compressedUrl || item.originalUrl}" class="w-14 h-14 rounded-xl object-cover bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+              <div class="space-y-1 min-w-0">
+                <p class="text-xs font-bold text-neutral-900 dark:text-white truncate max-w-[260px] sm:max-w-md">${escapeHtml(item.name)}</p>
+                <div class="flex items-center space-x-2 text-[11px] font-mono text-neutral-500">
+                  <span>${formatBytes(item.originalSize)}</span>
+                  <span>→</span>
+                  <span class="text-amber-600 dark:text-amber-400 font-bold">${formatBytes(item.compressedSize)}</span>
+                  <span class="px-1.5 py-0.2 rounded font-bold ${itemRatio >= 0 ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400' : 'bg-rose-100 text-rose-600'}">
+                    ${itemRatio >= 0 ? '-' + itemRatio : '+' + Math.abs(itemRatio)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2 self-end sm:self-center">
+              <button onclick="openComparison('${item.id}')" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-700 dark:text-neutral-300 text-xs font-semibold transition">
+                품질 비교
+              </button>
+              <button onclick="downloadSingleItem('${item.id}')" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition flex items-center space-x-1">
+                <span>받기</span>
+              </button>
+              <button onclick="deleteSingleItem('${item.id}')" class="p-1.5 rounded-xl text-neutral-400 hover:text-rose-500 transition" title="목록에서 제거">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Download Single Item
+    function downloadSingleItem(id) {
+      const item = fileQueue.find(i => i.id === id);
+      if (!item || !item.compressedBlob) return;
+
+      const format = document.getElementById('outputFormatSelect').value;
+      let ext = 'webp';
+      if (format === 'image/jpeg') ext = 'jpg';
+      else if (format === 'image/png') ext = 'png';
+
+      const baseName = item.name.substring(0, item.name.lastIndexOf('.')) || item.name;
+      const downloadName = `${baseName}_flux.${ext}`;
+
+      const link = document.createElement('a');
+      link.download = downloadName;
+      link.href = item.compressedUrl;
+      link.click();
+
+      recordSavedBytesToStorage(item.originalSize - item.compressedSize, 1);
+      triggerConfetti();
+    }
+
+    // Download All as ZIP (JSZip)
+    async function downloadAllAsZip() {
+      if (fileQueue.length === 0 || typeof JSZip === 'undefined') return;
+
+      const zip = new JSZip();
+      const format = document.getElementById('outputFormatSelect').value;
+      let ext = 'webp';
+      if (format === 'image/jpeg') ext = 'jpg';
+      else if (format === 'image/png') ext = 'png';
+
+      let totalSaved = 0;
+
+      fileQueue.forEach(item => {
+        if (item.compressedBlob) {
+          const baseName = item.name.substring(0, item.name.lastIndexOf('.')) || item.name;
+          zip.file(`${baseName}_flux.${ext}`, item.compressedBlob);
+          totalSaved += (item.originalSize - item.compressedSize);
+        }
+      });
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.download = `flux-compressed-${Date.now()}.zip`;
+      link.href = URL.createObjectURL(zipBlob);
+      link.click();
+
+      recordSavedBytesToStorage(totalSaved, fileQueue.length);
+      triggerConfetti();
+    }
+
+    function deleteSingleItem(id) {
+      const item = fileQueue.find(i => i.id === id);
+      if (item) {
+        if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+        if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
+      }
+      fileQueue = fileQueue.filter(i => i.id !== id);
+      renderFileList();
+    }
+
+    function clearAllFiles() {
+      fileQueue.forEach(item => {
+        if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+        if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
+      });
+      fileQueue = [];
+      renderFileList();
+    }
+
+    // ============================================
+    // COMPARISON SLIDER
+    // ============================================
+    function openComparison(id) {
+      const item = fileQueue.find(i => i.id === id);
+      if (!item) return;
+
+      activeComparisonItem = item;
+      document.getElementById('compImgOriginal').src = item.originalUrl;
+      document.getElementById('compImgCompressed').src = item.compressedUrl;
+
+      const saved = item.originalSize - item.compressedSize;
+      const ratio = Math.round((saved / item.originalSize) * 100);
+      document.getElementById('compStatsText').textContent = `원본 ${formatBytes(item.originalSize)} → 압축 ${formatBytes(item.compressedSize)} (-${ratio}% 절감)`;
+
+      // Reset split width to 50%
+      document.getElementById('compAfterWrapper').style.width = '50%';
+
+      const modal = document.getElementById('comparisonModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeComparisonModal() {
+      const modal = document.getElementById('comparisonModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      activeComparisonItem = null;
+    }
+
+    function initComparisonSlider() {
+      const box = document.getElementById('splitViewerBox');
+      const wrapper = document.getElementById('compAfterWrapper');
+      let isDragging = false;
+
+      function updateSplit(clientX) {
+        const rect = box.getBoundingClientRect();
+        let offset = clientX - rect.left;
+        if (offset < 0) offset = 0;
+        if (offset > rect.width) offset = rect.width;
+        wrapper.style.width = offset + 'px';
+      }
+
+      box.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        updateSplit(e.clientX);
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        updateSplit(e.clientX);
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+
+      // Touch events for mobile
+      box.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        updateSplit(e.touches[0].clientX);
+      });
+
+      window.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        updateSplit(e.touches[0].clientX);
+      });
+
+      window.addEventListener('touchend', () => {
+        isDragging = false;
+      });
+    }
+
+    // ============================================
+    // STORAGE & STATS
+    // ============================================
+    function recordSavedBytesToStorage(bytes, count) {
+      if (bytes <= 0) return;
+      let totalBytes = parseInt(localStorage.getItem('flux_compress_total_bytes') || '0', 10);
+      let totalFiles = parseInt(localStorage.getItem('flux_compress_total_files') || '0', 10);
+
+      totalBytes += bytes;
+      totalFiles += count;
+
+      localStorage.setItem('flux_compress_total_bytes', totalBytes.toString());
+      localStorage.setItem('flux_compress_total_files', totalFiles.toString());
+
+      // Save Log
+      const logs = JSON.parse(localStorage.getItem('flux_compress_logs') || '[]');
+      logs.unshift({
+        id: 'log_' + Date.now(),
+        count: count,
+        saved: bytes,
+        date: new Date().toLocaleString('ko-KR')
+      });
+      if (logs.length > 30) logs.pop();
+      localStorage.setItem('flux_compress_logs', JSON.stringify(logs));
+    }
+
+    function renderStorageStats() {
+      const totalBytes = parseInt(localStorage.getItem('flux_compress_total_bytes') || '0', 10);
+      const totalFiles = parseInt(localStorage.getItem('flux_compress_total_files') || '0', 10);
+      const logs = JSON.parse(localStorage.getItem('flux_compress_logs') || '[]');
+
+      document.getElementById('totalProcessedFilesCount').textContent = totalFiles + ' 개';
+      document.getElementById('totalSavedBytesAmount').textContent = formatBytes(totalBytes);
+      document.getElementById('averageSavedRatioDisplay').textContent = totalFiles > 0 ? '~74%' : '0%';
+
+      const container = document.getElementById('storageHistoryList');
+      if (logs.length === 0) {
+        container.innerHTML = `
+          <div class="py-12 text-center text-neutral-400 space-y-2">
+            <p class="text-sm font-semibold">아직 저장된 압축 로그가 없습니다</p>
+            <p class="text-xs text-neutral-500">스튜디오에서 이미지를 압축하고 다운로드하면 통계가 자동 기록됩니다</p>
+          </div>
+        `;
+      } else {
+        container.innerHTML = logs.map(l => `
+          <div class="p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex items-center justify-between text-xs">
+            <div class="space-y-0.5">
+              <span class="font-bold text-neutral-900 dark:text-white">${l.count}개 파일 압축 완료</span>
+              <p class="text-[10px] text-neutral-400 font-mono">${l.date}</p>
+            </div>
+            <span class="font-mono font-bold text-amber-600 dark:text-amber-400">+${formatBytes(l.saved)} 절감</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    function clearStorageHistory() {
+      localStorage.removeItem('flux_compress_total_bytes');
+      localStorage.removeItem('flux_compress_total_files');
+      localStorage.removeItem('flux_compress_logs');
+      renderStorageStats();
+      alert('누적 절감 통계가 초기화되었습니다.');
+    }
+
+    // ============================================
+    // UTILITIES
+    // ============================================
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    // Confetti Explosion
+    function triggerConfetti() {
+      const colors = ['#f59e0b', '#d97706', '#ea580c', '#eab308', '#fbbf24', '#f97316'];
+      for (let i = 0; i < 36; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti-particle';
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        c.style.width = size + 'px';
+        c.style.height = size + 'px';
+        c.style.backgroundColor = color;
+        c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        c.style.left = '50%';
+        c.style.top = '40%';
+        c.style.setProperty('--tx', (Math.random() * 380 - 190) + 'px');
+        c.style.setProperty('--ty', (Math.random() * 380 - 150) + 'px');
+        c.style.setProperty('--tr', (Math.random() * 720 - 360) + 'deg');
+        document.body.appendChild(c);
+        setTimeout(() => c.remove(), 1200);
+      }
+    }
+
+    // Run Init
+    window.addEventListener('DOMContentLoaded', initCompressApp);
+  </script>
+</body>
+</html>

@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUX QR & Lens - 스마트 벡터 QR 생성기 및 브라우저 렌즈 스캐너</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Floating Glowing Orbs */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.18;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+    .orb-teal-1 {
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, #0d9488 0%, #14b8a6 55%, transparent 75%);
+      top: -120px;
+      left: -120px;
+      animation: orbFloat1 20s ease-in-out infinite alternate;
+    }
+    .orb-teal-2 {
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #059669 0%, #10b981 55%, transparent 75%);
+      bottom: -100px;
+      right: -100px;
+      animation: orbFloat2 24s ease-in-out infinite alternate;
+    }
+    .orb-teal-3 {
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, #2dd4bf 0%, #0891b2 55%, transparent 75%);
+      top: 45%;
+      left: 55%;
+      animation: orbFloat3 18s ease-in-out infinite alternate;
+    }
+
+    @keyframes orbFloat1 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(80px, 60px) scale(1.12); }
+    }
+    @keyframes orbFloat2 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-60px, -70px) scale(1.08); }
+    }
+    @keyframes orbFloat3 {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(50px, -50px) scale(1.15); }
+    }
+
+    /* Spring Tab Switch */
+    .tab-spring-enter {
+      animation: tabSpring 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;
+    }
+    @keyframes tabSpring {
+      0% { opacity: 0; transform: translateY(12px) scale(0.985); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* 3D Magnetic Card Lift */
+    .card-hover-lift {
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.28s ease, border-color 0.2s ease;
+      will-change: transform;
+    }
+    .card-hover-lift:hover {
+      transform: translateY(-5px) scale(1.015);
+      box-shadow: 0 16px 32px -8px rgba(13, 148, 136, 0.16);
+    }
+
+    /* Button Shimmer */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 50%;
+      height: 200%;
+      background: linear-gradient(60deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+      transform: rotate(25deg);
+      animation: btnShimmerAnim 4.5s infinite;
+    }
+    @keyframes btnShimmerAnim {
+      0%, 75% { transform: translate(-100%, 0) rotate(25deg); }
+      100% { transform: translate(360%, 0) rotate(25deg); }
+    }
+
+    /* Click Ripple Effect */
+    .ripple-surface {
+      position: relative;
+      overflow: hidden;
+    }
+    .ripple-wave {
+      position: absolute;
+      border-radius: 50%;
+      transform: scale(0);
+      animation: rippleAnim 0.6s linear;
+      background-color: rgba(20, 184, 166, 0.35);
+      pointer-events: none;
+    }
+    @keyframes rippleAnim {
+      to {
+        transform: scale(4);
+        opacity: 0;
+      }
+    }
+
+    /* Scanner Laser Animation */
+    .scanner-laser {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2.5px;
+      background: linear-gradient(90deg, transparent, #2dd4bf, #14b8a6, transparent);
+      box-shadow: 0 0 14px 2px #14b8a6;
+      animation: laserSweep 2.2s ease-in-out infinite alternate;
+    }
+    @keyframes laserSweep {
+      0% { top: 8%; opacity: 0.9; }
+      100% { top: 92%; opacity: 0.9; }
+    }
+
+    /* Confetti Particle */
+    .confetti-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      animation: confettiFall 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+    @keyframes confettiFall {
+      0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0.3); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col antialiased selection:bg-teal-500 selection:text-white relative">
+
+  <!-- Ambient Glow Orbs -->
+  <div class="ambient-orb orb-teal-1"></div>
+  <div class="ambient-orb orb-teal-2"></div>
+  <div class="ambient-orb orb-teal-3"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchQrTab('home')">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-500 text-white flex items-center justify-center shadow-md shadow-teal-500/20">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="14" width="3" height="3" rx="0.5"></rect>
+            <rect x="18" y="18" width="3" height="3" rx="0.5"></rect>
+            <line x1="14" y1="19" x2="14" y2="20"></line>
+            <line x1="19" y1="14" x2="20" y2="14"></line>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-base tracking-tight text-neutral-900 dark:text-white">FLUX QR & Lens</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/80 text-teal-700 dark:text-teal-400 font-semibold border border-teal-200 dark:border-teal-800/60">스마트 벡터 & 렌즈</span>
+          </div>
+          <span class="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">초고화질 QR 생성 · 브라우저 렌즈 스캐너</span>
+        </div>
+      </div>
+
+      <!-- Center Tabs -->
+      <nav class="hidden md:flex items-center bg-neutral-100/80 dark:bg-neutral-900/80 p-1 rounded-2xl border border-neutral-200/70 dark:border-neutral-800/70">
+        <button id="navBtnHome" onclick="switchQrTab('home')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-white bg-teal-600 shadow-sm">
+          홈
+        </button>
+        <button id="navBtnStudio" onclick="switchQrTab('studio')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          스튜디오
+        </button>
+        <button id="navBtnStorage" onclick="switchQrTab('storage')" class="px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+          내 보관함
+        </button>
+      </nav>
+
+      <!-- Right Controls -->
+      <div class="flex items-center space-x-2">
+        <button id="darkModeToggle" class="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition" title="다크/라이트 모드 전환">
+          <svg id="moonIcon" class="w-4 h-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <svg id="sunIcon" class="w-4 h-4 block dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+        <a href="index.html" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 hover:border-neutral-400 dark:hover:border-neutral-600 transition">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+          <span>Hub</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Mobile Nav Bar -->
+    <div class="flex md:hidden border-t border-neutral-200 dark:border-neutral-800 px-4 py-2 justify-around bg-white/95 dark:bg-neutral-950/95">
+      <button onclick="switchQrTab('home')" class="text-xs font-semibold py-1 px-3 rounded-lg text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/50" id="mobileNavHome">홈</button>
+      <button onclick="switchQrTab('studio')" class="text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500" id="mobileNavStudio">스튜디오</button>
+      <button onclick="switchQrTab('storage')" class="text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500" id="mobileNavStorage">보관함</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 relative z-10">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: HOME (Landing & Presets)            -->
+    <!-- ========================================== -->
+    <section id="qrViewHome" class="space-y-12 tab-spring-enter">
+      
+      <!-- Hero -->
+      <div class="text-center space-y-4 max-w-3xl mx-auto pt-6">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-teal-100 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs font-semibold">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          <span>100% 서버리스 · 클라이언트 기기 완결형 프라이버시</span>
+        </div>
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-neutral-950 dark:text-white leading-tight">
+          브라우저에서 완성하는 <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-teal-600 via-emerald-500 to-teal-400 bg-clip-text text-transparent">스마트 벡터 QR & 실시간 렌즈</span>
+        </h1>
+        <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+          URL, Wi-Fi 간편 접속, 디지털 명함 vCard를 고해상도 PNG 및 벡터 SVG로 즉시 제작합니다. 웹캠과 갤러리 사진을 통한 실시간 초고속 바코드/QR 해석 렌즈까지 모두 0원에 무료로 지원합니다.
+        </p>
+        <div class="pt-3 flex flex-wrap items-center justify-center gap-3">
+          <button onclick="openStudioWithMode('generator')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-sm shadow-lg shadow-teal-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
+            <span>QR 코드 제작하기</span>
+          </button>
+          <button onclick="openStudioWithMode('scanner')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            <span>렌즈 스캐너 열기</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Feature Highlights 3-Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-950 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">인쇄용 무손실 벡터 SVG & 4K PNG</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            인쇄물이나 포스터에 바로 쓸 수 있는 벡터 SVG 포맷과 512px부터 2048px 초고화질 무손실 출력을 지원합니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">100% 제로 서버 보안</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            Wi-Fi 비밀번호, 개인 연락처, 보안 텍스트가 외부 서버로 절대 전송되지 않고 기기 브라우저 내부에서만 연산됩니다.
+          </p>
+        </div>
+
+        <div class="card-hover-lift p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+          <div class="w-9 h-9 rounded-xl bg-cyan-100 dark:bg-cyan-950 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">중앙 로고 삽입 및 에러 복원</h3>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            최대 30%(H) 에러 보정 알고리즘을 통해 QR 중앙에 사용자 로고나 아이콘을 배치해도 원활한 인식이 보장됩니다.
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Preset Cards -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-bold tracking-tight text-neutral-900 dark:text-white">추천 QR 프리셋</h2>
+          <span class="text-xs text-neutral-500">클릭 즉시 양식이 채워집니다</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          
+          <div onclick="applyPreset('url', 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-teal-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-400 font-bold">웹사이트 링크</span>
+              <span class="text-xs text-teal-600 dark:text-teal-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">공식 서비스 랜딩 주소</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              모바일 카메라를 대면 즉시 웹사이트로 이동하는 표준 웹 URL QR 코드를 만듭니다.
+            </p>
+          </div>
+
+          <div onclick="applyPreset('wifi', {ssid: 'FLUX_Free_WiFi', pass: 'secure2026', type: 'WPA'})" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-teal-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-bold">Wi-Fi 접속</span>
+              <span class="text-xs text-emerald-600 dark:text-emerald-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">와이파이 원터치 자동 연결</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              비밀번호 입력 없이 카메라 스캔 한 번으로 카페·사무실 Wi-Fi에 즉시 연결됩니다.
+            </p>
+          </div>
+
+          <div onclick="applyPreset('vcard', {name: '김민중', phone: '010-9735-7330', email: 'helpaboutflux@gmail.com', org: 'FLUX soft'})" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-teal-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-400 font-bold">vCard 명함</span>
+              <span class="text-xs text-cyan-600 dark:text-cyan-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">모바일 스마트 디지털 명함</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              이름, 연락처, 이메일, 회사를 스마트폰 연락처 앱에 1초 만에 저장할 수 있습니다.
+            </p>
+          </div>
+
+          <div onclick="applyPreset('text', 'FLUX soft 100% 클라이언트 사이드 보안 텍스트 메시지')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-teal-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-bold">오프라인 메모</span>
+              <span class="text-xs text-neutral-500 group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">일반 텍스트 및 시크릿 메모</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              인터넷 연결이 없는 오프라인 환경에서도 스캔 즉시 내용을 읽을 수 있습니다.
+            </p>
+          </div>
+
+          <div onclick="applyPreset('email', {to: 'helpaboutflux@gmail.com', subject: 'FLUX soft 제휴 및 문의', body: '안녕하세요, 서비스 문의드립니다.'})" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-teal-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 font-bold">이메일 작성</span>
+              <span class="text-xs text-blue-600 dark:text-blue-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">문의 메일 자동 세팅</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              받는 사람과 제목, 본문이 자동 입력된 메일 작성 화면을 바로 호출합니다.
+            </p>
+          </div>
+
+          <div onclick="applyPreset('tel', '010-9735-7330')" class="card-hover-lift cursor-pointer p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2 group hover:border-teal-500 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400 font-bold">전화 걸기</span>
+              <span class="text-xs text-rose-600 dark:text-rose-400 font-bold group-hover:translate-x-1 transition-transform">선택 →</span>
+            </div>
+            <h3 class="font-bold text-sm text-neutral-900 dark:text-white">직통 전화 원터치 다이얼</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              고객센터나 담당자 번호로 번호 누를 필요 없이 바로 통화를 연결합니다.
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: STUDIO (Generator & Scanner)        -->
+    <!-- ========================================== -->
+    <section id="qrViewStudio" class="hidden space-y-6 tab-spring-enter">
+      
+      <!-- Studio Mode Switcher -->
+      <div class="flex items-center justify-between bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
+        <div class="flex items-center space-x-2">
+          <button id="studioModeGenBtn" onclick="switchStudioMode('generator')" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 bg-teal-600 text-white shadow-sm">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
+            <span>QR 코드 생성기</span>
+          </button>
+          <button id="studioModeScanBtn" onclick="switchStudioMode('scanner')" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            <span>렌즈 스캐너</span>
+          </button>
+        </div>
+        <div class="text-[11px] font-mono text-neutral-400 hidden sm:block">
+          오프라인 연산 · 0KB 서버 통신
+        </div>
+      </div>
+
+      <!-- SUB-PANEL A: GENERATOR -->
+      <div id="subPanelGenerator" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left: Input & Style Settings (7 cols) -->
+        <div class="lg:col-span-7 space-y-5">
+          
+          <!-- Preset Type Selector Buttons -->
+          <div class="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
+            <label class="block text-xs font-bold uppercase tracking-wider text-neutral-500">생성 유형 선택</label>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              <button onclick="setType('url')" id="typeBtn_url" class="type-btn py-2 px-1 text-center rounded-xl border text-xs font-bold transition border-teal-500 bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400">
+                URL
+              </button>
+              <button onclick="setType('wifi')" id="typeBtn_wifi" class="type-btn py-2 px-1 text-center rounded-xl border text-xs font-semibold transition border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400">
+                Wi-Fi
+              </button>
+              <button onclick="setType('vcard')" id="typeBtn_vcard" class="type-btn py-2 px-1 text-center rounded-xl border text-xs font-semibold transition border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400">
+                명함
+              </button>
+              <button onclick="setType('text')" id="typeBtn_text" class="type-btn py-2 px-1 text-center rounded-xl border text-xs font-semibold transition border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400">
+                텍스트
+              </button>
+              <button onclick="setType('email')" id="typeBtn_email" class="type-btn py-2 px-1 text-center rounded-xl border text-xs font-semibold transition border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400">
+                이메일
+              </button>
+              <button onclick="setType('tel')" id="typeBtn_tel" class="type-btn py-2 px-1 text-center rounded-xl border text-xs font-semibold transition border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400">
+                전화
+              </button>
+            </div>
+
+            <!-- Dynamic Input Container -->
+            <div id="dynamicInputArea" class="pt-2 space-y-3">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <!-- Customization Accordion: Colors & Logo -->
+          <div class="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-5">
+            <div class="flex items-center justify-between">
+              <label class="block text-xs font-bold uppercase tracking-wider text-neutral-500">디자인 커스텀 & 로고</label>
+              <span class="text-xs text-neutral-400 font-mono">30% 오류 복원</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Foreground Color -->
+              <div class="space-y-2">
+                <span class="text-xs text-neutral-600 dark:text-neutral-400 font-medium">QR 패턴 색상</span>
+                <div class="flex items-center space-x-2">
+                  <input type="color" id="qrColorDarkInput" value="#0f172a" oninput="updateQrColors()" class="w-9 h-9 rounded-xl border border-neutral-300 dark:border-neutral-700 cursor-pointer bg-transparent p-0.5">
+                  <div class="flex space-x-1.5">
+                    <button onclick="setFgColor('#0f172a')" class="w-6 h-6 rounded-lg bg-neutral-900 border border-neutral-700" title="블랙"></button>
+                    <button onclick="setFgColor('#0d9488')" class="w-6 h-6 rounded-lg bg-teal-600" title="사이버 틸"></button>
+                    <button onclick="setFgColor('#2563eb')" class="w-6 h-6 rounded-lg bg-blue-600" title="블루"></button>
+                    <button onclick="setFgColor('#7c3aed')" class="w-6 h-6 rounded-lg bg-violet-600" title="바이올렛"></button>
+                    <button onclick="setFgColor('#ea580c')" class="w-6 h-6 rounded-lg bg-orange-600" title="오렌지"></button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Background Color -->
+              <div class="space-y-2">
+                <span class="text-xs text-neutral-600 dark:text-neutral-400 font-medium">배경 색상</span>
+                <div class="flex items-center space-x-2">
+                  <input type="color" id="qrColorLightInput" value="#ffffff" oninput="updateQrColors()" class="w-9 h-9 rounded-xl border border-neutral-300 dark:border-neutral-700 cursor-pointer bg-transparent p-0.5">
+                  <div class="flex space-x-1.5">
+                    <button onclick="setBgColor('#ffffff')" class="w-6 h-6 rounded-lg bg-white border border-neutral-300" title="화이트"></button>
+                    <button onclick="setBgColor('#f4f4f5')" class="w-6 h-6 rounded-lg bg-neutral-100 border border-neutral-300" title="연회색"></button>
+                    <button onclick="setBgColor('#09090b')" class="w-6 h-6 rounded-lg bg-neutral-950 border border-neutral-700" title="다크"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Error Correction Level -->
+            <div class="space-y-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-neutral-600 dark:text-neutral-400 font-medium">오류 복원 레벨 (Error Correction)</span>
+                <span id="ecLevelDisplay" class="font-mono text-teal-600 dark:text-teal-400 font-bold">H (최대 30% 복원 - 로고 권장)</span>
+              </div>
+              <div class="grid grid-cols-4 gap-2">
+                <button onclick="setECLevel('L')" id="ecBtn_L" class="py-1.5 rounded-xl border text-xs font-semibold text-neutral-500 border-neutral-200 dark:border-neutral-800">L (7%)</button>
+                <button onclick="setECLevel('M')" id="ecBtn_M" class="py-1.5 rounded-xl border text-xs font-semibold text-neutral-500 border-neutral-200 dark:border-neutral-800">M (15%)</button>
+                <button onclick="setECLevel('Q')" id="ecBtn_Q" class="py-1.5 rounded-xl border text-xs font-semibold text-neutral-500 border-neutral-200 dark:border-neutral-800">Q (25%)</button>
+                <button onclick="setECLevel('H')" id="ecBtn_H" class="py-1.5 rounded-xl border text-xs font-bold text-teal-600 dark:text-teal-400 border-teal-500 bg-teal-50 dark:bg-teal-950/60">H (30%)</button>
+              </div>
+            </div>
+
+            <!-- Center Logo Insertion -->
+            <div class="space-y-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-neutral-600 dark:text-neutral-400 font-medium">중앙 로고 삽입 (선택)</span>
+                <button id="removeLogoBtn" onclick="removeLogo()" class="text-[11px] text-rose-500 hover:underline hidden">로고 제거</button>
+              </div>
+              <div class="flex items-center space-x-3">
+                <label class="cursor-pointer px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-semibold transition flex items-center space-x-2">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                  <span>내 로고 이미지 파일 선택</span>
+                  <input type="file" id="logoFileInput" accept="image/*" class="hidden" onchange="handleLogoUpload(event)">
+                </label>
+                <span id="logoFileName" class="text-xs text-neutral-400 truncate max-w-[200px]">등록된 로고 없음</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Right: Live Preview & Export (5 cols) -->
+        <div class="lg:col-span-5 space-y-5">
+          <div class="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col items-center space-y-5 sticky top-24">
+            
+            <div class="flex items-center justify-between w-full">
+              <span class="text-xs font-bold uppercase tracking-wider text-neutral-500">실시간 미리보기</span>
+              <span id="qrStatusBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 font-bold">생성 완료</span>
+            </div>
+
+            <!-- QR Preview Container -->
+            <div class="relative p-5 rounded-2xl bg-white border border-neutral-200/80 shadow-inner flex items-center justify-center min-h-[260px] min-w-[260px]" id="qrCanvasWrapper">
+              <div id="qrcodeRenderArea"></div>
+              <!-- Center Logo Overlay element -->
+              <img id="qrCenterLogoPreview" class="absolute rounded-xl pointer-events-none hidden border-2 border-white shadow-md bg-white object-contain" style="width: 54px; height: 54px;">
+            </div>
+
+            <!-- Resolution & Size Select -->
+            <div class="w-full flex items-center justify-between text-xs pt-1">
+              <span class="text-neutral-500">다운로드 해상도:</span>
+              <div class="flex space-x-1.5 font-mono">
+                <button onclick="setResolution(512)" id="resBtn_512" class="res-btn px-2.5 py-1 rounded-lg border text-neutral-500 border-neutral-200 dark:border-neutral-800 font-semibold">512</button>
+                <button onclick="setResolution(1024)" id="resBtn_1024" class="res-btn px-2.5 py-1 rounded-lg border border-teal-500 bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 font-bold">1024</button>
+                <button onclick="setResolution(2048)" id="resBtn_2048" class="res-btn px-2.5 py-1 rounded-lg border text-neutral-500 border-neutral-200 dark:border-neutral-800 font-semibold">2048</button>
+              </div>
+            </div>
+
+            <!-- Export Buttons -->
+            <div class="w-full space-y-2 pt-2">
+              <button onclick="downloadPNG()" class="btn-shimmer w-full py-3 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs shadow-md shadow-teal-500/20 flex items-center justify-center space-x-2">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>고해상도 PNG 다운로드</span>
+              </button>
+
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="downloadSVG()" class="py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-600 bg-neutral-50 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-semibold text-xs transition flex items-center justify-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-teal-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                  <span>벡터 SVG</span>
+                </button>
+                <button onclick="copyQrImageToClipboard()" class="py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-600 bg-neutral-50 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-semibold text-xs transition flex items-center justify-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span>이미지 복사</span>
+                </button>
+              </div>
+
+              <button onclick="saveCurrentQrToStorage()" class="w-full py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-semibold text-xs transition flex items-center justify-center space-x-1.5">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span>내 보관함에 보관</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- SUB-PANEL B: SCANNER -->
+      <div id="subPanelScanner" class="hidden space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          <!-- Left: Camera Viewport & Drag Drop (7 cols) -->
+          <div class="lg:col-span-7 space-y-4">
+            
+            <div class="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse"></span>
+                  <span class="text-xs font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">카메라 렌즈 스캐너</span>
+                </div>
+                <button id="toggleCameraBtn" onclick="toggleCamera()" class="px-3 py-1.5 rounded-xl bg-teal-600 text-white text-xs font-bold hover:bg-teal-500 transition flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                  <span id="cameraBtnText">카메라 켜기</span>
+                </button>
+              </div>
+
+              <!-- Camera Viewport Box -->
+              <div class="relative w-full aspect-video bg-neutral-950 rounded-2xl overflow-hidden flex items-center justify-center border border-neutral-800 shadow-inner group">
+                <video id="scannerVideo" class="w-full h-full object-cover hidden" playsinline></video>
+                <canvas id="hiddenScanCanvas" class="hidden"></canvas>
+                
+                <!-- Scanner Laser Bar -->
+                <div id="scannerLaserBar" class="scanner-laser hidden"></div>
+
+                <!-- Overlay Corner Target Guidelines -->
+                <div id="scannerGuidelines" class="absolute inset-12 border-2 border-teal-500/40 rounded-2xl pointer-events-none hidden flex flex-col justify-between">
+                  <div class="flex justify-between">
+                    <span class="w-4 h-4 border-t-2 border-l-2 border-teal-400 -mt-1 -ml-1"></span>
+                    <span class="w-4 h-4 border-t-2 border-r-2 border-teal-400 -mt-1 -mr-1"></span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="w-4 h-4 border-b-2 border-l-2 border-teal-400 -mb-1 -ml-1"></span>
+                    <span class="w-4 h-4 border-b-2 border-r-2 border-teal-400 -mb-1 -mr-1"></span>
+                  </div>
+                </div>
+
+                <!-- Placeholder when camera is off -->
+                <div id="cameraOffPlaceholder" class="flex flex-col items-center justify-center p-6 text-center space-y-3 text-neutral-400">
+                  <div class="w-12 h-12 rounded-2xl bg-neutral-800/80 flex items-center justify-center text-neutral-500">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                  </div>
+                  <div class="space-y-1">
+                    <p class="text-xs font-semibold text-neutral-300">카메라가 꺼져 있습니다</p>
+                    <p class="text-[11px] text-neutral-500">'카메라 켜기' 버튼을 누르거나 아래 파일 업로드를 이용하세요</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- File Upload Dropzone -->
+              <div class="pt-2">
+                <label class="cursor-pointer border-2 border-dashed border-neutral-300 dark:border-neutral-800 hover:border-teal-500 dark:hover:border-teal-500 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-2 transition bg-neutral-50/50 dark:bg-neutral-900/50">
+                  <svg class="w-6 h-6 text-teal-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                  <div class="space-y-0.5">
+                    <span class="text-xs font-bold text-neutral-800 dark:text-neutral-200">사진 파일 드래그 또는 클릭하여 업로드</span>
+                    <p class="text-[11px] text-neutral-400">갤러리 캡처본 또는 클립보드(Ctrl+V) 이미지 붙여넣기 지원</p>
+                  </div>
+                  <input type="file" id="scanImageFileInput" accept="image/*" class="hidden" onchange="handleScanImageUpload(event)">
+                </label>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- Right: Scan Result Display Box (5 cols) -->
+          <div class="lg:col-span-5 space-y-4">
+            <div class="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4 sticky top-24">
+              
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-neutral-500">인식 결과 (Result)</span>
+                <span id="scanResultTypeBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold">대기 중</span>
+              </div>
+
+              <div id="scanResultEmptyBox" class="p-8 text-center text-neutral-400 space-y-2 border border-neutral-100 dark:border-neutral-800/80 rounded-2xl bg-neutral-50/50 dark:bg-neutral-950/40">
+                <svg class="w-8 h-8 mx-auto text-neutral-300 dark:text-neutral-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <p class="text-xs">스캔할 QR 코드를 카메라에 비추거나 이미지를 올려주세요</p>
+              </div>
+
+              <!-- Actual Scan Result Card -->
+              <div id="scanResultCard" class="hidden space-y-4">
+                <div class="p-4 rounded-xl bg-neutral-100 dark:bg-neutral-800/90 border border-neutral-200 dark:border-neutral-700 space-y-2">
+                  <div class="flex items-center justify-between text-xs text-neutral-400">
+                    <span id="scanResultDetectedDate" class="font-mono">방금 전</span>
+                    <button onclick="copyScanRawText()" class="text-teal-600 dark:text-teal-400 font-bold hover:underline">원본 복사</button>
+                  </div>
+                  <div id="scanResultRawText" class="text-xs font-mono text-neutral-900 dark:text-white break-all max-h-36 overflow-y-auto leading-relaxed select-all"></div>
+                </div>
+
+                <!-- Structured Action Buttons -->
+                <div id="scanActionBtnArea" class="space-y-2">
+                  <!-- Injected by JS -->
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: STORAGE (My Projects & Scan History) -->
+    <!-- ========================================== -->
+    <section id="qrViewStorage" class="hidden space-y-6 tab-spring-enter">
+      
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-200 dark:border-neutral-800 pb-4">
+        <div>
+          <h2 class="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">내 QR 보관함 & 스캔 이력</h2>
+          <p class="text-xs text-neutral-500">브라우저 로컬 스토리지에 안전하게 보관된 데이터입니다</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button id="storageSubTabCreated" onclick="switchStorageSubTab('created')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-teal-600 text-white">내가 만든 QR (<span id="createdCountBadge">0</span>)</button>
+          <button id="storageSubTabScanned" onclick="switchStorageSubTab('scanned')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800">스캔 기록 (<span id="scannedCountBadge">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- Created Projects Grid -->
+      <div id="storageCreatedList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Scanned History List -->
+      <div id="storageScannedList" class="hidden space-y-3">
+        <!-- Rendered by JS -->
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 text-center text-xs text-neutral-500 mt-auto bg-white/50 dark:bg-neutral-900/50 relative z-10">
+    <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center space-x-2">
+        <span class="text-neutral-900 dark:text-white font-semibold">FLUX QR & Lens</span>
+        <span>—</span>
+        <span>스마트 벡터 QR & 브라우저 렌즈 스튜디오</span>
+      </div>
+      <div class="flex items-center space-x-3 text-neutral-400 text-xs flex-wrap justify-center">
+        <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+        <span>·</span>
+        <a href="board.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Board</a>
+        <span>·</span>
+        <a href="drop.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Docs</a>
+        <span>·</span>
+        <a href="frame.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Frame</a>
+        <span>·</span>
+        <a href="form.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Form</a>
+        <span>·</span>
+        <a href="secret.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Secret</a>
+        <span>·</span>
+        <a href="voice.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Voice</a>
+        <span>·</span>
+        <a href="compress.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Compress</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Script -->
+  <script>
+    // State variables
+    let currentType = 'url';
+    let currentECLevel = 'H';
+    let currentFgColor = '#0f172a';
+    let currentBgColor = '#ffffff';
+    let currentResolution = 1024;
+    let customLogoImg = null;
+    let customLogoDataUrl = null;
+    let qrcodeInstance = null;
+
+    // Scanner state
+    let videoStream = null;
+    let isScanning = false;
+    let scanAnimationId = null;
+
+    // Initialize App
+    function initQrApp() {
+      // Dark Mode toggle
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+          localStorage.setItem('flux_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        });
+        if (localStorage.getItem('flux_theme') === 'light') {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+
+      // Initial Render
+      renderDynamicInputs();
+      generateQrCode();
+      updateStorageBadges();
+
+      // Listen for paste event for quick scanning
+      window.addEventListener('paste', handlePasteImage);
+    }
+
+    // Switch Main Tabs: home, studio, storage
+    function switchQrTab(tab) {
+      const views = ['home', 'studio', 'storage'];
+      views.forEach(v => {
+        const el = document.getElementById('qrView' + capitalize(v));
+        if (el) el.classList.add('hidden');
+      });
+
+      const target = document.getElementById('qrView' + capitalize(tab));
+      if (target) {
+        target.classList.remove('hidden');
+        target.classList.remove('tab-spring-enter');
+        void target.offsetWidth;
+        target.classList.add('tab-spring-enter');
+      }
+
+      // Nav Button styling
+      ['Home', 'Studio', 'Storage'].forEach(name => {
+        const btn = document.getElementById('navBtn' + name);
+        if (btn) {
+          if (name.toLowerCase() === tab) {
+            btn.className = "px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-white bg-teal-600 shadow-sm";
+          } else {
+            btn.className = "px-4 py-1.5 rounded-xl text-xs font-semibold transition-all text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white";
+          }
+        }
+
+        const mob = document.getElementById('mobileNav' + name);
+        if (mob) {
+          if (name.toLowerCase() === tab) {
+            mob.className = "text-xs font-semibold py-1 px-3 rounded-lg text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/50";
+          } else {
+            mob.className = "text-xs font-semibold py-1 px-3 rounded-lg text-neutral-500";
+          }
+        }
+      });
+
+      if (tab === 'storage') {
+        renderStorage();
+      }
+
+      // Stop camera if leaving studio
+      if (tab !== 'studio' && isScanning) {
+        stopCamera();
+      }
+    }
+
+    function openStudioWithMode(mode) {
+      switchQrTab('studio');
+      switchStudioMode(mode);
+    }
+
+    function switchStudioMode(mode) {
+      const genPanel = document.getElementById('subPanelGenerator');
+      const scanPanel = document.getElementById('subPanelScanner');
+      const genBtn = document.getElementById('studioModeGenBtn');
+      const scanBtn = document.getElementById('studioModeScanBtn');
+
+      if (mode === 'generator') {
+        genPanel.classList.remove('hidden');
+        scanPanel.classList.add('hidden');
+        genBtn.className = "px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 bg-teal-600 text-white shadow-sm";
+        scanBtn.className = "px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white";
+        if (isScanning) stopCamera();
+      } else {
+        genPanel.classList.add('hidden');
+        scanPanel.classList.remove('hidden');
+        scanBtn.className = "px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 bg-teal-600 text-white shadow-sm";
+        genBtn.className = "px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white";
+      }
+    }
+
+    // Type Selector
+    function setType(type) {
+      currentType = type;
+      ['url', 'wifi', 'vcard', 'text', 'email', 'tel'].forEach(t => {
+        const btn = document.getElementById('typeBtn_' + t);
+        if (btn) {
+          if (t === type) {
+            btn.className = "type-btn py-2 px-1 text-center rounded-xl border text-xs font-bold transition border-teal-500 bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400";
+          } else {
+            btn.className = "type-btn py-2 px-1 text-center rounded-xl border text-xs font-semibold transition border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 text-neutral-600 dark:text-neutral-400";
+          }
+        }
+      });
+      renderDynamicInputs();
+      generateQrCode();
+    }
+
+    function renderDynamicInputs() {
+      const container = document.getElementById('dynamicInputArea');
+      let html = '';
+
+      if (currentType === 'url') {
+        html = `
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">웹사이트 URL (https://)</label>
+            <input id="input_url" type="url" value="https://helpaboutflux-cpu.github.io/cream-ai-hub-android/" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-teal-500">
+          </div>
+        `;
+      } else if (currentType === 'wifi') {
+        html = `
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-xs text-neutral-500 mb-1">와이파이 네트워크 이름 (SSID)</label>
+              <input id="input_wifi_ssid" type="text" value="FLUX_Free_WiFi" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-teal-500">
+            </div>
+            <div>
+              <label class="block text-xs text-neutral-500 mb-1">비밀번호</label>
+              <input id="input_wifi_pass" type="text" value="secure2026" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-teal-500">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs text-neutral-500 mb-1">보안 방식</label>
+                <select id="input_wifi_type" onchange="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-2 text-xs text-neutral-900 dark:text-white">
+                  <option value="WPA">WPA/WPA2/WPA3</option>
+                  <option value="WEP">WEP</option>
+                  <option value="nopass">비밀번호 없음 (Open)</option>
+                </select>
+              </div>
+              <div class="flex items-center space-x-2 pt-5">
+                <input id="input_wifi_hidden" type="checkbox" onchange="generateQrCode()" class="rounded border-neutral-300 text-teal-600 focus:ring-teal-500">
+                <label for="input_wifi_hidden" class="text-xs text-neutral-600 dark:text-neutral-400">숨겨진 네트워크</label>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (currentType === 'vcard') {
+        html = `
+          <div class="space-y-2.5">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs text-neutral-500 mb-1">성명</label>
+                <input id="input_vcard_name" type="text" value="김민중" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-neutral-900 dark:text-white">
+              </div>
+              <div>
+                <label class="block text-xs text-neutral-500 mb-1">전화번호</label>
+                <input id="input_vcard_tel" type="tel" value="010-9735-7330" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-neutral-900 dark:text-white">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs text-neutral-500 mb-1">이메일</label>
+                <input id="input_vcard_email" type="email" value="helpaboutflux@gmail.com" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-neutral-900 dark:text-white">
+              </div>
+              <div>
+                <label class="block text-xs text-neutral-500 mb-1">회사/직함</label>
+                <input id="input_vcard_org" type="text" value="FLUX soft" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-neutral-900 dark:text-white">
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (currentType === 'text') {
+        html = `
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">메모 / 텍스트 내용</label>
+            <textarea id="input_text_body" rows="3" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl p-3 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-teal-500">FLUX soft 100% 클라이언트 사이드 보안 텍스트 메시지</textarea>
+          </div>
+        `;
+      } else if (currentType === 'email') {
+        html = `
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-xs text-neutral-500 mb-1">수신자 이메일 주소</label>
+              <input id="input_email_to" type="email" value="helpaboutflux@gmail.com" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-neutral-900 dark:text-white">
+            </div>
+            <div>
+              <label class="block text-xs text-neutral-500 mb-1">메일 제목</label>
+              <input id="input_email_sub" type="text" value="FLUX soft 제휴 및 문의" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-neutral-900 dark:text-white">
+            </div>
+          </div>
+        `;
+      } else if (currentType === 'tel') {
+        html = `
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">전화번호</label>
+            <input id="input_tel_num" type="tel" value="010-9735-7330" oninput="generateQrCode()" class="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3.5 py-2.5 text-xs text-neutral-900 dark:text-white">
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+    }
+
+    // Compose formatted text string for QR
+    function getQrRawText() {
+      if (currentType === 'url') {
+        const el = document.getElementById('input_url');
+        return el ? (el.value.trim() || 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/') : 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/';
+      } else if (currentType === 'wifi') {
+        const ssid = document.getElementById('input_wifi_ssid')?.value.trim() || 'WiFi';
+        const pass = document.getElementById('input_wifi_pass')?.value.trim() || '';
+        const type = document.getElementById('input_wifi_type')?.value || 'WPA';
+        const hidden = document.getElementById('input_wifi_hidden')?.checked ? 'true' : 'false';
+        return `WIFI:S:${ssid};T:${type};P:${pass};H:${hidden};;`;
+      } else if (currentType === 'vcard') {
+        const name = document.getElementById('input_vcard_name')?.value.trim() || '이름';
+        const tel = document.getElementById('input_vcard_tel')?.value.trim() || '';
+        const email = document.getElementById('input_vcard_email')?.value.trim() || '';
+        const org = document.getElementById('input_vcard_org')?.value.trim() || '';
+        return `BEGIN:VCARD\nVERSION:3.0\nFN:${name}\nTEL:${tel}\nEMAIL:${email}\nORG:${org}\nEND:VCARD`;
+      } else if (currentType === 'text') {
+        return document.getElementById('input_text_body')?.value || 'FLUX QR Text';
+      } else if (currentType === 'email') {
+        const to = document.getElementById('input_email_to')?.value.trim() || '';
+        const sub = document.getElementById('input_email_sub')?.value.trim() || '';
+        return `mailto:${to}?subject=${encodeURIComponent(sub)}`;
+      } else if (currentType === 'tel') {
+        const num = document.getElementById('input_tel_num')?.value.trim() || '';
+        return `tel:${num}`;
+      }
+      return 'FLUX QR';
+    }
+
+    // Generate QR Code onto Canvas
+    function generateQrCode() {
+      const container = document.getElementById('qrcodeRenderArea');
+      if (!container) return;
+
+      container.innerHTML = '';
+      const text = getQrRawText();
+
+      // Map EC Level
+      let ecObj = QRCode.CorrectLevel.H;
+      if (currentECLevel === 'L') ecObj = QRCode.CorrectLevel.L;
+      else if (currentECLevel === 'M') ecObj = QRCode.CorrectLevel.M;
+      else if (currentECLevel === 'Q') ecObj = QRCode.CorrectLevel.Q;
+
+      try {
+        qrcodeInstance = new QRCode(container, {
+          text: text,
+          width: 240,
+          height: 240,
+          colorDark: currentFgColor,
+          colorLight: currentBgColor,
+          correctLevel: ecObj
+        });
+
+        // Overlay Logo if exists
+        const logoEl = document.getElementById('qrCenterLogoPreview');
+        if (customLogoDataUrl) {
+          logoEl.src = customLogoDataUrl;
+          logoEl.classList.remove('hidden');
+        } else {
+          logoEl.classList.add('hidden');
+        }
+
+        document.getElementById('qrStatusBadge').textContent = '생성 완료';
+        document.getElementById('qrStatusBadge').className = 'text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 font-bold';
+      } catch (err) {
+        console.error('QR Gen Error:', err);
+      }
+    }
+
+    // Color controls
+    function setFgColor(c) {
+      currentFgColor = c;
+      document.getElementById('qrColorDarkInput').value = c;
+      generateQrCode();
+    }
+    function setBgColor(c) {
+      currentBgColor = c;
+      document.getElementById('qrColorLightInput').value = c;
+      generateQrCode();
+    }
+    function updateQrColors() {
+      currentFgColor = document.getElementById('qrColorDarkInput').value;
+      currentBgColor = document.getElementById('qrColorLightInput').value;
+      generateQrCode();
+    }
+
+    // EC Level
+    function setECLevel(lvl) {
+      currentECLevel = lvl;
+      ['L', 'M', 'Q', 'H'].forEach(l => {
+        const btn = document.getElementById('ecBtn_' + l);
+        if (btn) {
+          if (l === lvl) {
+            btn.className = "py-1.5 rounded-xl border text-xs font-bold text-teal-600 dark:text-teal-400 border-teal-500 bg-teal-50 dark:bg-teal-950/60";
+          } else {
+            btn.className = "py-1.5 rounded-xl border text-xs font-semibold text-neutral-500 border-neutral-200 dark:border-neutral-800";
+          }
+        }
+      });
+      const desc = {
+        'L': 'L (약 7% 복원)',
+        'M': 'M (약 15% 복원)',
+        'Q': 'Q (약 25% 복원)',
+        'H': 'H (최대 30% 복원 - 로고 권장)'
+      };
+      document.getElementById('ecLevelDisplay').textContent = desc[lvl];
+      generateQrCode();
+    }
+
+    // Resolution
+    function setResolution(res) {
+      currentResolution = res;
+      [512, 1024, 2048].forEach(r => {
+        const btn = document.getElementById('resBtn_' + r);
+        if (btn) {
+          if (r === res) {
+            btn.className = "res-btn px-2.5 py-1 rounded-lg border border-teal-500 bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 font-bold";
+          } else {
+            btn.className = "res-btn px-2.5 py-1 rounded-lg border text-neutral-500 border-neutral-200 dark:border-neutral-800 font-semibold";
+          }
+        }
+      });
+    }
+
+    // Logo Handling
+    function handleLogoUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        customLogoDataUrl = evt.target.result;
+        customLogoImg = new Image();
+        customLogoImg.onload = function() {
+          document.getElementById('logoFileName').textContent = file.name;
+          document.getElementById('removeLogoBtn').classList.remove('hidden');
+          generateQrCode();
+        };
+        customLogoImg.src = customLogoDataUrl;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function removeLogo() {
+      customLogoImg = null;
+      customLogoDataUrl = null;
+      document.getElementById('logoFileInput').value = '';
+      document.getElementById('logoFileName').textContent = '등록된 로고 없음';
+      document.getElementById('removeLogoBtn').classList.add('hidden');
+      generateQrCode();
+    }
+
+    // Build Master High-Res Canvas
+    function buildMasterCanvas(targetSize) {
+      const srcCanvas = document.querySelector('#qrcodeRenderArea canvas');
+      if (!srcCanvas) return null;
+
+      const master = document.createElement('canvas');
+      master.width = targetSize;
+      master.height = targetSize;
+      const ctx = master.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      // Draw background
+      ctx.fillStyle = currentBgColor;
+      ctx.fillRect(0, 0, targetSize, targetSize);
+
+      // Draw QR with padding (e.g. 5% padding)
+      const pad = Math.floor(targetSize * 0.05);
+      const drawSize = targetSize - (pad * 2);
+      ctx.drawImage(srcCanvas, pad, pad, drawSize, drawSize);
+
+      // Draw Logo in center if present
+      if (customLogoImg) {
+        const logoSize = Math.floor(targetSize * 0.22);
+        const logoX = Math.floor((targetSize - logoSize) / 2);
+        const logoY = Math.floor((targetSize - logoSize) / 2);
+
+        // White padding badge behind logo
+        const badgePad = Math.floor(logoSize * 0.12);
+        const badgeSize = logoSize + (badgePad * 2);
+        const badgeX = logoX - badgePad;
+        const badgeY = logoY - badgePad;
+        const badgeRadius = Math.floor(badgeSize * 0.22);
+
+        ctx.fillStyle = currentBgColor;
+        ctx.beginPath();
+        ctx.roundRect(badgeX, badgeY, badgeSize, badgeSize, badgeRadius);
+        ctx.fill();
+
+        // Stroke boundary
+        ctx.strokeStyle = currentFgColor;
+        ctx.lineWidth = Math.max(1, Math.floor(targetSize * 0.004));
+        ctx.stroke();
+
+        // Draw logo
+        ctx.drawImage(customLogoImg, logoX, logoY, logoSize, logoSize);
+      }
+
+      return master;
+    }
+
+    // Download PNG
+    function downloadPNG() {
+      const master = buildMasterCanvas(currentResolution);
+      if (!master) return;
+
+      const link = document.createElement('a');
+      link.download = `flux-qr-${currentType}-${Date.now()}.png`;
+      link.href = master.toDataURL('image/png');
+      link.click();
+      triggerConfetti();
+    }
+
+    // Download Vector SVG
+    function downloadSVG() {
+      const srcCanvas = document.querySelector('#qrcodeRenderArea canvas');
+      if (!srcCanvas) return;
+
+      const width = srcCanvas.width;
+      const height = srcCanvas.height;
+      const ctx = srcCanvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, width, height).data;
+
+      // Generate SVG Rects
+      let rects = '';
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          const r = imgData[idx];
+          const g = imgData[idx + 1];
+          const b = imgData[idx + 2];
+          const a = imgData[idx + 3];
+
+          // If dark pixel
+          if (a > 128 && (r + g + b) / 3 < 128) {
+            rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${currentFgColor}"/>`;
+          }
+        }
+      }
+
+      let svg = `<?xml version="1.0" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 ${width} ${height}" width="1024" height="1024">
+  <rect width="100%" height="100%" fill="${currentBgColor}"/>
+  ${rects}
+</svg>`;
+
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `flux-qr-${currentType}-${Date.now()}.svg`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+      triggerConfetti();
+    }
+
+    // Copy to Clipboard
+    async function copyQrImageToClipboard() {
+      const master = buildMasterCanvas(512);
+      if (!master) return;
+
+      try {
+        master.toBlob(async (blob) => {
+          if (!blob) return;
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          alert('QR 코드 이미지가 클립보드에 복사되었습니다.');
+        });
+      } catch (err) {
+        console.error('Clipboard copy error:', err);
+        alert('클립보드 권한이 필요합니다. PNG 다운로드를 이용해 주세요.');
+      }
+    }
+
+    // Presets application from Home
+    function applyPreset(type, val) {
+      switchQrTab('studio');
+      switchStudioMode('generator');
+      setType(type);
+
+      setTimeout(() => {
+        if (type === 'url') {
+          const el = document.getElementById('input_url');
+          if (el) el.value = val;
+        } else if (type === 'wifi') {
+          document.getElementById('input_wifi_ssid').value = val.ssid;
+          document.getElementById('input_wifi_pass').value = val.pass;
+          document.getElementById('input_wifi_type').value = val.type;
+        } else if (type === 'vcard') {
+          document.getElementById('input_vcard_name').value = val.name;
+          document.getElementById('input_vcard_tel').value = val.phone;
+          document.getElementById('input_vcard_email').value = val.email;
+          document.getElementById('input_vcard_org').value = val.org;
+        } else if (type === 'text') {
+          document.getElementById('input_text_body').value = val;
+        } else if (type === 'email') {
+          document.getElementById('input_email_to').value = val.to;
+          document.getElementById('input_email_sub').value = val.subject;
+        } else if (type === 'tel') {
+          document.getElementById('input_tel_num').value = val;
+        }
+        generateQrCode();
+      }, 50);
+    }
+
+    // Save to Local Storage
+    function saveCurrentQrToStorage() {
+      const text = getQrRawText();
+      const master = buildMasterCanvas(256);
+      const thumb = master ? master.toDataURL('image/png') : '';
+
+      const projects = JSON.parse(localStorage.getItem('flux_qr_projects') || '[]');
+      projects.unshift({
+        id: 'qr_' + Date.now(),
+        type: currentType,
+        text: text,
+        thumb: thumb,
+        date: new Date().toLocaleString('ko-KR')
+      });
+
+      // Keep up to 30 items
+      if (projects.length > 30) projects.pop();
+      localStorage.setItem('flux_qr_projects', JSON.stringify(projects));
+      updateStorageBadges();
+      alert('내 보관함에 QR 코드가 저장되었습니다.');
+      triggerConfetti();
+    }
+
+    // ============================================
+    // SCANNER ENGINE
+    // ============================================
+    async function toggleCamera() {
+      if (isScanning) {
+        stopCamera();
+      } else {
+        await startCamera();
+      }
+    }
+
+    async function startCamera() {
+      try {
+        videoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        const video = document.getElementById('scannerVideo');
+        video.srcObject = videoStream;
+        video.setAttribute('playsinline', true);
+        video.classList.remove('hidden');
+        await video.play();
+
+        isScanning = true;
+        document.getElementById('cameraOffPlaceholder').classList.add('hidden');
+        document.getElementById('scannerLaserBar').classList.remove('hidden');
+        document.getElementById('scannerGuidelines').classList.remove('hidden');
+        document.getElementById('cameraBtnText').textContent = '카메라 끄기';
+        document.getElementById('toggleCameraBtn').className = "px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-500 transition flex items-center space-x-1.5";
+
+        scanFrame();
+      } catch (err) {
+        console.error('Camera access error:', err);
+        alert('카메라 접근 권한이 차단되었거나 지원되지 않는 기기입니다. 이미지 파일 업로드를 이용해 주세요.');
+      }
+    }
+
+    function stopCamera() {
+      if (videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+        videoStream = null;
+      }
+      isScanning = false;
+      if (scanAnimationId) cancelAnimationFrame(scanAnimationId);
+
+      const video = document.getElementById('scannerVideo');
+      if (video) video.classList.add('hidden');
+      document.getElementById('cameraOffPlaceholder').classList.remove('hidden');
+      document.getElementById('scannerLaserBar').classList.add('hidden');
+      document.getElementById('scannerGuidelines').classList.add('hidden');
+      document.getElementById('cameraBtnText').textContent = '카메라 켜기';
+      document.getElementById('toggleCameraBtn').className = "px-3 py-1.5 rounded-xl bg-teal-600 text-white text-xs font-bold hover:bg-teal-500 transition flex items-center space-x-1.5";
+    }
+
+    function scanFrame() {
+      if (!isScanning) return;
+      const video = document.getElementById('scannerVideo');
+      const canvas = document.getElementById('hiddenScanCanvas');
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // Scan via jsQR
+        if (typeof jsQR !== 'undefined') {
+          const code = jsQR(imgData.data, imgData.width, imgData.height, {
+            inversionAttempts: "dontInvert"
+          });
+          if (code && code.data) {
+            handleScanSuccess(code.data);
+            return;
+          }
+        }
+      }
+      scanAnimationId = requestAnimationFrame(scanFrame);
+    }
+
+    // Image File Scan Upload
+    function handleScanImageUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      processImageFileForScan(file);
+    }
+
+    function handlePasteImage(e) {
+      if (!e.clipboardData || !e.clipboardData.items) return;
+      for (let item of e.clipboardData.items) {
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) {
+            switchQrTab('studio');
+            switchStudioMode('scanner');
+            processImageFileForScan(file);
+            break;
+          }
+        }
+      }
+    }
+
+    function processImageFileForScan(file) {
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.getElementById('hiddenScanCanvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          if (typeof jsQR !== 'undefined') {
+            const code = jsQR(imgData.data, imgData.width, imgData.height);
+            if (code && code.data) {
+              handleScanSuccess(code.data);
+            } else {
+              alert('선택한 이미지에서 유효한 QR 코드를 찾을 수 없습니다.');
+            }
+          }
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Handle Scan Success
+    function handleScanSuccess(raw) {
+      if (isScanning) stopCamera();
+
+      document.getElementById('scanResultEmptyBox').classList.add('hidden');
+      document.getElementById('scanResultCard').classList.remove('hidden');
+      document.getElementById('scanResultRawText').textContent = raw;
+      document.getElementById('scanResultDetectedDate').textContent = new Date().toLocaleTimeString('ko-KR');
+
+      // Determine Category
+      let category = '텍스트';
+      let actionsHtml = '';
+
+      if (raw.startsWith('http://') || raw.startsWith('https://')) {
+        category = '웹 URL';
+        actionsHtml = `
+          <a href="${raw}" target="_blank" rel="noopener noreferrer" class="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            <span>새 탭에서 열기</span>
+          </a>
+        `;
+      } else if (raw.startsWith('WIFI:')) {
+        category = 'Wi-Fi 네트워크';
+        const ssidMatch = raw.match(/S:([^;]+);/);
+        const passMatch = raw.match(/P:([^;]+);/);
+        const ssid = ssidMatch ? ssidMatch[1] : '';
+        const pass = passMatch ? passMatch[1] : '';
+        actionsHtml = `
+          <div class="p-3 bg-neutral-200/60 dark:bg-neutral-800 rounded-xl text-xs space-y-1">
+            <div class="flex justify-between"><span>네트워크(SSID):</span> <strong class="font-mono">${escapeHtml(ssid)}</strong></div>
+            <div class="flex justify-between"><span>비밀번호:</span> <strong class="font-mono">${escapeHtml(pass)}</strong></div>
+          </div>
+          <button onclick="navigator.clipboard.writeText('${pass}'); alert('와이파이 비밀번호가 복사되었습니다.');" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition">
+            <span>비밀번호 복사</span>
+          </button>
+        `;
+      } else if (raw.startsWith('BEGIN:VCARD')) {
+        category = 'vCard 연락처';
+        const nameMatch = raw.match(/FN:([^\n\r]+)/);
+        const telMatch = raw.match(/TEL:([^\n\r]+)/);
+        const name = nameMatch ? nameMatch[1] : '';
+        const tel = telMatch ? telMatch[1] : '';
+        actionsHtml = `
+          <div class="p-3 bg-neutral-200/60 dark:bg-neutral-800 rounded-xl text-xs space-y-1">
+            <div class="flex justify-between"><span>성명:</span> <strong>${escapeHtml(name)}</strong></div>
+            <div class="flex justify-between"><span>연락처:</span> <strong class="font-mono">${escapeHtml(tel)}</strong></div>
+          </div>
+          ${tel ? `<a href="tel:${tel}" class="w-full py-2.5 rounded-xl bg-teal-600 text-white font-bold text-xs flex items-center justify-center space-x-1.5"><span>전화 연결</span></a>` : ''}
+        `;
+      } else if (raw.startsWith('tel:')) {
+        category = '전화번호';
+        const num = raw.replace('tel:', '');
+        actionsHtml = `
+          <a href="${raw}" class="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition">
+            <span>${escapeHtml(num)} 통화 연결</span>
+          </a>
+        `;
+      }
+
+      actionsHtml += `
+        <button onclick="toggleCamera()" class="w-full py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-semibold text-xs transition">
+          다시 스캔하기
+        </button>
+      `;
+
+      document.getElementById('scanActionBtnArea').innerHTML = actionsHtml;
+      document.getElementById('scanResultTypeBadge').textContent = category;
+      document.getElementById('scanResultTypeBadge').className = 'text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-400 font-bold';
+
+      // Save to Scan History
+      const scans = JSON.parse(localStorage.getItem('flux_qr_scans') || '[]');
+      scans.unshift({
+        id: 'scan_' + Date.now(),
+        category: category,
+        raw: raw,
+        date: new Date().toLocaleString('ko-KR')
+      });
+      if (scans.length > 50) scans.pop();
+      localStorage.setItem('flux_qr_scans', JSON.stringify(scans));
+      updateStorageBadges();
+
+      triggerConfetti();
+    }
+
+    function copyScanRawText() {
+      const text = document.getElementById('scanResultRawText').textContent;
+      navigator.clipboard.writeText(text);
+      alert('스캔 텍스트가 클립보드에 복사되었습니다.');
+    }
+
+    // ============================================
+    // STORAGE MANAGEMENT
+    // ============================================
+    function switchStorageSubTab(sub) {
+      const createdBtn = document.getElementById('storageSubTabCreated');
+      const scannedBtn = document.getElementById('storageSubTabScanned');
+      const createdList = document.getElementById('storageCreatedList');
+      const scannedList = document.getElementById('storageScannedList');
+
+      if (sub === 'created') {
+        createdBtn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold bg-teal-600 text-white";
+        scannedBtn.className = "px-3.5 py-1.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800";
+        createdList.classList.remove('hidden');
+        scannedList.classList.add('hidden');
+      } else {
+        scannedBtn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold bg-teal-600 text-white";
+        createdBtn.className = "px-3.5 py-1.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800";
+        scannedList.classList.remove('hidden');
+        createdList.classList.add('hidden');
+      }
+      renderStorage();
+    }
+
+    function updateStorageBadges() {
+      const projects = JSON.parse(localStorage.getItem('flux_qr_projects') || '[]');
+      const scans = JSON.parse(localStorage.getItem('flux_qr_scans') || '[]');
+      const crBadge = document.getElementById('createdCountBadge');
+      const scBadge = document.getElementById('scannedCountBadge');
+      if (crBadge) crBadge.textContent = projects.length;
+      if (scBadge) scBadge.textContent = scans.length;
+    }
+
+    function renderStorage() {
+      updateStorageBadges();
+      const projects = JSON.parse(localStorage.getItem('flux_qr_projects') || '[]');
+      const scans = JSON.parse(localStorage.getItem('flux_qr_scans') || '[]');
+
+      // Render Created Projects
+      const createdContainer = document.getElementById('storageCreatedList');
+      if (projects.length === 0) {
+        createdContainer.innerHTML = `
+          <div class="col-span-full py-12 text-center text-neutral-400 space-y-2">
+            <p class="text-sm font-semibold">저장된 QR 코드가 없습니다</p>
+            <p class="text-xs text-neutral-500">스튜디오에서 만든 QR 코드를 '내 보관함에 보관'해 보세요</p>
+          </div>
+        `;
+      } else {
+        createdContainer.innerHTML = projects.map(p => `
+          <div class="card-hover-lift p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex flex-col justify-between space-y-3">
+            <div class="flex items-center space-x-3">
+              <img src="${p.thumb}" class="w-16 h-16 rounded-xl bg-white border border-neutral-200 object-contain p-1">
+              <div class="flex-1 min-w-0 space-y-0.5">
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-400 font-bold">${p.type.toUpperCase()}</span>
+                <p class="text-xs font-mono text-neutral-900 dark:text-white truncate">${escapeHtml(p.text)}</p>
+                <p class="text-[10px] text-neutral-400 font-mono">${p.date}</p>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
+              <button onclick="downloadStorageItem('${p.id}')" class="text-teal-600 dark:text-teal-400 font-bold hover:underline">PNG 받기</button>
+              <button onclick="deleteStorageItem('${p.id}')" class="text-rose-500 hover:underline">삭제</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Render Scanned List
+      const scannedContainer = document.getElementById('storageScannedList');
+      if (scans.length === 0) {
+        scannedContainer.innerHTML = `
+          <div class="py-12 text-center text-neutral-400 space-y-2">
+            <p class="text-sm font-semibold">스캔 기록이 없습니다</p>
+            <p class="text-xs text-neutral-500">렌즈 스캐너를 통해 QR을 스캔하면 이력이 자동 보관됩니다</p>
+          </div>
+        `;
+      } else {
+        scannedContainer.innerHTML = scans.map(s => `
+          <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="space-y-1 flex-1 min-w-0">
+              <div class="flex items-center space-x-2">
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-bold">${s.category}</span>
+                <span class="text-[10px] text-neutral-400 font-mono">${s.date}</span>
+              </div>
+              <p class="text-xs font-mono text-neutral-900 dark:text-white truncate">${escapeHtml(s.raw)}</p>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button onclick="navigator.clipboard.writeText('${escapeQuotes(s.raw)}'); alert('복사되었습니다.');" class="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-semibold hover:bg-neutral-200 dark:hover:bg-neutral-700 transition">복사</button>
+              <button onclick="deleteScanItem('${s.id}')" class="px-3 py-1.5 rounded-xl text-rose-500 text-xs hover:bg-rose-50 dark:hover:bg-rose-950/40 transition">삭제</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function downloadStorageItem(id) {
+      const projects = JSON.parse(localStorage.getItem('flux_qr_projects') || '[]');
+      const item = projects.find(p => p.id === id);
+      if (!item || !item.thumb) return;
+      const link = document.createElement('a');
+      link.download = `flux-qr-${item.type}-${Date.now()}.png`;
+      link.href = item.thumb;
+      link.click();
+    }
+
+    function deleteStorageItem(id) {
+      let projects = JSON.parse(localStorage.getItem('flux_qr_projects') || '[]');
+      projects = projects.filter(p => p.id !== id);
+      localStorage.setItem('flux_qr_projects', JSON.stringify(projects));
+      renderStorage();
+    }
+
+    function deleteScanItem(id) {
+      let scans = JSON.parse(localStorage.getItem('flux_qr_scans') || '[]');
+      scans = scans.filter(s => s.id !== id);
+      localStorage.setItem('flux_qr_scans', JSON.stringify(scans));
+      renderStorage();
+    }
+
+    // ============================================
+    // UTILITIES
+    // ============================================
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    function escapeQuotes(str) {
+      if (!str) return '';
+      return str.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+
+    // Confetti Explosion
+    function triggerConfetti() {
+      const colors = ['#0d9488', '#14b8a6', '#2dd4bf', '#059669', '#10b981', '#38bdf8'];
+      for (let i = 0; i < 36; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti-particle';
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        c.style.width = size + 'px';
+        c.style.height = size + 'px';
+        c.style.backgroundColor = color;
+        c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        c.style.left = '50%';
+        c.style.top = '40%';
+        c.style.setProperty('--tx', (Math.random() * 380 - 190) + 'px');
+        c.style.setProperty('--ty', (Math.random() * 380 - 150) + 'px');
+        c.style.setProperty('--tr', (Math.random() * 720 - 360) + 'deg');
+        document.body.appendChild(c);
+        setTimeout(() => c.remove(), 1200);
+      }
+    }
+
+    // Run Init
+    window.addEventListener('DOMContentLoaded', initQrApp);
+  </script>
+</body>
+</html>
