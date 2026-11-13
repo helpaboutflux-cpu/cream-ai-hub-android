@@ -1,0 +1,2313 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lemon Money - 편한 스마트 가계부 & 영수증 OCR 자산 관리</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            },
+            lemon: {
+              50: '#fefce8',
+              100: '#fef9c3',
+              200: '#fef08a',
+              300: '#fde047',
+              400: '#facc15',
+              500: '#eab308',
+              600: '#ca8a04',
+              700: '#a16207',
+              800: '#854d0e',
+              900: '#713f12',
+              950: '#3a1d04'
+            },
+            emerald: {
+              500: '#10b981',
+              600: '#059669'
+            },
+            rose: {
+              500: '#f43f5e',
+              600: '#e11d48'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Tesseract.js for In-Browser Zero-Server Receipt & Screenshot OCR -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Glow */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.16;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+
+    /* Click Ripple Effect */
+    .click-ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(234, 179, 8, 0.35);
+      transform: scale(0);
+      animation: rippleEffect 0.55s ease-out;
+      pointer-events: none;
+      z-index: 50;
+    }
+    @keyframes rippleEffect {
+      to {
+        transform: scale(3.5);
+        opacity: 0;
+      }
+    }
+
+    /* Shimmer Button */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 40%;
+      height: 200%;
+      background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.25), transparent);
+      transform: rotate(30deg);
+      animation: shimmerPass 3.5s infinite;
+    }
+    @keyframes shimmerPass {
+      0% { left: -60%; }
+      25% { left: 140%; }
+      100% { left: 140%; }
+    }
+
+    /* Micro Bounce & Press Animation */
+    .btn-tap {
+      transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+    }
+    .btn-tap:hover {
+      transform: translateY(-1.5px) scale(1.02);
+    }
+    .btn-tap:active {
+      transform: scale(0.94);
+    }
+
+    /* Calendar Cell */
+    .cal-cell {
+      min-height: 80px;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+    .cal-cell:hover {
+      background-color: rgba(234, 179, 8, 0.08);
+    }
+
+    /* Toast Notification */
+    #lemonToast {
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #lemonToast.toast-show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    #lemonToast.toast-hide {
+      opacity: 0;
+      transform: translateY(12px) scale(0.95);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen relative antialiased flex flex-col justify-between selection:bg-lemon-500 selection:text-neutral-950">
+
+  <!-- Ambient Floating Orbs -->
+  <div class="ambient-orb bg-lemon-500/20 w-96 h-96 top-10 -left-20"></div>
+  <div class="ambient-orb bg-emerald-500/15 w-96 h-96 top-80 right-0"></div>
+  <div class="ambient-orb bg-amber-500/15 w-80 h-80 bottom-40 left-1/3"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3">
+        <a href="index.html" class="flex items-center space-x-2.5 group">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lemon-600 via-amber-400 to-emerald-400 p-[1px] shadow-md shadow-lemon-500/20 group-hover:scale-105 transition-transform">
+            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
+              <svg class="w-5 h-5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <line x1="2" y1="10" x2="22" y2="10"></line>
+              </svg>
+            </div>
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center space-x-1.5">
+              <span class="font-black text-lg tracking-tight bg-gradient-to-r from-neutral-950 via-neutral-800 to-neutral-600 dark:from-white dark:via-neutral-200 dark:to-neutral-400 bg-clip-text text-transparent">Lemon Money</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lemon-100 dark:bg-lemon-950/80 text-lemon-700 dark:text-lemon-400 border border-lemon-300 dark:border-lemon-800/80 font-bold">편한 가계부 PRO</span>
+            </div>
+            <span class="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium -mt-0.5">영수증 OCR · 문자 파싱 · 복식부기 자산 관리</span>
+          </div>
+        </a>
+      </div>
+
+      <!-- Action Buttons (OCR Receipt, SMS Parse, New Transaction, CSV, Theme) -->
+      <div class="flex items-center space-x-1.5 sm:space-x-2.5">
+        
+        <!-- OCR Receipt Button -->
+        <button onclick="openOcrModal()" class="px-3 py-1.5 rounded-xl border border-lemon-400 dark:border-lemon-700 bg-lemon-100 dark:bg-lemon-950/80 text-lemon-900 dark:text-lemon-300 font-bold text-xs flex items-center space-x-1.5 btn-tap shadow-sm" title="영수증 또는 결제 캡처 사진 올리기">
+          <svg class="w-3.5 h-3.5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <span class="hidden sm:inline">영수증 OCR</span>
+        </button>
+
+        <!-- SMS Parse Button -->
+        <button onclick="openSmsParserModal()" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 font-bold text-xs flex items-center space-x-1.5 btn-tap" title="결제 문자 복사 자동입력">
+          <svg class="w-3.5 h-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <span class="hidden sm:inline">문자 파싱</span>
+        </button>
+
+        <!-- New Transaction Button -->
+        <button onclick="openTransactionModal('expense')" class="btn-shimmer px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-lemon-500 to-amber-500 hover:from-lemon-400 hover:to-amber-400 text-neutral-950 font-black text-xs shadow-md shadow-lemon-500/25 flex items-center space-x-1.5 btn-tap">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>내역 쓰기</span>
+        </button>
+
+        <!-- CSV Dropdown / Export Button -->
+        <button onclick="exportToCsv()" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap" title="엑셀(CSV) 다운로드">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </button>
+
+        <!-- Dark/Light Theme Toggle -->
+        <button id="darkModeToggle" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap" title="테마 변경">
+          <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- 8-Tab Navigation Bar -->
+  <div class="border-b border-neutral-200/70 dark:border-neutral-800/70 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-md sticky top-16 z-30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+      <nav class="flex space-x-1 sm:space-x-1.5 py-2 overflow-x-auto text-xs sm:text-sm font-semibold">
+        <button onclick="switchView('daily')" id="tabBtn-daily" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold shadow-sm">
+          <span>일일</span>
+        </button>
+        <button onclick="switchView('calendar')" id="tabBtn-calendar" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <span>달력</span>
+        </button>
+        <button onclick="switchView('weekly')" id="tabBtn-weekly" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <span>주간</span>
+        </button>
+        <button onclick="switchView('monthly')" id="tabBtn-monthly" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <span>월간 결산</span>
+        </button>
+        <button onclick="switchView('stats')" id="tabBtn-stats" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <span>통계</span>
+        </button>
+        <button onclick="switchView('accounts')" id="tabBtn-accounts" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <span>자산</span>
+        </button>
+        <button onclick="switchView('budget')" id="tabBtn-budget" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <span>예산</span>
+        </button>
+        <button onclick="switchView('recurring')" id="tabBtn-recurring" class="px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <span>고정비·할부</span>
+        </button>
+      </nav>
+
+      <!-- Month Navigation Controls -->
+      <div class="flex items-center space-x-1 text-xs font-bold pl-2">
+        <button onclick="changeCurrentMonth(-1)" class="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <span id="currentMonthLabel" class="font-black text-sm text-neutral-900 dark:text-white px-1">2026.11</span>
+        <button onclick="changeCurrentMonth(1)" class="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
+
+    <!-- TOP FINANCIAL SUMMARY BAR -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      
+      <!-- Income Card -->
+      <div class="p-4 sm:p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-1">
+        <div class="flex items-center justify-between text-xs text-neutral-400 font-semibold">
+          <span>이번 달 수입</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        </div>
+        <div id="topIncomeText" class="text-lg sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 truncate">+0원</div>
+        <div class="text-[10px] text-neutral-400">급여·용돈·부수입 합계</div>
+      </div>
+
+      <!-- Expense Card -->
+      <div class="p-4 sm:p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-1">
+        <div class="flex items-center justify-between text-xs text-neutral-400 font-semibold">
+          <span>이번 달 지출</span>
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+        </div>
+        <div id="topExpenseText" class="text-lg sm:text-2xl font-black text-rose-600 dark:text-rose-400 truncate">-0원</div>
+        <div class="text-[10px] text-neutral-400">식비·교통·쇼핑 등 지출 합계</div>
+      </div>
+
+      <!-- Net Balance Card -->
+      <div class="p-4 sm:p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-1">
+        <div class="flex items-center justify-between text-xs text-neutral-400 font-semibold">
+          <span>이번 달 잉여금 (잔액)</span>
+          <span class="w-2 h-2 rounded-full bg-lemon-500"></span>
+        </div>
+        <div id="topNetBalanceText" class="text-lg sm:text-2xl font-black text-neutral-900 dark:text-white truncate">0원</div>
+        <div class="text-[10px] text-neutral-400">수입 - 지출 남은 돈</div>
+      </div>
+
+      <!-- Daily Recommended Budget Card -->
+      <div class="p-4 sm:p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-1">
+        <div class="flex items-center justify-between text-xs text-neutral-400 font-semibold">
+          <span>오늘 권장 예산</span>
+          <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-lemon-100 dark:bg-lemon-950 text-lemon-700 dark:text-lemon-400 font-bold">생존 예산</span>
+        </div>
+        <div id="topTodayBudgetText" class="text-lg sm:text-2xl font-black text-amber-500 dark:text-amber-400 truncate">0원</div>
+        <div id="topTodayBudgetSub" class="text-[10px] text-neutral-400">남은 일수 기준 1일 예산</div>
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 1: DAILY VIEW (일일 거래 리스트) -->
+    <!-- ============================================ -->
+    <div id="viewDaily" class="space-y-4">
+      
+      <!-- Search & Quick Filter Bar -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-sm">
+        <div class="relative w-full sm:w-72">
+          <input type="text" id="dailySearchInput" placeholder="사용처, 메모, 태그(#), 금액 검색..." oninput="handleDailySearch()" class="w-full pl-9 pr-4 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs focus:outline-none focus:border-lemon-500">
+          <svg class="w-4 h-4 text-neutral-400 absolute left-3 top-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </div>
+
+        <div class="flex items-center space-x-2 w-full sm:w-auto justify-end text-xs font-semibold">
+          <button onclick="filterDailyType('all')" id="dailyFilter-all" class="px-3 py-1.5 rounded-xl bg-lemon-500 text-neutral-950 font-bold transition">전체</button>
+          <button onclick="filterDailyType('expense')" id="dailyFilter-expense" class="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 transition">지출</button>
+          <button onclick="filterDailyType('income')" id="dailyFilter-income" class="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 transition">수입</button>
+          <button onclick="filterDailyType('transfer')" id="dailyFilter-transfer" class="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 transition">이체</button>
+        </div>
+      </div>
+
+      <!-- Transactions Timeline Container -->
+      <div id="dailyListContainer" class="space-y-4">
+        <!-- Rendered Dynamically via JS -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="dailyEmptyState" class="hidden p-12 text-center rounded-3xl border border-dashed border-neutral-300 dark:border-neutral-800 space-y-3">
+        <div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+        </div>
+        <div class="space-y-1">
+          <h4 class="font-bold text-neutral-800 dark:text-neutral-200 text-sm">이번 달 내역이 없습니다</h4>
+          <p class="text-xs text-neutral-500">영수증 사진을 올리거나 상단의 [내역 쓰기]를 눌러 첫 지출을 기록해보세요.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 2: CALENDAR VIEW -->
+    <!-- ============================================ -->
+    <div id="viewCalendar" class="hidden space-y-6">
+      
+      <div class="p-4 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+        
+        <div class="grid grid-cols-7 text-center text-xs font-bold text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 pb-2">
+          <div class="text-rose-500">일</div>
+          <div>월</div>
+          <div>화</div>
+          <div>수</div>
+          <div>목</div>
+          <div>금</div>
+          <div class="text-blue-500">토</div>
+        </div>
+
+        <div id="calendarGridContainer" class="grid grid-cols-7 gap-1 sm:gap-1.5">
+          <!-- Populated by JS -->
+        </div>
+
+      </div>
+
+      <!-- Selected Date Transactions Drawer -->
+      <div id="calendarSelectedDateBox" class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-3 hidden">
+        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-lemon-500"></span>
+            <h4 id="calendarSelectedDateLabel" class="font-bold text-base text-neutral-900 dark:text-white">선택일 내역</h4>
+          </div>
+          <div id="calendarSelectedDateSummary" class="text-xs font-bold text-neutral-500"></div>
+        </div>
+        <div id="calendarSelectedDateList" class="space-y-2"></div>
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 3: WEEKLY VIEW -->
+    <!-- ============================================ -->
+    <div id="viewWeekly" class="hidden space-y-6">
+      <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-6">
+        <div class="space-y-1">
+          <h3 class="font-bold text-base text-neutral-900 dark:text-white">주차별 수입·지출 비교</h3>
+          <p class="text-xs text-neutral-500">이번 달 1주차부터 5주차까지의 지출 흐름을 비교합니다.</p>
+        </div>
+        <div id="weeklyReportContainer" class="space-y-4"></div>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 4: MONTHLY VIEW -->
+    <!-- ============================================ -->
+    <div id="viewMonthly" class="hidden space-y-6">
+      <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-6">
+        <div class="flex items-center justify-between">
+          <div class="space-y-1">
+            <h3 class="font-bold text-base text-neutral-900 dark:text-white">연간 월별 결산 리포트</h3>
+            <p class="text-xs text-neutral-500">1월부터 12월까지의 총수입, 총지출, 저축률을 한눈에 결산합니다.</p>
+          </div>
+          <span class="text-xs font-mono font-bold text-lemon-600 dark:text-lemon-400">2026년 결산</span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="border-b border-neutral-200 dark:border-neutral-800 text-neutral-400 font-semibold">
+              <tr>
+                <th class="py-2.5 px-3">월</th>
+                <th class="py-2.5 px-3">수입</th>
+                <th class="py-2.5 px-3">지출</th>
+                <th class="py-2.5 px-3">잉여금(잔액)</th>
+                <th class="py-2.5 px-3">저축/잉여율</th>
+              </tr>
+            </thead>
+            <tbody id="monthlySummaryTableBody" class="divide-y divide-neutral-100 dark:divide-neutral-850">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 5: STATS VIEW -->
+    <!-- ============================================ -->
+    <div id="viewStats" class="hidden space-y-6">
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- Category Donut Chart & Breakdown -->
+        <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-base text-neutral-900 dark:text-white">카테고리별 지출 비율</h3>
+            <span class="text-xs text-neutral-400 font-semibold" id="statsTotalExpenseLabel">0원</span>
+          </div>
+
+          <!-- SVG Donut Chart -->
+          <div class="flex items-center justify-center py-4">
+            <div class="relative w-44 h-44 flex items-center justify-center">
+              <svg id="statsDonutSvg" class="w-full h-full transform -rotate-90" viewBox="0 0 42 42">
+              </svg>
+              <div class="absolute text-center">
+                <div class="text-[10px] text-neutral-400 font-bold">총 지출</div>
+                <div id="donutCenterAmount" class="text-sm font-black text-neutral-900 dark:text-white">0원</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Legend List -->
+          <div id="statsCategoryList" class="space-y-2.5 text-xs"></div>
+        </div>
+
+        <!-- Asset Distribution Breakdown -->
+        <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-bold text-base text-neutral-900 dark:text-white">자산별 지출 분포</h3>
+            <span class="text-xs text-neutral-400">결제 수단별 분석</span>
+          </div>
+          <div id="statsAssetBreakdownList" class="space-y-3 pt-2 text-xs"></div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 6: ACCOUNTS VIEW (복식부기 자산 목록) -->
+    <!-- ============================================ -->
+    <div id="viewAccounts" class="hidden space-y-6">
+      
+      <!-- Net Worth Banner -->
+      <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <span class="text-xs font-bold text-neutral-400 uppercase tracking-wider">나의 순자산 (Net Worth)</span>
+          <div id="accountsNetWorthText" class="text-3xl font-black text-neutral-950 dark:text-white">0원</div>
+          <div class="text-xs text-neutral-500">총 자산에서 신용카드 청구 미결제액을 차감한 실제 순자산입니다.</div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <button onclick="openNewAccountModal()" class="px-4 py-2.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-bold text-xs shadow-md shadow-lemon-500/20 btn-tap">
+            + 새 자산 계좌 등록
+          </button>
+        </div>
+      </div>
+
+      <div id="accountsListContainer" class="space-y-6"></div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 7: BUDGET VIEW (예산 관리) -->
+    <!-- ============================================ -->
+    <div id="viewBudget" class="hidden space-y-6">
+      
+      <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-5">
+        <div class="flex items-center justify-between">
+          <div class="space-y-1">
+            <h3 class="font-bold text-base text-neutral-900 dark:text-white">이번 달 총예산 현황</h3>
+            <p class="text-xs text-neutral-500">설정한 목표 예산 대비 현재 지출 속도를 추적합니다.</p>
+          </div>
+          <button onclick="openBudgetConfigModal()" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap">
+            예산 설정
+          </button>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-xs font-bold">
+            <span id="budgetSpentRatioText">지출: 0원 (0%)</span>
+            <span id="budgetTotalText">예산: 500,000원</span>
+          </div>
+          <div class="w-full bg-neutral-100 dark:bg-neutral-800 h-3.5 rounded-full overflow-hidden">
+            <div id="budgetMainProgressBar" class="h-full bg-gradient-to-r from-lemon-500 to-amber-500 rounded-full transition-all duration-500" style="width: 0%;"></div>
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-neutral-400 pt-1">
+            <span id="budgetRemainingText">남은 예산: 500,000원</span>
+            <span id="budgetDaysLeftText">이번 달 남은 기간: 18일</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <h4 class="font-bold text-sm text-neutral-900 dark:text-white">카테고리별 예산 분배</h4>
+        <div id="categoryBudgetsContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- VIEW 8: RECURRING & INSTALLMENTS VIEW (고정비·할부) -->
+    <!-- ============================================ -->
+    <div id="viewRecurring" class="hidden space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Fixed Recurring Expenses Section -->
+        <div class="p-6 sm:p-7 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="space-y-1">
+              <h3 class="font-bold text-base text-neutral-900 dark:text-white">매월 고정비 (정기 반복)</h3>
+              <p class="text-xs text-neutral-500">월세, 통신비, 넷플릭스 등 매월 정해진 날짜에 자동 반영됩니다.</p>
+            </div>
+            <button onclick="openNewRecurringModal()" class="px-3 py-1.5 rounded-xl bg-lemon-500 text-neutral-950 font-bold text-xs btn-tap">
+              + 고정비 추가
+            </button>
+          </div>
+
+          <div id="recurringListContainer" class="space-y-2.5 pt-2 text-xs">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Installments Section -->
+        <div class="p-6 sm:p-7 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="space-y-1">
+              <h3 class="font-bold text-base text-neutral-900 dark:text-white">카드 할부 내역 관리</h3>
+              <p class="text-xs text-neutral-500">진행 중인 무이자/유이자 할부의 회차와 남은 잔액을 계산합니다.</p>
+            </div>
+          </div>
+
+          <div id="installmentsListContainer" class="space-y-2.5 pt-2 text-xs">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ============================================ -->
+  <!-- MODAL: RECEIPT & SCREENSHOT OCR MODAL -->
+  <!-- ============================================ -->
+  <div id="ocrModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-4 shadow-2xl relative">
+      
+      <div class="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 rounded-xl bg-lemon-100 dark:bg-lemon-950 flex items-center justify-center text-lemon-600 dark:text-lemon-400">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </div>
+          <h3 class="font-bold text-base text-neutral-900 dark:text-white">영수증 & 결제 캡처 사진 OCR 인식</h3>
+        </div>
+        <button onclick="closeOcrModal()" class="text-neutral-400 hover:text-neutral-600 p-1">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <p class="text-xs text-neutral-500 leading-relaxed">
+        종이 영수증 사진, 카드 승인 문자 캡처 화면, 배민/쿠팡 결제 완료 스크린샷을 올리세요. 브라우저에서 100% 로컬 OCR로 금액과 상호명을 즉시 긁어옵니다.
+      </p>
+
+      <!-- Dropzone -->
+      <div id="ocrDropzone" class="p-6 border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-lemon-500 rounded-2xl text-center cursor-pointer transition space-y-2 bg-neutral-50 dark:bg-neutral-850" onclick="document.getElementById('inputOcrFile').click()">
+        <input type="file" id="inputOcrFile" accept="image/*" class="hidden" onchange="handleOcrFileUpload(event)">
+        <div class="w-10 h-10 mx-auto rounded-xl bg-lemon-50 dark:bg-lemon-950/60 flex items-center justify-center text-lemon-600 dark:text-lemon-400">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        </div>
+        <div class="text-xs font-bold text-neutral-700 dark:text-neutral-300">영수증/캡처 사진을 드래그하거나 클릭하여 업로드</div>
+        <div class="text-[10px] text-neutral-400">클립보드 이미지 붙여넣기(Ctrl+V)도 지원합니다</div>
+      </div>
+
+      <!-- Preview & OCR Progress -->
+      <div id="ocrProgressBox" class="space-y-2 hidden">
+        <div class="flex items-center justify-between text-xs font-bold">
+          <span id="ocrProgressStatus" class="text-lemon-600 dark:text-lemon-400">OCR 텍스트 분석 중...</span>
+          <span id="ocrProgressPercent" class="font-mono text-neutral-500">0%</span>
+        </div>
+        <div class="w-full bg-neutral-200 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+          <div id="ocrProgressBar" class="h-full bg-lemon-500 rounded-full transition-all duration-300" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <!-- OCR Result Edit Form -->
+      <div id="ocrResultForm" class="space-y-3 pt-2 text-xs hidden border-t border-neutral-100 dark:border-neutral-800">
+        <div class="grid grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">추출 금액 (원)</label>
+            <input type="number" id="ocrResAmount" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 font-bold text-rose-500 text-right">
+          </div>
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">사용처 (상호)</label>
+            <input type="text" id="ocrResTitle" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 font-bold">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">결제 자산</label>
+            <select id="ocrResAccount" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
+              <!-- Populated by JS -->
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">카테고리</label>
+            <select id="ocrResCategory" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
+              <!-- Populated by JS -->
+            </select>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">날짜</label>
+          <input type="date" id="ocrResDate" class="w-full px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
+        </div>
+
+        <div class="flex items-center space-x-2 pt-2">
+          <button onclick="closeOcrModal()" class="w-1/3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 font-bold">취소</button>
+          <button onclick="commitOcrTransaction()" class="w-2/3 py-2.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-black btn-tap">가계부에 저장</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- MODAL: TRANSACTION ADD/EDIT MODAL -->
+  <!-- ============================================ -->
+  <div id="transactionModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+      
+      <div class="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+        <div class="flex space-x-1.5 p-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-xs font-bold">
+          <button type="button" onclick="setModalTransactionType('expense')" id="txTypeBtn-expense" class="px-3 py-1.5 rounded-lg bg-rose-500 text-white transition">지출</button>
+          <button type="button" onclick="setModalTransactionType('income')" id="txTypeBtn-income" class="px-3 py-1.5 rounded-lg text-neutral-500 transition">수입</button>
+          <button type="button" onclick="setModalTransactionType('transfer')" id="txTypeBtn-transfer" class="px-3 py-1.5 rounded-lg text-neutral-500 transition">이체</button>
+        </div>
+        <button onclick="closeTransactionModal()" class="text-neutral-400 hover:text-neutral-600 p-1">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        
+        <!-- Amount Input -->
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">금액 (원)</label>
+          <input type="number" id="inputTxAmount" placeholder="0" class="w-full px-4 py-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xl font-black focus:outline-none focus:border-lemon-500 text-right">
+        </div>
+
+        <!-- Date & Time -->
+        <div class="grid grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">날짜</label>
+            <input type="date" id="inputTxDate" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500">
+          </div>
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">시간</label>
+            <input type="time" id="inputTxTime" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500">
+          </div>
+        </div>
+
+        <!-- Account Selector -->
+        <div class="grid grid-cols-2 gap-2" id="txAccountsRow">
+          <div class="space-y-1">
+            <label id="labelTxAccountFrom" class="font-bold text-neutral-700 dark:text-neutral-300">자산 / 출금계좌</label>
+            <select id="selectTxAccount" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500 font-semibold"></select>
+          </div>
+          <div class="space-y-1" id="txTargetAccountContainer" style="display: none;">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">입금계좌</label>
+            <select id="selectTxTargetAccount" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500 font-semibold"></select>
+          </div>
+          <div class="space-y-1" id="txCategoryContainer">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">카테고리</label>
+            <select id="selectTxCategory" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500 font-semibold"></select>
+          </div>
+        </div>
+
+        <!-- Title / Payee -->
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">사용처 / 내용</label>
+          <input type="text" id="inputTxTitle" placeholder="예: 스타벅스 강남점, GS25, 월급 등" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500">
+        </div>
+
+        <!-- Installment Option (for card expense) -->
+        <div class="grid grid-cols-2 gap-2" id="txInstallmentRow">
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">할부 구분</label>
+            <select id="selectTxInstallment" class="w-full px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
+              <option value="1">일시불</option>
+              <option value="2">2개월 할부</option>
+              <option value="3">3개월 할부</option>
+              <option value="6">6개월 할부</option>
+              <option value="12">12개월 할부</option>
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">태그 (#)</label>
+            <input type="text" id="inputTxTag" placeholder="#데이트, #회식 등" class="w-full px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
+          </div>
+        </div>
+
+        <!-- Memo -->
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">메모 (선택)</label>
+          <input type="text" id="inputTxMemo" placeholder="상세 메모" class="w-full px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500">
+        </div>
+
+      </div>
+
+      <div class="flex items-center space-x-2 pt-2">
+        <button type="button" onclick="closeTransactionModal()" class="w-1/3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-xs hover:bg-neutral-100 transition">취소</button>
+        <button type="button" onclick="saveTransaction()" class="w-2/3 py-2.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-black text-xs shadow-md shadow-lemon-500/20 transition btn-tap">저장하기</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- MODAL: SMS PARSER MODAL -->
+  <!-- ============================================ -->
+  <div id="smsParserModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+      
+      <div class="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+        <div class="flex items-center space-x-2">
+          <div class="w-7 h-7 rounded-lg bg-lemon-100 dark:bg-lemon-950 flex items-center justify-center text-lemon-600 dark:text-lemon-400">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          </div>
+          <h3 class="font-bold text-sm text-neutral-900 dark:text-white">결제 문자·푸시 자동 파싱</h3>
+        </div>
+        <button onclick="closeSmsParserModal()" class="text-neutral-400 hover:text-neutral-600 p-1">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <p class="text-xs text-neutral-500 leading-relaxed">
+        카드 결제 승인 문자나 은행 알림 텍스트를 그대로 복사해서 아래에 붙여넣으세요. 금액, 사용처, 카드, 날짜를 자동으로 추출합니다.
+      </p>
+
+      <textarea id="inputSmsRawText" rows="4" placeholder="예:&#10;[신한카드] 승인 김*중님 12,000원 11/13 14:32 스타벅스강남점" oninput="parseSmsLive()" class="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs focus:outline-none focus:border-lemon-500 font-mono resize-none"></textarea>
+
+      <!-- Parsed Result Preview Box -->
+      <div id="smsParsedResultBox" class="p-3.5 rounded-2xl border border-lemon-300 dark:border-lemon-800 bg-lemon-50/50 dark:bg-lemon-950/30 text-xs space-y-1.5 hidden">
+        <div class="font-bold text-lemon-800 dark:text-lemon-300 flex items-center space-x-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>문자 인식 성공</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-[11px] text-neutral-600 dark:text-neutral-300 pt-1">
+          <div>금액: <strong id="parsedAmount" class="text-rose-500 font-black">0원</strong></div>
+          <div>사용처: <strong id="parsedPayee" class="font-bold">-</strong></div>
+          <div>자산: <strong id="parsedCard" class="font-bold">-</strong></div>
+          <div>일시: <strong id="parsedDateTime" class="font-bold">-</strong></div>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2 pt-2">
+        <button onclick="closeSmsParserModal()" class="w-1/3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-xs hover:bg-neutral-100 transition">취소</button>
+        <button onclick="commitParsedSms()" id="btnCommitSms" disabled class="w-2/3 py-2.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 disabled:opacity-40 text-neutral-950 font-black text-xs shadow-md shadow-lemon-500/20 transition btn-tap">내역에 등록하기</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- MODAL: NEW RECURRING MODAL -->
+  <!-- ============================================ -->
+  <div id="newRecurringModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+        <h3 class="font-bold text-sm text-neutral-900 dark:text-white">매월 정기 고정비 등록</h3>
+        <button onclick="closeNewRecurringModal()" class="text-neutral-400 hover:text-neutral-600 p-1">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">항목명</label>
+          <input type="text" id="inputRecTitle" placeholder="예: 월세, 넷플릭스, 통신요금" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">매월 결제일</label>
+            <input type="number" id="inputRecDay" min="1" max="31" value="25" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-center font-bold">
+          </div>
+          <div class="space-y-1">
+            <label class="font-bold text-neutral-700 dark:text-neutral-300">금액 (원)</label>
+            <input type="number" id="inputRecAmount" placeholder="0" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-right font-bold">
+          </div>
+        </div>
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">출금 자산</label>
+          <select id="selectRecAccount" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800"></select>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 pt-2">
+        <button onclick="closeNewRecurringModal()" class="w-1/3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 font-bold text-xs">취소</button>
+        <button onclick="saveNewRecurring()" class="w-2/3 py-2.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-black text-xs btn-tap">등록하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- MODAL: NEW ACCOUNT MODAL -->
+  <!-- ============================================ -->
+  <div id="newAccountModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+        <h3 class="font-bold text-sm text-neutral-900 dark:text-white">새 자산 계좌 등록</h3>
+        <button onclick="closeNewAccountModal()" class="text-neutral-400 hover:text-neutral-600 p-1">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">계좌/카드명</label>
+          <input type="text" id="inputNewAccName" placeholder="예: 토스뱅크, 신한체크, 비상금" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500">
+        </div>
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">자산 분류</label>
+          <select id="selectNewAccGroup" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500">
+            <option value="bank">통장 / 은행</option>
+            <option value="cash">현금 / 지갑</option>
+            <option value="card">신용 / 체크카드</option>
+            <option value="pay">간편결제 (페이)</option>
+            <option value="savings">저축 / 적금</option>
+          </select>
+        </div>
+        <div class="space-y-1">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">현재 잔액 (원)</label>
+          <input type="number" id="inputNewAccBalance" value="0" class="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-lemon-500 text-right font-bold">
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 pt-2">
+        <button onclick="closeNewAccountModal()" class="w-1/3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 font-bold text-xs">취소</button>
+        <button onclick="saveNewAccount()" class="w-2/3 py-2.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-black text-xs btn-tap">등록하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notification -->
+  <div id="lemonToast" class="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold text-xs shadow-xl flex items-center space-x-2 toast-hide">
+    <svg class="w-4 h-4 text-lemon-400 dark:text-lemon-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span id="toastMessage">완료되었습니다!</span>
+  </div>
+
+  <!-- Global Footer (15 Standalone Web Products) -->
+  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
+      <div class="flex items-center space-x-2">
+        <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Money</span>
+        <span>·</span>
+        <span>Lemon soft 15대 독립 웹 프로덕트</span>
+      </div>
+      <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px]">
+        <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+        <span>·</span>
+        <a href="money.html" class="hover:underline text-lemon-600 dark:text-lemon-400 font-bold">Lemon Money</a>
+        <span>·</span>
+        <a href="news.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX News</a>
+        <span>·</span>
+        <a href="habit.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Habit</a>
+        <span>·</span>
+        <a href="bio.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Bio</a>
+        <span>·</span>
+        <a href="pdf.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon PDF</a>
+        <span>·</span>
+        <a href="focus.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Focus</a>
+        <span>·</span>
+        <a href="drop.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Docs</a>
+        <span>·</span>
+        <a href="board.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Board</a>
+        <span>·</span>
+        <a href="secret.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Secret</a>
+        <span>·</span>
+        <a href="voice.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Voice</a>
+        <span>·</span>
+        <a href="qr.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon QR</a>
+        <span>·</span>
+        <a href="compress.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Compress</a>
+      </div>
+      <div>
+        <span>2026 Lemon soft. All rights reserved.</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============================================ -->
+  <!-- JAVASCRIPT LOGIC ENGINE -->
+  <!-- ============================================ -->
+  <script>
+    const STORAGE_KEY_TX = 'lemon_money_tx_v2';
+    const STORAGE_KEY_ACCOUNTS = 'lemon_money_accounts_v2';
+    const STORAGE_KEY_BUDGET = 'lemon_money_budget_v2';
+    const STORAGE_KEY_RECURRING = 'lemon_money_recurring_v2';
+
+    let currentView = 'daily';
+    let currentYear = 2026;
+    let currentMonth = 11;
+    let dailyFilter = 'all';
+    let searchQuery = '';
+    let selectedDateForCalendar = null;
+    let modalTxType = 'expense';
+    let parsedSmsData = null;
+
+    const DEFAULT_ACCOUNTS = [
+      { id: 'acc_cash', name: '현금/지갑', group: 'cash', balance: 50000, isCredit: false },
+      { id: 'acc_kb', name: '국민은행', group: 'bank', balance: 850000, isCredit: false },
+      { id: 'acc_shinhan', name: '신한카드', group: 'card', balance: 0, isCredit: true },
+      { id: 'acc_toss', name: '토스뱅크', group: 'bank', balance: 320000, isCredit: false },
+      { id: 'acc_naverpay', name: '네이버페이', group: 'pay', balance: 25000, isCredit: false }
+    ];
+
+    const EXPENSE_CATEGORIES = ['식비', '카페/간식', '교통/차량', '쇼핑/잡화', '주거/통신', '취미/여가', '의료/건강', '교육/학습', '기타 지출'];
+    const INCOME_CATEGORIES = ['급여/알바비', '용돈', '상여금', '금융소득', '부수입/중고', '기타 수입'];
+
+    const DEFAULT_TX = [
+      { id: 'tx_1', type: 'expense', date: '2026-11-13', time: '12:30', accountId: 'acc_shinhan', category: '식비', amount: 9500, title: '순두부찌개 점심 식사', memo: '동료들과 식사', tag: '#점심', installment: 1 },
+      { id: 'tx_2', type: 'expense', date: '2026-11-13', time: '13:15', accountId: 'acc_naverpay', category: '카페/간식', amount: 4500, title: '스타벅스 아메리카노', memo: '', tag: '#커피', installment: 1 },
+      { id: 'tx_3', type: 'expense', date: '2026-11-12', time: '08:45', accountId: 'acc_shinhan', category: '교통/차량', amount: 1500, title: '지하철 교통비', memo: '', tag: '#출근', installment: 1 },
+      { id: 'tx_4', type: 'income', date: '2026-11-10', time: '10:00', accountId: 'acc_kb', category: '급여/알바비', amount: 500000, title: '11월 파트타임 알바비', memo: '주휴수당 포함', tag: '#월급', installment: 1 },
+      { id: 'tx_5', type: 'transfer', date: '2026-11-11', time: '15:20', accountId: 'acc_kb', targetAccountId: 'acc_cash', category: '이체', amount: 50000, title: 'ATM 현금 인출', memo: '', tag: '', installment: 1 }
+    ];
+
+    const DEFAULT_RECURRING = [
+      { id: 'rec_1', title: '월세', day: 25, amount: 400000, accountId: 'acc_kb', category: '주거/통신' },
+      { id: 'rec_2', title: '넷플릭스 프리미엄', day: 15, amount: 17000, accountId: 'acc_shinhan', category: '취미/여가' },
+      { id: 'rec_3', title: '스마트폰 통신요금', day: 1, amount: 65000, accountId: 'acc_kb', category: '주거/통신' }
+    ];
+
+    let accounts = [];
+    let transactions = [];
+    let recurring = [];
+    let budgetConfig = {
+      totalBudget: 600000,
+      categoryBudgets: {
+        '식비': 250000,
+        '카페/간식': 60000,
+        '교통/차량': 70000,
+        '쇼핑/잡화': 100000,
+        '주거/통신': 80000
+      }
+    };
+
+    function loadState() {
+      try {
+        const storedAcc = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
+        accounts = storedAcc ? JSON.parse(storedAcc) : DEFAULT_ACCOUNTS;
+
+        const storedTx = localStorage.getItem(STORAGE_KEY_TX);
+        transactions = storedTx ? JSON.parse(storedTx) : DEFAULT_TX;
+
+        const storedBudget = localStorage.getItem(STORAGE_KEY_BUDGET);
+        if (storedBudget) budgetConfig = Object.assign(budgetConfig, JSON.parse(storedBudget));
+
+        const storedRec = localStorage.getItem(STORAGE_KEY_RECURRING);
+        recurring = storedRec ? JSON.parse(storedRec) : DEFAULT_RECURRING;
+      } catch (e) {
+        accounts = DEFAULT_ACCOUNTS;
+        transactions = DEFAULT_TX;
+        recurring = DEFAULT_RECURRING;
+      }
+
+      document.getElementById('currentMonthLabel').innerText = `${currentYear}.${String(currentMonth).padStart(2, '0')}`;
+      renderAll();
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
+      localStorage.setItem(STORAGE_KEY_TX, JSON.stringify(transactions));
+      localStorage.setItem(STORAGE_KEY_BUDGET, JSON.stringify(budgetConfig));
+      localStorage.setItem(STORAGE_KEY_RECURRING, JSON.stringify(recurring));
+    }
+
+    function changeCurrentMonth(delta) {
+      currentMonth += delta;
+      if (currentMonth < 1) {
+        currentMonth = 12;
+        currentYear -= 1;
+      } else if (currentMonth > 12) {
+        currentMonth = 1;
+        currentYear += 1;
+      }
+      document.getElementById('currentMonthLabel').innerText = `${currentYear}.${String(currentMonth).padStart(2, '0')}`;
+      renderAll();
+    }
+
+    function switchView(viewName) {
+      currentView = viewName;
+      const views = ['daily', 'calendar', 'weekly', 'monthly', 'stats', 'accounts', 'budget', 'recurring'];
+      views.forEach(v => {
+        const el = document.getElementById('view' + capitalize(v));
+        const btn = document.getElementById('tabBtn-' + v);
+        if (v === viewName) {
+          if (el) el.classList.remove('hidden');
+          if (btn) btn.className = 'px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold shadow-sm';
+        } else {
+          if (el) el.classList.add('hidden');
+          if (btn) btn.className = 'px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800';
+        }
+      });
+      renderCurrentView();
+    }
+
+    function renderAll() {
+      updateTopSummary();
+      renderCurrentView();
+    }
+
+    function renderCurrentView() {
+      if (currentView === 'daily') renderDailyView();
+      else if (currentView === 'calendar') renderCalendarView();
+      else if (currentView === 'weekly') renderWeeklyView();
+      else if (currentView === 'monthly') renderMonthlyView();
+      else if (currentView === 'stats') renderStatsView();
+      else if (currentView === 'accounts') renderAccountsView();
+      else if (currentView === 'budget') renderBudgetView();
+      else if (currentView === 'recurring') renderRecurringView();
+    }
+
+    function getMonthTransactions() {
+      const monthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+      return transactions.filter(t => t.date.startsWith(monthPrefix));
+    }
+
+    function updateTopSummary() {
+      const monthTx = getMonthTransactions();
+      let income = 0;
+      let expense = 0;
+
+      monthTx.forEach(t => {
+        if (t.type === 'income') income += Number(t.amount);
+        else if (t.type === 'expense') expense += Number(t.amount);
+      });
+
+      const net = income - expense;
+      document.getElementById('topIncomeText').innerText = '+' + formatMoney(income);
+      document.getElementById('topExpenseText').innerText = '-' + formatMoney(expense);
+      document.getElementById('topNetBalanceText').innerText = (net >= 0 ? '+' : '') + formatMoney(net);
+
+      const now = new Date();
+      let daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+      let currentDay = (currentYear === now.getFullYear() && currentMonth === (now.getMonth() + 1)) ? now.getDate() : 1;
+      let daysRemaining = Math.max(1, daysInMonth - currentDay + 1);
+
+      let remainingBudget = Math.max(0, budgetConfig.totalBudget - expense);
+      let dailyRec = Math.round(remainingBudget / daysRemaining);
+
+      document.getElementById('topTodayBudgetText').innerText = formatMoney(dailyRec) + '원';
+      document.getElementById('topTodayBudgetSub').innerText = `${daysRemaining}일 남음 (월 예산 ${formatMoney(budgetConfig.totalBudget)}원)`;
+    }
+
+    // ============================================
+    // VIEW 1: DAILY
+    // ============================================
+    function renderDailyView() {
+      const container = document.getElementById('dailyListContainer');
+      const emptyState = document.getElementById('dailyEmptyState');
+      if (!container) return;
+
+      let monthTx = getMonthTransactions();
+
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        monthTx = monthTx.filter(t => 
+          (t.title && t.title.toLowerCase().includes(q)) ||
+          (t.memo && t.memo.toLowerCase().includes(q)) ||
+          (t.category && t.category.toLowerCase().includes(q)) ||
+          (t.tag && t.tag.toLowerCase().includes(q)) ||
+          String(t.amount).includes(q)
+        );
+      }
+
+      if (dailyFilter !== 'all') {
+        monthTx = monthTx.filter(t => t.type === dailyFilter);
+      }
+
+      if (monthTx.length === 0) {
+        container.innerHTML = '';
+        if (emptyState) emptyState.classList.remove('hidden');
+        return;
+      }
+      if (emptyState) emptyState.classList.add('hidden');
+
+      monthTx.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+
+      const groups = {};
+      monthTx.forEach(t => {
+        if (!groups[t.date]) groups[t.date] = [];
+        groups[t.date].push(t);
+      });
+
+      let html = '';
+      Object.keys(groups).forEach(dateStr => {
+        const dayTxs = groups[dateStr];
+        let dayIncome = 0;
+        let dayExpense = 0;
+
+        dayTxs.forEach(t => {
+          if (t.type === 'income') dayIncome += Number(t.amount);
+          else if (t.type === 'expense') dayExpense += Number(t.amount);
+        });
+
+        const dObj = new Date(dateStr);
+        const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+        const dayLabel = dayNames[dObj.getDay()];
+        const isSun = dObj.getDay() === 0;
+        const isSat = dObj.getDay() === 6;
+
+        html += `
+          <div class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm overflow-hidden">
+            <div class="px-5 py-3 bg-neutral-50/80 dark:bg-neutral-850/80 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs">
+              <div class="flex items-center space-x-2 font-bold">
+                <span class="text-sm font-black text-neutral-900 dark:text-white">${dateStr.split('-')[2]}일</span>
+                <span class="px-1.5 py-0.5 rounded text-[10px] ${isSun ? 'bg-rose-100 dark:bg-rose-950 text-rose-600' : isSat ? 'bg-blue-100 dark:bg-blue-950 text-blue-600' : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-600'}">${dayLabel}</span>
+              </div>
+              <div class="flex items-center space-x-3 font-mono font-bold text-[11px]">
+                ${dayIncome > 0 ? `<span class="text-emerald-600 dark:text-emerald-400">+${formatMoney(dayIncome)}원</span>` : ''}
+                ${dayExpense > 0 ? `<span class="text-rose-600 dark:text-rose-400">-${formatMoney(dayExpense)}원</span>` : ''}
+              </div>
+            </div>
+            <div class="divide-y divide-neutral-100 dark:divide-neutral-850">
+              ${dayTxs.map(t => renderTransactionRowHtml(t)).join('')}
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function renderTransactionRowHtml(t) {
+      const acc = accounts.find(a => a.id === t.accountId);
+      const accName = acc ? acc.name : '자산';
+      const targetAcc = accounts.find(a => a.id === t.targetAccountId);
+      const targetAccName = targetAcc ? targetAcc.name : '';
+
+      let typeBadge = '';
+      let amountClass = 'text-rose-600 dark:text-rose-400';
+      let amountPrefix = '-';
+
+      if (t.type === 'income') {
+        typeBadge = '<span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">수입</span>';
+        amountClass = 'text-emerald-600 dark:text-emerald-400';
+        amountPrefix = '+';
+      } else if (t.type === 'transfer') {
+        typeBadge = '<span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-400">이체</span>';
+        amountClass = 'text-cyan-600 dark:text-cyan-400';
+        amountPrefix = '→ ';
+      } else {
+        typeBadge = `<span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">${escapeHtml(t.category || '지출')}</span>`;
+      }
+
+      return `
+        <div class="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-850/50 transition">
+          <div class="space-y-1 min-w-0 pr-3">
+            <div class="flex items-center space-x-2">
+              <span class="font-bold text-xs sm:text-sm text-neutral-900 dark:text-white truncate">${escapeHtml(t.title || '내역')}</span>
+              ${typeBadge}
+              ${t.tag ? `<span class="text-[10px] font-semibold text-lemon-600 dark:text-lemon-400 font-mono">${escapeHtml(t.tag)}</span>` : ''}
+              ${t.installment && t.installment > 1 ? `<span class="text-[10px] font-bold px-1.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono">${t.installment}개월할부</span>` : ''}
+            </div>
+            <div class="flex items-center space-x-2 text-[11px] text-neutral-400">
+              <span>${t.time || ''}</span>
+              <span>·</span>
+              <span>${t.type === 'transfer' ? `${escapeHtml(accName)} → ${escapeHtml(targetAccName)}` : escapeHtml(accName)}</span>
+              ${t.memo ? `<span>·</span><span class="truncate max-w-[150px]">${escapeHtml(t.memo)}</span>` : ''}
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-3 flex-shrink-0">
+            <span class="font-mono font-black text-sm sm:text-base ${amountClass}">
+              ${amountPrefix}${formatMoney(t.amount)}원
+            </span>
+            <button onclick="deleteTransaction('${t.id}')" class="p-1.5 text-neutral-300 dark:text-neutral-600 hover:text-rose-500 transition" title="삭제">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function handleDailySearch() {
+      searchQuery = document.getElementById('dailySearchInput').value.trim();
+      renderDailyView();
+    }
+
+    function filterDailyType(type) {
+      dailyFilter = type;
+      ['all', 'expense', 'income', 'transfer'].forEach(t => {
+        const btn = document.getElementById('dailyFilter-' + t);
+        if (btn) {
+          if (t === type) btn.className = 'px-3 py-1.5 rounded-xl bg-lemon-500 text-neutral-950 font-bold transition';
+          else btn.className = 'px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 transition';
+        }
+      });
+      renderDailyView();
+    }
+
+    // ============================================
+    // VIEW 2: CALENDAR
+    // ============================================
+    function renderCalendarView() {
+      const grid = document.getElementById('calendarGridContainer');
+      if (!grid) return;
+
+      grid.innerHTML = '';
+      const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+      const monthTx = getMonthTransactions();
+      const dayStats = {};
+      for (let d = 1; d <= daysInMonth; d++) {
+        dayStats[d] = { income: 0, expense: 0, items: [] };
+      }
+
+      monthTx.forEach(t => {
+        const d = parseInt(t.date.split('-')[2], 10);
+        if (dayStats[d]) {
+          if (t.type === 'income') dayStats[d].income += Number(t.amount);
+          else if (t.type === 'expense') dayStats[d].expense += Number(t.amount);
+          dayStats[d].items.push(t);
+        }
+      });
+
+      for (let b = 0; b < firstDay; b++) {
+        const blank = document.createElement('div');
+        blank.className = 'cal-cell rounded-2xl bg-neutral-100/30 dark:bg-neutral-900/30 border border-transparent opacity-30';
+        grid.appendChild(blank);
+      }
+
+      const todayStr = getTodayString();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isToday = (dateStr === todayStr);
+        const st = dayStats[day];
+        const dayOfWeek = (firstDay + day - 1) % 7;
+
+        const cell = document.createElement('div');
+        cell.className = `cal-cell p-1.5 sm:p-2 rounded-2xl border ${isToday ? 'border-lemon-500 bg-lemon-50/20 dark:bg-lemon-950/20 font-bold' : 'border-neutral-200/60 dark:border-neutral-800/60 bg-white/60 dark:bg-neutral-850/60'} cursor-pointer flex flex-col justify-between`;
+        cell.onclick = () => selectCalendarDate(dateStr, st.items);
+
+        let numColor = dayOfWeek === 0 ? 'text-rose-500' : (dayOfWeek === 6 ? 'text-blue-500' : 'text-neutral-700 dark:text-neutral-300');
+
+        cell.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-xs ${numColor}">${day}</span>
+            ${st.items.length > 0 ? `<span class="w-1.5 h-1.5 rounded-full bg-lemon-500"></span>` : ''}
+          </div>
+          <div class="space-y-0.5 text-right font-mono text-[9px] sm:text-[10px] font-bold">
+            ${st.income > 0 ? `<div class="text-emerald-600 dark:text-emerald-400 truncate">+${formatShortMoney(st.income)}</div>` : ''}
+            ${st.expense > 0 ? `<div class="text-rose-600 dark:text-rose-400 truncate">-${formatShortMoney(st.expense)}</div>` : ''}
+          </div>
+        `;
+        grid.appendChild(cell);
+      }
+    }
+
+    function selectCalendarDate(dateStr, items) {
+      selectedDateForCalendar = dateStr;
+      const box = document.getElementById('calendarSelectedDateBox');
+      const label = document.getElementById('calendarSelectedDateLabel');
+      const sumEl = document.getElementById('calendarSelectedDateSummary');
+      const listEl = document.getElementById('calendarSelectedDateList');
+
+      box.classList.remove('hidden');
+      label.innerText = `${dateStr} 거래 내역`;
+
+      if (items.length === 0) {
+        sumEl.innerText = '내역 없음';
+        listEl.innerHTML = '<p class="text-xs text-neutral-400 py-3 text-center">기록된 거래 내역이 없습니다.</p>';
+        return;
+      }
+
+      let exp = 0;
+      let inc = 0;
+      items.forEach(t => {
+        if (t.type === 'expense') exp += Number(t.amount);
+        else if (t.type === 'income') inc += Number(t.amount);
+      });
+
+      sumEl.innerText = `수입 +${formatMoney(inc)}원 / 지출 -${formatMoney(exp)}원`;
+      listEl.innerHTML = items.map(t => renderTransactionRowHtml(t)).join('');
+    }
+
+    // ============================================
+    // VIEW 3: WEEKLY
+    // ============================================
+    function renderWeeklyView() {
+      const container = document.getElementById('weeklyReportContainer');
+      if (!container) return;
+
+      const monthTx = getMonthTransactions();
+      const weeks = [
+        { label: '1주차 (1일~7일)', start: 1, end: 7, income: 0, expense: 0 },
+        { label: '2주차 (8일~14일)', start: 8, end: 14, income: 0, expense: 0 },
+        { label: '3주차 (15일~21일)', start: 15, end: 21, income: 0, expense: 0 },
+        { label: '4주차 (22일~28일)', start: 22, end: 28, income: 0, expense: 0 },
+        { label: '5주차 (29일~말일)', start: 29, end: 31, income: 0, expense: 0 }
+      ];
+
+      monthTx.forEach(t => {
+        const d = parseInt(t.date.split('-')[2], 10);
+        weeks.forEach(w => {
+          if (d >= w.start && d <= w.end) {
+            if (t.type === 'income') w.income += Number(t.amount);
+            else if (t.type === 'expense') w.expense += Number(t.amount);
+          }
+        });
+      });
+
+      let maxVal = 1;
+      weeks.forEach(w => {
+        if (w.expense > maxVal) maxVal = w.expense;
+        if (w.income > maxVal) maxVal = w.income;
+      });
+
+      let html = '';
+      weeks.forEach(w => {
+        const expPct = Math.min(100, Math.round((w.expense / maxVal) * 100));
+        const incPct = Math.min(100, Math.round((w.income / maxVal) * 100));
+
+        html += `
+          <div class="p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-850/60 space-y-3">
+            <div class="flex items-center justify-between text-xs font-bold">
+              <span class="text-neutral-900 dark:text-white">${w.label}</span>
+              <div class="space-x-3 font-mono">
+                <span class="text-emerald-600 dark:text-emerald-400">+${formatMoney(w.income)}원</span>
+                <span class="text-rose-600 dark:text-rose-400">-${formatMoney(w.expense)}원</span>
+              </div>
+            </div>
+            <div class="space-y-1 text-[10px]">
+              <div class="w-full bg-neutral-200 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+                <div class="h-full bg-rose-500 rounded-full" style="width: ${expPct}%;"></div>
+              </div>
+              <div class="w-full bg-neutral-200 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                <div class="h-full bg-emerald-500 rounded-full" style="width: ${incPct}%;"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // ============================================
+    // VIEW 4: MONTHLY
+    // ============================================
+    function renderMonthlyView() {
+      const tbody = document.getElementById('monthlySummaryTableBody');
+      if (!tbody) return;
+
+      let html = '';
+      for (let m = 1; m <= 12; m++) {
+        const prefix = `${currentYear}-${String(m).padStart(2, '0')}`;
+        const txs = transactions.filter(t => t.date.startsWith(prefix));
+
+        let inc = 0;
+        let exp = 0;
+        txs.forEach(t => {
+          if (t.type === 'income') inc += Number(t.amount);
+          else if (t.type === 'expense') exp += Number(t.amount);
+        });
+
+        const net = inc - exp;
+        const rate = inc > 0 ? Math.round((net / inc) * 100) : (exp > 0 ? -100 : 0);
+        const isCurrent = (m === currentMonth);
+
+        html += `
+          <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-850 ${isCurrent ? 'bg-lemon-50/40 dark:bg-lemon-950/20 font-bold' : ''}">
+            <td class="py-3 px-3 text-neutral-900 dark:text-white">${m}월</td>
+            <td class="py-3 px-3 font-mono text-emerald-600 dark:text-emerald-400">${inc > 0 ? '+' + formatMoney(inc) : '-'}</td>
+            <td class="py-3 px-3 font-mono text-rose-600 dark:text-rose-400">${exp > 0 ? '-' + formatMoney(exp) : '-'}</td>
+            <td class="py-3 px-3 font-mono ${net >= 0 ? 'text-neutral-900 dark:text-white' : 'text-rose-500'}">${formatMoney(net)}원</td>
+            <td class="py-3 px-3 font-mono ${rate >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${rate}%</td>
+          </tr>
+        `;
+      }
+
+      tbody.innerHTML = html;
+    }
+
+    // ============================================
+    // VIEW 5: STATS
+    // ============================================
+    function renderStatsView() {
+      const monthTx = getMonthTransactions().filter(t => t.type === 'expense');
+      let totalExp = 0;
+      const catTotals = {};
+      const assetTotals = {};
+
+      monthTx.forEach(t => {
+        const amt = Number(t.amount);
+        totalExp += amt;
+        const cat = t.category || '기타';
+        catTotals[cat] = (catTotals[cat] || 0) + amt;
+
+        const acc = accounts.find(a => a.id === t.accountId);
+        const accName = acc ? acc.name : '기타 자산';
+        assetTotals[accName] = (assetTotals[accName] || 0) + amt;
+      });
+
+      document.getElementById('statsTotalExpenseLabel').innerText = formatMoney(totalExp) + '원';
+      document.getElementById('donutCenterAmount').innerText = formatShortMoney(totalExp);
+
+      const catListEl = document.getElementById('statsCategoryList');
+      const donutSvg = document.getElementById('statsDonutSvg');
+      const sortedCats = Object.keys(catTotals).sort((a, b) => catTotals[b] - catTotals[a]);
+
+      const colors = ['#eab308', '#f43f5e', '#3b82f6', '#10b981', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
+      let cumulativePercent = 0;
+      let svgHtml = '';
+      let listHtml = '';
+
+      sortedCats.forEach((cat, idx) => {
+        const amt = catTotals[cat];
+        const pct = totalExp > 0 ? Math.round((amt / totalExp) * 100) : 0;
+        const color = colors[idx % colors.length];
+        const strokeLength = totalExp > 0 ? (amt / totalExp) * 100 : 0;
+
+        svgHtml += `
+          <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="${color}" stroke-width="5" stroke-dasharray="${strokeLength} ${100 - strokeLength}" stroke-dashoffset="${-cumulativePercent}"></circle>
+        `;
+        cumulativePercent += strokeLength;
+
+        listHtml += `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="w-3 h-3 rounded-full flex-shrink-0" style="background-color: ${color}"></span>
+              <span class="font-bold text-neutral-800 dark:text-neutral-200">${escapeHtml(cat)}</span>
+            </div>
+            <div class="flex items-center space-x-3 font-mono">
+              <span class="text-neutral-500 font-semibold">${pct}%</span>
+              <span class="font-bold text-neutral-900 dark:text-white">${formatMoney(amt)}원</span>
+            </div>
+          </div>
+        `;
+      });
+
+      if (sortedCats.length === 0) {
+        svgHtml = `<circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#27272a" stroke-width="5"></circle>`;
+        listHtml = '<p class="text-neutral-400 text-center py-4">이번 달 지출 내역이 없습니다.</p>';
+      }
+
+      if (donutSvg) donutSvg.innerHTML = svgHtml;
+      if (catListEl) catListEl.innerHTML = listHtml;
+
+      const assetListEl = document.getElementById('statsAssetBreakdownList');
+      if (assetListEl) {
+        let aHtml = '';
+        Object.keys(assetTotals).sort((a, b) => assetTotals[b] - assetTotals[a]).forEach(accName => {
+          const amt = assetTotals[accName];
+          const pct = totalExp > 0 ? Math.round((amt / totalExp) * 100) : 0;
+          aHtml += `
+            <div class="space-y-1">
+              <div class="flex items-center justify-between font-bold">
+                <span>${escapeHtml(accName)}</span>
+                <span class="font-mono">${formatMoney(amt)}원 (${pct}%)</span>
+              </div>
+              <div class="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+                <div class="h-full bg-lemon-500 rounded-full" style="width: ${pct}%;"></div>
+              </div>
+            </div>
+          `;
+        });
+        if (Object.keys(assetTotals).length === 0) aHtml = '<p class="text-neutral-400 text-center py-4">데이터 없음</p>';
+        assetListEl.innerHTML = aHtml;
+      }
+    }
+
+    // ============================================
+    // VIEW 6: ACCOUNTS
+    // ============================================
+    function renderAccountsView() {
+      const container = document.getElementById('accountsListContainer');
+      if (!container) return;
+
+      const calculatedBalances = {};
+      accounts.forEach(a => {
+        calculatedBalances[a.id] = Number(a.balance);
+      });
+
+      transactions.forEach(t => {
+        const amt = Number(t.amount);
+        if (t.type === 'expense') {
+          if (calculatedBalances[t.accountId] !== undefined) calculatedBalances[t.accountId] -= amt;
+        } else if (t.type === 'income') {
+          if (calculatedBalances[t.accountId] !== undefined) calculatedBalances[t.accountId] += amt;
+        } else if (t.type === 'transfer') {
+          if (calculatedBalances[t.accountId] !== undefined) calculatedBalances[t.accountId] -= amt;
+          if (calculatedBalances[t.targetAccountId] !== undefined) calculatedBalances[t.targetAccountId] += amt;
+        }
+      });
+
+      let totalAssets = 0;
+      let totalDebts = 0;
+
+      accounts.forEach(a => {
+        const bal = calculatedBalances[a.id] || 0;
+        if (a.isCredit) {
+          if (bal < 0) totalDebts += Math.abs(bal);
+        } else {
+          totalAssets += bal;
+        }
+      });
+
+      const netWorth = totalAssets - totalDebts;
+      document.getElementById('accountsNetWorthText').innerText = formatMoney(netWorth) + '원';
+
+      const groupLabels = {
+        bank: '통장 / 은행 계좌',
+        cash: '현금 / 지갑',
+        card: '신용 / 체크카드',
+        pay: '간편결제 (페이)',
+        savings: '저축 / 적금'
+      };
+
+      const groups = { bank: [], cash: [], card: [], pay: [], savings: [] };
+      accounts.forEach(a => {
+        if (groups[a.group]) groups[a.group].push(a);
+        else groups.bank.push(a);
+      });
+
+      let html = '';
+      Object.keys(groups).forEach(gKey => {
+        const accs = groups[gKey];
+        if (accs.length === 0) return;
+
+        html += `
+          <div class="space-y-3">
+            <h4 class="text-xs font-bold text-neutral-400 uppercase tracking-wider">${groupLabels[gKey] || gKey}</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              ${accs.map(a => {
+                const bal = calculatedBalances[a.id] || 0;
+                return `
+                  <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm flex items-center justify-between">
+                    <div class="space-y-0.5">
+                      <div class="font-bold text-sm text-neutral-900 dark:text-white">${escapeHtml(a.name)}</div>
+                      <div class="text-[10px] text-neutral-400 font-semibold">${a.isCredit ? '신용 결제' : '입출금 자유'}</div>
+                    </div>
+                    <div class="text-right">
+                      <div class="font-mono font-black text-sm sm:text-base ${bal < 0 ? 'text-rose-500' : 'text-neutral-900 dark:text-white'}">
+                        ${formatMoney(bal)}원
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // ============================================
+    // VIEW 7: BUDGET
+    // ============================================
+    function renderBudgetView() {
+      const monthTx = getMonthTransactions().filter(t => t.type === 'expense');
+      let totalExp = 0;
+      const catExp = {};
+
+      monthTx.forEach(t => {
+        const amt = Number(t.amount);
+        totalExp += amt;
+        const c = t.category || '기타';
+        catExp[c] = (catExp[c] || 0) + amt;
+      });
+
+      const totalBudget = budgetConfig.totalBudget || 500000;
+      const pct = Math.min(100, Math.round((totalExp / totalBudget) * 100));
+      const remaining = Math.max(0, totalBudget - totalExp);
+
+      document.getElementById('budgetSpentRatioText').innerText = `지출: ${formatMoney(totalExp)}원 (${pct}%)`;
+      document.getElementById('budgetTotalText').innerText = `예산: ${formatMoney(totalBudget)}원`;
+      document.getElementById('budgetMainProgressBar').style.width = pct + '%';
+      if (pct >= 90) {
+        document.getElementById('budgetMainProgressBar').className = 'h-full bg-rose-500 rounded-full transition-all duration-500';
+      } else {
+        document.getElementById('budgetMainProgressBar').className = 'h-full bg-gradient-to-r from-lemon-500 to-amber-500 rounded-full transition-all duration-500';
+      }
+
+      document.getElementById('budgetRemainingText').innerText = `남은 예산: ${formatMoney(remaining)}원`;
+
+      const container = document.getElementById('categoryBudgetsContainer');
+      if (container) {
+        let html = '';
+        Object.keys(budgetConfig.categoryBudgets).forEach(cat => {
+          const catB = budgetConfig.categoryBudgets[cat];
+          const spent = catExp[cat] || 0;
+          const cPct = Math.min(100, Math.round((spent / catB) * 100));
+
+          html += `
+            <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-2">
+              <div class="flex items-center justify-between text-xs font-bold">
+                <span class="text-neutral-900 dark:text-white">${escapeHtml(cat)}</span>
+                <span class="font-mono ${cPct >= 100 ? 'text-rose-500' : 'text-neutral-500'}">${formatMoney(spent)} / ${formatMoney(catB)}원</span>
+              </div>
+              <div class="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+                <div class="h-full ${cPct >= 100 ? 'bg-rose-500' : 'bg-lemon-500'} rounded-full transition-all" style="width: ${cPct}%;"></div>
+              </div>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      }
+    }
+
+    // ============================================
+    // VIEW 8: RECURRING & INSTALLMENTS VIEW
+    // ============================================
+    function renderRecurringView() {
+      // Recurring list
+      const recContainer = document.getElementById('recurringListContainer');
+      if (recContainer) {
+        let html = '';
+        recurring.forEach(r => {
+          const acc = accounts.find(a => a.id === r.accountId);
+          html += `
+            <div class="p-3.5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 flex items-center justify-between">
+              <div class="space-y-0.5">
+                <div class="font-bold text-neutral-900 dark:text-white">${escapeHtml(r.title)}</div>
+                <div class="text-[11px] text-neutral-400">매월 ${r.day}일 · ${acc ? escapeHtml(acc.name) : '자산'} · ${escapeHtml(r.category || '고정비')}</div>
+              </div>
+              <div class="text-right">
+                <div class="font-mono font-black text-rose-500">-${formatMoney(r.amount)}원</div>
+              </div>
+            </div>
+          `;
+        });
+        if (recurring.length === 0) {
+          html = '<p class="text-neutral-400 text-center py-4">등록된 정기 고정비가 없습니다.</p>';
+        }
+        recContainer.innerHTML = html;
+      }
+
+      // Installments list (calculated from transactions with installment > 1)
+      const instContainer = document.getElementById('installmentsListContainer');
+      if (instContainer) {
+        const instTxs = transactions.filter(t => t.installment && t.installment > 1);
+        let html = '';
+        instTxs.forEach(t => {
+          const monthlyAmt = Math.round(t.amount / t.installment);
+          html += `
+            <div class="p-3.5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="font-bold text-neutral-900 dark:text-white">${escapeHtml(t.title)}</div>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold">${t.installment}개월 분납</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-neutral-400 font-mono">
+                <span>총 ${formatMoney(t.amount)}원</span>
+                <span class="font-bold text-neutral-900 dark:text-white">월 ${formatMoney(monthlyAmt)}원 / 회</span>
+              </div>
+            </div>
+          `;
+        });
+        if (instTxs.length === 0) {
+          html = '<p class="text-neutral-400 text-center py-4">진행 중인 카드 할부 내역이 없습니다.</p>';
+        }
+        instContainer.innerHTML = html;
+      }
+    }
+
+    // ============================================
+    // IN-BROWSER ZERO-SERVER RECEIPT & SCREENSHOT OCR
+    // ============================================
+    function openOcrModal() {
+      document.getElementById('ocrModal').classList.remove('hidden');
+      document.getElementById('ocrDropzone').classList.remove('hidden');
+      document.getElementById('ocrProgressBox').classList.add('hidden');
+      document.getElementById('ocrResultForm').classList.add('hidden');
+
+      // Populate select options
+      const accSelect = document.getElementById('ocrResAccount');
+      const catSelect = document.getElementById('ocrResCategory');
+      if (accSelect) accSelect.innerHTML = accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+      if (catSelect) catSelect.innerHTML = EXPENSE_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    function closeOcrModal() {
+      document.getElementById('ocrModal').classList.add('hidden');
+    }
+
+    function handleOcrFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      processOcrImage(file);
+    }
+
+    // Clipboard Paste Listener for Screenshots
+    document.addEventListener('paste', e => {
+      const modal = document.getElementById('ocrModal');
+      if (modal.classList.contains('hidden')) return;
+
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          processOcrImage(blob);
+          break;
+        }
+      }
+    });
+
+    async function processOcrImage(imageFile) {
+      document.getElementById('ocrDropzone').classList.add('hidden');
+      document.getElementById('ocrProgressBox').classList.remove('hidden');
+      document.getElementById('ocrResultForm').classList.add('hidden');
+
+      const statusEl = document.getElementById('ocrProgressStatus');
+      const percentEl = document.getElementById('ocrProgressPercent');
+      const barEl = document.getElementById('ocrProgressBar');
+
+      try {
+        statusEl.innerText = 'Tesseract OCR 엔진 준비 중...';
+        barEl.style.width = '15%';
+        percentEl.innerText = '15%';
+
+        const worker = await Tesseract.createWorker('kor+eng');
+        
+        statusEl.innerText = '영수증/스크린샷 텍스트 판독 중...';
+        barEl.style.width = '50%';
+        percentEl.innerText = '50%';
+
+        const ret = await worker.recognize(imageFile);
+        const text = ret.data.text;
+
+        barEl.style.width = '100%';
+        percentEl.innerText = '100%';
+        statusEl.innerText = '인식 완료!';
+
+        await worker.terminate();
+
+        // Parse OCR Text
+        parseOcrTextToForm(text);
+      } catch (err) {
+        console.error('OCR Error', err);
+        statusEl.innerText = 'OCR 인식 실패. 수동 입력을 진행해주세요.';
+        parseOcrTextToForm('');
+      }
+    }
+
+    function parseOcrTextToForm(text) {
+      document.getElementById('ocrProgressBox').classList.add('hidden');
+      document.getElementById('ocrResultForm').classList.remove('hidden');
+
+      let parsedAmount = 0;
+      let parsedTitle = '영수증 결제';
+      let parsedDate = getTodayString();
+      let matchedAccId = accounts[0] ? accounts[0].id : 'acc_shinhan';
+      let matchedCategory = '기타 지출';
+
+      if (text) {
+        // 1. Amount Extraction (Search for '합계', '금액', '승인금액', or maximum currency match)
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        const amountRegex = /([0-9]{1,3}(,[0-9]{3})+|[0-9]{4,})/g;
+        let candidateAmounts = [];
+
+        lines.forEach(line => {
+          if (/합계|결제|승인|금액|청구|받을|합 계/i.test(line)) {
+            const matches = line.match(amountRegex);
+            if (matches) {
+              matches.forEach(m => {
+                const val = parseInt(m.replace(/,/g, ''), 10);
+                if (val > 100 && val < 50000000) candidateAmounts.push(val);
+              });
+            }
+          }
+        });
+
+        if (candidateAmounts.length > 0) {
+          parsedAmount = Math.max(...candidateAmounts);
+        } else {
+          // Fallback regex over whole text
+          const allMatches = text.match(amountRegex);
+          if (allMatches) {
+            const vals = allMatches.map(m => parseInt(m.replace(/,/g, ''), 10)).filter(v => v >= 1000 && v <= 20000000);
+            if (vals.length > 0) parsedAmount = Math.max(...vals);
+          }
+        }
+
+        // 2. Merchant / Title Extraction
+        if (lines.length > 0) {
+          // First or second line usually store name
+          const nonHeaderLines = lines.filter(l => !/영수증|신용|카드|승인|매출|가맹점/i.test(l));
+          if (nonHeaderLines.length > 0) {
+            parsedTitle = nonHeaderLines[0].substring(0, 20);
+          }
+        }
+
+        // 3. Category inference
+        if (/스타벅스|투썸|커피|카페|이디야|메가/i.test(text)) matchedCategory = '카페/간식';
+        else if (/식당|식사|순두부|맥도날드|버거킹|치킨|피자|배민|쿠팡이츠/i.test(text)) matchedCategory = '식비';
+        else if (/마트|편의점|GS25|CU|세븐일레븐|다이소|올리브영/i.test(text)) matchedCategory = '쇼핑/잡화';
+        else if (/지하철|택시|버스|코레일|카카오T|주유/i.test(text)) matchedCategory = '교통/차량';
+
+        // 4. Date extraction
+        const dMatch = text.match(/(20[2-3][0-9])[-/.]([0-1]?[0-9])[-/.]([0-3]?[0-9])/);
+        if (dMatch) {
+          parsedDate = `${dMatch[1]}-${String(dMatch[2]).padStart(2, '0')}-${String(dMatch[3]).padStart(2, '0')}`;
+        }
+      }
+
+      document.getElementById('ocrResAmount').value = parsedAmount || '';
+      document.getElementById('ocrResTitle').value = parsedTitle;
+      document.getElementById('ocrResDate').value = parsedDate;
+      document.getElementById('ocrResCategory').value = matchedCategory;
+      if (document.getElementById('ocrResAccount')) {
+        document.getElementById('ocrResAccount').value = matchedAccId;
+      }
+    }
+
+    function commitOcrTransaction() {
+      const amount = parseInt(document.getElementById('ocrResAmount').value, 10);
+      if (!amount || amount <= 0) {
+        showToast('유효한 금액을 입력해주세요.');
+        return;
+      }
+
+      const title = document.getElementById('ocrResTitle').value.trim() || '영수증 결제';
+      const date = document.getElementById('ocrResDate').value;
+      const accountId = document.getElementById('ocrResAccount').value;
+      const category = document.getElementById('ocrResCategory').value;
+
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const newTx = {
+        id: 'tx_' + Date.now(),
+        type: 'expense',
+        date: date,
+        time: time,
+        accountId: accountId,
+        category: category,
+        amount: amount,
+        title: title,
+        memo: '영수증 OCR 자동 등록',
+        tag: '#영수증',
+        installment: 1
+      };
+
+      transactions.unshift(newTx);
+      saveState();
+      closeOcrModal();
+      renderAll();
+      showToast(`'${title}' ${formatMoney(amount)}원이 영수증에서 등록되었습니다!`);
+    }
+
+    // ============================================
+    // SMS / PUSH PARSER
+    // ============================================
+    function openSmsParserModal() {
+      document.getElementById('smsParserModal').classList.remove('hidden');
+      document.getElementById('inputSmsRawText').value = '';
+      document.getElementById('smsParsedResultBox').classList.add('hidden');
+      document.getElementById('btnCommitSms').disabled = true;
+      document.getElementById('inputSmsRawText').focus();
+    }
+
+    function closeSmsParserModal() {
+      document.getElementById('smsParserModal').classList.add('hidden');
+    }
+
+    function parseSmsLive() {
+      const text = document.getElementById('inputSmsRawText').value.trim();
+      if (!text) {
+        document.getElementById('smsParsedResultBox').classList.add('hidden');
+        document.getElementById('btnCommitSms').disabled = true;
+        return;
+      }
+
+      const amountMatch = text.match(/([0-9,]+)\s*원/);
+      let amount = 0;
+      if (amountMatch) amount = parseInt(amountMatch[1].replace(/,/g, ''), 10);
+
+      let matchedAccountId = accounts[0] ? accounts[0].id : 'acc_shinhan';
+      let matchedAccountName = accounts[0] ? accounts[0].name : '신한카드';
+      accounts.forEach(a => {
+        if (text.includes(a.name) || (a.name.includes('신한') && text.includes('신한')) || (a.name.includes('국민') && text.includes('국민')) || (a.name.includes('토스') && text.includes('토스'))) {
+          matchedAccountId = a.id;
+          matchedAccountName = a.name;
+        }
+      });
+
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      let payee = '카드 결제';
+      if (lines.length > 1) {
+        payee = lines[lines.length - 1];
+      } else {
+        const tokens = text.split(/\s+/);
+        if (tokens.length >= 3) payee = tokens[tokens.length - 1];
+      }
+
+      let category = '기타 지출';
+      if (/스타벅스|메가커피|이디야|투썸|커피|카페/i.test(text)) category = '카페/간식';
+      else if (/식당|식사|순두부|맥도날드|버거킹|배민|배달의민족|쿠팡이츠|김밥/i.test(text)) category = '식비';
+      else if (/지하철|버스|택시|코레일|카카오T|주유/i.test(text)) category = '교통/차량';
+      else if (/마트|편의점|GS25|CU|세븐일레븐|다이소|쿠팡|올리브영/i.test(text)) category = '쇼핑/잡화';
+
+      const now = new Date();
+      let dStr = getTodayString();
+      let tStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const dateMatch = text.match(/([0-9]{1,2})\/([0-9]{1,2})/);
+      if (dateMatch) {
+        dStr = `${currentYear}-${String(dateMatch[1]).padStart(2, '0')}-${String(dateMatch[2]).padStart(2, '0')}`;
+      }
+
+      const timeMatch = text.match(/([0-9]{1,2}):([0-9]{1,2})/);
+      if (timeMatch) {
+        tStr = `${String(timeMatch[1]).padStart(2, '0')}:${String(timeMatch[2]).padStart(2, '0')}`;
+      }
+
+      parsedSmsData = {
+        type: 'expense',
+        amount: amount,
+        title: payee,
+        accountId: matchedAccountId,
+        category: category,
+        date: dStr,
+        time: tStr,
+        memo: '승인 문자 자동 등록',
+        tag: '#문자입력',
+        installment: 1
+      };
+
+      document.getElementById('parsedAmount').innerText = formatMoney(amount) + '원';
+      document.getElementById('parsedPayee').innerText = payee;
+      document.getElementById('parsedCard').innerText = matchedAccountName;
+      document.getElementById('parsedDateTime').innerText = `${dStr} ${tStr}`;
+
+      document.getElementById('smsParsedResultBox').classList.remove('hidden');
+      document.getElementById('btnCommitSms').disabled = (amount <= 0);
+    }
+
+    function commitParsedSms() {
+      if (!parsedSmsData || parsedSmsData.amount <= 0) return;
+      const newTx = Object.assign({ id: 'tx_' + Date.now() }, parsedSmsData);
+      transactions.unshift(newTx);
+      saveState();
+      closeSmsParserModal();
+      renderAll();
+      showToast(`'${newTx.title}' ${formatMoney(newTx.amount)}원이 등록되었습니다!`);
+    }
+
+    // ============================================
+    // TRANSACTION MODAL
+    // ============================================
+    function openTransactionModal(type = 'expense') {
+      modalTxType = type;
+      setModalTransactionType(type);
+
+      const now = new Date();
+      document.getElementById('inputTxDate').value = getTodayString();
+      document.getElementById('inputTxTime').value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      document.getElementById('inputTxAmount').value = '';
+      document.getElementById('inputTxTitle').value = '';
+      document.getElementById('inputTxMemo').value = '';
+      document.getElementById('inputTxTag').value = '';
+      document.getElementById('selectTxInstallment').value = '1';
+
+      populateModalSelects();
+      document.getElementById('transactionModal').classList.remove('hidden');
+      document.getElementById('inputTxAmount').focus();
+    }
+
+    function closeTransactionModal() {
+      document.getElementById('transactionModal').classList.add('hidden');
+    }
+
+    function setModalTransactionType(type) {
+      modalTxType = type;
+      const types = ['expense', 'income', 'transfer'];
+      types.forEach(t => {
+        const btn = document.getElementById('txTypeBtn-' + t);
+        if (btn) {
+          if (t === type) {
+            btn.className = (t === 'expense' ? 'px-3 py-1.5 rounded-lg bg-rose-500 text-white transition' : (t === 'income' ? 'px-3 py-1.5 rounded-lg bg-emerald-500 text-white transition' : 'px-3 py-1.5 rounded-lg bg-cyan-500 text-white transition'));
+          } else {
+            btn.className = 'px-3 py-1.5 rounded-lg text-neutral-500 transition';
+          }
+        }
+      });
+
+      const targetAccBox = document.getElementById('txTargetAccountContainer');
+      const catBox = document.getElementById('txCategoryContainer');
+      const instRow = document.getElementById('txInstallmentRow');
+      const fromLabel = document.getElementById('labelTxAccountFrom');
+
+      if (type === 'transfer') {
+        if (targetAccBox) targetAccBox.style.display = 'block';
+        if (catBox) catBox.style.display = 'none';
+        if (instRow) instRow.style.display = 'none';
+        if (fromLabel) fromLabel.innerText = '출금 계좌';
+      } else {
+        if (targetAccBox) targetAccBox.style.display = 'none';
+        if (catBox) catBox.style.display = 'block';
+        if (instRow) instRow.style.display = (type === 'expense') ? 'grid' : 'none';
+        if (fromLabel) fromLabel.innerText = type === 'expense' ? '결제 자산/카드' : '입금 계좌';
+      }
+
+      populateModalSelects();
+    }
+
+    function populateModalSelects() {
+      const accSelect = document.getElementById('selectTxAccount');
+      const targetAccSelect = document.getElementById('selectTxTargetAccount');
+      const catSelect = document.getElementById('selectTxCategory');
+
+      if (accSelect) accSelect.innerHTML = accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+      if (targetAccSelect) targetAccSelect.innerHTML = accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+      if (catSelect) {
+        const cats = modalTxType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+        catSelect.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+      }
+    }
+
+    function saveTransaction() {
+      const amount = parseInt(document.getElementById('inputTxAmount').value, 10);
+      if (!amount || amount <= 0) {
+        showToast('유효한 금액을 입력해주세요.');
+        return;
+      }
+
+      const date = document.getElementById('inputTxDate').value;
+      const time = document.getElementById('inputTxTime').value;
+      const accountId = document.getElementById('selectTxAccount').value;
+      const targetAccountId = document.getElementById('selectTxTargetAccount').value;
+      const category = document.getElementById('selectTxCategory').value;
+      const title = document.getElementById('inputTxTitle').value.trim() || (modalTxType === 'transfer' ? '계좌 이체' : '미분류 내역');
+      const memo = document.getElementById('inputTxMemo').value.trim();
+      const tag = document.getElementById('inputTxTag').value.trim();
+      const installment = parseInt(document.getElementById('selectTxInstallment').value, 10) || 1;
+
+      const newTx = {
+        id: 'tx_' + Date.now(),
+        type: modalTxType,
+        date: date,
+        time: time,
+        accountId: accountId,
+        targetAccountId: modalTxType === 'transfer' ? targetAccountId : null,
+        category: modalTxType === 'transfer' ? '이체' : category,
+        amount: amount,
+        title: title,
+        memo: memo,
+        tag: tag,
+        installment: installment
+      };
+
+      transactions.unshift(newTx);
+      saveState();
+      closeTransactionModal();
+      renderAll();
+      showToast('거래 내역이 등록되었습니다.');
+    }
+
+    function deleteTransaction(id) {
+      transactions = transactions.filter(t => t.id !== id);
+      saveState();
+      renderAll();
+      showToast('거래 내역이 삭제되었습니다.');
+    }
+
+    // ============================================
+    // RECURRING EXPENSES MODAL
+    // ============================================
+    function openNewRecurringModal() {
+      document.getElementById('newRecurringModal').classList.remove('hidden');
+      document.getElementById('inputRecTitle').value = '';
+      document.getElementById('inputRecAmount').value = '';
+      document.getElementById('inputRecDay').value = '25';
+      const sel = document.getElementById('selectRecAccount');
+      if (sel) sel.innerHTML = accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+    }
+
+    function closeNewRecurringModal() {
+      document.getElementById('newRecurringModal').classList.add('hidden');
+    }
+
+    function saveNewRecurring() {
+      const title = document.getElementById('inputRecTitle').value.trim();
+      const amount = parseInt(document.getElementById('inputRecAmount').value, 10);
+      const day = parseInt(document.getElementById('inputRecDay').value, 10);
+      const accountId = document.getElementById('selectRecAccount').value;
+
+      if (!title || !amount) {
+        showToast('항목명과 금액을 입력해주세요.');
+        return;
+      }
+
+      const newRec = {
+        id: 'rec_' + Date.now(),
+        title: title,
+        amount: amount,
+        day: day,
+        accountId: accountId,
+        category: '주거/통신'
+      };
+
+      recurring.push(newRec);
+      saveState();
+      closeNewRecurringModal();
+      renderRecurringView();
+      showToast('정기 고정비가 등록되었습니다.');
+    }
+
+    // ============================================
+    // NEW ACCOUNT MODAL
+    // ============================================
+    function openNewAccountModal() {
+      document.getElementById('newAccountModal').classList.remove('hidden');
+      document.getElementById('inputNewAccName').value = '';
+      document.getElementById('inputNewAccBalance').value = '0';
+      document.getElementById('inputNewAccName').focus();
+    }
+
+    function closeNewAccountModal() {
+      document.getElementById('newAccountModal').classList.add('hidden');
+    }
+
+    function saveNewAccount() {
+      const name = document.getElementById('inputNewAccName').value.trim();
+      if (!name) {
+        showToast('자산 계좌명을 입력해주세요.');
+        return;
+      }
+      const group = document.getElementById('selectNewAccGroup').value;
+      const balance = parseInt(document.getElementById('inputNewAccBalance').value, 10) || 0;
+
+      const newAcc = {
+        id: 'acc_' + Date.now(),
+        name: name,
+        group: group,
+        balance: balance,
+        isCredit: (group === 'card')
+      };
+
+      accounts.push(newAcc);
+      saveState();
+      closeNewAccountModal();
+      renderAll();
+      showToast(`'${name}' 계좌가 등록되었습니다.`);
+    }
+
+    // ============================================
+    // CSV EXPORT (EXCEL COMPATIBLE UTF-8 BOM)
+    // ============================================
+    function exportToCsv() {
+      if (transactions.length === 0) {
+        showToast('내보낼 거래 내역이 없습니다.');
+        return;
+      }
+
+      let csv = '\uFEFF날짜,시간,유형,출금자산,입금자산,카테고리,사용처/내용,금액,할부,태그,메모\n';
+      transactions.forEach(t => {
+        const acc = accounts.find(a => a.id === t.accountId);
+        const accName = acc ? acc.name : '';
+        const targetAcc = accounts.find(a => a.id === t.targetAccountId);
+        const targetAccName = targetAcc ? targetAcc.name : '';
+
+        const row = [
+          t.date,
+          t.time || '',
+          t.type === 'expense' ? '지출' : (t.type === 'income' ? '수입' : '이체'),
+          `"${accName}"`,
+          `"${targetAccName}"`,
+          `"${t.category || ''}"`,
+          `"${(t.title || '').replace(/"/g, '""')}"`,
+          t.amount,
+          t.installment || 1,
+          `"${t.tag || ''}"`,
+          `"${(t.memo || '').replace(/"/g, '""')}"`
+        ];
+        csv += row.join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lemon-money-${currentYear}-${String(currentMonth).padStart(2, '0')}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('엑셀(CSV) 파일로 다운로드되었습니다.');
+    }
+
+    // Helpers
+    function getTodayString() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function formatMoney(num) {
+      return Number(num || 0).toLocaleString('ko-KR');
+    }
+
+    function formatShortMoney(num) {
+      const n = Math.abs(Number(num || 0));
+      if (n >= 100000000) return (n / 100000000).toFixed(1) + '억';
+      if (n >= 10000) return Math.round(n / 10000) + '만';
+      return formatMoney(n);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('lemonToast');
+      const toastMsg = document.getElementById('toastMessage');
+      if (!toast || !toastMsg) return;
+      toastMsg.innerText = msg;
+      toast.classList.remove('toast-hide');
+      toast.classList.add('toast-show');
+      setTimeout(() => {
+        toast.classList.remove('toast-show');
+        toast.classList.add('toast-hide');
+      }, 2600);
+    }
+
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    // Universal Click Ripple
+    document.addEventListener('click', e => {
+      const target = e.target.closest('button, a, .btn-tap');
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      const circle = document.createElement('span');
+      const diameter = Math.max(rect.width, rect.height);
+      const radius = diameter / 2;
+      circle.style.width = circle.style.height = `${diameter}px`;
+      circle.style.left = `${e.clientX - rect.left - radius}px`;
+      circle.style.top = `${e.clientY - rect.top - radius}px`;
+      circle.classList.add('click-ripple');
+      target.style.position = target.style.position || 'relative';
+      target.style.overflow = 'hidden';
+      target.appendChild(circle);
+      setTimeout(() => circle.remove(), 600);
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+          localStorage.setItem('lemon_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        });
+      }
+
+      const savedTheme = localStorage.getItem('lemon_theme') || localStorage.getItem('flux_theme');
+      if (savedTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+
+      loadState();
+    });
+  </script>
+</body>
+</html>
