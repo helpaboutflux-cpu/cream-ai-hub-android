@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lemon OCR & Translate - 사진 텍스트 추출 & 실시간 번역기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46' },
+            lemon: { 400: '#facc15', 500: '#eab308', 600: '#ca8a04' }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .btn-tap { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .btn-tap:hover { transform: translateY(-1.5px) scale(1.02); }
+    .btn-tap:active { transform: scale(0.94); }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col justify-between antialiased selection:bg-lemon-500 selection:text-neutral-950">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <a href="index.html" class="flex items-center space-x-2.5 group">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lemon-600 to-amber-400 p-[1px] shadow-md group-hover:scale-105 transition-transform">
+            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
+              <svg class="w-5 h-5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M4 7V4h16v3M9 20h6M12 4v16"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center space-x-1.5">
+              <span class="font-black text-lg tracking-tight">Lemon OCR</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lemon-100 dark:bg-lemon-950 text-lemon-700 dark:text-lemon-400 font-bold border border-lemon-300 dark:border-lemon-800">문자 추출·번역</span>
+            </div>
+            <span class="text-[10px] text-neutral-500 -mt-0.5">사진 텍스트 추출 & 실시간 다국어 번역기</span>
+          </div>
+        </a>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button id="darkModeToggle" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap">
+          <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
+
+    <!-- Upload & Image Dropzone -->
+    <div id="ocrDropzone" onclick="document.getElementById('inputOcrImg').click()" class="p-8 sm:p-12 rounded-3xl border-2 border-dashed border-neutral-300 dark:border-neutral-800 hover:border-lemon-500 bg-white dark:bg-neutral-900 text-center cursor-pointer transition space-y-3 shadow-sm">
+      <input type="file" id="inputOcrImg" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
+      <div class="w-12 h-12 mx-auto rounded-2xl bg-lemon-100 dark:bg-lemon-950 flex items-center justify-center text-lemon-600 dark:text-lemon-400">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+      </div>
+      <div class="space-y-1">
+        <h3 class="font-bold text-sm sm:text-base text-neutral-800 dark:text-neutral-200">사진이나 캡처 이미지를 드래그하거나 클릭하여 업로드</h3>
+        <p class="text-xs text-neutral-500">교재, 영문 서류, 캡처 화면, 영수증, 간판 사진 지원 · 클립보드 붙여넣기(Ctrl+V) 가능</p>
+      </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div id="ocrProgressCard" class="hidden p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
+      <div class="flex items-center justify-between text-xs font-bold">
+        <span id="ocrStatusMsg" class="text-lemon-600 dark:text-lemon-400">텍스트 판독 엔진 준비 중...</span>
+        <span id="ocrPercent" class="font-mono text-neutral-500">0%</span>
+      </div>
+      <div class="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+        <div id="ocrBar" class="h-full bg-lemon-500 rounded-full transition-all duration-300" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- Dual Panel: Extracted Text & Translation Result -->
+    <div id="ocrPanels" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+      
+      <!-- Panel 1: Extracted Text -->
+      <div class="p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-lemon-500"></span>
+            <h4 class="font-bold text-sm text-neutral-900 dark:text-white">추출된 원문 텍스트</h4>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="copyExtracted()" class="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800 btn-tap">
+              복사
+            </button>
+            <button onclick="speakText(document.getElementById('extractedText').value, 'ko-KR')" class="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 btn-tap" title="음성 낭독">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <textarea id="extractedText" rows="10" class="w-full p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 text-xs sm:text-sm font-sans focus:outline-none focus:border-lemon-500 resize-none leading-relaxed" placeholder="추출된 글자가 여기에 표시됩니다..."></textarea>
+
+        <div class="flex items-center justify-between text-xs text-neutral-400 font-mono">
+          <span id="charCount">0자</span>
+          <button onclick="cleanLineBreaks()" class="hover:underline">불필요한 줄바꿈 정리</button>
+        </div>
+      </div>
+
+      <!-- Panel 2: Live Translation Result -->
+      <div class="p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <h4 class="font-bold text-sm text-neutral-900 dark:text-white">실시간 번역 결과</h4>
+          </div>
+          <div class="flex items-center space-x-2 text-xs">
+            <select id="targetLangSelect" onchange="translateExtracted()" class="px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 font-semibold">
+              <option value="ko">한국어로 번역</option>
+              <option value="en" selected>영어로 번역 (English)</option>
+              <option value="ja">일본어로 번역 (日本語)</option>
+              <option value="zh">중국어로 번역 (中文)</option>
+            </select>
+            <button onclick="copyTranslated()" class="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800 btn-tap">
+              복사
+            </button>
+            <button onclick="speakTranslated()" class="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 btn-tap" title="발음 듣기">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <textarea id="translatedText" rows="10" readonly class="w-full p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 text-xs sm:text-sm font-sans focus:outline-none resize-none leading-relaxed text-neutral-700 dark:text-neutral-300" placeholder="번역 중..."></textarea>
+
+        <div class="flex items-center justify-between text-xs text-neutral-400">
+          <span id="transStatus">무설치 즉시 번역</span>
+          <button onclick="translateExtracted()" class="px-3 py-1 rounded-xl bg-lemon-500 text-neutral-950 font-bold btn-tap">다시 번역</button>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Global Footer -->
+  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
+      <div class="flex items-center space-x-2">
+        <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon OCR</span>
+        <span>·</span>
+        <span>Lemon soft 17대 독립 웹 프로덕트</span>
+      </div>
+      <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px]">
+        <a href="index.html" class="hover:underline">Developer Hub</a>
+        <span>·</span>
+        <a href="ocr.html" class="hover:underline text-lemon-500 font-bold">Lemon OCR</a>
+        <span>·</span>
+        <a href="wallpaper.html" class="hover:underline">Lemon Wallpaper</a>
+        <span>·</span>
+        <a href="money.html" class="hover:underline">Lemon Money</a>
+        <span>·</span>
+        <a href="news.html" class="hover:underline">FLUX News</a>
+        <span>·</span>
+        <a href="habit.html" class="hover:underline">Lemon Habit</a>
+        <span>·</span>
+        <a href="bio.html" class="hover:underline">Lemon Bio</a>
+      </div>
+      <div><span>2026 Lemon soft. All rights reserved.</span></div>
+    </div>
+  </footer>
+
+  <script>
+    function handleImageSelected(e) {
+      const file = e.target.files[0];
+      if (file) runOcr(file);
+    }
+
+    document.addEventListener('paste', e => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          runOcr(items[i].getAsFile());
+          break;
+        }
+      }
+    });
+
+    async function runOcr(file) {
+      document.getElementById('ocrProgressCard').classList.remove('hidden');
+      document.getElementById('ocrPanels').classList.add('hidden');
+
+      const msg = document.getElementById('ocrStatusMsg');
+      const bar = document.getElementById('ocrBar');
+      const pct = document.getElementById('ocrPercent');
+
+      try {
+        msg.innerText = 'Tesseract 엔진 로드 중...';
+        bar.style.width = '20%';
+        pct.innerText = '20%';
+
+        const worker = await Tesseract.createWorker('kor+eng');
+        
+        msg.innerText = '이미지에서 텍스트 판독 중...';
+        bar.style.width = '60%';
+        pct.innerText = '60%';
+
+        const ret = await worker.recognize(file);
+        const text = ret.data.text.trim();
+
+        bar.style.width = '100%';
+        pct.innerText = '100%';
+        msg.innerText = '판독 완료!';
+        await worker.terminate();
+
+        document.getElementById('ocrProgressCard').classList.add('hidden');
+        document.getElementById('ocrPanels').classList.remove('hidden');
+        document.getElementById('extractedText').value = text;
+        document.getElementById('charCount').innerText = `${text.length}자`;
+
+        translateExtracted();
+      } catch (err) {
+        msg.innerText = '텍스트 판독 실패';
+        console.error(err);
+      }
+    }
+
+    async function translateExtracted() {
+      const text = document.getElementById('extractedText').value.trim();
+      const targetLang = document.getElementById('targetLangSelect').value;
+      const transArea = document.getElementById('translatedText');
+      const statusEl = document.getElementById('transStatus');
+
+      if (!text) {
+        transArea.value = '';
+        return;
+      }
+
+      transArea.value = '번역 중...';
+      statusEl.innerText = '번역 처리 중...';
+
+      try {
+        // Fallback Client-side MyMemory Translation API
+        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.substring(0, 500))}&langpair=autodetect|${targetLang}`);
+        const data = await res.json();
+        if (data && data.responseData && data.responseData.translatedText) {
+          transArea.value = data.responseData.translatedText;
+          statusEl.innerText = '번역 완료';
+        } else {
+          transArea.value = text; // fallback
+          statusEl.innerText = '번역 API 응답 없음';
+        }
+      } catch (e) {
+        transArea.value = text;
+        statusEl.innerText = '번역 실패 (원문 표시)';
+      }
+    }
+
+    function cleanLineBreaks() {
+      const area = document.getElementById('extractedText');
+      area.value = area.value.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+      document.getElementById('charCount').innerText = `${area.value.length}자`;
+      translateExtracted();
+    }
+
+    function copyExtracted() {
+      navigator.clipboard.writeText(document.getElementById('extractedText').value);
+      alert('원문 텍스트가 복사되었습니다.');
+    }
+
+    function copyTranslated() {
+      navigator.clipboard.writeText(document.getElementById('translatedText').value);
+      alert('번역 결과가 복사되었습니다.');
+    }
+
+    function speakText(txt, lang = 'ko-KR') {
+      if (!txt || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(txt);
+      utter.lang = lang;
+      window.speechSynthesis.speak(utter);
+    }
+
+    function speakTranslated() {
+      const txt = document.getElementById('translatedText').value;
+      const tLang = document.getElementById('targetLangSelect').value;
+      const langMap = { en: 'en-US', ko: 'ko-KR', ja: 'ja-JP', zh: 'zh-CN' };
+      speakText(txt, langMap[tLang] || 'en-US');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+        });
+      }
+    });
+  </script>
+</body>
+</html>
