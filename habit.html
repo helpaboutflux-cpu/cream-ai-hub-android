@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUX Habit - 듀오링고 스타일 일일 루틴 & 습관 트래커</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            },
+            lime: {
+              50: '#f7fee7',
+              100: '#ecfccb',
+              200: '#d9f99d',
+              300: '#bef264',
+              400: '#a3e635',
+              500: '#84cc16',
+              600: '#65a30d',
+              700: '#4d7c0f',
+              800: '#3f6212',
+              900: '#365314',
+              950: '#1a2e05'
+            },
+            emerald: {
+              500: '#10b981',
+              600: '#059669'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Glow */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.16;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+
+    /* Click Ripple Effect */
+    .click-ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(132, 204, 22, 0.35);
+      transform: scale(0);
+      animation: rippleEffect 0.55s ease-out;
+      pointer-events: none;
+      z-index: 50;
+    }
+    @keyframes rippleEffect {
+      to {
+        transform: scale(3.5);
+        opacity: 0;
+      }
+    }
+
+    /* Shimmer Button */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 40%;
+      height: 200%;
+      background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.25), transparent);
+      transform: rotate(30deg);
+      animation: shimmerPass 3.5s infinite;
+    }
+    @keyframes shimmerPass {
+      0% { left: -60%; }
+      25% { left: 140%; }
+      100% { left: 140%; }
+    }
+
+    /* Micro Bounce & Press Animation */
+    .btn-tap {
+      transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+    }
+    .btn-tap:hover {
+      transform: translateY(-1.5px) scale(1.02);
+    }
+    .btn-tap:active {
+      transform: scale(0.94);
+    }
+
+    /* Duolingo Bounce Keyframes */
+    @keyframes duoBounce {
+      0%, 100% { transform: translateY(0) scale(1); }
+      40% { transform: translateY(-8px) scale(1.06); }
+      60% { transform: translateY(-2px) scale(0.98); }
+    }
+    .duo-bounce {
+      animation: duoBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* Flame Glow Pulse */
+    @keyframes flamePulse {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(234, 88, 12, 0.55)); transform: scale(1); }
+      50% { filter: drop-shadow(0 0 14px rgba(249, 115, 22, 0.85)); transform: scale(1.08); }
+    }
+    .flame-active {
+      animation: flamePulse 1.8s ease-in-out infinite;
+    }
+
+    /* Floating XP Notification */
+    .xp-float {
+      position: absolute;
+      font-weight: 900;
+      color: #84cc16;
+      font-size: 1.1rem;
+      pointer-events: none;
+      animation: floatUpFade 0.85s ease-out forwards;
+      z-index: 60;
+    }
+    @keyframes floatUpFade {
+      0% { opacity: 0; transform: translateY(0) scale(0.7); }
+      30% { opacity: 1; transform: translateY(-15px) scale(1.2); }
+      100% { opacity: 0; transform: translateY(-40px) scale(1); }
+    }
+
+    /* Grass Grid Square */
+    .grass-cell {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      transition: transform 0.15s ease, background-color 0.2s ease;
+      cursor: pointer;
+    }
+    .grass-cell:hover {
+      transform: scale(1.35);
+      z-index: 10;
+    }
+
+    /* Toast Notification */
+    #fluxToast {
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #fluxToast.toast-show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    #fluxToast.toast-hide {
+      opacity: 0;
+      transform: translateY(12px) scale(0.95);
+      pointer-events: none;
+    }
+
+    /* Confetti particle */
+    .confetti-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      animation: confettiDrop 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+    @keyframes confettiDrop {
+      0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+      100% { opacity: 0; transform: translate(var(--tx), var(--ty)) rotate(var(--tr)); }
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen relative antialiased flex flex-col justify-between selection:bg-lime-500 selection:text-white">
+
+  <!-- Ambient Floating Orbs -->
+  <div class="ambient-orb bg-lime-500/20 w-96 h-96 top-10 -left-20"></div>
+  <div class="ambient-orb bg-emerald-500/20 w-96 h-96 top-80 right-0"></div>
+  <div class="ambient-orb bg-orange-500/15 w-80 h-80 bottom-40 left-1/3"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3">
+        <a href="index.html" class="flex items-center space-x-2.5 group">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lime-600 via-emerald-500 to-lime-400 p-[1px] shadow-md shadow-lime-500/20 group-hover:scale-105 transition-transform">
+            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
+              <svg class="w-5 h-5 text-lime-600 dark:text-lime-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center space-x-1.5">
+              <span class="font-black text-lg tracking-tight bg-gradient-to-r from-neutral-950 via-neutral-800 to-neutral-600 dark:from-white dark:via-neutral-200 dark:to-neutral-400 bg-clip-text text-transparent">FLUX Habit</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lime-100 dark:bg-lime-950/80 text-lime-700 dark:text-lime-400 border border-lime-300 dark:border-lime-800/80 font-bold">DUO-STYLE</span>
+            </div>
+            <span class="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium -mt-0.5">FLUX soft 일일 루틴 & 습관 엔진</span>
+          </div>
+        </a>
+      </div>
+
+      <!-- Gamification Stats Top Bar (Streak, Freeze, XP, Sound, Theme) -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        
+        <!-- Burning Streak Badge -->
+        <div id="topStreakBadge" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-orange-100 dark:bg-orange-950/60 border border-orange-200 dark:border-orange-800/70 text-orange-700 dark:text-orange-400 font-black text-xs shadow-sm">
+          <svg class="w-4 h-4 text-orange-500 flame-active" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 23c-4.97 0-9-3.8-9-8.5C3 8.35 8.5 2 12 2c.86 3.2 3 5 4.5 6.5C18.5 10.5 21 12.8 21 14.5c0 4.7-4.03 8.5-9 8.5zm0-15.5c-2.3 2.3-4.5 5.2-4.5 7 0 2.48 2.02 4.5 4.5 4.5s4.5-2.02 4.5-4.5c0-1.8-2.2-4.7-4.5-7z"></path>
+          </svg>
+          <span id="streakCountText">0</span>
+          <span class="text-[10px] font-semibold opacity-80 hidden sm:inline">일 연속</span>
+        </div>
+
+        <!-- Streak Freeze Badge -->
+        <div class="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-cyan-100 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800/70 text-cyan-700 dark:text-cyan-400 font-bold text-xs" title="스트릭 동결 보호권 (하루 놓쳐도 방어)">
+          <svg class="w-3.5 h-3.5 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <line x1="12" y1="2" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"></line>
+          </svg>
+          <span id="freezeCountText">2</span>
+        </div>
+
+        <!-- Total XP Badge -->
+        <div class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-lime-100 dark:bg-lime-950/60 border border-lime-200 dark:border-lime-800/70 text-lime-700 dark:text-lime-400 font-black text-xs shadow-sm">
+          <svg class="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          <span id="totalXpText">0</span>
+          <span class="text-[10px] font-semibold opacity-80">XP</span>
+        </div>
+
+        <!-- Sound Toggle Button -->
+        <button onclick="toggleSoundFx()" id="btnSoundToggle" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap" title="효과음 켜기/끄기">
+          <svg id="iconSoundOn" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+          </svg>
+          <svg id="iconSoundOff" class="w-4 h-4 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+        </button>
+
+        <!-- Dark/Light Theme Toggle -->
+        <button id="darkModeToggle" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap" title="테마 변경">
+          <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- 3-Segment Navigation Bar (Home · Tracker · Grass & Stats) -->
+  <div class="border-b border-neutral-200/70 dark:border-neutral-800/70 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+      <nav class="flex space-x-1 sm:space-x-2 py-2 overflow-x-auto">
+        <button onclick="switchTab('tracker')" id="navTabTracker" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center space-x-2 bg-lime-600 text-white shadow-md shadow-lime-600/20">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          <span>오늘의 퀘스트</span>
+        </button>
+
+        <button onclick="switchTab('grass')" id="navTabGrass" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span>잔디밭 & 통계</span>
+        </button>
+
+        <button onclick="switchTab('home')" id="navTabHome" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          <span>소개 & 가이드</span>
+        </button>
+      </nav>
+
+      <!-- Quick Action: New Habit -->
+      <button onclick="openNewHabitModal()" class="px-3.5 py-1.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold text-xs flex items-center space-x-1.5 shadow-sm btn-tap">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span>새 습관 추가</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
+
+    <!-- ============================================ -->
+    <!-- TAB 1: TRACKER (오늘의 퀘스트 & 듀오링고 대시보드) -->
+    <!-- ============================================ -->
+    <div id="viewTracker" class="space-y-6">
+
+      <!-- DUOLINGO HERO CARD: Daily Quest Progress & Burning Streak -->
+      <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm relative overflow-hidden">
+        
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+          
+          <!-- Left: Streak Status & Cheer Phrase -->
+          <div class="space-y-3 max-w-xl">
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-orange-100 dark:bg-orange-950/70 border border-orange-200 dark:border-orange-800/80 text-orange-800 dark:text-orange-300 text-xs font-bold">
+              <svg class="w-3.5 h-3.5 text-orange-500 flame-active" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 23c-4.97 0-9-3.8-9-8.5C3 8.35 8.5 2 12 2c.86 3.2 3 5 4.5 6.5C18.5 10.5 21 12.8 21 14.5c0 4.7-4.03 8.5-9 8.5zm0-15.5c-2.3 2.3-4.5 5.2-4.5 7 0 2.48 2.02 4.5 4.5 4.5s4.5-2.02 4.5-4.5c0-1.8-2.2-4.7-4.5-7z"></path>
+              </svg>
+              <span id="heroStreakLabel">연속 스트릭 엔진 활성화</span>
+            </div>
+
+            <h2 id="heroMotivationalQuote" class="text-2xl sm:text-3xl font-black tracking-tight text-neutral-950 dark:text-white leading-snug">
+              오늘의 스트릭을 이어가세요!
+            </h2>
+            <p id="heroSubtext" class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed">
+              작은 습관 하나가 모여 내일의 단단한 루틴이 됩니다. 매일 완료할 때마다 XP와 연속 스트릭이 쌓입니다.
+            </p>
+          </div>
+
+          <!-- Right: Circular / Radial Goal Ring & Big Numbers -->
+          <div class="flex items-center space-x-5 w-full md:w-auto justify-between md:justify-end bg-neutral-50 dark:bg-neutral-850 p-4 sm:p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800">
+            
+            <div class="relative w-20 h-20 flex items-center justify-center">
+              <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                <!-- Background Ring -->
+                <path class="text-neutral-200 dark:text-neutral-700" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"></path>
+                <!-- Animated Progress Ring -->
+                <path id="progressCircle" class="text-lime-500 transition-all duration-700 ease-out" stroke-dasharray="0, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"></path>
+              </svg>
+              <div class="absolute flex flex-col items-center justify-center text-center">
+                <span id="progressPercentText" class="text-base font-black text-neutral-950 dark:text-white">0%</span>
+                <span class="text-[9px] text-neutral-400 font-bold -mt-0.5">완료</span>
+              </div>
+            </div>
+
+            <div class="space-y-1">
+              <div class="text-xs text-neutral-500 dark:text-neutral-400 font-semibold">오늘의 달성</div>
+              <div class="text-xl font-black text-neutral-900 dark:text-white flex items-baseline space-x-1">
+                <span id="completedCountText" class="text-lime-600 dark:text-lime-400">0</span>
+                <span class="text-neutral-400 text-sm">/</span>
+                <span id="totalHabitsCountText" class="text-neutral-500">0</span>
+              </div>
+              <div id="leagueBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-lime-100 dark:bg-lime-950 text-lime-700 dark:text-lime-400 inline-block border border-lime-300 dark:border-lime-800">
+                브론즈 리그
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Linear Progress Bar -->
+        <div class="mt-6 pt-5 border-t border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div class="w-full bg-neutral-100 dark:bg-neutral-800 h-2.5 rounded-full overflow-hidden">
+            <div id="linearProgressBar" class="h-full bg-gradient-to-r from-lime-500 to-emerald-500 rounded-full transition-all duration-500 ease-out" style="width: 0%;"></div>
+          </div>
+          <span id="progressSummaryText" class="text-neutral-500 dark:text-neutral-400 whitespace-nowrap font-medium">루틴을 체크해 첫 XP를 획득하세요!</span>
+        </div>
+
+      </div>
+
+      <!-- Quick Preset Recommended Habits Strip -->
+      <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-sm space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center space-x-1.5">
+            <svg class="w-3.5 h-3.5 text-lime-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            <span>추천 인기 루틴 1초 추가</span>
+          </span>
+          <span class="text-[11px] text-neutral-400">클릭하면 내 습관에 바로 등록됩니다</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="addPresetHabit('아침 기상 후 미온수 1잔', 'health')" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-850 hover:border-lime-500 text-xs font-semibold text-neutral-700 dark:text-neutral-300 transition btn-tap flex items-center space-x-1.5">
+            <span>물 1잔 마시기</span>
+            <span class="text-[10px] text-lime-600 dark:text-lime-400 font-bold">+10 XP</span>
+          </button>
+          <button onclick="addPresetHabit('하루 스트레칭 15분', 'exercise')" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-850 hover:border-lime-500 text-xs font-semibold text-neutral-700 dark:text-neutral-300 transition btn-tap flex items-center space-x-1.5">
+            <span>스트레칭 15분</span>
+            <span class="text-[10px] text-lime-600 dark:text-lime-400 font-bold">+10 XP</span>
+          </button>
+          <button onclick="addPresetHabit('영단어 20개 복습', 'study')" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-850 hover:border-lime-500 text-xs font-semibold text-neutral-700 dark:text-neutral-300 transition btn-tap flex items-center space-x-1.5">
+            <span>영단어 20개</span>
+            <span class="text-[10px] text-lime-600 dark:text-lime-400 font-bold">+10 XP</span>
+          </button>
+          <button onclick="addPresetHabit('독서 15분 (책 읽기)', 'study')" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-850 hover:border-lime-500 text-xs font-semibold text-neutral-700 dark:text-neutral-300 transition btn-tap flex items-center space-x-1.5">
+            <span>독서 15분</span>
+            <span class="text-[10px] text-lime-600 dark:text-lime-400 font-bold">+10 XP</span>
+          </button>
+          <button onclick="addPresetHabit('오늘 하루 감사 일기 3줄', 'mind')" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-850 hover:border-lime-500 text-xs font-semibold text-neutral-700 dark:text-neutral-300 transition btn-tap flex items-center space-x-1.5">
+            <span>감사 일기 쓰기</span>
+            <span class="text-[10px] text-lime-600 dark:text-lime-400 font-bold">+10 XP</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Habit List Header & Category Filter -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
+        <div class="flex items-center space-x-2">
+          <h3 class="font-black text-lg text-neutral-950 dark:text-white">오늘의 습관 목록</h3>
+          <span id="activeFilterBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">전체</span>
+        </div>
+
+        <!-- Filter Chips -->
+        <div class="flex flex-wrap gap-1.5 text-xs font-semibold">
+          <button onclick="filterHabits('all')" id="filterBtn-all" class="px-3 py-1 rounded-xl bg-lime-600 text-white transition">전체</button>
+          <button onclick="filterHabits('health')" id="filterBtn-health" class="px-3 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition">건강/루틴</button>
+          <button onclick="filterHabits('exercise')" id="filterBtn-exercise" class="px-3 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition">운동</button>
+          <button onclick="filterHabits('study')" id="filterBtn-study" class="px-3 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition">공부/성장</button>
+          <button onclick="filterHabits('mind')" id="filterBtn-mind" class="px-3 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition">멘탈/마음</button>
+        </div>
+      </div>
+
+      <!-- HABIT CARDS CONTAINER -->
+      <div id="habitsListContainer" class="space-y-3">
+        <!-- Rendered Dynamically via JS -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="habitsEmptyState" class="hidden p-12 text-center rounded-3xl border border-dashed border-neutral-300 dark:border-neutral-800 space-y-4">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+        </div>
+        <div class="space-y-1">
+          <h4 class="font-bold text-neutral-800 dark:text-neutral-200 text-base">등록된 습관이 없습니다</h4>
+          <p class="text-xs text-neutral-500">위의 추천 루틴을 누르거나 새 습관을 추가해 오늘의 스트릭을 시작해보세요!</p>
+        </div>
+        <button onclick="openNewHabitModal()" class="px-5 py-2.5 rounded-xl bg-lime-600 hover:bg-lime-500 text-white font-bold text-xs shadow-md shadow-lime-600/20 btn-tap">
+          새 습관 만들기
+        </button>
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TAB 2: GRASS & STATS (깃허브 잔디밭 & 리그 통계) -->
+    <!-- ============================================ -->
+    <div id="viewGrass" class="hidden space-y-6">
+
+      <!-- GITHUB STYLE GRASS HEATMAP CARD -->
+      <div class="p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-6">
+        
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-lime-500"></span>
+              <h3 class="font-black text-lg text-neutral-900 dark:text-white">나의 1년 습관 잔디밭</h3>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-lime-100 dark:bg-lime-950 text-lime-700 dark:text-lime-400 font-bold">GITHUB HEATMAP</span>
+            </div>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">매일 습관을 완료할 때마다 잔디가 진하게 심어집니다.</p>
+          </div>
+
+          <!-- Heatmap Legend -->
+          <div class="flex items-center space-x-2 text-[11px] text-neutral-400">
+            <span>적음</span>
+            <div class="w-3 h-3 rounded bg-neutral-200 dark:bg-neutral-800"></div>
+            <div class="w-3 h-3 rounded bg-lime-300 dark:bg-lime-900"></div>
+            <div class="w-3 h-3 rounded bg-lime-400 dark:bg-lime-700"></div>
+            <div class="w-3 h-3 rounded bg-lime-500 dark:bg-lime-500"></div>
+            <div class="w-3 h-3 rounded bg-lime-600 dark:bg-lime-400"></div>
+            <span>많음</span>
+          </div>
+        </div>
+
+        <!-- Grass Heatmap Grid -->
+        <div class="overflow-x-auto pb-2">
+          <div id="grassGridContainer" class="inline-grid grid-rows-7 grid-flow-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-850">
+            <!-- 52 weeks x 7 days rendered via JS -->
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 text-xs">
+          <div class="flex items-center space-x-6 text-neutral-600 dark:text-neutral-400 font-medium">
+            <div>총 완료 횟수: <strong id="statsTotalCompletions" class="text-neutral-900 dark:text-white font-black">0회</strong></div>
+            <div>최장 연속 기록: <strong id="statsMaxStreak" class="text-orange-600 dark:text-orange-400 font-black">0일</strong></div>
+            <div>현재 연속 기록: <strong id="statsCurrentStreak" class="text-lime-600 dark:text-lime-400 font-black">0일</strong></div>
+          </div>
+
+          <!-- Export Streak Share Card Button -->
+          <button onclick="generateShareCardModal()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-lime-500 hover:from-orange-400 hover:to-lime-400 text-white font-bold shadow-md shadow-orange-500/20 flex items-center space-x-2 btn-tap">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+            <span>스트릭 인증 카드 만들기</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- DUOLINGO LEAGUE & XP SUMMARY -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- League Status -->
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-neutral-400 uppercase tracking-wider">현재 리그</span>
+            <span class="text-xs font-mono text-lime-600 dark:text-lime-400 font-bold">시즌 1</span>
+          </div>
+          <div class="space-y-1">
+            <h4 id="leagueTitle" class="text-xl font-black text-neutral-950 dark:text-white">브론즈 리그</h4>
+            <p id="leagueDesc" class="text-xs text-neutral-500">100 XP 달성 시 실버 리그로 승급합니다.</p>
+          </div>
+          <div class="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
+            <div id="leagueProgressBar" class="h-full bg-lime-500 rounded-full transition-all" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Weekly Performance -->
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-neutral-400 uppercase tracking-wider">이번 주 달성률</span>
+            <span id="weeklyPercentText" class="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold">0%</span>
+          </div>
+          <div class="space-y-1">
+            <h4 class="text-xl font-black text-neutral-950 dark:text-white">주간 루틴 리포트</h4>
+            <p class="text-xs text-neutral-500">지난 7일간 완료한 루틴의 평균치입니다.</p>
+          </div>
+          <div class="flex items-center justify-between text-center pt-1" id="weeklyDaysStrip">
+            <!-- 7 Days Bar Indicators -->
+          </div>
+        </div>
+
+        <!-- Streak Shield & Freeze Status -->
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-neutral-400 uppercase tracking-wider">스트릭 방어권</span>
+            <span class="text-xs font-mono text-cyan-600 dark:text-cyan-400 font-bold">ACTIVE</span>
+          </div>
+          <div class="space-y-1">
+            <h4 class="text-xl font-black text-neutral-950 dark:text-white"><span id="freezeLeftCount">2</span>개 보유 중</h4>
+            <p class="text-xs text-neutral-500">깜빡하고 하루를 놓쳐도 스트릭이 파괴되지 않습니다.</p>
+          </div>
+          <div class="flex items-center space-x-2 pt-1 text-xs text-neutral-400">
+            <svg class="w-4 h-4 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span>7일 연속 완주 시 1개 자동 충전</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TAB 3: HOME & GUIDE (서비스 소개 & 듀오링고 원리) -->
+    <!-- ============================================ -->
+    <div id="viewHome" class="hidden space-y-8">
+      
+      <!-- Service Hero Banner -->
+      <div class="text-center space-y-4 max-w-3xl mx-auto pt-6">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-lime-100 dark:bg-lime-950/70 text-lime-800 dark:text-lime-300 border border-lime-200 dark:border-lime-800 text-xs font-semibold">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          <span>100% 브라우저 로컬 저장 · 서버비 0원 · 가입 없이 평생 무료</span>
+        </div>
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-neutral-950 dark:text-white leading-tight">
+          포기하지 않고 끝까지 지키는 <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-lime-600 via-emerald-500 to-lime-400 bg-clip-text text-transparent">듀오링고 스타일 일일 습관 트래커</span>
+        </h1>
+        <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+          지루한 체크리스트 대신 불타는 스트릭, 상쾌한 듀오링고 차임벨 사운드, 1년 깃허브 잔디 히트맵과 XP 보상으로 습관을 게임처럼 즐기세요.
+        </p>
+        <div class="pt-3 flex flex-wrap items-center justify-center gap-3">
+          <button onclick="switchTab('tracker')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-lime-600 to-emerald-600 hover:from-lime-500 hover:to-emerald-500 text-white font-bold text-sm shadow-lg shadow-lime-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>오늘의 퀘스트 시작하기</span>
+          </button>
+          <button onclick="switchTab('grass')" class="px-5 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-sm transition flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span>내 잔디밭 보러가기</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 3 Key Features Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+        
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-orange-100 dark:bg-orange-950 flex items-center justify-center text-orange-600 dark:text-orange-400">
+            <svg class="w-6 h-6 flame-active" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 23c-4.97 0-9-3.8-9-8.5C3 8.35 8.5 2 12 2c.86 3.2 3 5 4.5 6.5C18.5 10.5 21 12.8 21 14.5c0 4.7-4.03 8.5-9 8.5zm0-15.5c-2.3 2.3-4.5 5.2-4.5 7 0 2.48 2.02 4.5 4.5 4.5s4.5-2.02 4.5-4.5c0-1.8-2.2-4.7-4.5-7z"></path>
+            </svg>
+          </div>
+          <h3 class="font-bold text-base text-neutral-900 dark:text-white">불타는 연속 스트릭</h3>
+          <p class="text-xs text-neutral-500 leading-relaxed">
+            하루라도 놓치면 아쉬운 듀오링고의 강력한 심리적 동기부여 메커니즘을 적용했습니다. 스트릭 동결권으로 실수로 하루를 놓쳐도 보호할 수 있습니다.
+          </p>
+        </div>
+
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-lime-100 dark:bg-lime-950 flex items-center justify-center text-lime-600 dark:text-lime-400">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          </div>
+          <h3 class="font-bold text-base text-neutral-900 dark:text-white">상쾌한 사운드 & XP</h3>
+          <p class="text-xs text-neutral-500 leading-relaxed">
+            루틴을 완료할 때마다 브라우저 실시간 Web Audio로 경쾌한 아르페지오 정답음과 컨페티가 터집니다. 경험치를 모아 브론즈에서 다이아몬드 리그까지 진급하세요.
+          </p>
+        </div>
+
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          </div>
+          <h3 class="font-bold text-base text-neutral-900 dark:text-white">깃허브 스타일 잔디밭</h3>
+          <p class="text-xs text-neutral-500 leading-relaxed">
+            나의 1년간의 노력이 한눈에 시각화되는 히트맵 잔디 그래프를 제공합니다. 내 성과를 담은 감각적인 스트릭 인증 카드를 이미지로 다운로드할 수 있습니다.
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ============================================ -->
+  <!-- MODAL 1: NEW HABIT MODAL -->
+  <!-- ============================================ -->
+  <div id="newHabitModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-5 shadow-2xl relative">
+      
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 rounded-xl bg-lime-100 dark:bg-lime-950 flex items-center justify-center text-lime-600 dark:text-lime-400">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </div>
+          <h3 class="font-bold text-lg text-neutral-950 dark:text-white">새로운 습관 추가</h3>
+        </div>
+        <button onclick="closeNewHabitModal()" class="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 p-1 rounded-lg">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div class="space-y-1.5">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">습관 이름</label>
+          <input type="text" id="inputHabitName" placeholder="예: 매일 물 1L 마시기, 파이썬 30분 코딩" class="w-full px-4 py-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:outline-none focus:border-lime-500">
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">카테고리</label>
+          <div class="grid grid-cols-4 gap-2">
+            <button type="button" onclick="selectModalCategory('health')" id="catBtn-health" class="modal-cat-btn p-2 rounded-xl border border-lime-500 bg-lime-50 dark:bg-lime-950/60 text-lime-700 dark:text-lime-400 font-bold text-center">건강/루틴</button>
+            <button type="button" onclick="selectModalCategory('exercise')" id="catBtn-exercise" class="modal-cat-btn p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-center">운동</button>
+            <button type="button" onclick="selectModalCategory('study')" id="catBtn-study" class="modal-cat-btn p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-center">공부</button>
+            <button type="button" onclick="selectModalCategory('mind')" id="catBtn-mind" class="modal-cat-btn p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-center">마음</button>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="font-bold text-neutral-700 dark:text-neutral-300">동기부여 메모 (선택)</label>
+          <input type="text" id="inputHabitNote" placeholder="예: 미래의 나를 위한 작은 투자" class="w-full px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs focus:outline-none focus:border-lime-500">
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3 pt-3">
+        <button onclick="closeNewHabitModal()" class="w-1/2 py-3 rounded-xl border border-neutral-200 dark:border-neutral-800 font-bold text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">취소</button>
+        <button onclick="saveNewHabit()" class="w-1/2 py-3 rounded-xl bg-lime-600 hover:bg-lime-500 text-white font-bold text-xs shadow-md shadow-lime-600/20 transition btn-tap">등록하기 (+10 XP)</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- MODAL 2: STREAK SHARE CARD GENERATOR -->
+  <!-- ============================================ -->
+  <div id="shareCardModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative text-center">
+      
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-base text-neutral-950 dark:text-white">스트릭 인증 카드</h3>
+        <button onclick="closeShareCardModal()" class="text-neutral-400 hover:text-neutral-600 p-1">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <!-- Preview Canvas -->
+      <div class="rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-800 shadow-md">
+        <canvas id="shareCardCanvas" width="600" height="750" class="w-full h-auto"></canvas>
+      </div>
+
+      <div class="flex items-center space-x-2 pt-2">
+        <button onclick="downloadShareCardPng()" class="w-full py-3 rounded-xl bg-lime-600 hover:bg-lime-500 text-white font-bold text-xs shadow-md shadow-lime-600/20 flex items-center justify-center space-x-2 btn-tap">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>PNG 이미지 저장</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Floating Toast Notification -->
+  <div id="fluxToast" class="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold text-xs shadow-xl flex items-center space-x-2 toast-hide">
+    <svg class="w-4 h-4 text-lime-400 dark:text-lime-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span id="toastMessage">완료되었습니다!</span>
+  </div>
+
+  <!-- Global Footer with Family Links (14 Standalone Web Products) -->
+  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
+      
+      <div class="flex items-center space-x-2">
+        <span class="font-bold text-neutral-800 dark:text-neutral-200">FLUX Habit</span>
+        <span>·</span>
+        <span>FLUX soft 14대 독립 웹 프로덕트</span>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px]">
+        <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+        <span>·</span>
+        <a href="news.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX News</a>
+        <span>·</span>
+        <a href="pdf.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX PDF</a>
+        <span>·</span>
+        <a href="focus.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Focus</a>
+        <span>·</span>
+        <a href="habit.html" class="hover:underline text-lime-600 dark:text-lime-400 font-bold">FLUX Habit</a>
+        <span>·</span>
+        <a href="bio.html" class="hover:underline text-purple-600 dark:text-purple-400">FLUX Bio</a>
+        <span>·</span>
+        <a href="drop.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Docs</a>
+        <span>·</span>
+        <a href="board.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Board</a>
+        <span>·</span>
+        <a href="secret.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Secret</a>
+        <span>·</span>
+        <a href="voice.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Voice</a>
+        <span>·</span>
+        <a href="qr.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX QR</a>
+        <span>·</span>
+        <a href="compress.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Compress</a>
+      </div>
+
+      <div>
+        <span>2026 FLUX soft. All rights reserved.</span>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- ============================================ -->
+  <!-- JAVASCRIPT LOGIC ENGINE -->
+  <!-- ============================================ -->
+  <script>
+    // Storage Keys
+    const STORAGE_KEY_HABITS = 'flux_habits_data';
+    const STORAGE_KEY_STATS = 'flux_habits_stats';
+
+    // Duolingo Web Audio Synthesizer
+    let audioCtx = null;
+    let soundEnabled = true;
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Duolingo Correct Chime (C5 -> E5 -> G5)
+    function playDuoSuccessSound() {
+      if (!soundEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.08);
+          gain.gain.setValueAtTime(0, now + i * 0.08);
+          gain.gain.linearRampToValueAtTime(0.2, now + i * 0.08 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.35);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + i * 0.08);
+          osc.stop(now + i * 0.08 + 0.36);
+        });
+      } catch (e) {
+        console.warn('Audio error', e);
+      }
+    }
+
+    // Streak / 100% Fanfare
+    function playDuoFanfareSound() {
+      if (!soundEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const chords = [
+          [523.25, 659.25], // C5, E5
+          [587.33, 698.46], // D5, F5
+          [659.25, 783.99], // E5, G5
+          [783.99, 1046.50] // G5, C6
+        ];
+        chords.forEach((chord, i) => {
+          chord.forEach(freq => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + i * 0.12);
+            gain.gain.setValueAtTime(0, now + i * 0.12);
+            gain.gain.linearRampToValueAtTime(0.18, now + i * 0.12 + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.45);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + i * 0.12);
+            osc.stop(now + i * 0.12 + 0.46);
+          });
+        });
+      } catch (e) {}
+    }
+
+    function toggleSoundFx() {
+      soundEnabled = !soundEnabled;
+      document.getElementById('iconSoundOn').classList.toggle('hidden', !soundEnabled);
+      document.getElementById('iconSoundOff').classList.toggle('hidden', soundEnabled);
+      showToast(soundEnabled ? '효과음이 켜졌습니다.' : '효과음이 꺼졌습니다.');
+    }
+
+    // Default Seed Habits
+    const DEFAULT_HABITS = [
+      { id: 'h1', title: '아침 기상 후 미온수 1잔 마시기', category: 'health', note: '신진대사 활성화', completedDates: [] },
+      { id: 'h2', title: '하루 스트레칭 15분', category: 'exercise', note: '바른 자세 유지', completedDates: [] },
+      { id: 'h3', title: '영단어 20개 또는 코딩 30분', category: 'study', note: '매일 1% 성장', completedDates: [] }
+    ];
+
+    let habits = [];
+    let stats = {
+      streak: 0,
+      freezes: 2,
+      totalXp: 0,
+      lastActiveDate: '',
+      history: {} // 'YYYY-MM-DD': count
+    };
+
+    let activeFilter = 'all';
+    let selectedModalCategory = 'health';
+
+    function getTodayString() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function loadState() {
+      try {
+        const storedHabits = localStorage.getItem(STORAGE_KEY_HABITS);
+        habits = storedHabits ? JSON.parse(storedHabits) : DEFAULT_HABITS;
+
+        const storedStats = localStorage.getItem(STORAGE_KEY_STATS);
+        if (storedStats) {
+          stats = Object.assign(stats, JSON.parse(storedStats));
+        } else {
+          // Initialize with 1 fake day yesterday for immediate fun streak demo
+          const y = new Date();
+          y.setDate(y.getDate() - 1);
+          const yStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+          stats.streak = 1;
+          stats.totalXp = 40;
+          stats.lastActiveDate = yStr;
+          stats.history[yStr] = 3;
+        }
+      } catch (e) {
+        habits = DEFAULT_HABITS;
+      }
+      checkStreakIntegrity();
+      renderAll();
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY_HABITS, JSON.stringify(habits));
+      localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(stats));
+    }
+
+    // Streak Calculation & Freeze Mechanic
+    function checkStreakIntegrity() {
+      const today = getTodayString();
+      if (!stats.lastActiveDate) {
+        stats.lastActiveDate = today;
+        return;
+      }
+
+      const last = new Date(stats.lastActiveDate);
+      const curr = new Date(today);
+      const diffTime = Math.abs(curr - last);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 1) {
+        // Consecutive, streak holds
+      } else if (diffDays === 2) {
+        // Missed exactly 1 day -> use Streak Freeze!
+        if (stats.freezes > 0) {
+          stats.freezes -= 1;
+          showToast('어제 루틴을 놓쳤지만 스트릭 동결권이 연속 기록을 지켜냈습니다!');
+        } else {
+          stats.streak = 0;
+        }
+      } else if (diffDays > 2) {
+        // Missed multiple days
+        stats.streak = 0;
+      }
+    }
+
+    function toggleHabit(id, event) {
+      const today = getTodayString();
+      const habit = habits.find(h => h.id === id);
+      if (!habit) return;
+
+      const isCompleted = habit.completedDates.includes(today);
+
+      if (!isCompleted) {
+        // Complete habit!
+        habit.completedDates.push(today);
+        stats.totalXp += 10;
+        stats.history[today] = (stats.history[today] || 0) + 1;
+        stats.lastActiveDate = today;
+
+        // Sound & Haptic
+        playDuoSuccessSound();
+        if (navigator.vibrate) navigator.vibrate(25);
+
+        // Floating XP Animation
+        if (event && event.currentTarget) {
+          createXpFloat(event.currentTarget, '+10 XP');
+        }
+
+        // Check if all habits completed today
+        const totalToday = habits.length;
+        const completedToday = habits.filter(h => h.completedDates.includes(today)).length;
+        if (completedToday === totalToday && totalToday > 0) {
+          stats.streak += 1;
+          stats.totalXp += 20; // Bonus for 100% completion
+          triggerConfetti();
+          playDuoFanfareSound();
+          showToast('오늘의 모든 습관 완주! 연속 스트릭이 상승했습니다!');
+        }
+      } else {
+        // Uncomplete
+        habit.completedDates = habit.completedDates.filter(d => d !== today);
+        stats.totalXp = Math.max(0, stats.totalXp - 10);
+        if (stats.history[today]) {
+          stats.history[today] = Math.max(0, stats.history[today] - 1);
+        }
+      }
+
+      saveState();
+      renderAll();
+    }
+
+    function createXpFloat(element, text) {
+      const rect = element.getBoundingClientRect();
+      const xp = document.createElement('div');
+      xp.className = 'xp-float';
+      xp.innerText = text;
+      xp.style.left = (rect.right - 80) + 'px';
+      xp.style.top = (rect.top + window.scrollY - 10) + 'px';
+      document.body.appendChild(xp);
+      setTimeout(() => xp.remove(), 900);
+    }
+
+    function deleteHabit(id) {
+      habits = habits.filter(h => h.id !== id);
+      saveState();
+      renderAll();
+      showToast('습관이 삭제되었습니다.');
+    }
+
+    function addPresetHabit(title, category) {
+      const newHabit = {
+        id: 'h_' + Date.now(),
+        title: title,
+        category: category,
+        note: '추천 인기 루틴',
+        completedDates: []
+      };
+      habits.unshift(newHabit);
+      stats.totalXp += 5;
+      saveState();
+      renderAll();
+      showToast(`'${title}' 루틴이 등록되었습니다! (+5 XP)`);
+    }
+
+    function switchTab(tabId) {
+      const tabs = ['tracker', 'grass', 'home'];
+      tabs.forEach(t => {
+        const v = document.getElementById('view' + capitalize(t));
+        const btn = document.getElementById('navTab' + capitalize(t));
+        if (t === tabId) {
+          if (v) v.classList.remove('hidden');
+          if (btn) {
+            btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center space-x-2 bg-lime-600 text-white shadow-md shadow-lime-600/20';
+          }
+        } else {
+          if (v) v.classList.add('hidden');
+          if (btn) {
+            btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800';
+          }
+        }
+      });
+      if (tabId === 'grass') {
+        renderGrassHeatmap();
+      }
+    }
+
+    function filterHabits(cat) {
+      activeFilter = cat;
+      const categories = ['all', 'health', 'exercise', 'study', 'mind'];
+      categories.forEach(c => {
+        const btn = document.getElementById('filterBtn-' + c);
+        if (btn) {
+          if (c === cat) {
+            btn.className = 'px-3 py-1 rounded-xl bg-lime-600 text-white transition';
+          } else {
+            btn.className = 'px-3 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition';
+          }
+        }
+      });
+      const badge = document.getElementById('activeFilterBadge');
+      if (badge) {
+        badge.innerText = cat === 'all' ? '전체' : (cat === 'health' ? '건강/루틴' : (cat === 'exercise' ? '운동' : (cat === 'study' ? '공부' : '마음')));
+      }
+      renderHabitsList();
+    }
+
+    function renderAll() {
+      // Update Top Bar & Hero Stats
+      document.getElementById('streakCountText').innerText = stats.streak;
+      document.getElementById('freezeCountText').innerText = stats.freezes;
+      document.getElementById('freezeLeftCount').innerText = stats.freezes;
+      document.getElementById('totalXpText').innerText = stats.totalXp;
+
+      // Calculate Daily Completion
+      const today = getTodayString();
+      const total = habits.length;
+      const completed = habits.filter(h => h.completedDates.includes(today)).length;
+      const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+      document.getElementById('completedCountText').innerText = completed;
+      document.getElementById('totalHabitsCountText').innerText = total;
+      document.getElementById('progressPercentText').innerText = pct + '%';
+      document.getElementById('progressCircle').setAttribute('stroke-dasharray', `${pct}, 100`);
+      document.getElementById('linearProgressBar').style.width = pct + '%';
+
+      // Summary text
+      const summaryEl = document.getElementById('progressSummaryText');
+      if (pct === 100) {
+        summaryEl.innerText = '오늘의 모든 일일 목표를 달성했습니다! 대단해요!';
+      } else if (pct > 0) {
+        summaryEl.innerText = `${total - completed}개의 루틴이 남았습니다. 조금만 더 힘내세요!`;
+      } else {
+        summaryEl.innerText = '루틴을 체크해 첫 XP를 획득하세요!';
+      }
+
+      // League Title Calculation
+      const leagueBadge = document.getElementById('leagueBadge');
+      const leagueTitle = document.getElementById('leagueTitle');
+      const leagueDesc = document.getElementById('leagueDesc');
+      const leagueBar = document.getElementById('leagueProgressBar');
+
+      let lName = '브론즈 리그';
+      let lDesc = '100 XP 달성 시 실버 리그로 승급합니다.';
+      let lPct = Math.min(100, Math.round((stats.totalXp / 100) * 100));
+
+      if (stats.totalXp >= 1500) {
+        lName = '다이아몬드 리그';
+        lDesc = '최고 등급 리그에 도달했습니다! 전설적인 습관 마스터입니다.';
+        lPct = 100;
+      } else if (stats.totalXp >= 700) {
+        lName = '사파이어 리그';
+        lDesc = '1500 XP 달성 시 다이아몬드 리그로 승급합니다.';
+        lPct = Math.min(100, Math.round(((stats.totalXp - 700) / 800) * 100));
+      } else if (stats.totalXp >= 300) {
+        lName = '골드 리그';
+        lDesc = '700 XP 달성 시 사파이어 리그로 승급합니다.';
+        lPct = Math.min(100, Math.round(((stats.totalXp - 300) / 400) * 100));
+      } else if (stats.totalXp >= 100) {
+        lName = '실버 리그';
+        lDesc = '300 XP 달성 시 골드 리그로 승급합니다.';
+        lPct = Math.min(100, Math.round(((stats.totalXp - 100) / 200) * 100));
+      }
+
+      if (leagueBadge) leagueBadge.innerText = lName;
+      if (leagueTitle) leagueTitle.innerText = lName;
+      if (leagueDesc) leagueDesc.innerText = lDesc;
+      if (leagueBar) leagueBar.style.width = lPct + '%';
+
+      renderHabitsList();
+    }
+
+    function renderHabitsList() {
+      const container = document.getElementById('habitsListContainer');
+      const emptyState = document.getElementById('habitsEmptyState');
+      if (!container) return;
+
+      const today = getTodayString();
+      const filtered = habits.filter(h => activeFilter === 'all' || h.category === activeFilter);
+
+      if (filtered.length === 0) {
+        container.innerHTML = '';
+        if (emptyState) emptyState.classList.remove('hidden');
+        return;
+      }
+      if (emptyState) emptyState.classList.add('hidden');
+
+      let html = '';
+      filtered.forEach(h => {
+        const isDone = h.completedDates.includes(today);
+        const catBadge = getCategoryBadge(h.category);
+
+        html += `
+          <div class="p-4 sm:p-5 rounded-2xl border ${isDone ? 'border-lime-300 dark:border-lime-800/80 bg-lime-50/50 dark:bg-lime-950/20' : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'} shadow-sm flex items-center justify-between gap-4 transition-all hover:border-neutral-400 dark:hover:border-neutral-700">
+            
+            <div class="flex items-center space-x-3.5 flex-1 min-w-0">
+              <!-- Duolingo Big Bounce Checkbox -->
+              <button onclick="toggleHabit('${h.id}', event)" class="w-9 h-9 rounded-xl flex items-center justify-center border-2 transition-all btn-tap ${isDone ? 'bg-lime-500 border-lime-500 text-white shadow-md shadow-lime-500/30 duo-bounce' : 'border-neutral-300 dark:border-neutral-700 hover:border-lime-400 text-transparent'}">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </button>
+
+              <div class="space-y-1 min-w-0">
+                <div class="flex items-center space-x-2">
+                  <span class="font-bold text-sm sm:text-base ${isDone ? 'line-through text-neutral-400 dark:text-neutral-500' : 'text-neutral-900 dark:text-white'} truncate">
+                    ${escapeHtml(h.title)}
+                  </span>
+                  ${catBadge}
+                </div>
+                ${h.note ? `<p class="text-xs text-neutral-500 dark:text-neutral-400 truncate">${escapeHtml(h.note)}</p>` : ''}
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+              <span class="text-xs font-mono font-bold ${isDone ? 'text-lime-600 dark:text-lime-400' : 'text-neutral-400'}">
+                ${isDone ? '+10 XP' : '10 XP'}
+              </span>
+              <button onclick="deleteHabit('${h.id}')" class="p-1.5 text-neutral-300 dark:text-neutral-600 hover:text-red-500 transition" title="습관 삭제">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function getCategoryBadge(cat) {
+      if (cat === 'exercise') {
+        return `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800">운동</span>`;
+      } else if (cat === 'study') {
+        return `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">공부</span>`;
+      } else if (cat === 'mind') {
+        return `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800">마음</span>`;
+      }
+      return `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-lime-100 dark:bg-lime-950 text-lime-700 dark:text-lime-400 border border-lime-200 dark:border-lime-800">건강</span>`;
+    }
+
+    // GITHUB STYLE GRASS HEATMAP ENGINE
+    function renderGrassHeatmap() {
+      const container = document.getElementById('grassGridContainer');
+      if (!container) return;
+
+      container.innerHTML = '';
+      const today = new Date();
+      
+      // Compute 52 weeks (364 days back)
+      const startDate = new Date(today);
+      startDate.setDate(startDate.getDate() - 364);
+
+      let totalCompletions = 0;
+      let curStreak = 0;
+      let maxStreak = 0;
+
+      for (let i = 0; i < 365; i++) {
+        const d = new Date(startDate);
+        d.setDate(d.getDate() + i);
+        const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        
+        const count = stats.history[dStr] || 0;
+        totalCompletions += count;
+
+        if (count > 0) {
+          curStreak += 1;
+          if (curStreak > maxStreak) maxStreak = curStreak;
+        } else {
+          curStreak = 0;
+        }
+
+        const cell = document.createElement('div');
+        cell.className = 'grass-cell';
+        cell.title = `${dStr}: ${count}개 완료`;
+
+        if (count >= 4) {
+          cell.className += ' bg-lime-600 dark:bg-lime-400';
+        } else if (count >= 2) {
+          cell.className += ' bg-lime-500 dark:bg-lime-500';
+        } else if (count === 1) {
+          cell.className += ' bg-lime-300 dark:bg-lime-700';
+        } else {
+          cell.className += ' bg-neutral-200 dark:bg-neutral-800';
+        }
+
+        container.appendChild(cell);
+      }
+
+      document.getElementById('statsTotalCompletions').innerText = totalCompletions + '회';
+      document.getElementById('statsCurrentStreak').innerText = stats.streak + '일';
+      document.getElementById('statsMaxStreak').innerText = Math.max(stats.streak, maxStreak) + '일';
+
+      // Weekly summary strip (7 days)
+      renderWeeklyDaysStrip();
+    }
+
+    function renderWeeklyDaysStrip() {
+      const strip = document.getElementById('weeklyDaysStrip');
+      if (!strip) return;
+      strip.innerHTML = '';
+
+      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+      const today = new Date();
+
+      let weeklyCompleted = 0;
+      let weeklyTotal = 0;
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const count = stats.history[dStr] || 0;
+        const dayLabel = dayNames[d.getDay()];
+
+        if (count > 0) weeklyCompleted++;
+        weeklyTotal++;
+
+        const dayCol = document.createElement('div');
+        dayCol.className = 'flex flex-col items-center space-y-1';
+        dayCol.innerHTML = `
+          <div class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${count > 0 ? 'bg-lime-500 text-white shadow-sm' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400'}">
+            ${count > 0 ? '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '·'}
+          </div>
+          <span class="text-[10px] text-neutral-400 font-semibold">${dayLabel}</span>
+        `;
+        strip.appendChild(dayCol);
+      }
+
+      const wkPct = Math.round((weeklyCompleted / 7) * 100);
+      document.getElementById('weeklyPercentText').innerText = wkPct + '%';
+    }
+
+    // Modal Control
+    function openNewHabitModal() {
+      document.getElementById('newHabitModal').classList.remove('hidden');
+      document.getElementById('inputHabitName').focus();
+    }
+
+    function closeNewHabitModal() {
+      document.getElementById('newHabitModal').classList.add('hidden');
+      document.getElementById('inputHabitName').value = '';
+      document.getElementById('inputHabitNote').value = '';
+    }
+
+    function selectModalCategory(cat) {
+      selectedModalCategory = cat;
+      const cats = ['health', 'exercise', 'study', 'mind'];
+      cats.forEach(c => {
+        const btn = document.getElementById('catBtn-' + c);
+        if (btn) {
+          if (c === cat) {
+            btn.className = 'modal-cat-btn p-2 rounded-xl border border-lime-500 bg-lime-50 dark:bg-lime-950/60 text-lime-700 dark:text-lime-400 font-bold text-center';
+          } else {
+            btn.className = 'modal-cat-btn p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-center';
+          }
+        }
+      });
+    }
+
+    function saveNewHabit() {
+      const nameInput = document.getElementById('inputHabitName');
+      const noteInput = document.getElementById('inputHabitNote');
+      const title = nameInput.value.trim();
+      if (!title) {
+        showToast('습관 이름을 입력해주세요.');
+        return;
+      }
+
+      const habit = {
+        id: 'h_' + Date.now(),
+        title: title,
+        category: selectedModalCategory,
+        note: noteInput.value.trim(),
+        completedDates: []
+      };
+
+      habits.unshift(habit);
+      stats.totalXp += 10;
+      saveState();
+      closeNewHabitModal();
+      renderAll();
+      showToast('새 습관이 등록되었습니다! (+10 XP)');
+    }
+
+    // Canvas Streak Share Card
+    function generateShareCardModal() {
+      const modal = document.getElementById('shareCardModal');
+      modal.classList.remove('hidden');
+
+      const canvas = document.getElementById('shareCardCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // Draw Duolingo-styled Card
+      ctx.fillStyle = '#09090b';
+      ctx.fillRect(0, 0, 600, 750);
+
+      // Gradient accent border
+      const grad = ctx.createLinearGradient(0, 0, 600, 750);
+      grad.addColorStop(0, '#84cc16');
+      grad.addColorStop(0.5, '#10b981');
+      grad.addColorStop(1, '#f97316');
+      ctx.lineWidth = 8;
+      ctx.strokeStyle = grad;
+      ctx.strokeRect(4, 4, 592, 742);
+
+      // Logo Header
+      ctx.fillStyle = '#84cc16';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillText('FLUX HABIT · STREAK CARD', 50, 70);
+
+      // Flame Big Graphic
+      ctx.fillStyle = '#f97316';
+      ctx.beginPath();
+      ctx.arc(300, 220, 70, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'black 48px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(stats.streak, 300, 235);
+
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText('DAYS STREAK', 300, 265);
+
+      // Quote
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 30px sans-serif';
+      ctx.fillText('불타는 연속 습관 스트릭 달성 중!', 300, 360);
+
+      // Stats Box
+      ctx.fillStyle = '#18181b';
+      ctx.fillRect(50, 420, 500, 160);
+      ctx.strokeStyle = '#27272a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(50, 420, 500, 160);
+
+      ctx.fillStyle = '#a1a1aa';
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('누적 경험치 (XP)', 90, 470);
+      ctx.fillText('현재 리그 등급', 90, 530);
+
+      ctx.fillStyle = '#84cc16';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(stats.totalXp + ' XP', 510, 470);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(document.getElementById('leagueTitle').innerText, 510, 530);
+
+      // Footer
+      ctx.fillStyle = '#71717a';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('FLUX soft 듀오링고 스타일 일일 습관 트래커 · 100% 0원 서버리스', 300, 680);
+    }
+
+    function closeShareCardModal() {
+      document.getElementById('shareCardModal').classList.add('hidden');
+    }
+
+    function downloadShareCardPng() {
+      const canvas = document.getElementById('shareCardCanvas');
+      const a = document.createElement('a');
+      a.download = `flux-streak-${stats.streak}days.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+      showToast('스트릭 인증 카드가 다운로드되었습니다.');
+    }
+
+    // Toast helper
+    function showToast(msg) {
+      const toast = document.getElementById('fluxToast');
+      const toastMsg = document.getElementById('toastMessage');
+      if (!toast || !toastMsg) return;
+      toastMsg.innerText = msg;
+      toast.classList.remove('toast-hide');
+      toast.classList.add('toast-show');
+      setTimeout(() => {
+        toast.classList.remove('toast-show');
+        toast.classList.add('toast-hide');
+      }, 2600);
+    }
+
+    // Confetti Explosion
+    function triggerConfetti() {
+      const colors = ['#84cc16', '#10b981', '#f97316', '#eab308', '#06b6d4'];
+      for (let i = 0; i < 40; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti-particle';
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        c.style.width = size + 'px';
+        c.style.height = size + 'px';
+        c.style.backgroundColor = color;
+        c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        c.style.left = '50%';
+        c.style.top = '45%';
+        c.style.setProperty('--tx', (Math.random() * 400 - 200) + 'px');
+        c.style.setProperty('--ty', (Math.random() * 400 - 200) + 'px');
+        c.style.setProperty('--tr', (Math.random() * 720 - 360) + 'deg');
+        document.body.appendChild(c);
+        setTimeout(() => c.remove(), 1200);
+      }
+    }
+
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    // Universal Click Ripple
+    document.addEventListener('click', e => {
+      const target = e.target.closest('button, a, .btn-tap');
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      const circle = document.createElement('span');
+      const diameter = Math.max(rect.width, rect.height);
+      const radius = diameter / 2;
+      circle.style.width = circle.style.height = `${diameter}px`;
+      circle.style.left = `${e.clientX - rect.left - radius}px`;
+      circle.style.top = `${e.clientY - rect.top - radius}px`;
+      circle.classList.add('click-ripple');
+      target.style.position = target.style.position || 'relative';
+      target.style.overflow = 'hidden';
+      target.appendChild(circle);
+      setTimeout(() => circle.remove(), 600);
+    });
+
+    // Theme & Initializer
+    window.addEventListener('DOMContentLoaded', () => {
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+          localStorage.setItem('flux_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        });
+      }
+
+      const savedTheme = localStorage.getItem('flux_theme');
+      if (savedTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+
+      loadState();
+    });
+  </script>
+</body>
+</html>

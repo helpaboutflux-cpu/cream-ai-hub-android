@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUX Bio - 0원 1분 완성 나만의 프로필 멀티 링크 페이지</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            neutral: {
+              950: '#09090b',
+              900: '#121215',
+              850: '#18181b',
+              800: '#27272a',
+              700: '#3f3f46',
+              200: '#e4e4e7',
+              100: '#f4f4f5'
+            },
+            violet: {
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9'
+            },
+            fuchsia: {
+              500: '#d946ef',
+              600: '#c026d3'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- LZ-String for Zero-Server URL Hash State Compression -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+  <!-- QRCode.js for Instant QR Generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Glow */
+    .ambient-orb {
+      position: absolute;
+      border-radius: 9999px;
+      filter: blur(95px);
+      opacity: 0.16;
+      pointer-events: none;
+      z-index: 0;
+      will-change: transform;
+    }
+    .dark .ambient-orb {
+      opacity: 0.22;
+      filter: blur(105px);
+    }
+
+    /* Click Ripple Effect */
+    .click-ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(139, 92, 246, 0.35);
+      transform: scale(0);
+      animation: rippleEffect 0.55s ease-out;
+      pointer-events: none;
+      z-index: 50;
+    }
+    @keyframes rippleEffect {
+      to {
+        transform: scale(3.5);
+        opacity: 0;
+      }
+    }
+
+    /* Shimmer Button */
+    .btn-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -60%;
+      width: 40%;
+      height: 200%;
+      background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.25), transparent);
+      transform: rotate(30deg);
+      animation: shimmerPass 3.5s infinite;
+    }
+    @keyframes shimmerPass {
+      0% { left: -60%; }
+      25% { left: 140%; }
+      100% { left: 140%; }
+    }
+
+    /* Micro Bounce & Press Animation */
+    .btn-tap {
+      transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+    }
+    .btn-tap:hover {
+      transform: translateY(-1.5px) scale(1.02);
+    }
+    .btn-tap:active {
+      transform: scale(0.94);
+    }
+
+    /* Phone Mockup Frame */
+    .phone-mockup-outer {
+      width: 320px;
+      height: 640px;
+      border-radius: 44px;
+      padding: 10px;
+      background: #18181b;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      position: relative;
+      flex-shrink: 0;
+    }
+    .phone-mockup-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 36px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      position: relative;
+      display: flex;
+      flex-col: column;
+    }
+    /* Dynamic Island */
+    .phone-island {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90px;
+      height: 24px;
+      background: #000000;
+      border-radius: 12px;
+      z-index: 30;
+      pointer-events: none;
+    }
+
+    /* Themes for Bio Profile */
+    .theme-obsidian {
+      background: #09090b;
+      color: #ffffff;
+    }
+    .theme-glass {
+      background: linear-gradient(135deg, #1e1b4b, #311042);
+      color: #ffffff;
+    }
+    .theme-glass .bio-card {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .theme-neon {
+      background: #050505;
+      color: #ffffff;
+    }
+    .theme-neon .bio-card {
+      background: #121212;
+      border: 1px solid #a855f7;
+      box-shadow: 0 0 15px rgba(168, 85, 247, 0.2);
+    }
+    .theme-minimal {
+      background: #ffffff;
+      color: #09090b;
+    }
+    .theme-minimal .bio-card {
+      background: #f4f4f5;
+      border: 1px solid #e4e4e7;
+      color: #09090b;
+    }
+    .theme-sunset {
+      background: linear-gradient(135deg, #431407, #581c87);
+      color: #ffffff;
+    }
+    .theme-sunset .bio-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    /* Toast Notification */
+    #fluxToast {
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #fluxToast.toast-show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    #fluxToast.toast-hide {
+      opacity: 0;
+      transform: translateY(12px) scale(0.95);
+      pointer-events: none;
+    }
+
+    /* Confetti particle */
+    .confetti-particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      animation: confettiDrop 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+    @keyframes confettiDrop {
+      0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+      100% { opacity: 0; transform: translate(var(--tx), var(--ty)) rotate(var(--tr)); }
+    }
+  </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen relative antialiased flex flex-col justify-between selection:bg-violet-500 selection:text-white">
+
+  <!-- Ambient Floating Orbs -->
+  <div class="ambient-orb bg-violet-500/20 w-96 h-96 top-10 -left-20"></div>
+  <div class="ambient-orb bg-fuchsia-500/20 w-96 h-96 top-80 right-0"></div>
+  <div class="ambient-orb bg-indigo-500/15 w-80 h-80 bottom-40 left-1/3"></div>
+
+  <!-- Header (Hidden in Pure Live Public View) -->
+  <header id="mainAppHeader" class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center space-x-3">
+        <a href="index.html" class="flex items-center space-x-2.5 group">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-indigo-500 p-[1px] shadow-md shadow-violet-500/20 group-hover:scale-105 transition-transform">
+            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
+              <svg class="w-5 h-5 text-violet-600 dark:text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center space-x-1.5">
+              <span class="font-black text-lg tracking-tight bg-gradient-to-r from-neutral-950 via-neutral-800 to-neutral-600 dark:from-white dark:via-neutral-200 dark:to-neutral-400 bg-clip-text text-transparent">FLUX Bio</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-950/80 text-violet-700 dark:text-violet-400 border border-violet-300 dark:border-violet-800/80 font-bold">LINKTREE 대안</span>
+            </div>
+            <span class="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium -mt-0.5">0원 1분 완성 프로필 멀티 링크</span>
+          </div>
+        </a>
+      </div>
+
+      <!-- Action Buttons (Share URL, QR Code, Theme Toggle) -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        
+        <!-- Copy Live Link Button -->
+        <button onclick="copyShareableUrl()" class="btn-shimmer px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold text-xs shadow-md shadow-violet-500/25 flex items-center space-x-1.5 btn-tap">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <span>공유 링크 복사</span>
+        </button>
+
+        <!-- QR Code Modal Button -->
+        <button onclick="openQrModal()" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap" title="QR 코드 생성">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+        </button>
+
+        <!-- Dark/Light Theme Toggle -->
+        <button id="darkModeToggle" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap" title="테마 변경">
+          <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- 3-Segment Navigation Bar (Studio Builder · Templates · Guide) -->
+  <div id="mainNavBar" class="border-b border-neutral-200/70 dark:border-neutral-800/70 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between">
+      <nav class="flex space-x-1 sm:space-x-2 py-2 overflow-x-auto">
+        <button onclick="switchTab('builder')" id="navTabBuilder" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center space-x-2 bg-violet-600 text-white shadow-md shadow-violet-600/20">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+          <span>바이오 빌더</span>
+        </button>
+
+        <button onclick="switchTab('templates')" id="navTabTemplates" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+          <span>추천 템플릿</span>
+        </button>
+
+        <button onclick="switchTab('home')" id="navTabHome" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          <span>소개 & 원리</span>
+        </button>
+      </nav>
+
+      <!-- Preview Mode Toggle (Mockup vs Direct Link) -->
+      <a id="btnLivePublicView" href="#" target="_blank" class="px-3.5 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/80 dark:bg-neutral-850 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-bold text-xs flex items-center space-x-1.5 btn-tap">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        <span>전체화면 새 창 열기</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
+
+    <!-- ============================================ -->
+    <!-- TAB 1: BIO BUILDER (Editor + Live Phone Mockup) -->
+    <!-- ============================================ -->
+    <div id="viewBuilder" class="flex flex-col lg:flex-row items-start gap-8">
+
+      <!-- LEFT COLUMN: REAL-TIME EDITOR -->
+      <div class="flex-1 w-full space-y-6">
+
+        <!-- Section 1: Profile Info -->
+        <div class="p-6 sm:p-7 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-5">
+          <div class="flex items-center space-x-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
+            <h3 class="font-bold text-base text-neutral-900 dark:text-white">프로필 기본 설정</h3>
+          </div>
+
+          <div class="space-y-4 text-xs">
+            <!-- Avatar Upload & Preset Selector -->
+            <div class="flex items-center space-x-4">
+              <div id="editorAvatarPreview" class="w-16 h-16 rounded-2xl bg-neutral-200 dark:bg-neutral-800 border-2 border-violet-500/50 overflow-hidden flex items-center justify-center text-neutral-400 flex-shrink-0">
+                <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              </div>
+              <div class="space-y-1.5 flex-1">
+                <label class="font-bold text-neutral-700 dark:text-neutral-300">프로필 사진</label>
+                <div class="flex items-center space-x-2">
+                  <label class="px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer font-bold transition btn-tap">
+                    <span>사진 파일 변경</span>
+                    <input type="file" id="inputAvatarFile" accept="image/*" class="hidden" onchange="handleAvatarUpload(event)">
+                  </label>
+                  <button type="button" onclick="setPresetAvatar()" class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-500 hover:text-neutral-800 transition">기본 아바타</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Name & Badge -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <label class="font-bold text-neutral-700 dark:text-neutral-300">표시 이름</label>
+                <input type="text" id="inputProfileName" value="김민중 · FLUX soft" oninput="updateProfileState()" class="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:outline-none focus:border-violet-500">
+              </div>
+              <div class="space-y-1">
+                <label class="font-bold text-neutral-700 dark:text-neutral-300">소속 / 뱃지 문구</label>
+                <input type="text" id="inputProfileTag" value="크리에이터 & 빌더" oninput="updateProfileState()" class="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:outline-none focus:border-violet-500">
+              </div>
+            </div>
+
+            <!-- Bio Description -->
+            <div class="space-y-1">
+              <label class="font-bold text-neutral-700 dark:text-neutral-300">한 줄 소개 (바이오)</label>
+              <textarea id="inputProfileBio" rows="2" oninput="updateProfileState()" class="w-full px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs focus:outline-none focus:border-violet-500 resize-none">누구나 쓸 수 있는 0원 서버리스 소프트웨어를 만듭니다. 주요 프로젝트와 최신 소식을 확인해보세요.</textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Themes & Design Styles -->
+        <div class="p-6 sm:p-7 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-fuchsia-500"></span>
+              <h3 class="font-bold text-base text-neutral-900 dark:text-white">디자인 테마 선택</h3>
+            </div>
+            <span class="text-xs text-neutral-400">5가지 프리셋</span>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+            <button onclick="setTheme('obsidian')" id="themeBtn-obsidian" class="p-3 rounded-2xl border-2 border-violet-500 bg-neutral-950 text-white font-bold text-center transition btn-tap">
+              <span>Obsidian</span>
+            </button>
+            <button onclick="setTheme('glass')" id="themeBtn-glass" class="p-3 rounded-2xl border-2 border-transparent bg-gradient-to-br from-indigo-900 to-purple-900 text-white font-bold text-center transition btn-tap">
+              <span>Glass</span>
+            </button>
+            <button onclick="setTheme('neon')" id="themeBtn-neon" class="p-3 rounded-2xl border-2 border-transparent bg-neutral-950 text-fuchsia-400 font-bold text-center transition btn-tap">
+              <span>Cyber</span>
+            </button>
+            <button onclick="setTheme('minimal')" id="themeBtn-minimal" class="p-3 rounded-2xl border-2 border-transparent bg-white text-neutral-900 border-neutral-300 font-bold text-center transition btn-tap">
+              <span>Minimal</span>
+            </button>
+            <button onclick="setTheme('sunset')" id="themeBtn-sunset" class="p-3 rounded-2xl border-2 border-transparent bg-gradient-to-br from-orange-900 to-violet-900 text-white font-bold text-center transition btn-tap">
+              <span>Sunset</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 3: Social Media Links -->
+        <div class="p-6 sm:p-7 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+              <h3 class="font-bold text-base text-neutral-900 dark:text-white">소셜 미디어 바로가기</h3>
+            </div>
+            <span class="text-xs text-neutral-400">아이콘 바</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div class="flex items-center space-x-2">
+              <span class="w-20 font-bold text-neutral-600 dark:text-neutral-400">Instagram</span>
+              <input type="text" id="socialInsta" placeholder="@아이디" oninput="updateProfileState()" class="flex-1 px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-violet-500">
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="w-20 font-bold text-neutral-600 dark:text-neutral-400">GitHub</span>
+              <input type="text" id="socialGithub" value="helpaboutflux-cpu" placeholder="유저명" oninput="updateProfileState()" class="flex-1 px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-violet-500">
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="w-20 font-bold text-neutral-600 dark:text-neutral-400">YouTube</span>
+              <input type="text" id="socialYoutube" placeholder="@채널명" oninput="updateProfileState()" class="flex-1 px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-violet-500">
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="w-20 font-bold text-neutral-600 dark:text-neutral-400">X (Twitter)</span>
+              <input type="text" id="socialTwitter" placeholder="@핸들" oninput="updateProfileState()" class="flex-1 px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-violet-500">
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="w-20 font-bold text-neutral-600 dark:text-neutral-400">Email</span>
+              <input type="text" id="socialEmail" value="helpaboutflux@gmail.com" placeholder="메일 주소" oninput="updateProfileState()" class="flex-1 px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-violet-500">
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="w-20 font-bold text-neutral-600 dark:text-neutral-400">Web / Blog</span>
+              <input type="text" id="socialBlog" value="https://helpaboutflux-cpu.github.io/cream-ai-hub-android/" placeholder="https://..." oninput="updateProfileState()" class="flex-1 px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:border-violet-500">
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Custom Link Cards Manager -->
+        <div class="p-6 sm:p-7 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <h3 class="font-bold text-base text-neutral-900 dark:text-white">링크 카드 목록</h3>
+              <span id="linksCountBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">3개</span>
+            </div>
+            <button onclick="addNewLinkCard()" class="px-3.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-sm btn-tap">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>링크 추가</span>
+            </button>
+          </div>
+
+          <div id="editorLinksList" class="space-y-3">
+            <!-- Dynamically populated links -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN: STICKY REAL-TIME IPHONE 16 MOCKUP -->
+      <div class="w-full lg:w-auto flex flex-col items-center justify-center sticky top-24">
+        
+        <div class="phone-mockup-outer">
+          <!-- Dynamic Island -->
+          <div class="phone-island"></div>
+
+          <!-- Inside Screen -->
+          <div id="phoneMockupInner" class="phone-mockup-inner theme-obsidian p-6 space-y-5 text-center">
+            
+            <!-- Live Profile Header -->
+            <div class="pt-8 space-y-3">
+              <div id="liveMockupAvatar" class="w-20 h-20 mx-auto rounded-3xl bg-neutral-800 border-2 border-white/20 overflow-hidden flex items-center justify-center shadow-lg">
+                <svg class="w-10 h-10 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              </div>
+
+              <div class="space-y-1">
+                <div class="flex items-center justify-center space-x-1.5">
+                  <h4 id="liveMockupName" class="font-black text-lg text-white">김민중 · FLUX soft</h4>
+                  <svg class="w-4 h-4 text-violet-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path></svg>
+                </div>
+                <div id="liveMockupTag" class="text-[11px] font-bold text-violet-300">크리에이터 & 빌더</div>
+                <p id="liveMockupBio" class="text-xs text-white/70 max-w-xs mx-auto leading-relaxed pt-1">누구나 쓸 수 있는 0원 서버리스 소프트웨어를 만듭니다.</p>
+              </div>
+            </div>
+
+            <!-- Live Social Media Bar -->
+            <div id="liveMockupSocialBar" class="flex items-center justify-center space-x-3 text-white/80 py-1">
+              <!-- Dynamically populated SVGs -->
+            </div>
+
+            <!-- Live Link Cards Container -->
+            <div id="liveMockupLinksContainer" class="space-y-2.5 pt-2">
+              <!-- Dynamically populated cards -->
+            </div>
+
+            <!-- Mockup Viral Footer -->
+            <div class="pt-6 pb-4">
+              <span class="text-[10px] text-white/40 font-mono tracking-wider">POWERED BY FLUX BIO</span>
+            </div>
+
+          </div>
+        </div>
+
+        <span class="text-xs text-neutral-400 mt-3 font-semibold">1:1 실시간 폰 시뮬레이터</span>
+
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TAB 2: TEMPLATES (인기 추천 프리셋 4종) -->
+    <!-- ============================================ -->
+    <div id="viewTemplates" class="hidden space-y-6">
+      
+      <div class="space-y-2">
+        <h3 class="text-2xl font-black text-neutral-950 dark:text-white">원클릭 추천 템플릿</h3>
+        <p class="text-xs text-neutral-500">내 직무나 목적에 맞는 템플릿을 골라 바로 편집을 시작하세요.</p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <!-- Template 1: Developer -->
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-4 hover:border-violet-500 transition">
+          <div class="w-10 h-10 rounded-2xl bg-violet-100 dark:bg-violet-950 flex items-center justify-center text-violet-600 dark:text-violet-400 font-bold">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          </div>
+          <div class="space-y-1">
+            <h4 class="font-bold text-base text-neutral-900 dark:text-white">개발자 / 엔지니어</h4>
+            <p class="text-xs text-neutral-500">GitHub, 포트폴리오 사이트, 테크 블로그, 오픈소스 프로젝트 링크 구성</p>
+          </div>
+          <button onclick="applyTemplate('developer')" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-sm btn-tap">이 템플릿 적용</button>
+        </div>
+
+        <!-- Template 2: Creator -->
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-4 hover:border-fuchsia-500 transition">
+          <div class="w-10 h-10 rounded-2xl bg-fuchsia-100 dark:bg-fuchsia-950 flex items-center justify-center text-fuchsia-600 dark:text-fuchsia-400 font-bold">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+          </div>
+          <div class="space-y-1">
+            <h4 class="font-bold text-base text-neutral-900 dark:text-white">유튜버 / 인플루언서</h4>
+            <p class="text-xs text-neutral-500">최신 영상 바로보기, 인스타, 비즈니스 협업 문의, 굿즈 샵 링크</p>
+          </div>
+          <button onclick="applyTemplate('creator')" class="w-full py-2.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold text-xs shadow-sm btn-tap">이 템플릿 적용</button>
+        </div>
+
+        <!-- Template 3: Student -->
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-4 hover:border-emerald-500 transition">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          </div>
+          <div class="space-y-1">
+            <h4 class="font-bold text-base text-neutral-900 dark:text-white">학생 / 취준생</h4>
+            <p class="text-xs text-neutral-500">노션 이력서, 링크드인, 스터디 블로그, 공모전 출품작 모아보기</p>
+          </div>
+          <button onclick="applyTemplate('student')" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm btn-tap">이 템플릿 적용</button>
+        </div>
+
+        <!-- Template 4: Minimal Business -->
+        <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 space-y-4 hover:border-orange-500 transition">
+          <div class="w-10 h-10 rounded-2xl bg-orange-100 dark:bg-orange-950 flex items-center justify-center text-orange-600 dark:text-orange-400 font-bold">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+          </div>
+          <div class="space-y-1">
+            <h4 class="font-bold text-base text-neutral-900 dark:text-white">브랜드 / 스토어</h4>
+            <p class="text-xs text-neutral-500">스마트스토어, 고객센터 카톡 채널, 공식 웹사이트, 제품 소개서</p>
+          </div>
+          <button onclick="applyTemplate('business')" class="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-sm btn-tap">이 템플릿 적용</button>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ============================================ -->
+    <!-- TAB 3: HOME & INTRO (소개 & 무서버 원리) -->
+    <!-- ============================================ -->
+    <div id="viewHome" class="hidden space-y-8">
+      
+      <div class="text-center space-y-4 max-w-3xl mx-auto pt-6">
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-violet-100 dark:bg-violet-950/70 text-violet-800 dark:text-violet-300 border border-violet-200 dark:border-violet-800 text-xs font-semibold">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <span>서버비 0원 · DB 0원 · 가입 없이 URL 하나로 영구 공유</span>
+        </div>
+        <h1 class="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-neutral-950 dark:text-white leading-tight">
+          인스타·SNS 프로필 링크의 끝판왕 <br class="hidden sm:inline">
+          <span class="bg-gradient-to-r from-violet-600 via-fuchsia-500 to-indigo-500 bg-clip-text text-transparent">FLUX Bio 멀티 링크 빌더</span>
+        </h1>
+        <p class="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+          월 결제나 가입 절차 없이 브라우저에서 1분 만에 감각적인 모바일 프로필 페이지를 만들고 영구 라이브 링크로 즉시 배포하세요.
+        </p>
+        <div class="pt-3 flex flex-wrap items-center justify-center gap-3">
+          <button onclick="switchTab('builder')" class="btn-shimmer px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold text-sm shadow-lg shadow-violet-500/25 flex items-center space-x-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            <span>지금 바로 프로필 만들기</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ============================================ -->
+  <!-- MODAL: QR CODE GENERATOR -->
+  <!-- ============================================ -->
+  <div id="qrModal" class="fixed inset-0 z-50 bg-neutral-950/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-xs w-full p-6 space-y-4 shadow-2xl relative text-center">
+      
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-base text-neutral-950 dark:text-white">프로필 QR 코드</h3>
+        <button onclick="closeQrModal()" class="text-neutral-400 hover:text-neutral-600 p-1">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="p-4 bg-white rounded-2xl border border-neutral-200 flex items-center justify-center shadow-inner">
+        <div id="qrCodeContainer"></div>
+      </div>
+
+      <p class="text-[11px] text-neutral-500">카메라로 스캔하면 내 프로필 페이지로 바로 연결됩니다.</p>
+
+      <button onclick="downloadQrCode()" class="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-sm btn-tap">
+        QR 이미지 다운로드
+      </button>
+
+    </div>
+  </div>
+
+  <!-- Floating Toast Notification -->
+  <div id="fluxToast" class="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold text-xs shadow-xl flex items-center space-x-2 toast-hide">
+    <svg class="w-4 h-4 text-violet-400 dark:text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span id="toastMessage">완료되었습니다!</span>
+  </div>
+
+  <!-- Global Footer (14 Standalone Web Products) -->
+  <footer id="mainAppFooter" class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
+      
+      <div class="flex items-center space-x-2">
+        <span class="font-bold text-neutral-800 dark:text-neutral-200">FLUX Bio</span>
+        <span>·</span>
+        <span>FLUX soft 14대 독립 웹 프로덕트</span>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px]">
+        <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+        <span>·</span>
+        <a href="news.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX News</a>
+        <span>·</span>
+        <a href="pdf.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX PDF</a>
+        <span>·</span>
+        <a href="focus.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Focus</a>
+        <span>·</span>
+        <a href="habit.html" class="hover:underline text-lime-600 dark:text-lime-400">FLUX Habit</a>
+        <span>·</span>
+        <a href="bio.html" class="hover:underline text-violet-600 dark:text-violet-400 font-bold">FLUX Bio</a>
+        <span>·</span>
+        <a href="drop.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Drop</a>
+        <span>·</span>
+        <a href="docs.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Docs</a>
+        <span>·</span>
+        <a href="board.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Board</a>
+        <span>·</span>
+        <a href="secret.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Secret</a>
+        <span>·</span>
+        <a href="voice.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Voice</a>
+        <span>·</span>
+        <a href="qr.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX QR</a>
+        <span>·</span>
+        <a href="compress.html" class="hover:underline text-neutral-600 dark:text-neutral-400">FLUX Compress</a>
+      </div>
+
+      <div>
+        <span>2026 FLUX soft. All rights reserved.</span>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- ============================================ -->
+  <!-- JAVASCRIPT LOGIC ENGINE -->
+  <!-- ============================================ -->
+  <script>
+    const STORAGE_KEY_BIO = 'flux_bio_config';
+
+    // State Configuration
+    let bioConfig = {
+      name: '김민중 · FLUX soft',
+      tag: '크리에이터 & 빌더',
+      bio: '누구나 쓸 수 있는 0원 서버리스 소프트웨어를 만듭니다. 주요 프로젝트와 최신 소식을 확인해보세요.',
+      avatarUrl: '',
+      theme: 'obsidian',
+      socials: {
+        insta: '',
+        github: 'helpaboutflux-cpu',
+        youtube: '',
+        twitter: '',
+        email: 'helpaboutflux@gmail.com',
+        blog: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/'
+      },
+      links: [
+        { id: 'l1', title: 'FLUX soft Developer Hub', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/index.html', desc: '14대 웹 개발자 및 생활 유틸리티 포털', badge: 'HOT' },
+        { id: 'l2', title: 'FLUX News 종합 피드', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/news.html', desc: '24개 언론사 실시간 기사 & 증시·날씨', badge: 'NEW' },
+        { id: 'l3', title: 'FLUX Habit 듀오 습관 트래커', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/habit.html', desc: '불타는 스트릭과 1년 잔디밭 히트맵', badge: '추천' }
+      ]
+    };
+
+    function loadState() {
+      // 1. Check if URL hash carries encoded data
+      if (window.location.hash && window.location.hash.startsWith('#data=')) {
+        try {
+          const encoded = window.location.hash.replace('#data=', '');
+          const decompressed = LZString.decompressFromEncodedURIComponent(encoded);
+          if (decompressed) {
+            bioConfig = JSON.parse(decompressed);
+            // Render pure public full view
+            renderPublicFullView();
+            return;
+          }
+        } catch (e) {
+          console.warn('Hash parse error', e);
+        }
+      }
+
+      // 2. Otherwise load from localStorage
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY_BIO);
+        if (stored) {
+          bioConfig = Object.assign(bioConfig, JSON.parse(stored));
+        }
+      } catch (e) {}
+
+      syncInputsFromConfig();
+      updateProfileState();
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY_BIO, JSON.stringify(bioConfig));
+    }
+
+    function syncInputsFromConfig() {
+      document.getElementById('inputProfileName').value = bioConfig.name || '';
+      document.getElementById('inputProfileTag').value = bioConfig.tag || '';
+      document.getElementById('inputProfileBio').value = bioConfig.bio || '';
+      document.getElementById('socialInsta').value = bioConfig.socials.insta || '';
+      document.getElementById('socialGithub').value = bioConfig.socials.github || '';
+      document.getElementById('socialYoutube').value = bioConfig.socials.youtube || '';
+      document.getElementById('socialTwitter').value = bioConfig.socials.twitter || '';
+      document.getElementById('socialEmail').value = bioConfig.socials.email || '';
+      document.getElementById('socialBlog').value = bioConfig.socials.blog || '';
+      setTheme(bioConfig.theme || 'obsidian', false);
+    }
+
+    function updateProfileState() {
+      bioConfig.name = document.getElementById('inputProfileName').value.trim() || '이름 없음';
+      bioConfig.tag = document.getElementById('inputProfileTag').value.trim();
+      bioConfig.bio = document.getElementById('inputProfileBio').value.trim();
+      bioConfig.socials.insta = document.getElementById('socialInsta').value.trim();
+      bioConfig.socials.github = document.getElementById('socialGithub').value.trim();
+      bioConfig.socials.youtube = document.getElementById('socialYoutube').value.trim();
+      bioConfig.socials.twitter = document.getElementById('socialTwitter').value.trim();
+      bioConfig.socials.email = document.getElementById('socialEmail').value.trim();
+      bioConfig.socials.blog = document.getElementById('socialBlog').value.trim();
+
+      saveState();
+      renderMockup();
+      renderEditorLinksList();
+      updateLivePublicViewHref();
+    }
+
+    function setTheme(themeName, shouldSave = true) {
+      bioConfig.theme = themeName;
+      const themes = ['obsidian', 'glass', 'neon', 'minimal', 'sunset'];
+      themes.forEach(t => {
+        const btn = document.getElementById('themeBtn-' + t);
+        if (btn) {
+          if (t === themeName) {
+            btn.classList.add('border-violet-500');
+            btn.classList.remove('border-transparent');
+          } else {
+            btn.classList.remove('border-violet-500');
+            btn.classList.add('border-transparent');
+          }
+        }
+      });
+
+      const inner = document.getElementById('phoneMockupInner');
+      if (inner) {
+        inner.className = `phone-mockup-inner theme-${themeName} p-6 space-y-5 text-center`;
+      }
+
+      if (shouldSave) {
+        saveState();
+        updateLivePublicViewHref();
+      }
+    }
+
+    function handleAvatarUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        bioConfig.avatarUrl = e.target.result;
+        updateProfileState();
+        showToast('프로필 이미지가 변경되었습니다.');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function setPresetAvatar() {
+      bioConfig.avatarUrl = '';
+      updateProfileState();
+      showToast('기본 아바타로 복원되었습니다.');
+    }
+
+    // Render Mockup in real-time
+    function renderMockup() {
+      // Name & Tag & Bio
+      document.getElementById('liveMockupName').innerText = bioConfig.name;
+      const tagEl = document.getElementById('liveMockupTag');
+      if (tagEl) {
+        tagEl.innerText = bioConfig.tag;
+        tagEl.classList.toggle('hidden', !bioConfig.tag);
+      }
+      document.getElementById('liveMockupBio').innerText = bioConfig.bio;
+
+      // Avatar
+      const avatarBox = document.getElementById('liveMockupAvatar');
+      const editAvatarBox = document.getElementById('editorAvatarPreview');
+      if (bioConfig.avatarUrl) {
+        avatarBox.innerHTML = `<img src="${bioConfig.avatarUrl}" class="w-full h-full object-cover">`;
+        if (editAvatarBox) editAvatarBox.innerHTML = `<img src="${bioConfig.avatarUrl}" class="w-full h-full object-cover">`;
+      } else {
+        const svgUser = `<svg class="w-10 h-10 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+        avatarBox.innerHTML = svgUser;
+        if (editAvatarBox) editAvatarBox.innerHTML = svgUser;
+      }
+
+      // Social Icons Bar
+      const socialContainer = document.getElementById('liveMockupSocialBar');
+      if (socialContainer) {
+        let sHtml = '';
+        if (bioConfig.socials.github) {
+          sHtml += `<a href="https://github.com/${escapeHtml(bioConfig.socials.github)}" target="_blank" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg></a>`;
+        }
+        if (bioConfig.socials.insta) {
+          sHtml += `<a href="https://instagram.com/${escapeHtml(bioConfig.socials.insta)}" target="_blank" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg></a>`;
+        }
+        if (bioConfig.socials.youtube) {
+          sHtml += `<a href="https://youtube.com/${escapeHtml(bioConfig.socials.youtube)}" target="_blank" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg></a>`;
+        }
+        if (bioConfig.socials.twitter) {
+          sHtml += `<a href="https://twitter.com/${escapeHtml(bioConfig.socials.twitter)}" target="_blank" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"></path></svg></a>`;
+        }
+        if (bioConfig.socials.email) {
+          sHtml += `<a href="mailto:${escapeHtml(bioConfig.socials.email)}" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg></a>`;
+        }
+        if (bioConfig.socials.blog) {
+          sHtml += `<a href="${escapeHtml(bioConfig.socials.blog)}" target="_blank" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></a>`;
+        }
+        socialContainer.innerHTML = sHtml;
+      }
+
+      // Link Cards inside Mockup
+      const linksContainer = document.getElementById('liveMockupLinksContainer');
+      if (linksContainer) {
+        let lHtml = '';
+        bioConfig.links.forEach(l => {
+          lHtml += `
+            <a href="${escapeHtml(l.url)}" target="_blank" class="bio-card block p-3.5 rounded-2xl transition hover:scale-[1.02] active:scale-[0.98] text-left">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-xs truncate">${escapeHtml(l.title)}</span>
+                ${l.badge ? `<span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-violet-500 text-white">${escapeHtml(l.badge)}</span>` : ''}
+              </div>
+              ${l.desc ? `<p class="text-[10px] opacity-70 truncate pt-0.5">${escapeHtml(l.desc)}</p>` : ''}
+            </a>
+          `;
+        });
+        linksContainer.innerHTML = lHtml;
+      }
+    }
+
+    // Links Manager in Editor
+    function renderEditorLinksList() {
+      const container = document.getElementById('editorLinksList');
+      const badge = document.getElementById('linksCountBadge');
+      if (!container) return;
+
+      if (badge) badge.innerText = `${bioConfig.links.length}개`;
+
+      let html = '';
+      bioConfig.links.forEach((l, idx) => {
+        html += `
+          <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-neutral-500">#${idx + 1} 링크 카드</span>
+              <div class="flex items-center space-x-1">
+                ${idx > 0 ? `<button onclick="moveLink(${idx}, -1)" class="p-1 hover:text-violet-500 text-neutral-400" title="위로"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg></button>` : ''}
+                ${idx < bioConfig.links.length - 1 ? `<button onclick="moveLink(${idx}, 1)" class="p-1 hover:text-violet-500 text-neutral-400" title="아래로"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg></button>` : ''}
+                <button onclick="removeLink(${idx})" class="p-1 hover:text-red-500 text-neutral-400" title="삭제"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <input type="text" value="${escapeHtml(l.title)}" oninput="updateLinkField(${idx}, 'title', this.value)" placeholder="링크 제목" class="px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:border-violet-500 font-bold">
+              <input type="text" value="${escapeHtml(l.url)}" oninput="updateLinkField(${idx}, 'url', this.value)" placeholder="연결 주소 (https://...)" class="px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:border-violet-500">
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <input type="text" value="${escapeHtml(l.desc || '')}" oninput="updateLinkField(${idx}, 'desc', this.value)" placeholder="한 줄 설명 (선택)" class="px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:border-violet-500">
+              <input type="text" value="${escapeHtml(l.badge || '')}" oninput="updateLinkField(${idx}, 'badge', this.value)" placeholder="강조 뱃지 (HOT, NEW 등)" class="px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:border-violet-500">
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    function addNewLinkCard() {
+      bioConfig.links.push({
+        id: 'l_' + Date.now(),
+        title: '새로운 링크',
+        url: 'https://',
+        desc: '링크 설명을 입력하세요',
+        badge: ''
+      });
+      updateProfileState();
+      showToast('새 링크 카드가 추가되었습니다.');
+    }
+
+    function updateLinkField(idx, field, val) {
+      if (bioConfig.links[idx]) {
+        bioConfig.links[idx][field] = val;
+        saveState();
+        renderMockup();
+        updateLivePublicViewHref();
+      }
+    }
+
+    function moveLink(idx, dir) {
+      const target = idx + dir;
+      if (target >= 0 && target < bioConfig.links.length) {
+        const temp = bioConfig.links[idx];
+        bioConfig.links[idx] = bioConfig.links[target];
+        bioConfig.links[target] = temp;
+        updateProfileState();
+      }
+    }
+
+    function removeLink(idx) {
+      bioConfig.links.splice(idx, 1);
+      updateProfileState();
+      showToast('링크 카드가 삭제되었습니다.');
+    }
+
+    // Zero-Server LZ-String URL Generation
+    function generateShareUrl() {
+      const jsonStr = JSON.stringify(bioConfig);
+      const compressed = LZString.compressToEncodedURIComponent(jsonStr);
+      const baseUrl = window.location.origin + window.location.pathname;
+      return `${baseUrl}#data=${compressed}`;
+    }
+
+    function updateLivePublicViewHref() {
+      const liveBtn = document.getElementById('btnLivePublicView');
+      if (liveBtn) {
+        liveBtn.href = generateShareUrl();
+      }
+    }
+
+    function copyShareableUrl() {
+      const url = generateShareUrl();
+      navigator.clipboard.writeText(url).then(() => {
+        triggerConfetti();
+        showToast('공유 링크가 클립보드에 복사되었습니다! (0원 무서버 영구 보존)');
+      }).catch(() => {
+        showToast('링크 복사 권한이 필요합니다.');
+      });
+    }
+
+    // Templates
+    function applyTemplate(tplName) {
+      if (tplName === 'developer') {
+        bioConfig = {
+          name: '김민중 · Software Builder',
+          tag: '풀스택 & 클라우드 빌더',
+          bio: '매일 새로운 소프트웨어를 기획하고 배포합니다. 오픈소스와 프로덕트를 둘러보세요.',
+          avatarUrl: '',
+          theme: 'obsidian',
+          socials: { github: 'helpaboutflux-cpu', email: 'helpaboutflux@gmail.com', blog: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/', insta: '', youtube: '', twitter: '' },
+          links: [
+            { id: 't1', title: 'GitHub 저장소 둘러보기', url: 'https://github.com/helpaboutflux-cpu', desc: 'FLUX soft 및 안드로이드 프로젝트 코드', badge: 'MAIN' },
+            { id: 't2', title: 'FLUX Developer Hub v2.0', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/index.html', desc: '14대 개발자 및 생활 도구 허브', badge: 'HOT' },
+            { id: 't3', title: 'Web to APK 빌더', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/apk.html', desc: '웹 주소를 안드로이드 APK로 즉시 변환', badge: '추천' }
+          ]
+        };
+      } else if (tplName === 'creator') {
+        bioConfig = {
+          name: '민중의 테크 라이프',
+          tag: 'IT 테크 리뷰 & 크리에이터',
+          bio: '최신 AI와 스마트폰, 유용한 생산성 툴을 알기 쉽게 소개합니다.',
+          avatarUrl: '',
+          theme: 'sunset',
+          socials: { youtube: '@fluxtech', insta: 'flux_creator', email: 'helpaboutflux@gmail.com', github: '', twitter: '', blog: '' },
+          links: [
+            { id: 't1', title: '이번 주 추천 무료 소프트웨어 TOP 5', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/news.html', desc: '유튜브 본 영상 및 다운로드 링크', badge: 'NEW' },
+            { id: 't2', title: '비즈니스 광고 및 협업 문의', url: 'mailto:helpaboutflux@gmail.com', desc: '제휴 및 리뷰 제안 메일', badge: 'OFFICIAL' },
+            { id: 't3', title: '오픈 카카오톡 소통방', url: 'https://open.kakao.com', desc: '구독자 커뮤니티', badge: 'HOT' }
+          ]
+        };
+      } else if (tplName === 'student') {
+        bioConfig = {
+          name: '김민중의 스터디 스페이스',
+          tag: '컴퓨터공학 & 자격증 준비생',
+          bio: '매일 기록하는 공부 일지와 성장 포트폴리오입니다.',
+          avatarUrl: '',
+          theme: 'glass',
+          socials: { blog: 'https://velog.io', github: 'helpaboutflux-cpu', email: 'helpaboutflux@gmail.com', insta: '', youtube: '', twitter: '' },
+          links: [
+            { id: 't1', title: '듀오링고 스타일 일일 습관 트래커', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/habit.html', desc: '나의 공부 루틴 및 스트릭 현황', badge: 'DAILY' },
+            { id: 't2', title: '온라인 노션 이력서 & 자기소개서', url: 'https://notion.so', desc: '자격증, 프로젝트 이력 상세', badge: 'RESUME' },
+            { id: 't3', title: '포커스 타이머 & 백색소음', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/focus.html', desc: '시험 디데이 카운트다운', badge: 'TOOL' }
+          ]
+        };
+      } else if (tplName === 'business') {
+        bioConfig = {
+          name: 'FLUX soft 공식 스토어',
+          tag: '생활 밀착형 소프트웨어',
+          bio: '비용 0원으로 누구나 자유롭게 사용하는 프리미엄 웹 유틸리티 패키지입니다.',
+          avatarUrl: '',
+          theme: 'minimal',
+          socials: { email: 'helpaboutflux@gmail.com', blog: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/', github: '', insta: '', youtube: '', twitter: '' },
+          links: [
+            { id: 't1', title: 'FLUX PDF 로컬 편집 및 뷰어', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/pdf.html', desc: '무제한 PDF 합치기 및 주석 서명', badge: 'POPULAR' },
+            { id: 't2', title: 'FLUX Drop 대용량 P2P 전송', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/drop.html', desc: '서버 저장 없는 초고속 파일 전송', badge: 'FAST' },
+            { id: 't3', title: 'FLUX Form 1문 1답 설문조사', url: 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/form.html', desc: '고객 피드백 접수 폼', badge: 'CONTACT' }
+          ]
+        };
+      }
+
+      syncInputsFromConfig();
+      updateProfileState();
+      switchTab('builder');
+      showToast(`'${tplName}' 템플릿이 성공적으로 적용되었습니다!`);
+    }
+
+    // Public Live Full Screen View Mode
+    function renderPublicFullView() {
+      // Hide Editor UI Header & Nav
+      const header = document.getElementById('mainAppHeader');
+      const nav = document.getElementById('mainNavBar');
+      const footer = document.getElementById('mainAppFooter');
+      if (header) header.style.display = 'none';
+      if (nav) nav.style.display = 'none';
+      if (footer) footer.style.display = 'none';
+
+      // Transform ViewBuilder into standalone fullscreen mobile-centered page
+      const builder = document.getElementById('viewBuilder');
+      builder.className = `min-h-screen w-full flex flex-col items-center justify-start p-4 sm:p-8 theme-${bioConfig.theme || 'obsidian'}`;
+      
+      let html = `
+        <div class="max-w-md w-full mx-auto space-y-6 text-center py-8">
+          
+          <!-- Avatar -->
+          <div class="w-24 h-24 mx-auto rounded-3xl bg-neutral-800 border-2 border-white/20 overflow-hidden flex items-center justify-center shadow-xl">
+            ${bioConfig.avatarUrl ? `<img src="${bioConfig.avatarUrl}" class="w-full h-full object-cover">` : `<svg class="w-12 h-12 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`}
+          </div>
+
+          <!-- Name & Bio -->
+          <div class="space-y-1.5">
+            <h1 class="font-black text-2xl">${escapeHtml(bioConfig.name)}</h1>
+            ${bioConfig.tag ? `<div class="text-xs font-bold text-violet-400">${escapeHtml(bioConfig.tag)}</div>` : ''}
+            <p class="text-sm opacity-80 leading-relaxed max-w-xs mx-auto">${escapeHtml(bioConfig.bio)}</p>
+          </div>
+
+          <!-- Socials -->
+          <div class="flex items-center justify-center space-x-3 py-2">
+            ${renderSocialIconsHtml(bioConfig.socials)}
+          </div>
+
+          <!-- Links -->
+          <div class="space-y-3 pt-2">
+            ${bioConfig.links.map(l => `
+              <a href="${escapeHtml(l.url)}" target="_blank" class="bio-card block p-4 rounded-2xl transition hover:scale-[1.02] active:scale-[0.98] text-left shadow-md">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-sm truncate">${escapeHtml(l.title)}</span>
+                  ${l.badge ? `<span class="text-[10px] font-black px-2 py-0.5 rounded bg-violet-600 text-white">${escapeHtml(l.badge)}</span>` : ''}
+                </div>
+                ${l.desc ? `<p class="text-xs opacity-75 truncate pt-1">${escapeHtml(l.desc)}</p>` : ''}
+              </a>
+            `).join('')}
+          </div>
+
+          <!-- Viral Backlink Banner -->
+          <div class="pt-8">
+            <a href="bio.html" class="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold transition">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+              <span>FLUX Bio로 내 링크도 1분 만에 만들기</span>
+            </a>
+          </div>
+
+        </div>
+      `;
+
+      builder.innerHTML = html;
+    }
+
+    function renderSocialIconsHtml(s) {
+      let h = '';
+      if (s.github) h += `<a href="https://github.com/${escapeHtml(s.github)}" target="_blank" class="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg></a>`;
+      if (s.insta) h += `<a href="https://instagram.com/${escapeHtml(s.insta)}" target="_blank" class="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg></a>`;
+      if (s.youtube) h += `<a href="https://youtube.com/${escapeHtml(s.youtube)}" target="_blank" class="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg></a>`;
+      if (s.twitter) h += `<a href="https://twitter.com/${escapeHtml(s.twitter)}" target="_blank" class="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"></path></svg></a>`;
+      if (s.email) h += `<a href="mailto:${escapeHtml(s.email)}" class="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg></a>`;
+      if (s.blog) h += `<a href="${escapeHtml(s.blog)}" target="_blank" class="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></a>`;
+      return h;
+    }
+
+    // Tab Switching
+    function switchTab(tabId) {
+      const tabs = ['builder', 'templates', 'home'];
+      tabs.forEach(t => {
+        const v = document.getElementById('view' + capitalize(t));
+        const btn = document.getElementById('navTab' + capitalize(t));
+        if (t === tabId) {
+          if (v) v.classList.remove('hidden');
+          if (btn) {
+            btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center space-x-2 bg-violet-600 text-white shadow-md shadow-violet-600/20';
+          }
+        } else {
+          if (v) v.classList.add('hidden');
+          if (btn) {
+            btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-2 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800';
+          }
+        }
+      });
+    }
+
+    // QR Code Modal
+    function openQrModal() {
+      const modal = document.getElementById('qrModal');
+      const container = document.getElementById('qrCodeContainer');
+      modal.classList.remove('hidden');
+      container.innerHTML = '';
+
+      new QRCode(container, {
+        text: generateShareUrl(),
+        width: 180,
+        height: 180,
+        colorDark: '#09090b',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+
+    function closeQrModal() {
+      document.getElementById('qrModal').classList.add('hidden');
+    }
+
+    function downloadQrCode() {
+      const container = document.getElementById('qrCodeContainer');
+      const img = container.querySelector('img') || container.querySelector('canvas');
+      if (!img) return;
+
+      const a = document.createElement('a');
+      a.download = `flux-bio-qr.png`;
+      a.href = img.src || img.toDataURL();
+      a.click();
+      showToast('QR 코드가 다운로드되었습니다.');
+    }
+
+    // Toast Notification
+    function showToast(msg) {
+      const toast = document.getElementById('fluxToast');
+      const toastMsg = document.getElementById('toastMessage');
+      if (!toast || !toastMsg) return;
+      toastMsg.innerText = msg;
+      toast.classList.remove('toast-hide');
+      toast.classList.add('toast-show');
+      setTimeout(() => {
+        toast.classList.remove('toast-show');
+        toast.classList.add('toast-hide');
+      }, 2600);
+    }
+
+    // Confetti Explosion
+    function triggerConfetti() {
+      const colors = ['#8b5cf6', '#a855f7', '#ec4899', '#3b82f6', '#10b981'];
+      for (let i = 0; i < 40; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetti-particle';
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = Math.random() * 8 + 4;
+        c.style.width = size + 'px';
+        c.style.height = size + 'px';
+        c.style.backgroundColor = color;
+        c.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        c.style.left = '50%';
+        c.style.top = '45%';
+        c.style.setProperty('--tx', (Math.random() * 400 - 200) + 'px');
+        c.style.setProperty('--ty', (Math.random() * 400 - 200) + 'px');
+        c.style.setProperty('--tr', (Math.random() * 720 - 360) + 'deg');
+        document.body.appendChild(c);
+        setTimeout(() => c.remove(), 1200);
+      }
+    }
+
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag));
+    }
+
+    // Universal Click Ripple
+    document.addEventListener('click', e => {
+      const target = e.target.closest('button, a, .btn-tap');
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      const circle = document.createElement('span');
+      const diameter = Math.max(rect.width, rect.height);
+      const radius = diameter / 2;
+      circle.style.width = circle.style.height = `${diameter}px`;
+      circle.style.left = `${e.clientX - rect.left - radius}px`;
+      circle.style.top = `${e.clientY - rect.top - radius}px`;
+      circle.classList.add('click-ripple');
+      target.style.position = target.style.position || 'relative';
+      target.style.overflow = 'hidden';
+      target.appendChild(circle);
+      setTimeout(() => circle.remove(), 600);
+    });
+
+    // Theme & Init
+    window.addEventListener('DOMContentLoaded', () => {
+      const darkToggle = document.getElementById('darkModeToggle');
+      if (darkToggle) {
+        darkToggle.addEventListener('click', () => {
+          document.documentElement.classList.toggle('dark');
+          localStorage.setItem('flux_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+        });
+      }
+
+      const savedTheme = localStorage.getItem('flux_theme');
+      if (savedTheme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+
+      loadState();
+    });
+  </script>
+</body>
+</html>
