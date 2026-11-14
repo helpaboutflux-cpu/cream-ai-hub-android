@@ -1251,5 +1251,75 @@
       }
     });
   </script>
+
+<!-- Lemon autosave (debounced draft snapshot) -->
+<script>
+(function () {
+  var SVC = 'drop';
+  var SK = 'lemon_autosave_' + SVC;
+  function ownKeys() {
+    var out = {};
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || k === SK) continue;
+        if (k.indexOf('lemon_autosave_') === 0) continue;
+        if (/theme/i.test(k)) continue;
+        if (!/^(flux_|lemon_)/.test(k)) continue;
+        out[k] = localStorage.getItem(k);
+      }
+    } catch (e) { }
+    return out;
+  }
+  function stamp() { var d = new Date(); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function pill(text, tone) {
+    var el = document.getElementById('lemonAutosavePill');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'lemonAutosavePill';
+      el.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:60;font-size:10px;font-weight:700;padding:4px 8px;border-radius:9999px;background:rgba(9,9,11,.82);color:#e4e4e7;border:1px solid rgba(255,255,255,.14);opacity:0;transition:opacity .25s;pointer-events:none;font-family:ui-monospace,Menlo,monospace';
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.color = tone === 'err' ? '#fda4af' : (tone === 'saving' ? '#fcd34d' : '#a7f3d0');
+    el.style.opacity = '1';
+    clearTimeout(el.__hide);
+    el.__hide = setTimeout(function () { el.style.opacity = '0'; }, 1800);
+  }
+  var timer = null;
+  function flush() {
+    try {
+      var data = ownKeys();
+      var count = 0;
+      for (var k in data) if (data.hasOwnProperty(k)) count++;
+      if (!count) return;
+      localStorage.setItem(SK, JSON.stringify({ ts: Date.now(), svc: SVC, data: data }));
+      pill('자동 저장됨 ' + stamp());
+    } catch (e) { pill('저장 공간 부족', 'err'); }
+  }
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    pill('저장 중…', 'saving');
+    timer = setTimeout(flush, 1000);
+  }
+  ['input', 'change', 'keyup', 'pointerup', 'paste'].forEach(function (ev) {
+    document.addEventListener(ev, schedule, { passive: true });
+  });
+  window.addEventListener('beforeunload', function () { if (timer) { clearTimeout(timer); flush(); } });
+
+  // 첫 방문 복구: 서비스 자체 저장소가 비어 있고 스냅샷만 있으면 되살린다
+  try {
+    var raw = localStorage.getItem(SK);
+    if (raw && !Object.keys(ownKeys()).length) {
+      var snap = JSON.parse(raw);
+      if (snap && snap.data) {
+        Object.keys(snap.data).forEach(function (k) { try { localStorage.setItem(k, snap.data[k]); } catch (e) { } });
+        pill('이전 작업을 복구했어요');
+        setTimeout(function () { location.reload(); }, 600);
+      }
+    }
+  } catch (e) { }
+})();
+</script>
 </body>
 </html>

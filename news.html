@@ -328,8 +328,8 @@
 
         <button onclick="filterStockMarketNews('환율')" class="flex items-center space-x-1.5 hover:text-azure-600 dark:hover:text-azure-400 transition font-mono shrink-0">
           <span class="text-neutral-500 text-[11px]">원/달러</span>
-          <span class="font-bold text-neutral-800 dark:text-neutral-200">1,364.50</span>
-          <span class="text-blue-600 dark:text-blue-400 font-bold text-[11px]">▼0.60%</span>
+          <span id="fxPillValue" class="font-bold text-neutral-800 dark:text-neutral-200">1,364.50</span>
+          <span id="fxPillChange" class="text-neutral-400 font-bold text-[11px]">·</span>
         </button>
 
         <span class="text-neutral-300 dark:text-neutral-700">|</span>
@@ -831,9 +831,9 @@
               <span class="text-rose-600 dark:text-rose-400 font-bold text-[11px] font-mono">▲ 11.80 (+1.45%)</span>
             </div>
             <div class="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-850 border border-neutral-200/80 dark:border-neutral-800 space-y-1">
-              <span class="text-neutral-400 text-[10px] block">원/달러 환율</span>
-              <span class="text-base font-black text-neutral-900 dark:text-white font-mono block">1,364.50</span>
-              <span class="text-blue-600 dark:text-blue-400 font-bold text-[11px] font-mono">▼ 8.20 (-0.60%)</span>
+              <span class="text-neutral-400 text-[10px] block">원/달러 환율 <span id="fxLiveBadge" class="text-azure-500 dark:text-azure-400 font-bold">· 실시간</span></span>
+              <span id="fxTileValue" class="text-base font-black text-neutral-900 dark:text-white font-mono block">1,364.50</span>
+              <span id="fxTileChange" class="text-neutral-400 font-bold text-[11px] font-mono">·</span>
             </div>
             <div class="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-850 border border-neutral-200/80 dark:border-neutral-800 space-y-1">
               <span class="text-neutral-400 text-[10px] block">나스닥 (NASDAQ)</span>
@@ -1549,6 +1549,159 @@
       '제주': { temp: 17, min: 11, max: 20, cond: '온화함', feels: 17.0, humidity: 65, pm10: '좋음 (15㎍)' }
     };
 
+    /* ================= 실시간 데이터 연동 (Open-Meteo · open.er-api · 스포츠 RSS) ================= */
+    const CITY_COORD = {
+      '서울': [37.5665, 126.9780], '김포': [37.6150, 126.7150], '수원': [37.2636, 127.0286],
+      '인천': [37.4563, 126.7052], '대전': [36.3504, 127.3845], '대구': [35.8714, 128.6014],
+      '부산': [35.1796, 129.0756], '제주': [33.4996, 126.5312]
+    };
+    const WMO = {
+      0: '맑음', 1: '대체로 맑음', 2: '구름 조금', 3: '흐림', 45: '안개', 48: '짙은 안개',
+      51: '약한 이슬비', 53: '이슬비', 55: '강한 이슬비', 61: '약한 비', 63: '비', 65: '강한 비',
+      66: '어는 비', 67: '어는 비', 71: '약한 눈', 73: '눈', 75: '강한 눈', 77: '싸락눈',
+      80: '소나기', 81: '강한 소나기', 82: '매우 강한 소나기', 85: '소낙눈', 86: '폭설',
+      95: '천둥번개', 96: '천둥번개·우박', 99: '강한 천둥번개·우박'
+    };
+    const CITY_EN = { '서울': 'Seoul', '김포': 'Gimpo', '수원': 'Suwon', '인천': 'Incheon', '대전': 'Daejeon', '대구': 'Daegu', '부산': 'Busan', '제주': 'Jeju' };
+    let liveWeatherAt = '';
+
+    async function fetchOpenMeteo(lat, lon) {
+      const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+        '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation' +
+        '&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FSeoul&forecast_days=1';
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) throw new Error('open-meteo ' + r.status);
+      const j = await r.json();
+      const cur = j.current || {};
+      const day = j.daily || {};
+      return {
+        temp: Math.round(cur.temperature_2m),
+        feels: Math.round((cur.apparent_temperature !== undefined ? cur.apparent_temperature : cur.temperature_2m) * 10) / 10,
+        humidity: Math.round(cur.relative_humidity_2m || 0),
+        cond: WMO[cur.weather_code] || '관측 중',
+        wind: Math.round(cur.wind_speed_10m || 0),
+        rain: cur.precipitation || 0,
+        min: Math.round((day.temperature_2m_min || [cur.temperature_2m])[0]),
+        max: Math.round((day.temperature_2m_max || [cur.temperature_2m])[0])
+      };
+    }
+
+    async function fetchWttr(city) {
+      const r = await fetch('https://wttr.in/' + encodeURIComponent(CITY_EN[city] || city) + '?format=j1', { cache: 'no-store' });
+      if (!r.ok) throw new Error('wttr ' + r.status);
+      const j = await r.json();
+      const c = (j.current_condition || [])[0] || {};
+      const today = (j.weather || [])[0] || {};
+      return {
+        temp: Math.round(parseFloat(c.temp_C)),
+        feels: Math.round(parseFloat(c.FeelsLikeC) * 10) / 10,
+        humidity: Math.round(parseFloat(c.humidity)),
+        cond: (c.lang_ko && c.lang_ko[0] && c.lang_ko[0].value) || (c.weatherDesc && c.weatherDesc[0] && c.weatherDesc[0].value) || '관측 중',
+        min: Math.round(parseFloat(today.mintempC)), max: Math.round(parseFloat(today.maxtempC)),
+        wind: Math.round(parseFloat(c.windspeedKmph)), rain: 0
+      };
+    }
+
+    async function syncLiveWeather() {
+      const cities = Object.keys(CITY_COORD);
+      let updated = 0;
+      const results = await Promise.all(cities.map(async (city) => {
+        try {
+          const [lat, lon] = CITY_COORD[city];
+          let data = null;
+          try { data = await fetchOpenMeteo(lat, lon); } catch (e) { }
+          if (!data) { try { data = await fetchWttr(city); } catch (e) { } }
+          return data ? { city, data } : null;
+        } catch (e) { return null; }
+      }));
+      results.forEach(r => {
+        if (!r) return;
+        const prev = WEATHER_DATA_MAP[r.city] || {};
+        WEATHER_DATA_MAP[r.city] = Object.assign({}, prev, r.data, { pm10: prev.pm10 || '측정 없음', live: true });
+        updated++;
+      });
+      if (!updated) return false;
+      liveWeatherAt = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      initWeatherHeader();
+      const modal = document.getElementById('weatherCenterModal');
+      if (modal && !modal.classList.contains('hidden')) populateWeatherModal(selectedWeatherCity);
+      const cond = document.getElementById('wModalSource');
+      if (cond) cond.textContent = '실시간 관측 · ' + liveWeatherAt;
+      return true;
+    }
+
+    let fxPrevRate = null;
+    async function syncLiveFx() {
+      let rates = null, at = '';
+      try {
+        const r = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
+        if (r.ok) {
+          const j = await r.json();
+          if (j && j.rates) { rates = j.rates; at = (j.time_last_update_utc || '').replace(' +0000', ' UTC'); }
+        }
+      } catch (e) { }
+      if (!rates) {
+        try {
+          const r2 = await fetch('https://api.frankfurter.app/latest?from=USD&to=KRW,JPY,EUR,CNY', { cache: 'no-store' });
+          if (r2.ok) { const j2 = await r2.json(); rates = { KRW: j2.rates.KRW, USD: 1 }; at = j2.date; }
+        } catch (e) { }
+      }
+      if (!rates || !rates.KRW) return false;
+      const krw = rates.KRW;
+      const txt = krw.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const pill = document.getElementById('fxPillValue');
+      const tile = document.getElementById('fxTileValue');
+      if (pill) pill.textContent = txt;
+      if (tile) tile.textContent = txt;
+      const badge = document.getElementById('fxLiveBadge');
+      if (badge) badge.textContent = '· 실시간 ' + (at ? at.slice(17, 22) : '');
+      const change = fxPrevRate === null ? null : krw - fxPrevRate;
+      const chEls = [document.getElementById('fxPillChange'), document.getElementById('fxTileChange')];
+      chEls.forEach(el => {
+        if (!el) return;
+        if (change === null) {
+          el.textContent = '실시간';
+          el.className = (el.id === 'fxTileChange' ? 'text-[11px] font-mono ' : 'text-[11px] ') + 'text-azure-500 dark:text-azure-400 font-bold';
+        } else {
+          const up = change >= 0;
+          el.textContent = (up ? '▲ ' : '▼ ') + Math.abs(change).toFixed(2) + ' (' + (up ? '+' : '-') + Math.abs(change / krw * 100).toFixed(2) + '%)';
+          el.className = (el.id === 'fxTileChange' ? 'text-[11px] font-mono ' : 'text-[11px] ') + (up ? 'text-rose-500' : 'text-blue-500');
+        }
+      });
+      fxPrevRate = krw;
+      return true;
+    }
+
+    let liveSports = null, liveSportsAt = '';
+    async function loadSportsNews() {
+      const feed = 'https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=09&plink=RSSREADER';
+      try {
+        const r = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feed) + '&count=14', { cache: 'no-store' });
+        if (r.ok) {
+          const j = await r.json();
+          const items = (j.items || []).map(it => ({
+            title: it.title,
+            pub: it.author || 'SBS',
+            time: (it.pubDate || '').slice(5, 16),
+            link: it.link,
+            desc: (it.description || '').replace(/<[^>]*>/g, '').slice(0, 90)
+          }));
+          if (items.length) { liveSports = items; liveSportsAt = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }); return true; }
+        }
+      } catch (e) { }
+      try {
+        const r2 = await fetch('news-data.json', { cache: 'no-store' });
+        if (r2.ok) {
+          const j2 = await r2.json();
+          const items = (j2.articles || []).filter(a => a.category === 'sports').map(a => ({
+            title: a.title, pub: a.publisher || '뉴스', time: a.time || '', link: a.link, desc: (a.summary || '').slice(0, 90)
+          }));
+          if (items.length) { liveSports = items; liveSportsAt = j2.updatedAtDisplay || ''; return true; }
+        }
+      } catch (e) { }
+      return false;
+    }
+
     // Initialize Page with Live Real-Time Data Sync
     document.addEventListener('DOMContentLoaded', async () => {
       initTheme();
@@ -1557,6 +1710,12 @@
       renderSportsMatches();
       updateBookmarksBadge();
       initClickRipples();
+
+      // 실시간 (환율 · 날씨 · 스포츠) — 실패해도 기존 화면은 그대로 동작
+      syncLiveFx().catch(() => { });
+      loadSportsNews().then(ok => { if (ok) renderSportsMatches(); }).catch(() => { });
+      syncLiveWeather().catch(() => { });
+      setInterval(() => { syncLiveFx().catch(() => { }); }, 5 * 60 * 1000);
 
       // Load Real-time Live News Data
       await loadNewsData();
@@ -2009,52 +2168,36 @@
 
     function renderSportsMatches() {
       const container = document.getElementById('sportsMatchesList');
+      if (!container) return;
       container.innerHTML = '';
 
-      let matches = SPORTS_MATCHES;
+      let items = liveSports || [];
       if (followedTeams.length > 0) {
-        const teamFiltered = SPORTS_MATCHES.filter(m => followedTeams.includes(m.homeTeam) || followedTeams.includes(m.awayTeam));
-        if (teamFiltered.length > 0) {
-          matches = teamFiltered;
-        }
+        const filtered = items.filter(it => followedTeams.some(t => (it.title + ' ' + (it.desc || '')).indexOf(t) > -1));
+        if (filtered.length) items = filtered;
       }
-
-      matches.slice(0, 3).forEach(m => {
-        const isFollowed = followedTeams.includes(m.homeTeam) || followedTeams.includes(m.awayTeam);
-        const card = document.createElement('div');
-        card.className = `p-2.5 rounded-2xl border ${isFollowed ? 'border-azure-200 dark:border-azure-800/80 bg-azure-50/40 dark:bg-azure-950/20' : 'border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-neutral-850/60'} text-xs space-y-1.5 transition`;
-        
-        let statusBadge = '<span class="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300">예정</span>';
-        if (m.status === '종료') {
-          statusBadge = '<span class="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900">종료</span>';
-        } else if (m.status === '진행중') {
-          statusBadge = '<span class="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-rose-600 text-white flex items-center space-x-1"><span class="w-1 h-1 rounded-full bg-white pulse-live"></span><span>라이브</span></span>';
-        }
-
-        card.innerHTML = `
-          <div class="flex items-center justify-between text-[10px] text-neutral-400 font-mono">
-            <div class="flex items-center space-x-1.5">
-              ${statusBadge}
-              <span>${m.venue}</span>
-            </div>
-            <span>${m.time}</span>
-          </div>
-          <div class="flex items-center justify-between font-bold text-neutral-900 dark:text-white">
-            <div class="flex items-center space-x-2">
-              <span class="${followedTeams.includes(m.homeTeam) ? 'text-azure-600 dark:text-azure-400' : ''}">${m.homeTeam}</span>
-              <span class="text-neutral-400 font-normal">vs</span>
-              <span class="${followedTeams.includes(m.awayTeam) ? 'text-azure-600 dark:text-azure-400' : ''}">${m.awayTeam}</span>
-            </div>
-            <div class="font-mono text-xs px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800">
-              ${m.status === '예정' ? 'VS' : `${m.homeScore} : ${m.awayScore}`}
-            </div>
-          </div>
-          <div class="text-[10px] text-neutral-500 truncate">
-            ${m.highlight}
-          </div>
-        `;
+      if (!items.length) {
+        container.innerHTML = '<div class="p-3 rounded-2xl border border-neutral-200/70 dark:border-neutral-800 text-[11px] text-neutral-500 dark:text-neutral-400">스포츠 속보를 불러오는 중입니다…</div>';
+        return;
+      }
+      items.slice(0, 4).forEach(it => {
+        const isFollowed = followedTeams.some(t => (it.title + ' ' + (it.desc || '')).indexOf(t) > -1);
+        const card = document.createElement('a');
+        card.href = it.link || '#';
+        card.target = '_blank';
+        card.rel = 'noopener';
+        card.className = 'block p-2.5 rounded-2xl border ' + (isFollowed ? 'border-azure-200 dark:border-azure-800/80 bg-azure-50/40 dark:bg-azure-950/20' : 'border-neutral-200/70 dark:border-neutral-800 bg-white/70 dark:bg-neutral-850/60') + ' text-xs space-y-1 transition hover:border-azure-400';
+        card.innerHTML = '<div class="flex items-center justify-between text-[10px] text-neutral-400 font-mono">' +
+            '<div class="flex items-center space-x-1.5">' +
+              '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-600 text-white flex items-center space-x-1"><span class="w-1 h-1 rounded-full bg-white pulse-live"></span><span>속보</span></span>' +
+              '<span>' + (it.pub || '스포츠') + '</span>' +
+            '</div><span>' + (it.time || '') + '</span></div>' +
+          '<div class="font-bold text-neutral-900 dark:text-white leading-snug line-clamp-2">' + (it.title || '') + '</div>' +
+          (it.desc ? '<div class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + it.desc + '</div>' : '');
         container.appendChild(card);
       });
+      const head = document.getElementById('sportsLiveBadge');
+      if (head) head.textContent = '실시간 · ' + (liveSportsAt || '방금');
     }
 
     // Sports Manager Modal Logic

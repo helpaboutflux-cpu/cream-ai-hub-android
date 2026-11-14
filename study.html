@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Study — 학습지 위에 직접 빈칸 만들어 암기하기</title>
+<meta name="description" content="학습지·프린트 사진을 올리면 단어 위치를 인식해 그 자리에 빈칸을 만들어 줍니다. 빈칸을 터치해 답을 확인하며 암기 테스트를 하세요.">
+<meta name="theme-color" content="#0ea5e9">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#0ea5e9', light: '#38bdf8', deep: '#0369a1', 50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e', 950: '#082f49' },
+    indigo2: { DEFAULT: '#4f46e5', light: '#6366f1', deep: '#3730a3' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0ea5e9; --brand-2: #4f46e5; --brand-deep: #0369a1; }
+
+  /* ---------- worksheet stage ---------- */
+  .stage-wrap {
+    position: relative;
+    width: 100%;
+    background: #0b0b0f;
+    border-radius: 1rem;
+    overflow: hidden;
+    line-height: 0;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .stage-wrap img { display: block; width: 100%; height: auto; }
+  .stage-overlay {
+    position: absolute;
+    inset: 0;
+    touch-action: none;
+  }
+  .blank {
+    position: absolute;
+    border-radius: .35rem;
+    background: #fdfbf5;
+    box-shadow: 0 1px 0 rgba(0,0,0,.10), inset 0 0 0 1px rgba(120,120,140,.28);
+    transition: opacity .28s ease, transform .28s cubic-bezier(.2,.8,.2,1), background-color .28s ease, box-shadow .28s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: pointer;
+    transform-origin: center;
+  }
+  .blank .bnum {
+    font-size: 9px;
+    font-weight: 800;
+    color: rgba(14, 165, 233, .85);
+    font-variant-numeric: tabular-nums;
+    transition: opacity .2s;
+  }
+  .blank .bdot {
+    position: absolute;
+    right: 2px; bottom: 2px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: rgba(79, 70, 229, .45);
+  }
+  .blank.open {
+    background: rgba(14, 165, 233, .10);
+    box-shadow: inset 0 0 0 1.5px rgba(14, 165, 233, .75), 0 0 0 3px rgba(14, 165, 233, .12);
+    transform: scale(1.01);
+  }
+  .blank.open .bnum { opacity: 0; }
+  .blank.mark-ok { box-shadow: inset 0 0 0 2px rgba(16, 185, 129, .95), 0 0 0 3px rgba(16, 185, 129, .15); background: rgba(16, 185, 129, .12); }
+  .blank.mark-no { box-shadow: inset 0 0 0 2px rgba(244, 63, 94, .95), 0 0 0 3px rgba(244, 63, 94, .15); background: rgba(244, 63, 94, .12); }
+  .blank.solved { opacity: .28; }
+  .blank.pop { animation: blankPop .34s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes blankPop { 0% { transform: scale(.9); } 60% { transform: scale(1.06); } 100% { transform: scale(1.01); } }
+  .draw-rect {
+    position: absolute;
+    border: 2px dashed rgba(14, 165, 233, .95);
+    background: rgba(14, 165, 233, .16);
+    border-radius: .35rem;
+    pointer-events: none;
+  }
+  .editor-mode .blank:hover { box-shadow: inset 0 0 0 2px rgba(244, 63, 94, .8); }
+  .editor-mode .blank:hover::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(45deg, rgba(244,63,94,.12) 0 6px, transparent 6px 12px);
+  }
+  .stage-wrap.drawing .stage-overlay { cursor: crosshair; }
+
+  /* ---------- misc ---------- */
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: rgba(120,120,140,.35); border-radius: 9999px; }
+  .sheet { transition: transform .3s cubic-bezier(.2,.8,.2,1), opacity .3s; }
+  .grade-row { transition: background-color .18s; }
+  .ocr-shimmer { background: linear-gradient(90deg, transparent, rgba(14,165,233,.35), transparent); background-size: 200% 100%; animation: shim 1.4s linear infinite; }
+  @keyframes shim { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#4f46e5"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="13" y2="12"></line><line x1="8" y1="16" x2="15" y2="16"></line></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Study</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">OCR</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">학습지 위 직접 빈칸 암기</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="asBadge" class="as-badge hidden sm:inline">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="8" y1="9" x2="16" y2="9"></line><line x1="8" y1="13" x2="12" y2="13"></line></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            사진 → 단어 위치 인식 → 빈칸
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            학습지 그대로,<br><span class="brand-text">빈칸만</span> 덮어서 외웁니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            프린트나 필기 사진을 올리면 글자 위치를 읽어 그 자리에 빈칸 카드를 붙입니다. 빈칸을 톡 누르면 아래 학습지 글자가 드러나요.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button id="btnHeroStart" class="primary-btn btn-shimmer px-5 py-3 rounded-2xl text-sm font-bold flex items-center gap-2">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              학습지 올리기
+            </button>
+            <button id="btnHeroSample" class="ghost-btn px-4 py-3 rounded-2xl text-sm font-bold">샘플로 먼저 보기</button>
+          </div>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span>사진은 브라우저 안에서만 처리</span>
+            <span class="hidden sm:inline">·</span>
+            <span>서버 업로드 없음</span>
+            <span class="hidden sm:inline">·</span>
+            <span>인식은 Tesseract 한국어+영어</span>
+          </div>
+        </div>
+        <div class="relative">
+          <div class="panel p-3 rounded-3xl">
+            <div class="rounded-2xl overflow-hidden bg-white p-3 relative" id="heroPreview" style="min-height:220px">
+              <div class="text-[13px] font-bold text-neutral-900">1. 식물은 빛에너지로 양분을 만든다.</div>
+              <div class="text-[13px] text-neutral-800 mt-2">2. 이 과정을 <span class="relative inline-block px-1 rounded" style="background:#0ea5e9;color:transparent">광합성</span>이라고 한다.</div>
+              <div class="text-[13px] text-neutral-800 mt-2">3. 필요한 기체는 <span class="relative inline-block px-1 rounded" style="background:#0ea5e9;color:transparent">이산화탄소</span>이다.</div>
+              <div class="text-[13px] text-neutral-800 mt-2">4. <span class="relative inline-block px-1 rounded" style="background:#0ea5e9;color:transparent">산소</span>가 방출된다.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-3 gap-4 stagger">
+      <div class="panel p-5 space-y-2">
+        <div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg>
+        </div>
+        <h3 class="font-bold text-sm">사진 한 장이면 시작</h3>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">학습지 스캔, 칠판 필기, 문제집 페이지 무엇이든 됩니다. 붙여넣기(Ctrl+V)도 지원합니다.</p>
+      </div>
+      <div class="panel p-5 space-y-2">
+        <div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"></path><path d="M4 12h10"></path><path d="M4 17h7"></path></svg>
+        </div>
+        <h3 class="font-bold text-sm">핵심 단어만 자동으로</h3>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">인식된 단어 위치에 비율(20~60%)만큼 빈칸을 자동 생성합니다. 손으로 그려 추가하거나 지울 수 있어요.</p>
+      </div>
+      <div class="panel p-5 space-y-2">
+        <div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+        </div>
+        <h3 class="font-bold text-sm">터치로 답 확인</h3>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">빈칸을 톡 누르면 아래 글자가 드러납니다. 맞힘·틀림을 남기고 틀린 빈칸만 다시 풀어 보세요.</p>
+      </div>
+    </div>
+
+    <div class="panel p-6 space-y-3">
+      <h2 class="font-bold text-base">이렇게 씁니다</h2>
+      <ol class="grid sm:grid-cols-4 gap-3 text-xs text-neutral-600 dark:text-neutral-400">
+        <li class="panel-soft p-4 rounded-2xl"><span class="font-mono text-brand-600 dark:text-brand-400 font-bold">01</span><p class="mt-1 leading-relaxed">학습지 사진을 올리거나 붙여넣습니다.</p></li>
+        <li class="panel-soft p-4 rounded-2xl"><span class="font-mono text-brand-600 dark:text-brand-400 font-bold">02</span><p class="mt-1 leading-relaxed">자동 빈칸 비율을 고르고 생성을 누릅니다.</p></li>
+        <li class="panel-soft p-4 rounded-2xl"><span class="font-mono text-brand-600 dark:text-brand-400 font-bold">03</span><p class="mt-1 leading-relaxed">빈칸을 누르며 답을 확인하고 채점합니다.</p></li>
+        <li class="panel-soft p-4 rounded-2xl"><span class="font-mono text-brand-600 dark:text-brand-400 font-bold">04</span><p class="mt-1 leading-relaxed">보관함에 저장해 두고 다음 날 다시 엽니다.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-4">
+
+    <!-- empty state -->
+    <div id="emptyState" class="space-y-4">
+      <div id="dropZone" class="panel p-8 sm:p-14 text-center border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-3xl transition hover:border-brand-400 dark:hover:border-brand-600 cursor-pointer">
+        <div class="w-16 h-16 mx-auto rounded-3xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300">
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 9 12 4 17 9"></polyline><line x1="12" y1="4" x2="12" y2="16"></line></svg>
+        </div>
+        <h2 class="mt-4 font-black text-lg">학습지 사진을 올려 주세요</h2>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">끌어다 놓기 · 붙여넣기(Ctrl+V) · 파일 선택 모두 됩니다.<br>글자가 또렷할수록 빈칸 위치가 정확해집니다.</p>
+        <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <button id="btnPick" class="primary-btn px-4 py-2.5 rounded-xl text-xs font-bold">사진 선택</button>
+          <button id="btnSample" class="ghost-btn px-4 py-2.5 rounded-xl text-xs font-bold">샘플 학습지</button>
+        </div>
+        <input id="fileInput" type="file" accept="image/*" class="hidden">
+      </div>
+      <div class="panel p-5 text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+        <span class="font-bold text-neutral-700 dark:text-neutral-300">팁</span> — 스캔 앱으로 찍은 사진이나 PDF를 화면 캡처한 이미지가 가장 잘 읽힙니다. 세로로 긴 사진도 그대로 인식합니다.
+      </div>
+    </div>
+
+    <!-- workspace -->
+    <div id="workspace" class="hidden space-y-3">
+      <!-- toolbar -->
+      <div class="panel p-3 sm:p-4 space-y-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="seg flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-800">
+            <button data-mode="edit" class="mode-btn px-3 py-1.5 text-xs font-bold">편집</button>
+            <button data-mode="test" class="mode-btn px-3 py-1.5 text-xs font-bold">암기 테스트</button>
+          </div>
+          <div class="grow"></div>
+          <button id="btnUndo" class="ghost-btn px-3 py-1.5 rounded-xl text-xs font-bold">되돌리기</button>
+          <button id="btnNew" class="ghost-btn px-3 py-1.5 rounded-xl text-xs font-bold">새 학습지</button>
+          <button id="btnSaveNow" class="primary-btn px-3 py-1.5 rounded-xl text-xs font-bold">보관함 저장</button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <div class="flex items-center gap-2 min-w-[220px] grow">
+            <span class="font-bold text-neutral-600 dark:text-neutral-400 shrink-0">자동 빈칸</span>
+            <input id="ratioRange" type="range" min="20" max="60" step="5" value="35" class="lemon-range grow">
+            <span id="ratioLabel" class="font-mono font-bold text-brand-600 dark:text-brand-400 w-9 text-right">35%</span>
+          </div>
+          <button id="btnAuto" class="primary-btn px-3 py-1.5 rounded-xl text-xs font-bold">자동 생성</button>
+          <button id="btnDraw" class="ghost-btn px-3 py-1.5 rounded-xl text-xs font-bold">직접 그리기</button>
+          <button id="btnClearBlanks" class="ghost-btn px-3 py-1.5 rounded-xl text-xs font-bold">빈칸 비우기</button>
+        </div>
+
+        <div id="testBar" class="hidden flex-wrap items-center gap-2 pt-1 border-t border-neutral-200/70 dark:border-neutral-800/70">
+          <div class="flex items-center gap-2 grow min-w-[180px]">
+            <div class="progress-track grow h-2"><div id="progressFill" class="progress-fill" style="width:0%"></div></div>
+            <span id="progressText" class="text-[11px] font-mono font-bold text-neutral-500 dark:text-neutral-400">0/0</span>
+          </div>
+          <button id="btnOpenAll" class="ghost-btn px-3 py-1.5 rounded-xl text-[11px] font-bold">모두 열기</button>
+          <button id="btnHideAll" class="ghost-btn px-3 py-1.5 rounded-xl text-[11px] font-bold">모두 가리기</button>
+          <button id="btnWrongOnly" class="ghost-btn px-3 py-1.5 rounded-xl text-[11px] font-bold">틀린 것만 다시</button>
+          <button id="btnGrade" class="primary-btn px-3 py-1.5 rounded-xl text-[11px] font-bold">채점표</button>
+        </div>
+      </div>
+
+      <!-- OCR progress -->
+      <div id="ocrCard" class="hidden panel p-4 space-y-2">
+        <div class="flex items-center justify-between text-xs">
+          <span id="ocrStage" class="font-bold">글자를 읽는 중…</span>
+          <span id="ocrPct" class="font-mono text-neutral-500 dark:text-neutral-400">0%</span>
+        </div>
+        <div class="progress-track h-2"><div id="ocrBar" class="progress-fill" style="width:0%"></div></div>
+        <p id="ocrHint" class="text-[11px] text-neutral-500 dark:text-neutral-400">첫 실행에는 인식 엔진을 내려받아 조금 걸릴 수 있어요.</p>
+      </div>
+
+      <!-- stage -->
+      <div class="panel p-2 sm:p-3">
+        <div id="stageWrap" class="stage-wrap editor-mode">
+          <img id="stageImg" alt="학습지 이미지" src="">
+          <div id="overlay" class="stage-overlay"></div>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-2 px-1 pt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+          <span id="stageInfo">빈칸 0개</span>
+          <span id="modeHint">편집 모드에서는 빈칸을 누르면 삭제됩니다</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="font-black text-lg">보관함</h2>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">저장한 학습지는 이 브라우저에만 남습니다.</p>
+      </div>
+      <button id="btnArchiveNew" class="primary-btn px-3.5 py-2 rounded-xl text-xs font-bold">새로 만들기</button>
+    </div>
+    <div id="archiveList" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    <div id="archiveEmpty" class="panel p-10 text-center text-sm text-neutral-500 dark:text-neutral-400">
+      아직 저장한 학습지가 없어요. 스튜디오에서 사진을 올려 보세요.
+    </div>
+  </section>
+</main>
+
+<!-- grade sheet -->
+<div id="gradeModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-neutral-950/60 backdrop-blur-sm p-3">
+  <div class="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-neutral-200/70 dark:border-neutral-800/70">
+      <h3 class="font-black text-base">채점표</h3>
+      <button id="btnGradeClose" class="icon-btn" aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div id="gradeList" class="flex-1 overflow-y-auto thin-scroll p-3 space-y-2"></div>
+    <div class="px-5 py-3 border-t border-neutral-200/70 dark:border-neutral-800/70 flex items-center justify-between text-xs">
+      <span id="gradeSummary" class="text-neutral-500 dark:text-neutral-400">채점 없음</span>
+      <button id="btnGradeReset" class="ghost-btn px-3 py-1.5 rounded-xl text-[11px] font-bold">채점 초기화</button>
+    </div>
+  </div>
+</div>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Study · Lemon soft 29대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3">
+      <a href="ocr.html" class="hover:underline">Lemon OCR</a>
+      <a href="index.html" class="hover:underline">Developer Hub</a>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+  var AUTO = Lemon.project('lemon_study_archive', { max: 8 });
+  AUTO.bind('asBadge');
+
+  var state = {
+    img: '',      // data URL (resized)
+    iw: 0, ih: 0,
+    blanks: [],
+    mode: 'edit',
+    ratio: 35,
+    title: '',
+    drawing: false,
+    undo: []
+  };
+  var worker = null, workerLang = '';
+  var ocrRunning = false;
+
+  var CDN = [
+    { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0' },
+    { workerPath: 'https://unpkg.com/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://unpkg.com/tesseract.js-core@5.1.0' }
+  ];
+
+  /* ---------------- helpers ---------------- */
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function uid() { return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+  function stageInfo() {
+    var hidden = 0, open = 0, ok = 0, no = 0;
+    state.blanks.forEach(function (b) {
+      if (b.open) open++; else hidden++;
+      if (b.mark === 'ok') ok++;
+      if (b.mark === 'no') no++;
+    });
+    $('stageInfo').textContent = '빈칸 ' + state.blanks.length + '개 · 가려짐 ' + hidden + ' · 열림 ' + open;
+    var total = state.blanks.length;
+    var pct = total ? Math.round((open / total) * 100) : 0;
+    $('progressFill').style.width = pct + '%';
+    $('progressText').textContent = open + '/' + total + (ok || no ? ' · 정답 ' + ok + ' · 오답 ' + no : '');
+    $('gradeSummary').textContent = total ? ('정답 ' + ok + ' · 오답 ' + no + ' · 남은 빈칸 ' + hidden) : '채점 없음';
+    $('arcCount').textContent = String(AUTO.archive.count());
+  }
+
+  function saveNow() {
+    if (!state.img) return;
+    AUTO.touch(payload);
+  }
+
+  function payload() {
+    if (!state.img) return null;
+    return {
+      title: state.title || '학습지',
+      img: state.img,
+      iw: state.iw,
+      ih: state.ih,
+      blanks: state.blanks.map(function (b) {
+        return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h, text: b.text, src: b.src, open: b.open, mark: b.mark };
+      }),
+      ratio: state.ratio,
+      count: state.blanks.length
+    };
+  }
+
+  function touchSave() {
+    if (!state.img) return;
+    AUTO.touch(payload);
+    stageInfo();
+  }
+
+  /* ---------------- image loading ---------------- */
+  function loadImageFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { Lemon.toast('이미지 파일만 열 수 있어요', 'err'); return; }
+    var reader = new FileReader();
+    reader.onload = function (e) { loadImageData(e.target.result, file.name || '학습지'); };
+    reader.readAsDataURL(file);
+  }
+
+  function loadImageData(dataUrl, title) {
+    var img = new Image();
+    img.onload = function () {
+      var maxDim = 1500;
+      var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      var w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      var cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      var ctx = cv.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      var out = cv.toDataURL('image/jpeg', 0.84);
+
+      state.img = out;
+      state.iw = w; state.ih = h;
+      state.blanks = [];
+      state.title = (title || '학습지').replace(/\.[a-z0-9]+$/i, '').slice(0, 40);
+      $('stageImg').src = out;
+      $('emptyState').classList.add('hidden');
+      $('workspace').classList.remove('hidden');
+      renderBlanks();
+      stageInfo();
+      touchSave();
+      go('studio');
+      Lemon.toast('학습지를 불러왔어요. 글자를 읽어볼게요.', 'ok');
+      runOcr();
+    };
+    img.onerror = function () { Lemon.toast('이미지를 열지 못했어요', 'err'); };
+    img.src = dataUrl;
+  }
+
+  /* ---------------- OCR ---------------- */
+  function ocrStage(m) {
+    var st = (m && m.status) || '';
+    if (st.indexOf('loading tesseract core') > -1) return ['인식 엔진 불러오는 중…', 8];
+    if (st.indexOf('initializing tesseract') > -1) return ['엔진 초기화 중…', 16];
+    if (st.indexOf('loading language traineddata') > -1) return ['한국어 데이터 내려받는 중…', 24];
+    if (st.indexOf('initializing api') > -1) return ['인식기 초기화 중…', 52];
+    if (st.indexOf('recognizing text') > -1) return ['글자 위치를 찾는 중…', 62];
+    return ['처리 중…', 40];
+  }
+
+  function ocrProgress(pct, label, hint) {
+    $('ocrBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+    $('ocrPct').textContent = Math.round(pct) + '%';
+    if (label) $('ocrStage').textContent = label;
+    if (hint !== undefined) $('ocrHint').textContent = hint;
+  }
+
+  function getWorker() {
+    if (worker && workerLang === 'kor+eng') return Promise.resolve(worker);
+    var i = 0;
+    function attempt() {
+      if (i >= CDN.length) return Promise.reject(new Error('worker init failed'));
+      var c = CDN[i++];
+      return Tesseract.createWorker('kor+eng', 1, {
+        workerPath: c.workerPath,
+        corePath: c.corePath,
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+        logger: function (m) {
+          if (!ocrRunning) return;
+          var info = ocrStage(m);
+          var p = typeof m.progress === 'number' ? m.progress : 0;
+          var span = (m.status || '').indexOf('recognizing text') > -1 ? 36 : ((m.status || '').indexOf('loading language traineddata') > -1 ? 28 : 6);
+          ocrProgress(info[1] + span * p, info[0], '이미지 안의 단어와 위치를 함께 읽고 있어요.');
+        }
+      }).then(function (w) {
+        worker = w; workerLang = 'kor+eng';
+        return w;
+      }).catch(function (err) {
+        if (window.console) console.warn('[blank] cdn failed', err && err.message);
+        return attempt();
+      });
+    }
+    return attempt();
+  }
+
+  var STOP = ['그리고', '그러나', '하지만', '그래서', '이것', '저것', '있다', '한다', '위한', '대한', '통해', '매우', '우리', '여러', '경우', '또는', '및', '등', '것', '수', '때', '더', '잘', '이', '그', '저'];
+
+  function mergeLineWords(words, mergeGap) {
+    // words: [{text, x0,y0,x1,y1, conf}] sorted by x
+    var groups = [];
+    words.forEach(function (w) {
+      var last = groups[groups.length - 1];
+      if (last) {
+        var gap = w.x0 - last.x1;
+        var h = Math.max(1, Math.min(last.y1 - last.y0, w.y1 - w.y0));
+        if (gap < mergeGap) {
+          last.text += (gap < h * 0.18 ? '' : ' ') + w.text;
+          last.x1 = Math.max(last.x1, w.x1);
+          last.y0 = Math.min(last.y0, w.y0);
+          last.y1 = Math.max(last.y1, w.y1);
+          last.conf = (last.conf + w.conf) / 2;
+          return;
+        }
+      }
+      groups.push({ text: w.text, x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1, conf: w.conf });
+    });
+    return groups;
+  }
+
+  function extractTokens(data) {
+    var raw = [];
+    if (data && Array.isArray(data.words) && data.words.length) {
+      data.words.forEach(function (w) {
+        if (!w || !w.text || !w.bbox) return;
+        raw.push({ text: String(w.text).trim(), x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1, conf: w.confidence || 0 });
+      });
+    } else if (data && data.tsv) {
+      data.tsv.split('\n').forEach(function (row) {
+        var c = row.split('\t');
+        if (c.length < 12 || c[0] !== '5') return;
+        var t = (c[11] || '').trim();
+        if (!t) return;
+        var x = +c[6], y = +c[7], w = +c[8], h = +c[9];
+        raw.push({ text: t, x0: x, y0: y, x1: x + w, y1: y + h, conf: +c[10] });
+      });
+    }
+    raw = raw.filter(function (w) { return w.text && w.conf >= 45 && /[가-힣a-zA-Z0-9]/.test(w.text); });
+
+    // group by line (vertical center)
+    raw.sort(function (a, b) { return (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2 || a.x0 - b.x0; });
+    var lines = [];
+    raw.forEach(function (w) {
+      var cy = (w.y0 + w.y1) / 2, h = w.y1 - w.y0;
+      var line = lines[lines.length - 1];
+      if (line && Math.abs(line.cy - cy) < Math.max(8, h * 0.6)) {
+        line.words.push(w);
+        line.cy = (line.cy * (line.words.length - 1) + cy) / line.words.length;
+      } else {
+        lines.push({ cy: cy, words: [w] });
+      }
+    });
+
+    var tokens = [];
+    lines.forEach(function (line) {
+      line.words.sort(function (a, b) { return a.x0 - b.x0; });
+      // 글자 사이 간격의 중앙값으로 '한 단어' 경계를 추정한다
+      // (한글은 음절마다 띄어 읽히므로 고정 임계값으로는 문장 전체가 한 덩어리가 된다)
+      var gaps = [];
+      for (var gi = 1; gi < line.words.length; gi++) {
+        var gp = line.words[gi].x0 - line.words[gi - 1].x1;
+        if (gp > -2) gaps.push(gp);
+      }
+      gaps.sort(function (a, b) { return a - b; });
+      var median = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 3;
+      var hh = 0;
+      line.words.forEach(function (w) { hh += (w.y1 - w.y0); });
+      hh = hh / Math.max(1, line.words.length);
+      var mergeGap = Math.max(hh * 0.14, Math.min(hh * 0.34, median * 2.0 + 1.5));
+
+      mergeLineWords(line.words, mergeGap).forEach(function (g) {
+        var text = g.text.replace(/\s+/g, ' ').trim();
+        // 앞쪽에 붙은 잡음([, _, |, 숫자 없이 붙은 따옴표 등) 제거
+        text = text.replace(/^[^가-힣a-zA-Z0-9]+/, '').trim();
+        if (!text) return;
+        var clean = text.replace(/[.,!?()\[\]{}"'·:;~\-]/g, '').trim();
+        if (clean.length < 2) return;
+        tokens.push({ text: text, x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1, conf: g.conf });
+      });
+    });
+    return tokens;
+  }
+
+  function scoreToken(t) {
+    var txt = t.text;
+    var clean = txt.replace(/[^가-힣a-zA-Z0-9]/g, '');
+    if (!clean) return 0;
+    var s = 1;
+    if (/[0-9]/.test(clean)) s += 1.6;
+    if (/[a-zA-Z]/.test(clean)) s += 1.8;
+    if (/[가-힣]/.test(clean)) s += Math.min(2.4, clean.length * 0.45);
+    if (STOP.indexOf(clean) > -1) s -= 2.2;
+    if (/^(은|는|이|가|을|를|의|에|와|과|도|로|으로|에서|에게|이다|한다|하며)$/.test(clean)) s -= 2;
+    if (t.conf < 60) s -= 0.7;
+    return s;
+  }
+
+  function runOcr() {
+    if (!state.img || ocrRunning) return;
+    if (typeof Tesseract === 'undefined') {
+      Lemon.toast('인식 엔진을 불러오지 못했어요. 사진은 그대로 쓸 수 있습니다.', 'err');
+      return;
+    }
+    ocrRunning = true;
+    $('ocrCard').classList.remove('hidden');
+    ocrProgress(2, '인식 준비 중…', '이미지를 정리하고 있어요.');
+    getWorker().then(function (w) {
+      ocrProgress(60, '글자 위치를 찾는 중…', '단어마다 정확한 좌표를 계산합니다.');
+      return w.recognize(state.img, {}, { blocks: true, tsv: true, text: true });
+    }).then(function (ret) {
+      var data = (ret && ret.data) || {};
+      var tokens = extractTokens(data);
+      ocrProgress(100, '인식 완료', tokens.length + '개 단어의 위치를 찾았어요.');
+      state.tokens = tokens;
+      setTimeout(function () { $('ocrCard').classList.add('hidden'); }, 500);
+      if (!tokens.length) {
+        Lemon.toast('글자를 찾지 못했어요. 직접 빈칸을 그려 보세요.', 'err');
+        return;
+      }
+      autoBlanks(true);
+      Lemon.toast(tokens.length + '개 단어를 읽었어요. 빈칸을 자동으로 만들었습니다.', 'ok');
+      Lemon.confetti(16);
+    }).catch(function (err) {
+      if (window.console) console.error('[blank] ocr failed', err);
+      $('ocrCard').classList.add('hidden');
+      Lemon.toast('글자 인식에 실패했어요. 직접 빈칸을 그려 주세요.', 'err');
+    }).then(function () {
+      ocrRunning = false;
+    });
+  }
+
+  /* ---------------- blanks ---------------- */
+  function autoBlanks(silent) {
+    var tokens = state.tokens || [];
+    if (!tokens.length) {
+      if (!silent) Lemon.toast('먼저 학습지에서 글자를 읽어야 해요', 'err');
+      return;
+    }
+    // 제목처럼 큰 글씨는 빈칸 대상에서 제외 (본문 단어만 연습)
+    var heights = tokens.map(function (t) { return t.y1 - t.y0; }).sort(function (a, b) { return a - b; });
+    var medH = heights.length ? heights[Math.floor(heights.length / 2)] : 20;
+    var scored = tokens.map(function (t) { return { t: t, s: scoreToken(t) }; })
+      .filter(function (x) { return x.s > 0.6 && (x.t.y1 - x.t.y0) < medH * 1.7; })
+      .sort(function (a, b) { return b.s - a.s; });
+    var want = Math.max(1, Math.round(tokens.length * (state.ratio / 100)));
+    want = Math.min(want, scored.length);
+    var picked = scored.slice(0, want).map(function (x) { return x.t; });
+
+    state.blanks = picked.map(function (t) {
+      var padX = Math.max(2, (t.x1 - t.x0) * 0.04);
+      var padY = Math.max(2, (t.y1 - t.y0) * 0.16);
+      return {
+        id: uid(),
+        x: (t.x0 - padX) / state.iw,
+        y: (t.y0 - padY) / state.ih,
+        w: (t.x1 - t.x0 + padX * 2) / state.iw,
+        h: (t.y1 - t.y0 + padY * 2) / state.ih,
+        text: t.text,
+        src: 'ocr',
+        open: false,
+        mark: null
+      };
+    }).filter(function (b) { return b.w > 0.004 && b.h > 0.004 && b.w < 0.45; });
+
+    // 겹치는 빈칸은 하나만 남긴다 (앞쪽/작은 것 우선)
+    var kept = [];
+    state.blanks.forEach(function (b) {
+      var overlaps = kept.some(function (k) {
+        var ox = Math.min(b.x + b.w, k.x + k.w) - Math.max(b.x, k.x);
+        var oy = Math.min(b.y + b.h, k.y + k.h) - Math.max(b.y, k.y);
+        return ox > Math.min(b.w, k.w) * 0.45 && oy > Math.min(b.h, k.h) * 0.45;
+      });
+      if (!overlaps) kept.push(b);
+    });
+    state.blanks = kept;
+
+    renderBlanks();
+    stageInfo();
+    touchSave();
+    if (!silent) Lemon.toast(state.blanks.length + '개 빈칸을 만들었어요', 'ok');
+  }
+
+  function renderBlanks() {
+    var ov = $('overlay');
+    ov.innerHTML = '';
+    state.blanks.forEach(function (b, i) {
+      var el = document.createElement('div');
+      el.className = 'blank' + (b.open ? ' open' : '') + (b.mark === 'ok' ? ' mark-ok' : '') + (b.mark === 'no' ? ' mark-no' : '') + (b.solved ? ' solved' : '');
+      el.style.left = (b.x * 100) + '%';
+      el.style.top = (b.y * 100) + '%';
+      el.style.width = (b.w * 100) + '%';
+      el.style.height = (b.h * 100) + '%';
+      el.setAttribute('data-id', b.id);
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', '빈칸 ' + (i + 1));
+      el.innerHTML = '<span class="bnum">' + (i + 1) + '</span>';
+      ov.appendChild(el);
+    });
+  }
+
+  function findBlank(id) {
+    for (var i = 0; i < state.blanks.length; i++) if (state.blanks[i].id === id) return state.blanks[i];
+    return null;
+  }
+
+  function pushUndo() {
+    state.undo.push(JSON.stringify(state.blanks));
+    if (state.undo.length > 30) state.undo.shift();
+  }
+
+  /* ---------------- stage interactions ---------------- */
+  var drag = null;
+
+  $('overlay').addEventListener('pointerdown', function (e) {
+    var blankEl = e.target.closest ? e.target.closest('.blank') : null;
+    if (blankEl) {
+      var b = findBlank(blankEl.getAttribute('data-id'));
+      if (!b) return;
+      if (state.mode === 'test') {
+        b.open = !b.open;
+        blankEl.classList.toggle('open', b.open);
+        if (b.open) { blankEl.classList.add('pop'); setTimeout(function () { blankEl.classList.remove('pop'); }, 360); Lemon.hap(8); }
+        stageInfo(); touchSave();
+      } else {
+        pushUndo();
+        state.blanks = state.blanks.filter(function (x) { return x.id !== b.id; });
+        renderBlanks(); stageInfo(); touchSave();
+        Lemon.toast('빈칸을 지웠어요', 'info');
+      }
+      return;
+    }
+    if (state.mode !== 'edit' || !state.drawing) return;
+    var wrap = $('stageWrap');
+    var r = wrap.getBoundingClientRect();
+    drag = { x0: e.clientX - r.left, y0: e.clientY - r.top, r: r };
+    var rect = document.createElement('div');
+    rect.className = 'draw-rect';
+    rect.id = 'drawRect';
+    rect.style.left = ((drag.x0 / r.width) * 100) + '%';
+    rect.style.top = ((drag.y0 / r.height) * 100) + '%';
+    rect.style.width = '0%';
+    rect.style.height = '0%';
+    $('overlay').appendChild(rect);
+    try { $('overlay').setPointerCapture(e.pointerId); } catch (err) { }
+    e.preventDefault();
+  });
+
+  $('overlay').addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var r = drag.r;
+    var x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+    var y = Math.max(0, Math.min(r.height, e.clientY - r.top));
+    var left = Math.min(drag.x0, x), top = Math.min(drag.y0, y);
+    var w = Math.abs(x - drag.x0), h = Math.abs(y - drag.y0);
+    var rect = $('drawRect');
+    if (!rect) return;
+    rect.style.left = ((left / r.width) * 100) + '%';
+    rect.style.top = ((top / r.height) * 100) + '%';
+    rect.style.width = ((w / r.width) * 100) + '%';
+    rect.style.height = ((h / r.height) * 100) + '%';
+  });
+
+  $('overlay').addEventListener('pointerup', function (e) {
+    if (!drag) return;
+    var r = drag.r;
+    var x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+    var y = Math.max(0, Math.min(r.height, e.clientY - r.top));
+    var left = Math.min(drag.x0, x), top = Math.min(drag.y0, y);
+    var w = Math.abs(x - drag.x0), h = Math.abs(y - drag.y0);
+    var rect = $('drawRect');
+    if (rect && rect.parentNode) rect.parentNode.removeChild(rect);
+    drag = null;
+    if (w < 12 || h < 10) return;
+    pushUndo();
+    state.blanks.push({
+      id: uid(),
+      x: left / r.width, y: top / r.height,
+      w: w / r.width, h: h / r.height,
+      text: '', src: 'manual', open: false, mark: null
+    });
+    renderBlanks(); stageInfo(); touchSave();
+    Lemon.hap(10);
+  });
+
+  $('overlay').addEventListener('contextmenu', function (e) {
+    var blankEl = e.target.closest ? e.target.closest('.blank') : null;
+    if (!blankEl) return;
+    e.preventDefault();
+    var b = findBlank(blankEl.getAttribute('data-id'));
+    if (!b) return;
+    pushUndo();
+    state.blanks = state.blanks.filter(function (x) { return x.id !== b.id; });
+    renderBlanks(); stageInfo(); touchSave();
+    Lemon.toast('빈칸을 지웠어요', 'info');
+  });
+
+  /* ---------------- controls ---------------- */
+  function setMode(mode) {
+    state.mode = mode;
+    document.querySelectorAll('.mode-btn').forEach(function (b) {
+      b.classList.toggle('nav-on', b.getAttribute('data-mode') === mode);
+      b.classList.toggle('bg-brand-600', b.getAttribute('data-mode') === mode);
+      b.classList.toggle('text-white', b.getAttribute('data-mode') === mode);
+    });
+    $('testBar').classList.toggle('hidden', mode !== 'test');
+    $('testBar').classList.toggle('flex', mode === 'test');
+    $('stageWrap').classList.toggle('editor-mode', mode === 'edit');
+    var hint = $('modeHint');
+    if (hint) hint.textContent = mode === 'edit' ? '편집 모드에서는 빈칸을 누르면 삭제됩니다' : '빈칸을 톡 누르면 아래 글자가 드러납니다';
+    if (mode === 'test') {
+      state.blanks.forEach(function (b) { b.open = false; });
+      renderBlanks();
+      Lemon.toast('암기 모드 — 빈칸을 눌러 답을 확인하세요', 'info');
+    }
+    state.drawing = false;
+    $('btnDraw').classList.remove('pill-btn-on');
+    $('btnDraw').classList.remove('primary-btn');
+    $('btnDraw').classList.add('ghost-btn');
+    $('stageWrap').classList.remove('drawing');
+    stageInfo();
+  }
+
+  document.querySelectorAll('.mode-btn').forEach(function (b) {
+    b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
+  });
+
+  $('ratioRange').addEventListener('input', function () {
+    state.ratio = parseInt(this.value, 10);
+    $('ratioLabel').textContent = state.ratio + '%';
+    Lemon.refreshRange(this);
+  });
+
+  $('btnAuto').addEventListener('click', function () {
+    if (!state.img) { Lemon.toast('먼저 학습지를 올려 주세요', 'err'); return; }
+    if (!state.tokens || !state.tokens.length) {
+      Lemon.toast('아직 글자를 읽는 중이에요. 잠시 후 다시 눌러 주세요', 'info');
+      runOcr();
+      return;
+    }
+    pushUndo();
+    autoBlanks(false);
+    Lemon.hap(12);
+  });
+
+  $('btnDraw').addEventListener('click', function () {
+    if (state.mode !== 'edit') setMode('edit');
+    state.drawing = !state.drawing;
+    this.classList.toggle('primary-btn', state.drawing);
+    this.classList.toggle('ghost-btn', !state.drawing);
+    $('stageWrap').classList.toggle('drawing', state.drawing);
+    Lemon.toast(state.drawing ? '이미지 위를 끌어 빈칸을 그려 보세요' : '그리기를 멈췄어요', 'info');
+  });
+
+  $('btnClearBlanks').addEventListener('click', function () {
+    if (!state.blanks.length) return;
+    pushUndo();
+    state.blanks = [];
+    renderBlanks(); stageInfo(); touchSave();
+    Lemon.toast('빈칸을 모두 비웠어요. 되돌리기로 복구할 수 있어요', 'info');
+  });
+
+  $('btnUndo').addEventListener('click', function () {
+    if (!state.undo.length) { Lemon.toast('되돌릴 작업이 없어요', 'info'); return; }
+    state.blanks = JSON.parse(state.undo.pop());
+    renderBlanks(); stageInfo(); touchSave();
+    Lemon.toast('되돌렸어요', 'ok');
+  });
+
+  $('btnOpenAll').addEventListener('click', function () {
+    state.blanks.forEach(function (b) { b.open = true; });
+    renderBlanks(); stageInfo(); touchSave();
+  });
+  $('btnHideAll').addEventListener('click', function () {
+    state.blanks.forEach(function (b) { b.open = false; });
+    renderBlanks(); stageInfo(); touchSave();
+  });
+  $('btnWrongOnly').addEventListener('click', function () {
+    var wrong = state.blanks.filter(function (b) { return b.mark === 'no'; });
+    if (!wrong.length) { Lemon.toast('틀림으로 표시한 빈칸이 없어요', 'info'); return; }
+    state.blanks.forEach(function (b) {
+      var isWrong = b.mark === 'no';
+      b.open = !isWrong;
+      b.solved = !isWrong;
+      if (isWrong) b.mark = null;
+    });
+    renderBlanks(); stageInfo(); touchSave();
+    Lemon.toast('틀린 ' + wrong.length + '개만 남겼어요', 'ok');
+  });
+
+  /* ---------------- grade sheet ---------------- */
+  function openGrade() {
+    var m = $('gradeModal');
+    m.classList.remove('hidden'); m.classList.add('flex');
+    var list = $('gradeList');
+    list.innerHTML = '';
+    if (!state.blanks.length) {
+      list.innerHTML = '<p class="text-xs text-neutral-500 p-6 text-center">빈칸이 없습니다.</p>';
+    }
+    state.blanks.forEach(function (b, i) {
+      var row = document.createElement('div');
+      row.className = 'grade-row panel-soft rounded-2xl p-3 flex items-center gap-2';
+      row.innerHTML =
+        '<span class="w-6 text-center text-[11px] font-mono font-bold text-neutral-400">' + (i + 1) + '</span>' +
+        '<span class="grow text-xs font-bold truncate">' + (b.text ? Lemon.esc(b.text) : '직접 그린 빈칸') + '</span>' +
+        '<button class="g-ok px-2 py-1 rounded-lg text-[11px] font-bold ' + (b.mark === 'ok' ? 'bg-emerald-500 text-white' : 'ghost-btn') + '">맞힘</button>' +
+        '<button class="g-no px-2 py-1 rounded-lg text-[11px] font-bold ' + (b.mark === 'no' ? 'bg-rose-500 text-white' : 'ghost-btn') + '">틀림</button>';
+      row.querySelector('.g-ok').addEventListener('click', function () { b.mark = b.mark === 'ok' ? null : 'ok'; renderBlanks(); stageInfo(); touchSave(); openGrade(); });
+      row.querySelector('.g-no').addEventListener('click', function () { b.mark = b.mark === 'no' ? null : 'no'; renderBlanks(); stageInfo(); touchSave(); openGrade(); });
+      list.appendChild(row);
+    });
+    stageInfo();
+  }
+  $('btnGrade').addEventListener('click', openGrade);
+  $('btnGradeClose').addEventListener('click', function () {
+    $('gradeModal').classList.add('hidden'); $('gradeModal').classList.remove('flex');
+  });
+  $('btnGradeReset').addEventListener('click', function () {
+    state.blanks.forEach(function (b) { b.mark = null; b.open = false; b.solved = false; });
+    renderBlanks(); stageInfo(); touchSave(); openGrade();
+  });
+
+  /* ---------------- file inputs ---------------- */
+  $('btnPick').addEventListener('click', function () { $('fileInput').click(); });
+  $('fileInput').addEventListener('change', function (e) {
+    if (e.target.files && e.target.files[0]) loadImageFile(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('dropZone').addEventListener('click', function (e) {
+    if (e.target.closest('button')) return;
+    $('fileInput').click();
+  });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    $('dropZone').addEventListener(ev, function (e) { e.preventDefault(); $('dropZone').classList.add('border-brand-500'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    $('dropZone').addEventListener(ev, function (e) { e.preventDefault(); $('dropZone').classList.remove('border-brand-500'); });
+  });
+  $('dropZone').addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadImageFile(f);
+  });
+  document.addEventListener('paste', function (e) {
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) {
+        var f = items[i].getAsFile();
+        if (f) { e.preventDefault(); loadImageFile(f); return; }
+      }
+    }
+  });
+
+  /* ---------------- sample worksheet ---------------- */
+  function makeSample() {
+    var w = 900, h = 720;
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var c = cv.getContext('2d');
+    c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#111111';
+    c.font = 'bold 34px "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
+    c.fillText('3학년 과학 학습지 — 광합성', 56, 78);
+    c.font = '24px "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
+    var lines = [
+      '1. 식물은 빛에너지를 이용해 양분을 만든다.',
+      '2. 이 과정을 광합성이라고 하며 엽록체에서 일어난다.',
+      '3. 광합성에 필요한 기체는 이산화탄소이다.',
+      '4. 산소는 광합성의 결과로 방출된다.',
+      '5. 물은 뿌리에서 흡수되어 줄기를 통해 이동한다.',
+      '6. 엽록소는 빛을 흡수하는 색소이다.',
+      '7. 온도가 25도일 때 효소가 가장 활발하다.',
+      '8. 잎의 기공으로 기체가 교환된다.',
+      '9. 광합성 결과 포도당이 생성된다.',
+      '10. 식물의 호흡은 밤낮없이 일어난다.'
+    ];
+    var y = 140;
+    lines.forEach(function (t) { c.fillText(t, 56, y); y += 52; });
+    loadImageData(cv.toDataURL('image/jpeg', 0.9), '샘플 학습지');
+  }
+  $('btnSample').addEventListener('click', makeSample);
+  $('btnHeroSample').addEventListener('click', makeSample);
+  $('btnHeroStart').addEventListener('click', function () { go('studio'); $('fileInput').click(); });
+
+  /* ---------------- project / archive ---------------- */
+  $('btnSaveNow').addEventListener('click', function () {
+    if (!state.img) return;
+    var rec = AUTO.flushNow(payload);
+    if (rec) {
+      Lemon.toast('보관함에 저장했어요', 'ok');
+      Lemon.confetti(14);
+    } else {
+      Lemon.toast('저장에 실패했어요. 저장 공간을 확인해 주세요.', 'err');
+    }
+    syncArchive();
+  });
+
+  $('btnNew').addEventListener('click', function () {
+    AUTO.newProject();
+    state.img = ''; state.blanks = []; state.tokens = []; state.title = '';
+    $('workspace').classList.add('hidden');
+    $('emptyState').classList.remove('hidden');
+    $('stageImg').src = '';
+    renderBlanks(); stageInfo();
+    Lemon.toast('새 학습지를 시작합니다', 'info');
+  });
+
+  function syncArchive() {
+    var list = AUTO.archive.all();
+    $('arcCount').textContent = String(list.length);
+    var box = $('archiveList');
+    var empty = $('archiveEmpty');
+    box.innerHTML = '';
+    if (!list.length) { empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+    list.forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'panel p-3 space-y-2 card-lift';
+      card.innerHTML =
+        '<div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800" style="aspect-ratio:4/3">' +
+          (item.img ? '<img src="' + item.img + '" alt="" class="w-full h-full object-cover">' : '') +
+        '</div>' +
+        '<div class="flex items-start justify-between gap-2">' +
+          '<div class="min-w-0">' +
+            '<p class="text-xs font-bold truncate">' + Lemon.esc(item.title || '학습지') + '</p>' +
+            '<p class="text-[10px] text-neutral-500 dark:text-neutral-400">빈칸 ' + (item.count || 0) + '개 · ' + Lemon.timeAgo(item.ts) + '</p>' +
+          '</div>' +
+          '<div class="flex items-center gap-1 shrink-0">' +
+            '<button class="a-open px-2 py-1 rounded-lg primary-btn text-[10px] font-bold">열기</button>' +
+            '<button class="a-del px-2 py-1 rounded-lg ghost-btn text-[10px] font-bold">삭제</button>' +
+          '</div>' +
+        '</div>';
+      card.querySelector('.a-open').addEventListener('click', function () { openRecord(item); });
+      card.querySelector('.a-del').addEventListener('click', function () {
+        AUTO.archive.remove(item.id);
+        syncArchive();
+        Lemon.toast('삭제했어요', 'info');
+      });
+      box.appendChild(card);
+    });
+  }
+
+  function openRecord(item) {
+    if (!item || !item.img) return;
+    state.img = item.img;
+    state.iw = item.iw || 1000;
+    state.ih = item.ih || 1000;
+    state.title = item.title || '학습지';
+    state.ratio = item.ratio || 35;
+    state.blanks = (item.blanks || []).map(function (b) {
+      return { id: b.id || uid(), x: b.x, y: b.y, w: b.w, h: b.h, text: b.text || '', src: b.src || 'ocr', open: !!b.open, mark: b.mark || null, solved: false };
+    });
+    state.tokens = state.tokens || [];
+    $('stageImg').src = state.img;
+    $('emptyState').classList.add('hidden');
+    $('workspace').classList.remove('hidden');
+    $('ratioRange').value = state.ratio;
+    $('ratioLabel').textContent = state.ratio + '%';
+    Lemon.refreshRange($('ratioRange'));
+    AUTO.openProject(item.id);
+    renderBlanks(); stageInfo();
+    go('studio');
+    Lemon.toast('보관함에서 불러왔어요', 'ok');
+  }
+
+  $('btnArchiveNew').addEventListener('click', function () {
+    AUTO.newProject();
+    state.img = ''; state.blanks = []; state.tokens = [];
+    $('workspace').classList.add('hidden');
+    $('emptyState').classList.remove('hidden');
+    go('studio');
+  });
+
+  /* ---------------- boot ---------------- */
+  document.querySelectorAll('.mode-btn').forEach(function (b) {
+    b.classList.add('px-3', 'py-1.5', 'text-xs', 'font-bold');
+  });
+  setMode('edit');
+  Lemon.refreshRange($('ratioRange'));
+  syncArchive();
+  stageInfo();
+
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail && e.detail.view === 'archive') syncArchive();
+  });
+
+  // expose for debugging / verification
+  window.__study = {
+    state: state,
+    loadImageData: loadImageData,
+    autoBlanks: autoBlanks,
+    openRecord: openRecord,
+    syncArchive: syncArchive
+  };
+})();
+</script>
+</body>
+</html>

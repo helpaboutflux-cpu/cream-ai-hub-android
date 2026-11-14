@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Finance — 주식·환율 실시간 대시보드</title>
+<meta name="description" content="한국·미국 주식과 지수, 비트코인을 검색해 실시간 차트·기술적 분석·재무·관련 뉴스를 한 화면에서 보고, 실시간 환율과 수익률을 계산합니다.">
+<meta name="theme-color" content="#10b981">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#10b981', light: '#34d399', deep: '#047857', 50: '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0', 300: '#6ee7b7', 400: '#34d399', 500: '#10b981', 600: '#059669', 700: '#047857', 800: '#065f46', 900: '#064e3b', 950: '#022c22' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #10b981; --brand-2: #047857; --brand-deep: #065f46; }
+  .tv-frame { width: 100%; border: 0; display: block; background: transparent; }
+  .sym-item { transition: background-color .16s, transform .16s; }
+  .sym-item:hover { background: rgba(16,185,129,.07); }
+  .sym-item.on { background: rgba(16,185,129,.12); box-shadow: inset 0 0 0 1px rgba(16,185,129,.45); }
+  .star-btn { transition: transform .15s, color .15s; }
+  .star-btn.on { color: #f59e0b; }
+  .star-btn:active { transform: scale(.85); }
+  .news-card { transition: border-color .18s, transform .18s; }
+  .news-card:hover { border-color: rgba(16,185,129,.5); transform: translateY(-1px); }
+  .fx-row { transition: background-color .16s; }
+  .up { color: #10b981; }
+  .down { color: #f43f5e; }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#047857"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-9 4 6 3-4 6 7"></path><path d="M3 21h18"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Finance</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">LIVE</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">주식 · 환율 대시보드</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="asBadge" class="as-badge hidden sm:inline">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="board">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"></path></svg>
+        <span>대시보드</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"></path></svg>
+        <span>즐겨찾기</span>
+        <span id="favCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            실시간 차트 · 환율 · 뉴스
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            시장은 지금,<br><span class="brand-text">한 화면</span>에서.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            삼성전자부터 나스닥·비트코인까지 검색 한 번으로 실시간 캔들 차트, 기술적 분석, 재무 지표, 관련 뉴스를 봅니다. 달러 환율과 수익률도 같이 계산됩니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button id="btnHeroStart" class="primary-btn btn-shimmer px-5 py-3 rounded-2xl text-sm font-bold flex items-center gap-2">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>
+              종목 검색
+            </button>
+            <button id="btnHeroFx" class="ghost-btn px-4 py-3 rounded-2xl text-sm font-bold">환율 보기</button>
+          </div>
+        </div>
+        <div class="panel p-4 space-y-2">
+          <div class="flex items-center justify-between text-[11px] font-bold text-neutral-500 dark:text-neutral-400"><span>실시간 환율</span><span id="fxUpdated" class="font-mono">-</span></div>
+          <div id="heroFx" class="space-y-1.5"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 stagger">
+      <div class="panel p-4"><p class="text-[10px] font-bold text-neutral-500">한국 주식</p><p class="text-lg font-black brand-text">KOSPI</p><p class="text-[10px] text-neutral-500 mt-1">삼성전자·하이닉스 등</p></div>
+      <div class="panel p-4"><p class="text-[10px] font-bold text-neutral-500">미국 주식</p><p class="text-lg font-black brand-text">NASDAQ</p><p class="text-[10px] text-neutral-500 mt-1">엔비디아·애플·테슬라</p></div>
+      <div class="panel p-4"><p class="text-[10px] font-bold text-neutral-500">암호화폐</p><p class="text-lg font-black brand-text">BTC</p><p class="text-[10px] text-neutral-500 mt-1">비트코인·이더리움</p></div>
+      <div class="panel p-4"><p class="text-[10px] font-bold text-neutral-500">환율</p><p class="text-lg font-black brand-text">USD/KRW</p><p class="text-[10px] text-neutral-500 mt-1">달러·엔·유로·위안</p></div>
+    </div>
+
+    <div class="panel p-5 space-y-3">
+      <h2 class="font-bold text-base">오늘의 주요 뉴스</h2>
+      <div id="homeNews" class="grid sm:grid-cols-2 gap-2"></div>
+    </div>
+  </section>
+
+  <!-- BOARD -->
+  <section data-view="board" class="hidden space-y-4">
+    <div class="panel p-3 sm:p-4 space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative grow min-w-[220px]">
+          <input id="symSearch" type="text" class="lemon-input !py-2.5 !text-[13px] pl-9" placeholder="종목·티커 검색 (삼성전자, 애플, NVDA, 005930…)">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>
+        </div>
+        <button id="btnDirect" class="ghost-btn px-3 py-2 rounded-xl text-[11px] font-bold">티커로 바로 열기</button>
+        <button id="btnRefresh" class="ghost-btn px-3 py-2 rounded-xl text-[11px] font-bold">새로고침</button>
+      </div>
+      <div id="searchResults" class="hidden max-h-64 overflow-y-auto thin-scroll space-y-1 panel-soft p-1.5 rounded-xl"></div>
+      <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" id="quickRow"></div>
+    </div>
+
+    <div class="grid lg:grid-cols-[1fr_320px] gap-4">
+      <div class="space-y-3 min-w-0">
+        <div class="panel p-3 space-y-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="min-w-0">
+              <p id="selName" class="text-[13px] font-black truncate">삼성전자</p>
+              <p id="selSym" class="text-[10px] font-mono text-neutral-500 truncate">KRX:005930</p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button id="btnFav" class="icon-btn" title="즐겨찾기"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"></path></svg></button>
+              <button class="icon-btn" data-interval="1" title="1분">1m</button>
+              <button class="icon-btn" data-interval="60" title="1시간">1H</button>
+              <button class="icon-btn" data-interval="D" title="일봉">1D</button>
+              <button class="icon-btn" data-interval="W" title="주봉">1W</button>
+              <a id="tvOpen" class="ghost-btn px-2.5 py-1.5 rounded-lg text-[10px] font-bold" target="_blank" rel="noopener" href="#">TradingView</a>
+            </div>
+          </div>
+          <div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-900">
+            <iframe id="tvChart" class="tv-frame" height="460" allowtransparency="true" scrolling="no" title="실시간 차트"></iframe>
+          </div>
+          <p id="chartNote" class="text-[10px] text-neutral-400 hidden">차트를 불러오지 못했어요. TradingView에서 직접 확인해 주세요.</p>
+        </div>
+
+        <div class="panel p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-[12px] font-black">관련 뉴스</h3>
+            <span id="newsState" class="text-[10px] font-mono text-neutral-400">불러오는 중…</span>
+          </div>
+          <div id="newsList" class="space-y-2"></div>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[12px] font-black">종목 정보</h3>
+          <iframe id="tvInfo" class="tv-frame" height="200" allowtransparency="true" scrolling="no" title="종목 정보"></iframe>
+        </div>
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[12px] font-black">기술적 분석</h3>
+          <iframe id="tvTech" class="tv-frame" height="400" allowtransparency="true" scrolling="no" title="기술적 분석"></iframe>
+        </div>
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[12px] font-black">재무</h3>
+          <iframe id="tvFin" class="tv-frame" height="420" allowtransparency="true" scrolling="no" title="재무"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- FX + portfolio -->
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="panel p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-[12px] font-black">실시간 환율 · 환산</h3>
+          <span id="fxTime" class="text-[10px] font-mono text-neutral-400">-</span>
+        </div>
+        <div id="fxTable" class="space-y-1.5"></div>
+        <div class="grid grid-cols-3 gap-2 items-end pt-1">
+          <div><span class="lemon-label">금액</span><input id="fxAmount" type="number" value="100" class="lemon-input mt-1 !py-2 !text-[12px]"></div>
+          <div><span class="lemon-label">통화</span><select id="fxFrom" class="lemon-select mt-1 !py-2 !text-[12px]"><option value="USD">USD</option><option value="JPY">JPY</option><option value="EUR">EUR</option><option value="CNY">CNY</option><option value="KRW">KRW</option></select></div>
+          <div class="text-right"><p class="text-[10px] text-neutral-500">원화 환산</p><p id="fxOut" class="text-base font-black brand-text">-</p></div>
+        </div>
+      </div>
+
+      <div class="panel p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-[12px] font-black">포트폴리오 수익률</h3>
+          <button id="btnAddHolding" class="ghost-btn px-2.5 py-1 rounded-lg text-[10px] font-bold">+ 종목</button>
+        </div>
+        <div id="holdingList" class="space-y-1.5"></div>
+        <div class="flex items-center justify-between pt-1 border-t border-neutral-200/70 dark:border-neutral-800/70 text-[11px]">
+          <span class="text-neutral-500">총 평가손익</span>
+          <span id="pfTotal" class="font-black">-</span>
+        </div>
+        <p class="text-[10px] text-neutral-400">현재가는 직접 입력하거나 즐겨찾기 종목을 고르세요. 환율은 실시간 시세로 환산합니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE / FAVORITES -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-center justify-between">
+      <div><h2 class="font-black text-lg">즐겨찾기</h2><p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">별표한 종목을 모아 봅니다.</p></div>
+      <button id="btnClearFav" class="ghost-btn px-3 py-2 rounded-xl text-[11px] font-bold">전체 해제</button>
+    </div>
+    <div id="favList" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    <div id="favEmpty" class="panel p-10 text-center text-sm text-neutral-500 dark:text-neutral-400">즐겨찾기한 종목이 없어요. 대시보드에서 별표를 눌러 보세요.</div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Finance · Lemon soft 29대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3"><a href="news.html" class="hover:underline">FLUX News</a><a href="pack.html" class="hover:underline">Lemon Pack</a><a href="index.html" class="hover:underline">Developer Hub</a></div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+  var AUTO = Lemon.project('lemon_finance_archive', { max: 20 });
+  AUTO.bind('asBadge');
+
+  /* ---------------- symbol directory (50+) ---------------- */
+  var DIR = [
+    // Korea
+    { sym: 'KRX:005930', ko: '삼성전자', name: 'Samsung Electronics', t: 'kr' },
+    { sym: 'KRX:000660', ko: 'SK하이닉스', name: 'SK Hynix', t: 'kr' },
+    { sym: 'KRX:035420', ko: '네이버', name: 'NAVER', t: 'kr' },
+    { sym: 'KRX:035720', ko: '카카오', name: 'Kakao', t: 'kr' },
+    { sym: 'KRX:005380', ko: '현대차', name: 'Hyundai Motor', t: 'kr' },
+    { sym: 'KRX:051910', ko: 'LG화학', name: 'LG Chem', t: 'kr' },
+    { sym: 'KRX:006400', ko: '삼성SDI', name: 'Samsung SDI', t: 'kr' },
+    { sym: 'KRX:207940', ko: '삼성바이오로직스', name: 'Samsung Biologics', t: 'kr' },
+    { sym: 'KRX:000270', ko: '기아', name: 'Kia', t: 'kr' },
+    { sym: 'KRX:068270', ko: '셀트리온', name: 'Celltrion', t: 'kr' },
+    { sym: 'KRX:105560', ko: 'KB금융', name: 'KB Financial', t: 'kr' },
+    { sym: 'KRX:055550', ko: '신한지주', name: 'Shinhan', t: 'kr' },
+    { sym: 'KRX:373220', ko: 'LG에너지솔루션', name: 'LG Energy Solution', t: 'kr' },
+    { sym: 'KRX:012330', ko: '현대모비스', name: 'Hyundai Mobis', t: 'kr' },
+    { sym: 'KRX:028260', ko: '삼성물산', name: 'Samsung C&T', t: 'kr' },
+    { sym: 'KRX:066570', ko: 'LG전자', name: 'LG Electronics', t: 'kr' },
+    { sym: 'KRX:003670', ko: '포스코퓨처엠', name: 'POSCO Future M', t: 'kr' },
+    { sym: 'KRX:247540', ko: '에코프로비엠', name: 'EcoPro BM', t: 'kr' },
+    // indices
+    { sym: 'KRX:KOSPI', ko: '코스피', name: 'KOSPI', t: 'idx' },
+    { sym: 'KRX:KOSDAQ', ko: '코스닥', name: 'KOSDAQ', t: 'idx' },
+    { sym: 'NASDAQ:IXIC', ko: '나스닥', name: 'NASDAQ Composite', t: 'idx' },
+    { sym: 'SP:SPX', ko: 'S&P500', name: 'S&P 500', t: 'idx' },
+    { sym: 'DJ:DJI', ko: '다우존스', name: 'Dow Jones', t: 'idx' },
+    { sym: 'TVC:NI225', ko: '니케이225', name: 'Nikkei 225', t: 'idx' },
+    { sym: 'TVC:HSI', ko: '항셍', name: 'Hang Seng', t: 'idx' },
+    { sym: 'TVC:USOIL', ko: 'WTI 원유', name: 'Crude Oil', t: 'idx' },
+    { sym: 'TVC:GOLD', ko: '금', name: 'Gold', t: 'idx' },
+    { sym: 'FX_IDC:USDKRW', ko: '달러/원', name: 'USD/KRW', t: 'idx' },
+    // US
+    { sym: 'NASDAQ:NVDA', ko: '엔비디아', name: 'NVIDIA', t: 'us' },
+    { sym: 'NASDAQ:AAPL', ko: '애플', name: 'Apple', t: 'us' },
+    { sym: 'NASDAQ:TSLA', ko: '테슬라', name: 'Tesla', t: 'us' },
+    { sym: 'NASDAQ:MSFT', ko: '마이크로소프트', name: 'Microsoft', t: 'us' },
+    { sym: 'NASDAQ:AMZN', ko: '아마존', name: 'Amazon', t: 'us' },
+    { sym: 'NASDAQ:GOOGL', ko: '구글', name: 'Alphabet', t: 'us' },
+    { sym: 'NASDAQ:META', ko: '메타', name: 'Meta Platforms', t: 'us' },
+    { sym: 'NASDAQ:NFLX', ko: '넷플릭스', name: 'Netflix', t: 'us' },
+    { sym: 'NASDAQ:AMD', ko: 'AMD', name: 'AMD', t: 'us' },
+    { sym: 'NASDAQ:INTC', ko: '인텔', name: 'Intel', t: 'us' },
+    { sym: 'NASDAQ:TSM', ko: 'TSMC', name: 'TSMC', t: 'us' },
+    { sym: 'NASDAQ:AVGO', ko: '브로드컴', name: 'Broadcom', t: 'us' },
+    { sym: 'NYSE:BRK.B', ko: '버크셔해서웨이', name: 'Berkshire Hathaway', t: 'us' },
+    { sym: 'NYSE:JPM', ko: 'JP모건', name: 'JPMorgan Chase', t: 'us' },
+    { sym: 'NYSE:V', ko: '비자', name: 'Visa', t: 'us' },
+    { sym: 'NYSE:KO', ko: '코카콜라', name: 'Coca-Cola', t: 'us' },
+    { sym: 'NYSE:DIS', ko: '디즈니', name: 'Disney', t: 'us' },
+    { sym: 'NYSE:PLTR', ko: '팔란티어', name: 'Palantir', t: 'us' },
+    // crypto
+    { sym: 'BINANCE:BTCUSDT', ko: '비트코인', name: 'Bitcoin', t: 'coin' },
+    { sym: 'BINANCE:ETHUSDT', ko: '이더리움', name: 'Ethereum', t: 'coin' },
+    { sym: 'BINANCE:SOLUSDT', ko: '솔라나', name: 'Solana', t: 'coin' },
+    { sym: 'BINANCE:XRPUSDT', ko: '리플', name: 'XRP', t: 'coin' },
+    { sym: 'BINANCE:DOGEUSDT', ko: '도지코인', name: 'Dogecoin', t: 'coin' },
+    { sym: 'BINANCE:ADAUSDT', ko: '에이다', name: 'Cardano', t: 'coin' }
+  ];
+
+  var st = {
+    sel: DIR[0],
+    interval: '60',
+    favs: [],
+    fx: null,
+    holdings: [],
+    news: []
+  };
+
+  function uid() { return 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+  function fmt(n, d) {
+    if (n === null || n === undefined || isNaN(n)) return '-';
+    return Number(n).toLocaleString('ko-KR', { minimumFractionDigits: d || 0, maximumFractionDigits: d === undefined ? 2 : d });
+  }
+
+  /* ---------------- persistence ---------------- */
+  function saveState() {
+    try {
+      localStorage.setItem('lemon_finance_state', JSON.stringify({ sel: st.sel.sym, interval: st.interval, favs: st.favs, holdings: st.holdings }));
+    } catch (e) { }
+    AUTO.touch(payload);
+  }
+  function payload() {
+    if (!st.favs.length && !st.holdings.length) return null;
+    return { title: '관심 종목 ' + st.favs.length + '개', favs: st.favs, holdings: st.holdings, count: st.favs.length, sel: st.sel.sym };
+  }
+  function loadState() {
+    try {
+      var raw = localStorage.getItem('lemon_finance_state');
+      if (!raw) return;
+      var o = JSON.parse(raw);
+      if (o.interval) st.interval = o.interval;
+      if (Array.isArray(o.favs)) st.favs = o.favs.filter(function (s) { return bySym(s); });
+      if (Array.isArray(o.holdings)) st.holdings = o.holdings;
+      if (o.sel) st.sel = bySym(o.sel) || st.sel;
+    } catch (e) { }
+  }
+
+  function bySym(sym) {
+    for (var i = 0; i < DIR.length; i++) if (DIR[i].sym === sym) return DIR[i];
+    return null;
+  }
+  function searchDir(q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return [];
+    return DIR.filter(function (s) {
+      return s.ko.toLowerCase().indexOf(q) > -1 || s.name.toLowerCase().indexOf(q) > -1 || s.sym.toLowerCase().indexOf(q) > -1;
+    }).slice(0, 12);
+  }
+
+  /* ---------------- TradingView widgets ---------------- */
+  function tvUrl(base, params) {
+    var q = Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
+    return base + '?' + q;
+  }
+  function loadWidgets() {
+    var sym = st.sel.sym;
+    var dark = Lemon.isDark();
+    var theme = dark ? 'dark' : 'light';
+    $('tvChart').src = tvUrl('https://s.tradingview.com/widgetembed/', {
+      frameElementId: 'tvChart', symbol: sym, interval: st.interval, hidesidetoolbar: 1, symboledit: 1,
+      saveimage: 1, toolbarbg: dark ? '18181b' : 'f1f3f6', studies: '[]', theme: theme, style: 1,
+      timezone: 'Asia/Seoul', locale: 'kr', withdateranges: 1, hideideas: 1, allow_symbol_change: 1
+    });
+    $('tvInfo').src = tvUrl('https://s.tradingview.com/embed-widget-symbol-info/', {
+      symbol: sym, locale: 'kr', colorTheme: theme, isTransparent: true, width: '100%'
+    });
+    $('tvTech').src = tvUrl('https://s.tradingview.com/embed-widget-technical-analysis/', {
+      interval: '1D', symbol: sym, locale: 'kr', colorTheme: theme, isTransparent: true, showIntervalTabs: true, width: '100%'
+    });
+    $('tvFin').src = tvUrl('https://s.tradingview.com/embed-widget-financials/', {
+      symbol: sym, locale: 'kr', colorTheme: theme, isTransparent: true, width: '100%', displayMode: 'regular'
+    });
+    $('tvOpen').href = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(sym);
+    $('chartNote').classList.add('hidden');
+    // 위젯이 네트워크에서 막힌 경우 안내 문구를 띄운다 (CORS 없는 도달성 확인)
+    try {
+      fetch($('tvChart').src, { mode: 'no-cors', cache: 'no-store' }).then(function () {
+        $('chartNote').classList.add('hidden');
+      }).catch(function () {
+        $('chartNote').classList.remove('hidden');
+      });
+    } catch (e) { }
+  }
+
+  document.addEventListener('lemon:theme', function () { loadWidgets(); });
+
+  /* ---------------- selection ---------------- */
+  function selectSymbol(symOrObj) {
+    var s = typeof symOrObj === 'string' ? (bySym(symOrObj) || { sym: symOrObj, ko: symOrObj.split(':').pop(), name: symOrObj }) : symOrObj;
+    st.sel = s;
+    $('selName').textContent = s.ko || s.name;
+    $('selSym').textContent = s.sym;
+    $('btnFav').classList.toggle('on', st.favs.indexOf(s.sym) > -1);
+    loadWidgets();
+    loadNews();
+    saveState();
+    syncFavs();
+    document.dispatchEvent(new CustomEvent('lemon:symbol'));
+  }
+
+  $('symSearch').addEventListener('input', function () {
+    var list = searchDir(this.value);
+    var box = $('searchResults');
+    if (!this.value.trim()) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    var html = list.map(function (s) {
+      return '<button class="sym-item w-full text-left p-2 rounded-lg flex items-center gap-2" data-sym="' + s.sym + '">' +
+        '<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-neutral-200/70 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">' + s.sym.split(':')[0] + '</span>' +
+        '<span class="text-[12px] font-bold truncate">' + Lemon.esc(s.ko) + '</span>' +
+        '<span class="ml-auto text-[10px] text-neutral-400 truncate">' + Lemon.esc(s.name) + '</span></button>';
+    }).join('');
+    box.innerHTML = html + '<button class="sym-item w-full text-left p-2 rounded-lg text-[11px] font-bold text-brand-600 dark:text-brand-400" data-direct="1">"' + Lemon.esc(this.value.trim()) + '" 를 티커로 바로 열기</button>';
+  });
+  $('searchResults').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sym], [data-direct]');
+    if (!b) return;
+    if (b.hasAttribute('data-sym')) selectSymbol(b.getAttribute('data-sym'));
+    else {
+      var v = $('symSearch').value.trim().toUpperCase();
+      selectSymbol(v.indexOf(':') > -1 ? v : (v + ''));
+    }
+    $('searchResults').classList.add('hidden');
+    $('symSearch').value = '';
+  });
+  $('btnDirect').addEventListener('click', function () {
+    var v = $('symSearch').value.trim().toUpperCase();
+    if (!v) { Lemon.toast('티커를 입력하세요 (예: KRX:005930)', 'err'); return; }
+    selectSymbol(v);
+    $('searchResults').classList.add('hidden');
+  });
+
+  $('btnFav').addEventListener('click', function () {
+    var sym = st.sel.sym;
+    var i = st.favs.indexOf(sym);
+    if (i > -1) { st.favs.splice(i, 1); Lemon.toast('즐겨찾기에서 뺐어요', 'info'); }
+    else { st.favs.push(sym); Lemon.toast('즐겨찾기에 추가했어요', 'ok'); Lemon.hap(10); }
+    this.classList.toggle('on', i === -1);
+    saveState();
+    syncFavs();
+  });
+
+  document.querySelectorAll('[data-interval]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      st.interval = b.getAttribute('data-interval');
+      loadWidgets();
+    });
+  });
+
+  $('quickRow').innerHTML = ['KRX:005930', 'NASDAQ:NVDA', 'KRX:KOSPI', 'NASDAQ:IXIC', 'BINANCE:BTCUSDT', 'SP:SPX', 'FX_IDC:USDKRW']
+    .map(function (sym) {
+      var s = bySym(sym);
+      return '<button class="chip quick-sym whitespace-nowrap" data-sym="' + sym + '">' + Lemon.esc(s ? s.ko : sym) + '</button>';
+    }).join('');
+  $('quickRow').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sym]');
+    if (b) selectSymbol(b.getAttribute('data-sym'));
+  });
+
+  /* ---------------- news ---------------- */
+  var NEWS_CACHE = null;
+  function newsKeywords(s) {
+    var keys = [];
+    if (s.ko) keys.push(s.ko);
+    if (s.name) keys.push(s.name);
+    var bare = (s.sym || '').split(':').pop();
+    if (bare && bare.length > 1) keys.push(bare);
+    if (/005930/.test(s.sym)) keys.push('삼성전자');
+    return keys.filter(Boolean);
+  }
+
+  async function loadNews() {
+    var list = $('newsList');
+    $('newsState').textContent = '불러오는 중…';
+    list.innerHTML = '<div class="sk h-16 rounded-xl"></div><div class="sk h-16 rounded-xl mt-2"></div>';
+    var keys = newsKeywords(st.sel);
+    var out = [];
+
+    // 1) same-origin snapshot (news-data.json)
+    try {
+      if (!NEWS_CACHE) {
+        var r = await fetch('news-data.json', { cache: 'no-store' });
+        NEWS_CACHE = r.ok ? await r.json() : { articles: [] };
+      }
+      var arts = (NEWS_CACHE.articles || []);
+      arts.forEach(function (a) {
+        var hay = (a.title || '') + ' ' + (a.summary || '') + ' ' + (a.categoryName || '') + ' ' + (a.subCategory || '');
+        if (keys.some(function (k) { return hay.indexOf(k) > -1; })) {
+          out.push({ title: a.title, pub: a.publisher || '뉴스', time: a.time || '', link: a.link, kind: '로컬 피드' });
+        }
+      });
+    } catch (e) { }
+
+    // 2) live Google News RSS via a public JSON proxy
+    try {
+      var q = encodeURIComponent(keys[0] + ' 주가');
+      var feed = encodeURIComponent('https://news.google.com/rss/search?q=' + q + '&hl=ko&gl=KR&ceid=KR:ko');
+      var jr = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + feed + '&count=8', { cache: 'no-store' });
+      if (jr.ok) {
+        var jd = await jr.json();
+        (jd.items || []).forEach(function (it) {
+          out.push({ title: it.title, pub: (it.author || 'Google News'), time: (it.pubDate || '').slice(0, 16), link: it.link, kind: '실시간' });
+        });
+      }
+    } catch (e) { }
+
+    out.sort(function (a, b) { return (a.kind === '실시간' ? 0 : 1) - (b.kind === '실시간' ? 0 : 1); });
+    st.news = out.slice(0, 12);
+    if (!out.length) {
+      list.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400">관련 기사를 찾지 못했어요. 잠시 후 새로고침해 보세요.</p>';
+      $('newsState').textContent = '결과 없음';
+      return;
+    }
+    var liveN = out.filter(function (x) { return x.kind === '실시간'; }).length;
+    $('newsState').textContent = out.length + '건' + (liveN ? ' · 실시간 ' + liveN + '건' : ' · 저장된 피드');
+    list.innerHTML = st.news.map(function (n) {
+      return '<a href="' + Lemon.esc(n.link || '#') + '" target="_blank" rel="noopener" class="news-card block panel-soft p-2.5 rounded-xl">' +
+        '<p class="text-[12px] font-bold leading-snug">' + Lemon.esc(n.title) + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">' + Lemon.esc(n.pub) + (n.time ? ' · ' + Lemon.esc(n.time) : '') + ' · <span class="text-brand-600 dark:text-brand-400 font-bold">' + n.kind + '</span></p></a>';
+    }).join('');
+  }
+
+  async function loadHomeNews() {
+    var box = $('homeNews');
+    try {
+      if (!NEWS_CACHE) {
+        var r = await fetch('news-data.json', { cache: 'no-store' });
+        NEWS_CACHE = r.ok ? await r.json() : { articles: [] };
+      }
+      var econ = (NEWS_CACHE.articles || []).filter(function (a) { return a.category === 'economy' || a.category === 'headlines'; }).slice(0, 6);
+      box.innerHTML = econ.map(function (a) {
+        return '<a href="' + Lemon.esc(a.link || '#') + '" target="_blank" rel="noopener" class="news-card block panel-soft p-2.5 rounded-xl">' +
+          '<p class="text-[12px] font-bold leading-snug truncate">' + Lemon.esc(a.title) + '</p>' +
+          '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">' + Lemon.esc(a.publisher || '') + ' · ' + Lemon.esc(a.time || '') + '</p></a>';
+      }).join('') || '<p class="text-[11px] text-neutral-500">기사가 없습니다.</p>';
+    } catch (e) { box.innerHTML = '<p class="text-[11px] text-neutral-500">뉴스를 불러오지 못했어요.</p>'; }
+  }
+
+  /* ---------------- FX ---------------- */
+  var FX_ORDER = ['USD', 'JPY', 'EUR', 'CNY'];
+  async function loadFx() {
+    var data = null;
+    try {
+      var r = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
+      if (r.ok) {
+        var j = await r.json();
+        if (j && j.rates) data = { rates: j.rates, at: j.time_last_update_utc || '' };
+      }
+    } catch (e) { }
+    if (!data) {
+      try {
+        var r2 = await fetch('https://api.frankfurter.app/latest?from=USD&to=KRW,JPY,EUR,CNY', { cache: 'no-store' });
+        if (r2.ok) {
+          var j2 = await r2.json();
+          var rates = { KRW: j2.rates.KRW, JPY: j2.rates.JPY, EUR: j2.rates.EUR, CNY: j2.rates.CNY, USD: 1 };
+          data = { rates: rates, at: j2.date };
+        }
+      } catch (e) { }
+    }
+    if (!data) {
+      $('fxTable').innerHTML = '<p class="text-[11px] text-neutral-500">환율을 불러오지 못했어요. 잠시 후 새로고침해 주세요.</p>';
+      return;
+    }
+    st.fx = data;
+    var krw = data.rates.KRW;
+    var rows = FX_ORDER.map(function (code) {
+      var per = code === 'JPY' ? 100 : 1;
+      var v = krw / (data.rates[code] || 1) * per;
+      return '<div class="fx-row flex items-center justify-between panel-soft p-2 rounded-xl">' +
+        '<span class="text-[11px] font-bold">' + code + (per === 100 ? ' 100' : ' 1') + ' → KRW</span>' +
+        '<span class="text-[12px] font-black tabular">' + fmt(v, v > 100 ? 1 : 2) + '원</span></div>';
+    }).join('');
+    $('fxTable').innerHTML = rows;
+    $('heroFx').innerHTML = FX_ORDER.slice(0, 2).map(function (code) {
+      var per = code === 'JPY' ? 100 : 1;
+      var v = krw / (data.rates[code] || 1) * per;
+      return '<div class="flex items-center justify-between text-[11px]"><span class="text-neutral-500">' + code + (per === 100 ? ' 100' : '') + '</span><span class="font-black tabular">' + fmt(v, 1) + '원</span></div>';
+    }).join('');
+    var at = (data.at || '').replace(' +0000', ' UTC');
+    $('fxTime').textContent = at || '실시간';
+    $('fxUpdated').textContent = 'LIVE';
+    updateFxCalc();
+    renderHoldings();
+  }
+
+  function updateFxCalc() {
+    var amt = parseFloat($('fxAmount').value) || 0;
+    var cur = $('fxFrom').value;
+    if (!st.fx || !st.fx.rates) { $('fxOut').textContent = '-'; return; }
+    var krw = st.fx.rates.KRW;
+    var val;
+    if (cur === 'KRW') val = amt;
+    else val = amt / (st.fx.rates[cur] || 1) * krw;
+    $('fxOut').textContent = fmt(val, 0) + '원';
+  }
+  ['fxAmount', 'fxFrom'].forEach(function (id) { $(id).addEventListener('input', updateFxCalc); $(id).addEventListener('change', updateFxCalc); });
+
+  /* ---------------- portfolio ---------------- */
+  function addHolding(name, qty, buy, cur, now) {
+    st.holdings.push({ id: uid(), name: name || '', qty: qty || 1, buy: buy || 0, cur: now || 0, ccy: cur || 'KRW' });
+    renderHoldings();
+    saveState();
+  }
+  $('btnAddHolding').addEventListener('click', function () {
+    addHolding(st.sel.ko, 1, 0, 'KRW', 0);
+    Lemon.toast('종목을 추가했어요. 매입가·현재가를 입력하세요', 'info');
+  });
+
+  function renderHoldings() {
+    var box = $('holdingList');
+    if (!st.holdings.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400">종목을 추가하고 매입가와 현재가를 입력하면 수익률을 계산합니다.</p>';
+      $('pfTotal').textContent = '-';
+      return;
+    }
+    var totalPnl = 0, totalCost = 0;
+    box.innerHTML = st.holdings.map(function (h) {
+      var qty = +h.qty || 0, buy = +h.buy || 0, now = +h.cur || 0;
+      var rate = h.ccy === 'USD' ? (st.fx && st.fx.rates ? st.fx.rates.KRW / st.fx.rates.USD : 1350) : 1;
+      var cost = qty * buy * rate, val = qty * now * rate;
+      var pnl = val - cost;
+      totalPnl += pnl; totalCost += cost;
+      var pct = cost ? (pnl / cost * 100) : 0;
+      return '<div class="panel-soft p-2 rounded-xl space-y-1.5" data-h="' + h.id + '">' +
+        '<div class="flex items-center gap-1.5">' +
+          '<input class="h-name lemon-input !py-1 !text-[11px] grow" value="' + Lemon.esc(h.name) + '" placeholder="종목명">' +
+          '<select class="h-ccy lemon-select !py-1 !text-[10px] w-16"><option value="KRW"' + (h.ccy === 'KRW' ? ' selected' : '') + '>KRW</option><option value="USD"' + (h.ccy === 'USD' ? ' selected' : '') + '>USD</option></select>' +
+          '<button class="h-del text-rose-500 text-[12px] px-1">×</button>' +
+        '</div>' +
+        '<div class="grid grid-cols-3 gap-1.5">' +
+          '<input class="h-qty lemon-input !py-1 !text-[11px]" type="number" value="' + qty + '" placeholder="수량">' +
+          '<input class="h-buy lemon-input !py-1 !text-[11px]" type="number" value="' + buy + '" placeholder="매입가">' +
+          '<input class="h-cur lemon-input !py-1 !text-[11px]" type="number" value="' + now + '" placeholder="현재가">' +
+        '</div>' +
+        '<p class="text-[10px] ' + (pnl >= 0 ? 'up' : 'down') + ' font-bold">평가손익 ' + (pnl >= 0 ? '+' : '') + fmt(Math.round(pnl), 0) + '원 · ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%</p>' +
+      '</div>';
+    }).join('');
+    $('pfTotal').innerHTML = '<span class="' + (totalPnl >= 0 ? 'up' : 'down') + '">' + (totalPnl >= 0 ? '+' : '') + fmt(Math.round(totalPnl), 0) + '원</span>';
+  }
+
+  $('holdingList').addEventListener('input', function (e) {
+    var row = e.target.closest('[data-h]');
+    if (!row) return;
+    var id = row.getAttribute('data-h');
+    var h = st.holdings.filter(function (x) { return x.id === id; })[0];
+    if (!h) return;
+    if (e.target.classList.contains('h-name')) h.name = e.target.value;
+    if (e.target.classList.contains('h-qty')) h.qty = parseFloat(e.target.value) || 0;
+    if (e.target.classList.contains('h-buy')) h.buy = parseFloat(e.target.value) || 0;
+    if (e.target.classList.contains('h-cur')) h.cur = parseFloat(e.target.value) || 0;
+    saveState();
+    // avoid re-rendering while typing: just refresh totals
+    var total = 0;
+    st.holdings.forEach(function (x) {
+      var rate = x.ccy === 'USD' ? (st.fx && st.fx.rates ? st.fx.rates.KRW / st.fx.rates.USD : 1350) : 1;
+      total += (x.qty * x.cur - x.qty * x.buy) * rate;
+    });
+    $('pfTotal').innerHTML = '<span class="' + (total >= 0 ? 'up' : 'down') + '">' + (total >= 0 ? '+' : '') + fmt(Math.round(total), 0) + '원</span>';
+  });
+  $('holdingList').addEventListener('change', function (e) { if (e.target.classList.contains('h-ccy')) renderHoldings(); });
+  $('holdingList').addEventListener('click', function (e) {
+    var row = e.target.closest('[data-h]');
+    if (!row || !e.target.closest('.h-del')) return;
+    st.holdings = st.holdings.filter(function (x) { return x.id !== row.getAttribute('data-h'); });
+    renderHoldings(); saveState();
+  });
+
+  /* ---------------- favorites view ---------------- */
+  function syncFavs() {
+    $('favCount').textContent = String(st.favs.length);
+    var box = $('favList');
+    var empty = $('favEmpty');
+    if (!st.favs.length) { box.innerHTML = ''; empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+    box.innerHTML = st.favs.map(function (sym) {
+      var s = bySym(sym) || { sym: sym, ko: sym };
+      return '<div class="panel p-3 space-y-2 card-lift">' +
+        '<div class="flex items-start justify-between gap-2">' +
+          '<div class="min-w-0"><p class="text-[13px] font-bold truncate">' + Lemon.esc(s.ko) + '</p><p class="text-[10px] font-mono text-neutral-500 truncate">' + Lemon.esc(s.sym) + '</p></div>' +
+          '<button class="star-btn on text-[16px] leading-none" data-unfav="' + Lemon.esc(s.sym) + '" title="해제"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z"></path></svg></button>' +
+        '</div>' +
+        '<div class="flex gap-1.5"><button class="open-sym primary-btn px-2.5 py-1.5 rounded-lg text-[10px] font-bold" data-open="' + Lemon.esc(s.sym) + '">차트 보기</button>' +
+        '<a class="ghost-btn px-2.5 py-1.5 rounded-lg text-[10px] font-bold" href="https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(s.sym) + '" target="_blank" rel="noopener">TradingView</a></div>' +
+      '</div>';
+    }).join('');
+  }
+  $('favList').addEventListener('click', function (e) {
+    var un = e.target.closest('[data-unfav]');
+    if (un) {
+      st.favs = st.favs.filter(function (x) { return x !== un.getAttribute('data-unfav'); });
+      saveState(); syncFavs();
+      if (st.sel.sym === un.getAttribute('data-unfav')) $('btnFav').classList.remove('on');
+      return;
+    }
+    var op = e.target.closest('[data-open]');
+    if (op) { selectSymbol(op.getAttribute('data-open')); go('board'); }
+  });
+  $('btnClearFav').addEventListener('click', function () {
+    st.favs = []; saveState(); syncFavs();
+    $('btnFav').classList.remove('on');
+    Lemon.toast('즐겨찾기를 모두 해제했어요', 'info');
+  });
+
+  $('btnHeroStart').addEventListener('click', function () { go('board'); setTimeout(function () { $('symSearch').focus(); }, 300); });
+  $('btnHeroFx').addEventListener('click', function () { go('board'); setTimeout(function () { document.getElementById('fxTable').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300); });
+  $('btnRefresh').addEventListener('click', function () { loadWidgets(); loadNews(); loadFx(); Lemon.toast('새로고침했어요', 'ok'); });
+
+  /* ---------------- boot ---------------- */
+  loadState();
+  selectSymbol(st.sel);
+  loadFx();
+  loadHomeNews();
+  renderHoldings();
+  if (!st.favs.length) { st.favs = ['KRX:005930', 'NASDAQ:NVDA', 'BINANCE:BTCUSDT']; saveState(); syncFavs(); }
+  syncFavs();
+
+  document.addEventListener('lemon:view', function (e) {
+    if (!e.detail) return;
+    if (e.detail.view === 'archive') syncFavs();
+    if (e.detail.view === 'home') loadHomeNews();
+  });
+
+  window.__finance = {
+    state: st,
+    selectSymbol: selectSymbol,
+    loadNews: loadNews,
+    loadFx: loadFx,
+    renderHoldings: renderHoldings,
+    DIR: DIR,
+    searchDir: searchDir
+  };
+})();
+</script>
+</body>
+</html>
