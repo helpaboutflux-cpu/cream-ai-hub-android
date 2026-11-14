@@ -1150,14 +1150,15 @@ tailwind.config = {
     return best;
   }
 
-  function cellCrop(work, box, scale, invert) {
-    var padX = Math.round(box.w * 0.10), padY = Math.round(box.h * 0.12);
+  function cellCrop(work, box, scale, mode) {
+    var padRatio = mode === 'mask' ? 0.02 : 0.10;
+    var padX = Math.round(box.w * padRatio), padY = Math.round(box.h * padRatio);
     var sx = Math.max(0, Math.round((box.x - padX) * scale));
     var sy = Math.max(0, Math.round((box.y - padY) * scale));
     var sw = Math.min(work.width - sx, Math.round((box.w + padX * 2) * scale));
     var sh = Math.min(work.height - sy, Math.round((box.h + padY * 2) * scale));
     if (sw < 8 || sh < 8) return null;
-    var up = Math.max(2, Math.min(5, Math.round(640 / sw)));
+    var up = Math.max(2, Math.min(6, Math.round(720 / sw)));
     var iw = sw * up, ih = sh * up;
     var inner = document.createElement('canvas');
     inner.width = iw;
@@ -1168,23 +1169,41 @@ tailwind.config = {
     ictx.drawImage(work, sx, sy, sw, sh, 0, 0, iw, ih);
     var frame = ictx.getImageData(0, 0, iw, ih);
     var d = frame.data, i;
-    if (invert) {
+    if (mode === 'mask') {
+      // white text on a saturated chip: keep bright, low-saturation pixels as ink
+      for (i = 0; i < d.length; i += 4) {
+        var r = d[i], g = d[i + 1], b = d[i + 2];
+        var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        var lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        var v2 = (lum >= 152 && (mx - mn) <= 68) ? 0 : 255;
+        d[i] = d[i + 1] = d[i + 2] = v2;
+      }
+      var bw = 3 * up;
+      for (var yy = 0; yy < ih; yy++) {
+        for (var xx = 0; xx < iw; xx++) {
+          if (xx < bw || yy < bw || xx >= iw - bw || yy >= ih - bw) {
+            var q = (yy * iw + xx) * 4;
+            d[q] = d[q + 1] = d[q + 2] = 255;
+          }
+        }
+      }
+    } else {
       for (i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
-    }
-    var lo = 255, hi = 0;
-    for (i = 0; i < d.length; i += 4) {
-      var gv = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-      if (gv < lo) lo = gv;
-      if (gv > hi) hi = gv;
-    }
-    var sc = 255 / Math.max(1, hi - lo);
-    for (i = 0; i < d.length; i += 4) {
-      var v = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114 - lo) * sc;
-      v = v < 0 ? 0 : v > 255 ? 255 : v;
-      d[i] = d[i + 1] = d[i + 2] = v;
+      var lo = 255, hi = 0;
+      for (i = 0; i < d.length; i += 4) {
+        var gv = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+        if (gv < lo) lo = gv;
+        if (gv > hi) hi = gv;
+      }
+      var sc = 255 / Math.max(1, hi - lo);
+      for (i = 0; i < d.length; i += 4) {
+        var v = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114 - lo) * sc;
+        v = v < 0 ? 0 : v > 255 ? 255 : v;
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
     }
     ictx.putImageData(frame, 0, 0);
-    var m = Math.round(iw * 0.06) + 10;
+    var m = Math.round(iw * 0.05) + 12;
     var out = document.createElement('canvas');
     out.width = iw + m * 2;
     out.height = ih + m * 2;
@@ -1237,10 +1256,11 @@ tailwind.config = {
   var OCR_TMP = [];
   async function readCell(worker, work, box, scale) {
     var best = null, bestScore = -100;
-    for (var pass = 0; pass < 2; pass++) {
-      var crop = cellCrop(work, box, scale, pass === 0);
+    var modes = ['mask', 'invert'];
+    for (var pass = 0; pass < modes.length; pass++) {
+      var crop = cellCrop(work, box, scale, modes[pass]);
       if (!crop) continue;
-      if (OCR_DEBUG) OCR_TMP.push({ box: box, pass: pass, canvas: crop });
+      if (OCR_DEBUG) OCR_TMP.push({ box: box, pass: modes[pass], canvas: crop });
       var ret = await worker.recognize(crop);
       var text = (ret && ret.data && ret.data.text) || '';
       var score = cellScore(text);
@@ -1376,7 +1396,6 @@ tailwind.config = {
       }
       ocrProgress(100, '인식 완료');
       setTimeout(function () { $('ocrProgressWrap').classList.add('hidden'); }, 500);
-      var parsed = parseTimetable(words);
       if (!parsed || !Object.keys(parsed.cells).length) {
         Lemon.toast('시간표 칸을 찾지 못했어요. 표가 잘 보이는 사진으로 다시 시도해 주세요', 'err');
         return;
