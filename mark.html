@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Mark — 서류·중고거래 도용방지 워터마크</title>
+<meta name="description" content="중고거래 사진, 신분증·서류 사본에 대각선 반복·중앙 대형·모서리 워터마크를 씌우고, 계좌번호 같은 민감정보는 검게 가려서 저장합니다. 이미지는 서버로 전송되지 않습니다.">
+<meta name="theme-color" content="#0d9488">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { 50: '#ecf6f5', 100: '#d8eeec', 200: '#b2ddd9', 300: '#86cac4', 400: '#56b4ac', 500: '#0d9488', 600: '#0c887d', 700: '#0a736a', 800: '#09625a', 900: '#075049', 950: '#053e39' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0d9488; --brand-2: #10b981; --brand-deep: #0f766e; }
+  .editor-stage {
+    position: relative;
+    background: repeating-conic-gradient(#f1f1f4 0% 25%, #fafafa 0% 50%) 0 0 / 18px 18px;
+    border-radius: 1rem;
+    overflow: hidden;
+    touch-action: none;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 240px;
+  }
+  .dark .editor-stage { background: repeating-conic-gradient(#17171b 0% 25%, #101012 0% 50%) 0 0 / 18px 18px; }
+  #markCanvas { display: block; max-width: 100%; height: auto; touch-action: none; cursor: default; }
+  #markCanvas.masking { cursor: crosshair; }
+  .drop-area {
+    border: 2px dashed rgb(212 212 216);
+    border-radius: 1rem;
+    transition: border-color .2s, background-color .2s, transform .2s;
+  }
+  .dark .drop-area { border-color: rgb(45 45 50); }
+  .drop-area.over { border-color: var(--brand); background: rgba(13,148,136,.07); transform: scale(1.004); }
+  .mode-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem;
+    padding: .5rem .3rem; border-radius: .8rem; font-size: 10px; font-weight: 700;
+    border: 1px solid rgb(228 228 231); color: rgb(82 82 91); background: #fff;
+    transition: all .16s ease; flex: 1; min-width: 0; line-height: 1.15;
+  }
+  .dark .mode-btn { border-color: rgb(45 45 50); color: rgb(161 161 170); background: rgb(24 24 27); }
+  .mode-btn.on { color: #fff; border-color: transparent; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 8px 18px -12px rgba(13,148,136,.8); }
+  .mode-btn:active { transform: scale(.96); }
+  .mode-btn svg { width: 1rem; height: 1rem; }
+  .swatch {
+    width: 1.5rem; height: 1.5rem; border-radius: 9999px; border: 2px solid rgba(255,255,255,.9);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.18); transition: transform .14s cubic-bezier(.34,1.56,.64,1);
+  }
+  .swatch:active { transform: scale(.9); }
+  .swatch.on { box-shadow: 0 0 0 2px var(--brand), 0 0 0 3px rgba(255,255,255,.9); transform: scale(1.06); }
+  .preset-chip {
+    padding: .32rem .6rem; border-radius: 9999px; font-size: 10px; font-weight: 700;
+    border: 1px solid rgb(228 228 231); color: rgb(63 63 70); background: #fff;
+    transition: all .16s ease; white-space: nowrap;
+  }
+  .dark .preset-chip { border-color: rgb(45 45 50); color: rgb(212 212 216); background: rgb(24 24 27); }
+  .preset-chip:hover { border-color: var(--brand); color: var(--brand); }
+  .preset-chip:active { transform: scale(.95); }
+  .mask-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .55rem; border-radius: .6rem; background: rgba(0,0,0,.04); font-size: 10px; }
+  .dark .mask-row { background: rgba(255,255,255,.06); }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 o2 opacity-20" style="background:#10b981"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-11 3 5 2-3 5 9z"></path><path d="M3 21h18"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Mark</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">EXIF FREE</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">도용방지 워터마크</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-11 3 5 2-3 5 9z"></path><path d="M3 21h18"></path></svg>
+        <span>워터마크</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            서버 전송 없이 100% 로컬 처리
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            사진이 도용되지 않게<br><span class="brand-text">한 겹 덧씌우기</span>.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            중고거래 사진, 서류 사본, 신분증. 대각선 반복 워터마크를 원하는 문구와 농도로 씌우고, 계좌번호 같은 부분은 검게 가려서 내보냅니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-11 3 5 2-3 5 9z"></path><path d="M3 21h18"></path></svg>
+              워터마크 씌우기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text">3종</p><p class="text-[10px] text-neutral-500">배치 모드</p></div>
+            <div><p class="text-lg font-black brand-text">4개</p><p class="text-[10px] text-neutral-500">프리셋 문구</p></div>
+            <div><p class="text-lg font-black brand-text">가리기</p><p class="text-[10px] text-neutral-500">민감정보 마스킹</p></div>
+          </div>
+        </div>
+        <div class="panel p-4">
+          <div class="rounded-xl overflow-hidden relative" style="aspect-ratio:1/1;background:#e9ebef">
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="w-[78%] h-[78%] rounded-md bg-white shadow-md p-3">
+                <div class="h-2 w-2/3 rounded bg-neutral-300 mb-1.5"></div>
+                <div class="h-1.5 w-full rounded bg-neutral-200 mb-1"></div>
+                <div class="h-1.5 w-5/6 rounded bg-neutral-200 mb-1"></div>
+                <div class="mt-3 h-7 w-1/2 rounded bg-neutral-800"></div>
+              </div>
+            </div>
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none" style="transform:rotate(-24deg)">
+              <div class="text-center leading-tight" style="opacity:.24">
+                <div class="font-black text-[15px] tracking-wide" style="color:#0f766e">중고거래용</div>
+                <div class="font-black text-[15px] tracking-wide mt-6" style="color:#0f766e">중고거래용</div>
+                <div class="font-black text-[15px] tracking-wide mt-6" style="color:#0f766e">중고거래용</div>
+              </div>
+            </div>
+          </div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-2 text-center">눈에 보이게, 하지만 내용은 그대로</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M7 17L17 7"></path></svg></div>
+        <h3 class="text-[13px] font-bold">대각선 반복 타일</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">사진 전체를 촘촘하게 덮어 잘라내도 문구가 남습니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path></svg></div>
+        <h3 class="text-[13px] font-bold">중앙 대형 · 모서리</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">한 곳에 크게, 혹은 네 모서리에 은은하게 배치합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="1.5" fill="currentColor"></rect></svg></div>
+        <h3 class="text-[13px] font-bold">블랙 마스킹</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">계좌·주민번호를 끌어 칠해 완전히 가립니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg></div>
+        <h3 class="text-[13px] font-bold">EXIF 제거 저장</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">촬영 위치·기기 정보 없이 새로 인코딩합니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-4">
+
+    <div id="dropWrap" class="panel p-4 sm:p-6">
+      <div id="dropArea" class="drop-area px-5 py-10 text-center cursor-pointer">
+        <input type="file" id="markFile" accept="image/*" class="hidden">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-11 3 5 2-3 5 9z"></path><path d="M3 21h18"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">워터마크를 씌울 사진을 선택하거나 끌어다 놓으세요</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">클립보드 붙여넣기(Ctrl+V)도 됩니다 · JPG · PNG · WEBP</p>
+        <p class="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2">이미지는 기기 밖으로 나가지 않습니다</p>
+      </div>
+    </div>
+
+    <div id="editorWrap" class="hidden space-y-4">
+      <div class="panel p-3 sm:p-4 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 3v18M3 12h18"></path></svg>
+            실시간 미리보기
+          </span>
+          <div class="flex items-center gap-1.5">
+            <span id="imgMeta" class="text-[10px] font-mono text-neutral-400"></span>
+            <span id="autosaveBadge" class="as-badge">자동 저장 대기</span>
+            <button id="btnNewProject" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">새로 만들기</button>
+            <button id="btnNewImg" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">다른 사진</button>
+          </div>
+        </div>
+
+        <div class="editor-stage">
+          <canvas id="markCanvas"></canvas>
+        </div>
+
+        <div class="grid grid-cols-3 gap-1.5">
+          <button class="mode-btn on" data-mode="tile">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 9l6-6M3 15l12-12M9 21L21 9M15 21l6-6"></path></svg>
+            <span>대각선 반복</span>
+          </button>
+          <button class="mode-btn" data-mode="center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M7 12h10"></path></svg>
+            <span>중앙 대형</span>
+          </button>
+          <button class="mode-btn" data-mode="corner">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>
+            <span>모서리</span>
+          </button>
+        </div>
+
+        <div class="space-y-2">
+          <span class="lemon-label">프리셋 문구</span>
+          <div class="flex flex-wrap gap-1.5" id="presetRow">
+            <button class="preset-chip on" data-preset="중고거래용">중고거래용</button>
+            <button class="preset-chip" data-preset="본인확인용">본인확인용</button>
+            <button class="preset-chip" data-preset="제출용 사본">제출용 사본</button>
+            <button class="preset-chip" data-preset="외부유출금지">외부유출금지</button>
+          </div>
+          <input id="markText" class="lemon-input" type="text" maxlength="28" placeholder="워터마크 문구를 직접 입력하세요" value="중고거래용">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">투명도</span><span id="opacityVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">22%</span></div>
+            <input type="range" id="opacity" class="lemon-range" min="4" max="90" step="1" value="22">
+          </div>
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">각도</span><span id="angleVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">-28°</span></div>
+            <input type="range" id="angle" class="lemon-range" min="-90" max="90" step="1" value="-28">
+          </div>
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">글자 크기</span><span id="sizeVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">34</span></div>
+            <input type="range" id="size" class="lemon-range" min="10" max="100" step="1" value="34">
+          </div>
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">간격</span><span id="gapVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">22</span></div>
+            <input type="range" id="gap" class="lemon-range" min="0" max="100" step="1" value="22">
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-1.5">
+            <span class="lemon-label mr-1">색상</span>
+            <button class="swatch on" data-color="#0f766e" style="background:#0f766e" aria-label="틸"></button>
+            <button class="swatch" data-color="#111827" style="background:#111827" aria-label="검정"></button>
+            <button class="swatch" data-color="#ffffff" style="background:#ffffff" aria-label="흰색"></button>
+            <button class="swatch" data-color="#dc2626" style="background:#dc2626" aria-label="빨강"></button>
+            <button class="swatch" data-color="#2563eb" style="background:#2563eb" aria-label="파랑"></button>
+          </div>
+          <label class="flex items-center gap-2 text-[11px] font-bold text-neutral-600 dark:text-neutral-300">
+            <input type="checkbox" id="shadow" class="accent-brand-500 w-3.5 h-3.5" checked>
+            글자 그림자
+          </label>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 flex-1 min-w-0">
+            <button id="btnMaskMode" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="1.5" fill="currentColor"></rect></svg>
+              가리기 영역 추가
+            </button>
+            <button id="btnMaskUndo" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">되돌리기</button>
+            <button id="btnMaskClear" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">모두 지우기</button>
+          </div>
+          <span id="maskCount" class="text-[10px] font-mono text-neutral-400">0개 영역</span>
+        </div>
+        <div id="maskList" class="space-y-1"></div>
+      </div>
+
+      <div class="panel p-3 sm:p-4 space-y-3">
+        <div class="flex flex-wrap gap-2">
+          <button id="btnSavePng" class="primary-btn !py-2.5 !text-[12px] flex-1">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            PNG 저장
+          </button>
+          <button id="btnSaveJpg" class="ghost-btn !py-2.5 !text-[12px]">JPG 저장</button>
+          <button id="btnArchive" class="ghost-btn !py-2.5 !text-[12px]">보관함 저장</button>
+        </div>
+        <p class="text-[10px] text-neutral-400 dark:text-neutral-500">저장 파일은 새로 인코딩되어 촬영 위치·기기 정보(EXIF)가 남지 않습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">워터마크를 씌운 결과를 다시 내려받을 수 있어요.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Mark</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="cam.html" class="hover:text-brand-600 dark:hover:text-brand-400">Cam</a>
+      <a href="pass.html" class="hover:text-brand-600 dark:hover:text-brand-400">Pass</a>
+      <a href="fridge.html" class="hover:text-brand-600 dark:hover:text-brand-400">Fridge</a>
+      <a href="blur.html" class="hover:text-brand-600 dark:hover:text-brand-400">Blur</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var ARCHIVE = Lemon.archive('lemon_mark_archive', 12);
+  var AUTO = Lemon.project('lemon_mark_archive', { max: 10 });
+  var $ = function (id) { return document.getElementById(id); };
+
+  var canvas = $('markCanvas');
+  var ctx = canvas.getContext('2d');
+
+  var st = {
+    img: null,
+    src: null,
+    mode: 'tile',
+    text: '중고거래용',
+    opacity: 22,
+    angle: -28,
+    size: 34,
+    gap: 22,
+    color: '#0f766e',
+    shadow: true,
+    masks: [],
+    maskMode: false,
+    drag: null,
+    displayW: 0,
+    displayH: 0
+  };
+
+  /* ---------------- intake ---------------- */
+  function intake(file) {
+    if (!file) return;
+    if (file.type && file.type.indexOf('image') !== 0) { Lemon.toast('이미지 파일을 선택해 주세요', 'err'); return; }
+    var fr = new FileReader();
+    fr.onload = function () {
+      var img = new Image();
+      img.onload = function () { useImage(img); };
+      img.onerror = function () { Lemon.toast('이미지를 읽지 못했어요', 'err'); };
+      img.src = fr.result;
+    };
+    fr.onerror = function () { Lemon.toast('파일을 읽지 못했어요', 'err'); };
+    fr.readAsDataURL(file);
+  }
+
+  function useImage(img) {
+    st.img = img;
+    var cap = 1800;
+    var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+    var k = Math.min(1, cap / Math.max(nw, nh));
+    var src = document.createElement('canvas');
+    src.width = Math.max(1, Math.round(nw * k));
+    src.height = Math.max(1, Math.round(nh * k));
+    var s = src.getContext('2d');
+    s.drawImage(img, 0, 0, src.width, src.height);
+    st.src = src;
+    $('imgMeta').textContent = src.width + '×' + src.height;
+    $('dropWrap').classList.add('hidden');
+    $('editorWrap').classList.remove('hidden');
+    sizeStage();
+    renderPreview();
+    markChanged();
+    Lemon.toast('사진을 불러왔어요', 'ok');
+    Lemon.hap(12);
+  }
+
+  function sizeStage() {
+    if (!st.src) return;
+    var stage = canvas.parentElement;
+    var availW = Math.max(180, stage.clientWidth - 2);
+    var availH = Math.min(520, Math.round(window.innerHeight * 0.56));
+    var ratio = st.src.width / st.src.height;
+    var w = availW, h = Math.round(w / ratio);
+    if (h > availH) { h = availH; w = Math.round(h * ratio); }
+    st.displayW = w;
+    st.displayH = h;
+    canvas.style.width = w + 'px';
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  /* ---------------- watermark drawing ---------------- */
+  function drawWatermark(c, W, H) {
+    var text = (st.text || '').trim();
+    if (!text) return;
+    var fontPx = Math.max(8, W * (0.015 + (st.size / 100) * 0.09));
+    var gapPx = fontPx * (0.35 + (st.gap / 100) * 2.6);
+    var alpha = st.opacity / 100;
+    c.save();
+    c.globalAlpha = alpha;
+    c.fillStyle = st.color;
+    c.font = '800 ' + Math.round(fontPx) + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    if (st.shadow) {
+      c.shadowColor = st.color === '#ffffff' ? 'rgba(0,0,0,.55)' : 'rgba(255,255,255,.45)';
+      c.shadowBlur = Math.max(1, fontPx * 0.12);
+      c.shadowOffsetX = 0;
+      c.shadowOffsetY = 0;
+    }
+
+    if (st.mode === 'center') {
+      c.translate(W / 2, H / 2);
+      c.rotate(st.angle * Math.PI / 180);
+      c.globalAlpha = Math.min(1, alpha * 1.35);
+      c.font = '900 ' + Math.round(fontPx * 1.5) + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif';
+      c.fillText(text, 0, 0);
+    } else if (st.mode === 'corner') {
+      var pad = fontPx * 0.9;
+      c.globalAlpha = Math.min(1, alpha * 1.5);
+      var spots = [
+        [pad + c.measureText(text).width / 2, pad],
+        [W - pad - c.measureText(text).width / 2, pad],
+        [pad + c.measureText(text).width / 2, H - pad],
+        [W - pad - c.measureText(text).width / 2, H - pad]
+      ];
+      for (var s1 = 0; s1 < 4; s1++) c.fillText(text, spots[s1][0], spots[s1][1]);
+    } else {
+      var diag = Math.sqrt(W * W + H * H);
+      c.translate(W / 2, H / 2);
+      c.rotate(st.angle * Math.PI / 180);
+      var stepX = Math.max(gapPx * 1.2, c.measureText(text).width + gapPx);
+      var stepY = Math.max(gapPx + fontPx * 0.9, fontPx * 1.5);
+      var row = 0;
+      for (var y = -diag / 2; y <= diag / 2; y += stepY) {
+        var offset = (row % 2) ? stepX / 2 : 0;
+        for (var x = -diag / 2 - offset; x <= diag / 2; x += stepX) {
+          c.fillText(text, x, y);
+        }
+        row++;
+      }
+    }
+    c.restore();
+  }
+
+  function drawMasks(c, W, H) {
+    if (!st.masks.length) return;
+    c.save();
+    c.fillStyle = '#000000';
+    for (var i = 0; i < st.masks.length; i++) {
+      var m = st.masks[i];
+      c.fillRect(m.x * W, m.y * H, m.w * W, m.h * H);
+    }
+    c.restore();
+  }
+
+  function renderPreview() {
+    if (!st.src) return;
+    var W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(st.src, 0, 0, W, H);
+    drawMasks(ctx, W, H);
+    drawWatermark(ctx, W, H);
+    if (st.drag) {
+      ctx.save();
+      ctx.strokeStyle = '#10b981';
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(st.drag.x * W, st.drag.y * H, st.drag.w * W, st.drag.h * H);
+      ctx.restore();
+    }
+  }
+
+  function renderExport(type) {
+    if (!st.src) return null;
+    var W = st.src.width, H = st.src.height;
+    var out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    var c = out.getContext('2d');
+    c.drawImage(st.src, 0, 0);
+    drawMasks(c, W, H);
+    drawWatermark(c, W, H);
+    return out;
+  }
+
+  /* ---------------- interactions ---------------- */
+  function findPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width;
+    var y = (e.clientY - rect.top) / rect.height;
+    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+  }
+
+  canvas.addEventListener('pointerdown', function (e) {
+    if (!st.maskMode || !st.src) return;
+    var p = findPos(e);
+    st.drag = { x0: p.x, y0: p.y, x: 0, y: 0, w: 0, h: 0 };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
+    e.preventDefault();
+  });
+
+  canvas.addEventListener('pointermove', function (e) {
+    if (!st.drag) return;
+    var p = findPos(e);
+    var x = Math.min(st.drag.x0, p.x), y = Math.min(st.drag.y0, p.y);
+    var w = Math.abs(p.x - st.drag.x0), h = Math.abs(p.y - st.drag.y0);
+    st.drag.x = x; st.drag.y = y; st.drag.w = w; st.drag.h = h;
+    renderPreview();
+    e.preventDefault();
+  });
+
+  function endMask() {
+    if (!st.drag) return;
+    var d = st.drag;
+    st.drag = null;
+    if (d.w > 0.02 && d.h > 0.015) {
+      st.masks.push({ x: d.x, y: d.y, w: d.w, h: d.h });
+      markChanged();
+      Lemon.hap(10);
+      Lemon.toast('가리기 영역을 추가했어요', 'ok');
+    }
+    renderPreview();
+    renderMaskList();
+  }
+  canvas.addEventListener('pointerup', endMask);
+  canvas.addEventListener('pointercancel', endMask);
+
+  function renderMaskList() {
+    $('maskCount').textContent = st.masks.length + '개 영역';
+    var box = $('maskList');
+    if (!st.masks.length) { box.innerHTML = ''; return; }
+    box.innerHTML = st.masks.map(function (m, i) {
+      return '<div class="mask-row"><span class="font-mono text-neutral-400">' + (i + 1) + '</span><span class="flex-1 font-bold">가리기 ' + Math.round(m.w * 100) + '% × ' + Math.round(m.h * 100) + '% 위치</span><button class="text-rose-500 font-bold" data-mdel="' + i + '">삭제</button></div>';
+    }).join('');
+  }
+
+  $('maskList').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-mdel]');
+    if (!b) return;
+    st.masks.splice(parseInt(b.getAttribute('data-mdel'), 10), 1);
+    renderPreview(); renderMaskList();
+    Lemon.toast('가리기를 지웠어요', 'info');
+  });
+
+  $('btnMaskMode').addEventListener('click', function () {
+    st.maskMode = !st.maskMode;
+    this.classList.toggle('!border-brand-500', st.maskMode);
+    this.style.color = st.maskMode ? 'var(--brand)' : '';
+    this.style.borderColor = st.maskMode ? 'var(--brand)' : '';
+    canvas.classList.toggle('masking', st.maskMode);
+    Lemon.toast(st.maskMode ? '사진 위를 끌어 가릴 곳을 칠하세요' : '가리기 모드를 껐어요', 'info');
+    Lemon.hap(8);
+  });
+  $('btnMaskUndo').addEventListener('click', function () {
+    if (!st.masks.length) { Lemon.toast('되돌릴 영역이 없어요', 'info'); return; }
+    st.masks.pop(); renderPreview(); renderMaskList(); markChanged();
+    Lemon.toast('마지막 가리기를 지웠어요', 'info');
+  });
+  $('btnMaskClear').addEventListener('click', function () {
+    if (!st.masks.length) { Lemon.toast('지울 영역이 없어요', 'info'); return; }
+    st.masks = []; renderPreview(); renderMaskList();
+    Lemon.toast('가리기를 모두 지웠어요', 'info');
+  });
+
+  /* ---------------- controls ---------------- */
+  var fileInput = $('markFile');
+  $('dropArea').addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files && fileInput.files[0]) intake(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  var dropArea = $('dropArea');
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    dropArea.addEventListener(ev, function (e) { e.preventDefault(); dropArea.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dropArea.addEventListener(ev, function (e) { e.preventDefault(); dropArea.classList.remove('over'); });
+  });
+  dropArea.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) intake(f);
+  });
+
+  document.addEventListener('paste', function (e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) {
+        intake(items[i].getAsFile());
+        e.preventDefault();
+        return;
+      }
+    }
+  });
+
+  $('btnNewImg').addEventListener('click', function () {
+    $('editorWrap').classList.add('hidden');
+    $('dropWrap').classList.remove('hidden');
+    st.src = null;
+    Lemon.hap(10);
+  });
+
+  document.querySelectorAll('.mode-btn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.mode-btn').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      st.mode = b.getAttribute('data-mode');
+      renderPreview();
+      markChanged();
+      Lemon.hap(8);
+    });
+  });
+
+  document.querySelectorAll('#presetRow .preset-chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('#presetRow .preset-chip').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      b.style.color = 'var(--brand)';
+      b.style.borderColor = 'var(--brand)';
+      $('markText').value = b.getAttribute('data-preset');
+      st.text = b.getAttribute('data-preset');
+      renderPreview();
+      markChanged();
+      Lemon.hap(8);
+    });
+  });
+
+  $('markText').addEventListener('input', function () {
+    st.text = this.value;
+    renderPreview();
+    markChanged();
+  });
+
+  var ranges = [
+    ['opacity', 'opacityVal', function (v) { return v + '%'; }, function (v) { st.opacity = v; }],
+    ['angle', 'angleVal', function (v) { return v + '°'; }, function (v) { st.angle = v; }],
+    ['size', 'sizeVal', function (v) { return '' + v; }, function (v) { st.size = v; }],
+    ['gap', 'gapVal', function (v) { return '' + v; }, function (v) { st.gap = v; }]
+  ];
+  ranges.forEach(function (r) {
+    var el = $(r[0]);
+    el.addEventListener('input', function () {
+      var v = parseFloat(el.value);
+      $(r[1]).textContent = r[2](v);
+      r[3](v);
+      renderPreview();
+      markChanged();
+    });
+  });
+
+  document.querySelectorAll('.swatch').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.swatch').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      st.color = b.getAttribute('data-color');
+      renderPreview();
+      markChanged();
+      Lemon.hap(6);
+    });
+  });
+
+  $('shadow').addEventListener('change', function () {
+    st.shadow = this.checked;
+    renderPreview();
+    markChanged();
+  });
+
+  window.addEventListener('resize', function () {
+    if (!st.src || $('editorWrap').classList.contains('hidden')) return;
+    sizeStage();
+    renderPreview();
+  });
+
+  /* ---------------- autosave ---------------- */
+  function snapshotSrc() {
+    if (!st.src) return null;
+    var c = document.createElement('canvas');
+    var k = Math.min(1, 1000 / Math.max(st.src.width, st.src.height));
+    c.width = Math.round(st.src.width * k);
+    c.height = Math.round(st.src.height * k);
+    c.getContext('2d').drawImage(st.src, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.74);
+  }
+  function projectPayload() {
+    if (!st.src) return null;
+    var out = renderExport('jpg');
+    var thumb = document.createElement('canvas');
+    var k = Math.min(1, 300 / Math.max(out.width, out.height));
+    thumb.width = Math.round(out.width * k);
+    thumb.height = Math.round(out.height * k);
+    thumb.getContext('2d').drawImage(out, 0, 0, thumb.width, thumb.height);
+    return {
+      title: (st.text || '워터마크') + ' · ' + (st.mode === 'tile' ? '대각선' : st.mode === 'center' ? '중앙' : '모서리'),
+      sub: Math.round(st.opacity) + '% · ' + st.angle + '도 · ' + st.masks.length + '개 가리기',
+      thumb: thumb.toDataURL('image/jpeg', 0.68),
+      state: {
+        src: snapshotSrc(),
+        mode: st.mode, text: st.text, opacity: st.opacity, angle: st.angle,
+        size: st.size, gap: st.gap, color: st.color, shadow: st.shadow, masks: st.masks
+      }
+    };
+  }
+  function markChanged() {
+    AUTO.touch(projectPayload);
+  }
+  function restoreProject(rec) {
+    if (!rec || !rec.state || !rec.state.src) { Lemon.toast('이 항목은 다시 편집할 수 없어요', 'info'); return; }
+    var img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      st.src = c;
+      var s2 = rec.state;
+      st.mode = s2.mode || 'tile';
+      st.text = s2.text || '';
+      st.opacity = s2.opacity || 22;
+      st.angle = s2.angle || -28;
+      st.size = s2.size || 34;
+      st.gap = s2.gap || 22;
+      st.color = s2.color || '#0f766e';
+      st.shadow = s2.shadow !== false;
+      st.masks = s2.masks || [];
+      document.querySelectorAll('.mode-btn').forEach(function (x) {
+        x.classList.toggle('on', x.getAttribute('data-mode') === st.mode);
+      });
+      $('markText').value = st.text;
+      $('opacity').value = st.opacity; $('opacityVal').textContent = st.opacity + '%';
+      $('angle').value = st.angle; $('angleVal').textContent = st.angle + '°';
+      $('size').value = st.size; $('sizeVal').textContent = st.size;
+      $('gap').value = st.gap; $('gapVal').textContent = st.gap;
+      $('shadow').checked = st.shadow;
+      document.querySelectorAll('.swatch').forEach(function (x) {
+        x.classList.toggle('on', x.getAttribute('data-color') === st.color);
+      });
+      Lemon.refreshRange($('opacity'));
+      Lemon.refreshRange($('angle'));
+      Lemon.refreshRange($('size'));
+      Lemon.refreshRange($('gap'));
+      $('dropWrap').classList.add('hidden');
+      $('editorWrap').classList.remove('hidden');
+      $('imgMeta').textContent = c.width + '×' + c.height;
+      sizeStage();
+      renderPreview();
+      renderMaskList();
+      AUTO.openProject(rec.id);
+      go('studio');
+    };
+    img.src = rec.state.src;
+  }
+
+  $('btnNewProject').addEventListener('click', function () {
+    AUTO.newProject();
+    st.src = null;
+    $('editorWrap').classList.add('hidden');
+    $('dropWrap').classList.remove('hidden');
+    Lemon.toast('새 작업을 시작해요', 'ok');
+    Lemon.hap(8);
+  });
+
+  /* ---------------- save ---------------- */
+  function stamp() {
+    var d = new Date();
+    return 'lemonmark_' + d.getFullYear() + Lemon.pad(d.getMonth() + 1) + Lemon.pad(d.getDate()) + '_' + Lemon.pad(d.getHours()) + Lemon.pad(d.getMinutes()) + Lemon.pad(d.getSeconds());
+  }
+
+  function save(kind) {
+    var out = renderExport(kind);
+    if (!out) { Lemon.toast('먼저 사진을 불러와 주세요', 'err'); return; }
+    var mime = kind === 'jpg' ? 'image/jpeg' : 'image/png';
+    out.toBlob(function (blob) {
+      if (!blob) { Lemon.toast('저장에 실패했어요', 'err'); return; }
+      Lemon.downloadBlob(stamp() + (kind === 'jpg' ? '.jpg' : '.png'), blob);
+      Lemon.toast(kind === 'jpg' ? 'JPG로 저장했어요 (EXIF 제거)' : 'PNG로 저장했어요 (EXIF 제거)', 'ok');
+      Lemon.confetti(14);
+    }, mime, 0.94);
+  }
+
+  $('btnSavePng').addEventListener('click', function () { save('png'); });
+  $('btnSaveJpg').addEventListener('click', function () { save('jpg'); });
+
+  $('btnArchive').addEventListener('click', function () {
+    var out = renderExport('jpg');
+    if (!out) { Lemon.toast('먼저 사진을 불러와 주세요', 'err'); return; }
+    var thumb = document.createElement('canvas');
+    var k = Math.min(1, 420 / Math.max(out.width, out.height));
+    thumb.width = Math.round(out.width * k);
+    thumb.height = Math.round(out.height * k);
+    thumb.getContext('2d').drawImage(out, 0, 0, thumb.width, thumb.height);
+    var full = document.createElement('canvas');
+    var k2 = Math.min(1, 1400 / Math.max(out.width, out.height));
+    full.width = Math.round(out.width * k2);
+    full.height = Math.round(out.height * k2);
+    full.getContext('2d').drawImage(out, 0, 0, full.width, full.height);
+    var rec = ARCHIVE.add({
+      title: (st.text || '워터마크') + ' · ' + (st.mode === 'tile' ? '대각선' : st.mode === 'center' ? '중앙' : '모서리'),
+      thumb: thumb.toDataURL('image/jpeg', 0.72),
+      data: full.toDataURL('image/jpeg', 0.86)
+    });
+    if (rec) { Lemon.toast('보관함에 저장했어요', 'ok'); renderArchive(); }
+    else Lemon.toast('저장 공간이 부족해요', 'err');
+  });
+
+  /* ---------------- archive ---------------- */
+  function renderArchive() {
+    var list = ARCHIVE.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center col-span-full"><div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3"><svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l6-11 3 5 2-3 5 9z"></path><path d="M3 21h18"></path></svg></div><p class="text-[12px] font-bold">저장한 결과가 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">워터마크를 씌운 뒤 ‘보관함 저장’을 눌러 보세요.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-2.5 card-lift"><div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 mb-2"><img src="' + it.thumb + '" alt="" class="w-full h-auto block"></div>' +
+        '<p class="text-[11px] font-bold truncate">' + Lemon.esc(it.title) + '</p>' +
+        '<p class="text-[9px] text-neutral-400 mt-0.5">' + Lemon.timeAgo(it.ts) + '</p>' +
+        '<div class="flex gap-1 mt-2">' +
+        (it.state ? '<button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-resume="' + it.id + '">이어서</button>' : '') +
+        (it.data ? '<button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-dl="' + it.id + '">저장</button>' : '') +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var rs = e.target.closest('[data-resume]');
+    if (rs) { restoreProject(AUTO.restore(rs.getAttribute('data-resume'))); return; }
+    var dl = e.target.closest('[data-dl]');
+    if (dl) {
+      var item = ARCHIVE.all().filter(function (x) { return x.id === dl.getAttribute('data-dl'); })[0];
+      if (!item) return;
+      var a = document.createElement('a');
+      a.href = item.data;
+      a.download = 'lemonmark_' + item.id + '.jpg';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { document.body.removeChild(a); }, 800);
+      Lemon.toast('다시 내려받았어요', 'ok');
+      return;
+    }
+    var del = e.target.closest('[data-del]');
+    if (del) {
+      ARCHIVE.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('삭제했어요', 'info');
+      return;
+    }
+    var g = e.target.closest('[data-goto]');
+    if (g) { go(g.getAttribute('data-goto')); }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!ARCHIVE.count()) { Lemon.toast('비울 보관함이 없어요', 'info'); return; }
+    if (!confirm('보관함을 모두 비울까요? 되돌릴 수 없습니다.')) return;
+    ARCHIVE.clear();
+    renderArchive();
+    Lemon.toast('보관함을 비웠어요', 'info');
+  });
+
+  renderArchive();
+  AUTO.bind('autosaveBadge');
+
+  window.LemonMark = {
+    state: st,
+    preview: renderPreview,
+    exportCanvas: renderExport,
+    loadDataUrl: function (url, cb) {
+      var img = new Image();
+      img.onload = function () { useImage(img); if (cb) cb(); };
+      img.src = url;
+    }
+  };
+})();
+</script>
+</body>
+</html>

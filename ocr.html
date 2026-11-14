@@ -281,6 +281,11 @@ tailwind.config = {
 
   <!-- ================= STUDIO ================= -->
   <section data-view="studio" class="hidden space-y-4">
+        <div class="flex items-center justify-end gap-1.5">
+          <span id="autosaveBadge" class="as-badge">자동 저장 대기</span>
+          <button id="btnNewProject" class="ghost-btn !px-2.5 !py-1 !text-[10px]">새로 만들기</button>
+        </div>
+
 
     <!-- Step 1: dropzone -->
     <div class="panel p-4 sm:p-6">
@@ -880,6 +885,7 @@ tailwind.config = {
   /* ------------- results ------------- */
   function showResult(text, conf) {
     state.lastText = text;
+    markChanged();
     $('resultCard').classList.remove('hidden');
     $('srcText').value = text;
     updateSrcCount();
@@ -903,7 +909,7 @@ tailwind.config = {
     $('statBadge').textContent = t.length.toLocaleString() + '자 · ' + lines + '줄';
     state.lastText = t;
   }
-  $('srcText').addEventListener('input', updateSrcCount);
+  $('srcText').addEventListener('input', function () { updateSrcCount(); markChanged(); });
 
   /* ------------- translation ------------- */
   function detectLang(t) {
@@ -1090,6 +1096,38 @@ tailwind.config = {
       Lemon.toast('삭제했어요', 'info');
     }
   });
+
+  /* ---------------- autosave ---------------- */
+  var AUTO = Lemon.project('lemon_ocr_archive', { max: 20 });
+  function projectPayload() {
+    var src = $('srcText') ? $('srcText').value : '';
+    if (!src.trim()) return null;
+    var lang = $('langSel') ? $('langSel').value : '';
+    return {
+      title: src.trim().replace(/\s+/g, ' ').slice(0, 40),
+      sub: src.length + '자 · ' + (LANG_LABEL[lang] || '자동'),
+      text: src,
+      trans: $('transText') ? $('transText').value : '',
+      lang: lang,
+      conf: $('confBadge') ? $('confBadge').textContent : ''
+    };
+  }
+  function markChanged() {
+    if (!AUTO) return;
+    AUTO.touch(projectPayload);
+  }
+  $('btnNewProject').addEventListener('click', function () {
+    AUTO.newProject();
+    if ($('srcText')) $('srcText').value = '';
+    if ($('transText')) $('transText').value = '';
+    if ($('resultCard')) $('resultCard').classList.add('hidden');
+    if ($('optionCard')) $('optionCard').classList.add('hidden');
+    if ($('dropzone')) $('dropzone').classList.remove('hidden');
+    if ($('btnReset')) $('btnReset').classList.add('hidden');
+    state.img = null; state.file = null;
+    Lemon.toast('새 작업을 시작해요', 'ok');
+  });
+  AUTO.bind('autosaveBadge');
 
   $('btnClearArc').addEventListener('click', function () {
     if (!ARCHIVE.count()) { Lemon.toast('비울 기록이 없어요', 'info'); return; }

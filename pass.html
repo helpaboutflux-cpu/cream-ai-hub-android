@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Pass — 비밀번호 진단·생성 &amp; 암호화 금고</title>
+<meta name="description" content="비밀번호 강도와 해킹 예상 시간을 실시간 진단하고, 강력한 비밀번호·패스프레이즈를 만듭니다. Web Crypto 기반 AES-256-GCM 로컬 암호화 금고에 사이트별 비밀번호를 저장하세요.">
+<meta name="theme-color" content="#7c3aed">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { 50: '#f5effe', 100: '#eadffc', 200: '#d5c0f9', 300: '#be9cf6', 400: '#a375f2', 500: '#7c3aed', 600: '#7235da', 700: '#612db9', 800: '#52269c', 900: '#431f80', 950: '#341864' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #7c3aed; --brand-2: #a855f7; --brand-deep: #6d28d9; }
+  .meter-track { height: .55rem; border-radius: 9999px; background: rgb(232 232 238); overflow: hidden; }
+  .dark .meter-track { background: rgb(39 39 42); }
+  .meter-fill { height: 100%; width: 0; border-radius: 9999px; transition: width .35s cubic-bezier(.22,1,.36,1), background-color .25s; }
+  .pw-input { letter-spacing: .06em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .check-row { display: flex; align-items: center; gap: .45rem; font-size: 11px; font-weight: 600; }
+  .check-dot { width: 1.05rem; height: 1.05rem; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .check-dot svg { width: .65rem; height: .65rem; }
+  .vault-item { transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .2s, border-color .2s; }
+  .vault-item:hover { transform: translateY(-2px); box-shadow: 0 16px 32px -24px rgba(0,0,0,.5); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .lock-hero {
+    background: radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, var(--brand) 16%, transparent), transparent 62%);
+  }
+  .badge-soft { background: color-mix(in srgb, var(--brand) 12%, transparent); color: color-mix(in srgb, var(--brand-deep) 90%, black); border: 1px solid color-mix(in srgb, var(--brand) 26%, transparent); }
+  .dark .badge-soft { color: #d5c0f9; background: color-mix(in srgb, var(--brand) 22%, transparent); }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 o2 opacity-20" style="background:#a855f7"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path><circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"></circle></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Pass</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">AES-256</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">비밀번호 진단·생성 &amp; 금고</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="tools">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></path><circle cx="12" cy="12" r="4"></circle></svg>
+        <span>진단·생성</span>
+      </button>
+      <button class="nav-tab" data-tab="vault">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+        <span>금고</span>
+        <span id="vaultCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            서버 전송 0건 · 로컬 암호화
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            내 비밀번호가<br><span class="brand-text">언제 뚫리는지</span> 아세요?
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            엔트로피와 취약 패턴을 계산해 해킹 예상 시간을 알려주고, 같은 사이트에 다시 쓰지 않을 강력한 비밀번호를 만들어 드립니다. 마스터 비밀번호로 잠그는 금고는 이 브라우저 안에서만 복호화됩니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="tools">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+              비밀번호 진단
+            </button>
+            <button class="ghost-btn" data-goto="vault">암호화 금고</button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text">PBKDF2</p><p class="text-[10px] text-neutral-500">키 유도</p></div>
+            <div><p class="text-lg font-black brand-text">256-bit</p><p class="text-[10px] text-neutral-500">AES-GCM</p></div>
+            <div><p class="text-lg font-black brand-text">0건</p><p class="text-[10px] text-neutral-500">서버 전송</p></div>
+          </div>
+        </div>
+        <div class="panel p-4 space-y-3">
+          <div class="rounded-xl p-4 badge-soft">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[10px] font-black tracking-wider">강도 진단</span>
+              <span class="text-[10px] font-mono font-bold">32비트</span>
+            </div>
+            <div class="meter-track"><div class="meter-fill" style="width:34%;background:#f59e0b"></div></div>
+            <p class="text-[11px] font-bold mt-2">온라인 공격 기준 3시간</p>
+            <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">사전 단어가 포함되어 있습니다</p>
+          </div>
+          <div class="rounded-xl p-4 badge-soft">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[10px] font-black tracking-wider">자동 생성</span>
+              <span class="text-[10px] font-mono font-bold">98비트</span>
+            </div>
+            <div class="meter-track"><div class="meter-fill" style="width:96%;background:#10b981"></div></div>
+            <p class="text-[11px] font-bold mt-2 mono">vK7#pQz2!LmR9xTw</p>
+            <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">수백만 년 이상 견딥니다</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l5-9 4 6 3-4 6 7z"></path></svg></div>
+        <h3 class="text-[13px] font-bold">취약 패턴 탐지</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">연속 숫자, 반복 문자, 사전 단어, 흔한 비밀번호를 찾아냅니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v3M12 18v3M5 12H2M22 12h-3"></path><circle cx="12" cy="12" r="4"></circle></svg></div>
+        <h3 class="text-[13px] font-bold">해킹 예상 시간</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">초당 100억 회 대입 속도로 걸리는 시간을 계산합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h4l2-5 4 10 2-5h4"></path></svg></div>
+        <h3 class="text-[13px] font-bold">패스프레이즈</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">외우기 쉬운 단어 조합으로도 충분히 강하게 만듭니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M9 8h6M9 12h6M9 16h3"></path></svg></div>
+        <h3 class="text-[13px] font-bold">암호화 금고</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">마스터 비밀번호 없이는 파일을 열어도 내용을 볼 수 없습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TOOLS -->
+  <section data-view="tools" class="hidden space-y-4">
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full brand-grad"></span>
+          <h2 class="text-[13px] font-black tracking-tight">비밀번호 진단</h2>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btnReveal" class="icon-btn" title="보이기/숨기기">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"></path><circle cx="12" cy="12" r="2.6"></circle></svg>
+          </button>
+          <button id="btnClearInput" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">지우기</button>
+        </div>
+      </div>
+      <input id="pwInput" type="password" class="lemon-input pw-input !py-3 !text-[14px]" placeholder="진단할 비밀번호를 입력하세요" autocomplete="off" spellcheck="false">
+
+      <div class="flex items-center gap-3">
+        <div class="flex-1">
+          <div class="meter-track"><div id="meterFill" class="meter-fill"></div></div>
+        </div>
+        <span id="scoreLabel" class="text-[11px] font-black whitespace-nowrap">입력 대기</span>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2">
+        <div class="rounded-xl border border-neutral-200 dark:border-neutral-800 p-2.5">
+          <p class="text-[9px] font-bold text-neutral-400">엔트로피</p>
+          <p id="entropyVal" class="text-[15px] font-black tabular">-</p>
+          <p class="text-[9px] text-neutral-400">bit</p>
+        </div>
+        <div class="rounded-xl border border-neutral-200 dark:border-neutral-800 p-2.5 col-span-2">
+          <p class="text-[9px] font-bold text-neutral-400">해킹 예상 시간 (초당 100억 회)</p>
+          <p id="crackVal" class="text-[15px] font-black tabular">-</p>
+          <p id="crackSub" class="text-[9px] text-neutral-400">비밀번호를 입력하면 계산합니다</p>
+        </div>
+      </div>
+
+      <div id="issueList" class="space-y-1.5"></div>
+
+      <div class="hr"></div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btnMakeLike" class="ghost-btn !py-2 !text-[11px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 8-8"></path><path d="M20 12a8 8 0 0 1-8 8"></path></svg>
+          이와 비슷하지만 강하게 다시 만들기
+        </button>
+        <button id="btnVaultFromDiag" class="ghost-btn !py-2 !text-[11px]">금고에 저장</button>
+      </div>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full brand-grad"></span>
+          <h2 class="text-[13px] font-black tracking-tight">랜덤 비밀번호 생성</h2>
+        </div>
+        <span class="chip" id="genBits">-</span>
+      </div>
+
+      <div class="rounded-xl bg-black/[.04] dark:bg-white/[.06] p-3 flex items-center gap-2">
+        <code id="genOut" class="flex-1 text-[15px] font-bold mono break-all">-</code>
+        <button id="btnGenCopy" class="icon-btn shrink-0" title="복사">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+        </button>
+        <button id="btnGenRefresh" class="icon-btn shrink-0" title="다시 생성">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 4v5h-5"></path></svg>
+        </button>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between"><span class="lemon-label">길이</span><span id="lenVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">18</span></div>
+        <input type="range" id="genLen" class="lemon-range" min="8" max="64" step="1" value="18">
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <label class="check-row"><input type="checkbox" id="cUpper" class="accent-brand-500" checked> 대문자 A-Z</label>
+        <label class="check-row"><input type="checkbox" id="cLower" class="accent-brand-500" checked> 소문자 a-z</label>
+        <label class="check-row"><input type="checkbox" id="cDigit" class="accent-brand-500" checked> 숫자 0-9</label>
+        <label class="check-row"><input type="checkbox" id="cSymbol" class="accent-brand-500" checked> 기호 !@#$</label>
+        <label class="check-row col-span-2"><input type="checkbox" id="cNoAmbig" class="accent-brand-500" checked> 헷갈리는 글자 제외 (0 O 1 l I)</label>
+      </div>
+
+      <button id="btnGen" class="primary-btn btn-shimmer w-full !py-2.5 !text-[12px]">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 4v5h-5"></path></svg>
+        새 비밀번호 만들기
+      </button>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full brand-grad"></span>
+          <h2 class="text-[13px] font-black tracking-tight">외우기 쉬운 패스프레이즈</h2>
+        </div>
+        <span class="chip" id="phraseBits">-</span>
+      </div>
+      <div class="rounded-xl bg-black/[.04] dark:bg-white/[.06] p-3 flex items-center gap-2">
+        <code id="phraseOut" class="flex-1 text-[14px] font-bold mono break-all">-</code>
+        <button id="btnPhraseCopy" class="icon-btn shrink-0" title="복사">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+        </button>
+        <button id="btnPhraseRefresh" class="icon-btn shrink-0" title="다시 생성">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 4v5h-5"></path></svg>
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <div class="flex items-center justify-between"><span class="lemon-label">단어 수</span><span id="wordsVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">4</span></div>
+          <input type="range" id="phraseWords" class="lemon-range" min="3" max="7" step="1" value="4">
+        </div>
+        <div>
+          <span class="lemon-label">구분자</span>
+          <select id="phraseSep" class="lemon-select mt-1">
+            <option value="-">하이픈 (-)</option>
+            <option value=".">마침표 (.)</option>
+            <option value="_">밑줄 (_)</option>
+            <option value=" ">공백</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="check-row"><input type="checkbox" id="pCapital" class="accent-brand-500" checked> 첫 글자 대문자</label>
+        <label class="check-row"><input type="checkbox" id="pNumber" class="accent-brand-500" checked> 끝에 숫자</label>
+      </div>
+      <button id="btnPhrase" class="ghost-btn w-full !py-2.5 !text-[12px]">새 패스프레이즈 만들기</button>
+    </div>
+  </section>
+
+  <!-- VAULT -->
+  <section data-view="vault" class="hidden space-y-4">
+
+    <div id="vaultSetup" class="panel p-5 sm:p-7 lock-hero space-y-4 hidden">
+      <div class="flex items-start gap-3">
+        <div class="w-11 h-11 rounded-2xl brand-grad text-white flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+        </div>
+        <div>
+          <h2 class="text-[15px] font-black tracking-tight">금고를 처음 만듭니다</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">마스터 비밀번호는 이 금고를 여는 유일한 열쇠입니다. 브라우저에 암호화되어 저장되며 서버로 전송되지 않습니다.</p>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <div>
+          <span class="lemon-label">마스터 비밀번호</span>
+          <input id="setupPw" type="password" class="lemon-input mt-1 pw-input" placeholder="12자 이상 권장" autocomplete="new-password">
+        </div>
+        <div>
+          <span class="lemon-label">한 번 더 입력</span>
+          <input id="setupPw2" type="password" class="lemon-input mt-1 pw-input" placeholder="같은 값을 다시 입력" autocomplete="new-password">
+        </div>
+      </div>
+      <div>
+        <span class="lemon-label">힌트 (선택 · 암호화되지 않습니다)</span>
+        <input id="setupHint" type="text" class="lemon-input mt-1" maxlength="40" placeholder="예: 자주 쓰는 문장 첫 글자">
+      </div>
+      <div id="setupMeter" class="space-y-1 hidden">
+        <div class="meter-track"><div id="setupFill" class="meter-fill"></div></div>
+        <p id="setupMsg" class="text-[10px] font-bold"></p>
+      </div>
+      <div class="rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50/70 dark:bg-amber-950/30 p-3 flex gap-2">
+        <svg class="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 17H3z"></path><line x1="12" y1="9" x2="12" y2="13"></line><circle cx="12" cy="16.5" r="0.8" fill="currentColor"></circle></svg>
+        <p class="text-[10px] leading-relaxed text-amber-800 dark:text-amber-300 font-semibold">마스터 비밀번호를 잊으면 저장한 내용을 <b>복구할 수 없습니다</b>. 비밀번호 관리자에 따로 적어 두세요.</p>
+      </div>
+      <button id="btnCreateVault" class="primary-btn btn-shimmer w-full !py-3 !text-[13px]">금고 만들기</button>
+    </div>
+
+    <div id="vaultLocked" class="panel p-6 sm:p-10 lock-hero space-y-4 hidden">
+      <div class="text-center space-y-2">
+        <div class="w-14 h-14 mx-auto rounded-2xl brand-grad text-white flex items-center justify-center shadow-lg">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path><circle cx="12" cy="15" r="1.4" fill="currentColor"></circle></svg>
+        </div>
+        <h2 class="text-[16px] font-black tracking-tight">금고가 잠겨 있습니다</h2>
+        <p id="lockHint" class="text-[11px] text-neutral-500 dark:text-neutral-400">마스터 비밀번호를 입력해 잠금을 해제하세요.</p>
+      </div>
+      <div class="max-w-sm mx-auto space-y-2.5">
+        <input id="unlockPw" type="password" class="lemon-input pw-input text-center !py-3" placeholder="마스터 비밀번호" autocomplete="current-password">
+        <button id="btnUnlock" class="primary-btn w-full !py-3 !text-[13px]">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0"></path></svg>
+          잠금 해제
+        </button>
+        <p id="unlockMsg" class="text-[10px] text-center font-bold text-rose-500 hidden">마스터 비밀번호가 맞지 않습니다</p>
+      </div>
+      <div class="flex items-center justify-center gap-2 pt-1">
+        <button id="btnImportFromLocked" class="ghost-btn !py-2 !text-[11px]">백업 파일 가져오기</button>
+        <button id="btnResetVault" class="ghost-btn !py-2 !text-[11px] !text-rose-500">금고 초기화</button>
+      </div>
+    </div>
+
+    <div id="vaultOpen" class="hidden space-y-4">
+      <div class="panel p-4 sm:p-5 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full" style="background:#10b981"></span>
+            <h2 class="text-[13px] font-black tracking-tight">금고 열림</h2>
+            <span id="openCount" class="text-[10px] font-mono text-neutral-400">0개 항목</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span id="autosaveBadge" class="as-badge">자동 저장 대기</span>
+            <button id="btnExport" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">백업 내보내기</button>
+            <button id="btnImport" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">가져오기</button>
+            <button id="btnLock" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">잠그기</button>
+          </div>
+        </div>
+        <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+        <div class="flex items-center gap-2">
+          <input id="vaultSearch" type="text" class="lemon-input !py-2 !text-[12px]" placeholder="사이트·아이디·메모 검색">
+          <button id="btnAddItem" class="primary-btn !px-3.5 !py-2 !text-[11px] whitespace-nowrap">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            추가
+          </button>
+        </div>
+        <div class="flex flex-wrap gap-1.5 items-center">
+          <span class="badge-soft text-[9px] font-bold px-2 py-0.5 rounded-full">PBKDF2 250,000회</span>
+          <span class="badge-soft text-[9px] font-bold px-2 py-0.5 rounded-full">AES-256-GCM</span>
+          <span class="badge-soft text-[9px] font-bold px-2 py-0.5 rounded-full">5분 자동 잠금</span>
+          <span id="savedAt" class="text-[9px] font-mono text-neutral-400 ml-auto"></span>
+        </div>
+      </div>
+
+      <div id="itemForm" class="panel p-4 sm:p-5 space-y-3 hidden">
+        <div class="flex items-center justify-between">
+          <h3 id="itemFormTitle" class="text-[12px] font-black">새 항목</h3>
+          <button id="btnCancelItem" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">취소</button>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-2.5">
+          <div>
+            <span class="lemon-label">사이트명</span>
+            <input id="fSite" type="text" class="lemon-input mt-1" placeholder="예: 네이버" maxlength="40">
+          </div>
+          <div>
+            <span class="lemon-label">URL (선택)</span>
+            <input id="fUrl" type="text" class="lemon-input mt-1" placeholder="naver.com" maxlength="120">
+          </div>
+          <div>
+            <span class="lemon-label">아이디</span>
+            <input id="fUser" type="text" class="lemon-input mt-1" placeholder="아이디 또는 이메일" maxlength="80" autocomplete="off">
+          </div>
+          <div>
+            <span class="lemon-label">비밀번호</span>
+            <div class="flex gap-1.5 mt-1">
+              <input id="fPass" type="text" class="lemon-input pw-input" placeholder="비밀번호" maxlength="120" autocomplete="off">
+              <button id="btnFormGen" class="icon-btn shrink-0" title="강력한 비밀번호 생성">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 4v5h-5"></path></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <span class="lemon-label">메모 (선택)</span>
+          <textarea id="fMemo" class="lemon-textarea mt-1" rows="2" maxlength="200" placeholder="2단계 인증 백업 코드 등"></textarea>
+        </div>
+        <button id="btnSaveItem" class="primary-btn w-full !py-2.5 !text-[12px]">저장</button>
+      </div>
+
+      <div id="vaultList" class="space-y-2"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Pass</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="cam.html" class="hover:text-brand-600 dark:hover:text-brand-400">Cam</a>
+      <a href="mark.html" class="hover:text-brand-600 dark:hover:text-brand-400">Mark</a>
+      <a href="fridge.html" class="hover:text-brand-600 dark:hover:text-brand-400">Fridge</a>
+      <a href="secret.html" class="hover:text-brand-600 dark:hover:text-brand-400">Secret</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ======================= password analysis ======================= */
+  var COMMON = ['123456', 'password', '12345678', 'qwerty', '123456789', '12345', '1234', '111111', '1234567', 'dragon',
+    '123123', 'baseball', 'abc123', 'football', 'monkey', 'letmein', 'shadow', 'master', '666666', 'qwertyuiop',
+    '123321', 'mustang', '1234567890', 'michael', '654321', 'pussy', 'superman', '1qaz2wsx', '7777777', '121212',
+    '000000', 'qazwsx', '123qwe', 'killer', 'trustno1', 'jordan', 'jennifer', 'zxcvbnm', 'asdfgh', 'hunter',
+    'buster', 'soccer', 'harley', 'batman', 'andrew', 'tigger', 'sunshine', 'iloveyou', '2000', 'charlie',
+    'robert', 'thomas', 'hockey', 'ranger', 'daniel', 'starwars', 'klaster', '112233', 'george', 'bruno',
+    'computer', 'michelle', 'jessica', 'pepper', '1111', 'a1b2c3', 'admin', 'welcome', 'login', 'passw0rd',
+    'password1', 'qwerty123', '1q2w3e4r', 'asdf1234', 'abcd1234', '12341234', '0000', 'korea123', 'samsung1'];
+  var WORDS = ['dragon', 'monkey', 'summer', 'winter', 'spring', 'autumn', 'hello', 'welcome', 'secret', 'master',
+    'google', 'naver', 'kakao', 'samsung', 'apple', 'money', 'happy', 'flower', 'coffee', 'choco',
+    'computer', 'internet', 'school', 'student', 'korea', 'seoul', 'family', 'friend', 'angel', 'super',
+    'star', 'moon', 'water', 'fire', 'earth', 'wind', 'light', 'dark', 'king', 'queen',
+    'baby', 'music', 'photo', 'camera', 'phone', 'games', 'soccer', 'travel', 'orange', 'banana',
+    'pizza', 'cookie', 'silver', 'golden', 'purple', 'yellow', 'rocket', 'planet', 'tiger', 'eagle',
+    'rainbow', 'garden', 'bridge', 'castle', 'forest', 'river', 'island', 'mountain', 'ocean', 'cloud',
+    'thunder', 'shadow', 'spirit', 'legend', 'alpha', 'omega', 'matrix', 'cyber', 'pixel', 'laser',
+    'harbor', 'lantern', 'candle', 'mirror', 'puzzle', 'rocket', 'saddle', 'tunnel', 'velvet', 'walnut'];
+  var KEYROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', '1234567890', '1qaz2wsx', 'qazwsx', 'poiuytrewq', 'lkjhgfdsa', 'mnbvcxz'];
+
+  function charsets(pw) {
+    var sets = [
+      { re: /[a-z]/, size: 26, label: '소문자' },
+      { re: /[A-Z]/, size: 26, label: '대문자' },
+      { re: /[0-9]/, size: 10, label: '숫자' },
+      { re: /[^A-Za-z0-9]/, size: 33, label: '기호' }
+    ];
+    var used = sets.filter(function (s) { return s.re.test(pw); });
+    var size = used.reduce(function (a, s) { return a + s.size; }, 0);
+    return { used: used, size: size };
+  }
+
+  function hasRun(pw, min) {
+    var low = pw.toLowerCase();
+    var seqs = ['abcdefghijklmnopqrstuvwxyz', '0123456789', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+    for (var s = 0; s < seqs.length; s++) {
+      var seq = seqs[s], rev = seq.split('').reverse().join('');
+      for (var i = 0; i <= seq.length - min; i++) {
+        var chunk = seq.substr(i, min);
+        if (low.indexOf(chunk) > -1) return { run: chunk, kind: '증가' };
+        if (low.indexOf(chunk.split('').reverse().join('')) > -1 && seq !== '0123456789') return { run: chunk, kind: '감소' };
+      }
+    }
+    return null;
+  }
+
+  function analyze(pw) {
+    var out = { empty: !pw, length: pw.length, bits: 0, score: 0, label: '입력 대기', color: '#a1a1aa', issues: [], crack: '-', crackSub: '', pool: 0 };
+    if (!pw) return out;
+
+    var cs = charsets(pw);
+    out.pool = cs.size;
+    var bits = pw.length * Math.log2(Math.max(2, cs.size));
+    var penalty = 0;
+
+    // repeats
+    if (/(.)\1{2,}/.test(pw)) { out.issues.push({ k: 'bad', t: '같은 글자가 3번 이상 반복됩니다' }); penalty += 12; }
+    if (/^(.{2,4})\1+$/.test(pw)) { out.issues.push({ k: 'bad', t: '같은 덩어리가 반복되는 패턴입니다' }); penalty += 10; }
+    // sequences
+    var run = hasRun(pw, 3);
+    if (run) { out.issues.push({ k: 'bad', t: '연속된 키 배열·숫자(' + run.run + ')가 들어 있습니다' }); penalty += 12; }
+    // keyboard rows
+    for (var k = 0; k < KEYROWS.length; k++) {
+      if (pw.toLowerCase().indexOf(KEYROWS[k].substr(0, 5)) > -1) { out.issues.push({ k: 'bad', t: '키보드 배열 그대로 입력한 구간이 있습니다' }); penalty += 14; break; }
+    }
+    // common
+    var lowpw = pw.toLowerCase();
+    for (var c = 0; c < COMMON.length; c++) {
+      if (lowpw === COMMON[c]) { out.issues.push({ k: 'bad', t: '가장 많이 유출된 비밀번호 목록에 있습니다' }); penalty += Math.max(20, bits * 0.6); break; }
+      if (COMMON[c].length >= 5 && lowpw.indexOf(COMMON[c]) > -1) { out.issues.push({ k: 'bad', t: '흔한 비밀번호 조각("' + COMMON[c] + '")이 포함됩니다' }); penalty += 14; break; }
+    }
+    // dictionary words
+    for (var w = 0; w < WORDS.length; w++) {
+      if (lowpw.indexOf(WORDS[w]) > -1) { out.issues.push({ k: 'warn', t: '사전 단어("' + WORDS[w] + '")가 포함됩니다' }); penalty += 10; break; }
+    }
+    // dates / years / phone
+    if (/(19|20)\d{2}/.test(pw)) { out.issues.push({ k: 'warn', t: '연도로 보이는 숫자가 들어 있습니다' }); penalty += 8; }
+    if (/\d{2,3}[-.]?\d{3,4}[-.]?\d{4}/.test(pw)) { out.issues.push({ k: 'bad', t: '전화번호 형태의 숫자가 들어 있습니다' }); penalty += 12; }
+    // composition
+    if (pw.length < 8) { out.issues.push({ k: 'bad', t: '8자 미만은 매우 위험합니다' }); }
+    else if (pw.length < 12) { out.issues.push({ k: 'warn', t: '12자 이상을 권장합니다' }); }
+    var kinds = cs.used.length;
+    if (kinds <= 1) { out.issues.push({ k: 'bad', t: '한 종류의 글자만 사용했습니다' }); penalty += 8; }
+    else if (kinds === 2) { out.issues.push({ k: 'warn', t: '대문자·숫자·기호를 함께 섞으면 훨씬 강해집니다' }); }
+    if (pw.length >= 14 && kinds >= 3 && !penalty) { out.issues.push({ k: 'good', t: '길이와 조합이 모두 충분합니다' }); }
+    if (pw.length >= 20) { out.issues.push({ k: 'good', t: '길이가 길어 무차별 대입에 강합니다' }); }
+
+    bits = Math.max(0, bits - penalty);
+    out.bits = Math.round(bits);
+
+    // crack time at 1e10 guesses/sec (offline fast hash)
+    var guesses = Math.pow(2, Math.max(0, bits - 1));
+    var sec = guesses / 1e10;
+    out.crack = humanTime(sec);
+    if (sec < 1) out.crackSub = '즉시 뚫립니다. 지금 바꾸세요';
+    else if (sec < 3600) out.crackSub = '온라인 공격에도 위험한 수준입니다';
+    else if (sec < 86400 * 30) out.crackSub = '며칠 안에 뚫릴 수 있습니다';
+    else if (sec < 86400 * 365 * 100) out.crackSub = '쓸 만하지만 더 길게 만드는 게 좋습니다';
+    else out.crackSub = '현실적인 공격으로는 사실상 불가능합니다';
+
+    var score = bits >= 90 ? 4 : bits >= 70 ? 3 : bits >= 50 ? 2 : bits >= 30 ? 1 : 0;
+    out.score = score;
+    out.label = ['매우 약함', '약함', '보통', '강함', '매우 강함'][score];
+    out.color = ['#e11d48', '#f97316', '#f59e0b', '#10b981', '#059669'][score];
+    return out;
+  }
+
+  function humanTime(sec) {
+    if (!isFinite(sec)) return '사실상 영원';
+    if (sec < 1) return '1초 미만';
+    if (sec < 60) return Math.round(sec) + '초';
+    if (sec < 3600) return Math.round(sec / 60) + '분';
+    if (sec < 86400) return Math.round(sec / 3600) + '시간';
+    var days = sec / 86400;
+    if (days < 365) return Math.round(days) + '일';
+    var years = days / 365;
+    if (years < 1e4) return Math.round(years) + '년';
+    if (years < 1e8) return Math.round(years / 1e4) + '만 년';
+    if (years < 1e12) return Math.round(years / 1e8) + '억 년';
+    return '수조 년 이상';
+  }
+
+  var scoreBar = $('meterFill');
+  function paintAnalysis(a) {
+    $('entropyVal').textContent = a.empty ? '-' : a.bits;
+    $('crackVal').textContent = a.crack;
+    $('crackSub').textContent = a.empty ? '비밀번호를 입력하면 계산합니다' : a.crackSub;
+    $('scoreLabel').textContent = a.label;
+    $('scoreLabel').style.color = a.color;
+    scoreBar.style.width = (a.empty ? 0 : [8, 28, 52, 76, 100][a.score]) + '%';
+    scoreBar.style.background = a.color;
+    var box = $('issueList');
+    box.innerHTML = a.issues.map(function (i) {
+      var cls = i.k === 'bad' ? 'text-rose-500' : i.k === 'warn' ? 'text-amber-500' : 'text-emerald-500';
+      var icon = i.k === 'bad'
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>'
+        : i.k === 'warn'
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="7" x2="12" y2="14"></line><circle cx="12" cy="18" r="1"></circle></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="4 12 9 17 20 6"></polyline></svg>';
+      return '<div class="check-row ' + cls + '"><span class="check-dot border border-current">' + icon + '</span><span class="text-neutral-600 dark:text-neutral-300 font-semibold">' + i.t + '</span></div>';
+    }).join('');
+  }
+
+  var lastDiag = null;
+  $('pwInput').addEventListener('input', function () {
+    lastDiag = analyze(this.value);
+    paintAnalysis(lastDiag);
+  });
+  $('btnReveal').addEventListener('click', function () {
+    var el = $('pwInput');
+    el.type = el.type === 'password' ? 'text' : 'password';
+    Lemon.hap(6);
+  });
+  $('btnClearInput').addEventListener('click', function () {
+    $('pwInput').value = '';
+    lastDiag = analyze('');
+    paintAnalysis(lastDiag);
+  });
+
+  /* ======================= random generation ======================= */
+  function randInt(max) {
+    var arr = new Uint32Array(1);
+    var limit = Math.floor(0xFFFFFFFF / max) * max;
+    var v;
+    do { crypto.getRandomValues(arr); v = arr[0]; } while (v >= limit);
+    return v % max;
+  }
+  function pick(str) { return str.charAt(randInt(str.length)); }
+
+  function generate() {
+    var upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    var lower = 'abcdefghijklmnopqrstuvwxyz';
+    var digit = '0123456789';
+    var symbol = '!@#$%^&*-_=+?';
+    var noAmbig = $('cNoAmbig').checked;
+    if (noAmbig) {
+      upper = upper.replace(/[OI]/g, '');
+      lower = lower.replace(/[l]/g, '');
+      digit = digit.replace(/[01]/g, '');
+    }
+    var pools = [];
+    if ($('cUpper').checked) pools.push(upper);
+    if ($('cLower').checked) pools.push(lower);
+    if ($('cDigit').checked) pools.push(digit);
+    if ($('cSymbol').checked) pools.push(symbol);
+    if (!pools.length) { Lemon.toast('글자 종류를 하나 이상 선택해 주세요', 'err'); return null; }
+    var len = parseInt($('genLen').value, 10);
+    var all = pools.join('');
+    var chars = [];
+    for (var i = 0; i < pools.length && chars.length < len; i++) chars.push(pick(pools[i]));
+    while (chars.length < len) chars.push(pick(all));
+    for (var j = chars.length - 1; j > 0; j--) {
+      var k = randInt(j + 1);
+      var t = chars[j]; chars[j] = chars[k]; chars[k] = t;
+    }
+    var pw = chars.join('');
+    var bits = Math.round(len * Math.log2(all.length));
+    $('genOut').textContent = pw;
+    $('genBits').textContent = bits + '비트';
+    return pw;
+  }
+
+  var PHRASE_WORDS = ['apple', 'amber', 'anchor', 'arrow', 'bamboo', 'beacon', 'berry', 'bison', 'blossom', 'breeze',
+    'cactus', 'candle', 'canvas', 'canyon', 'cedar', 'cherry', 'cobalt', 'comet', 'copper', 'coral',
+    'cotton', 'cricket', 'crystal', 'daisy', 'dawn', 'delta', 'denim', 'dolphin', 'ember', 'falcon',
+    'feather', 'fennel', 'fern', 'fjord', 'flint', 'forest', 'fossil', 'garnet', 'ginger', 'glacier',
+    'granite', 'harbor', 'hazel', 'heron', 'honey', 'indigo', 'ivory', 'jade', 'jasmine', 'juniper',
+    'kettle', 'kiwi', 'lagoon', 'lantern', 'lark', 'lemon', 'lilac', 'linen', 'lobster', 'lotus',
+    'magnet', 'mango', 'maple', 'marble', 'meadow', 'melon', 'mint', 'mirror', 'moss', 'nectar',
+    'nickel', 'north', 'nutmeg', 'oasis', 'olive', 'onyx', 'opal', 'orbit', 'orchid', 'otter',
+    'pebble', 'pepper', 'petal', 'pilot', 'pine', 'plum', 'quartz', 'quill', 'raven', 'ribbon',
+    'ripple', 'robin', 'saffron', 'sage', 'sailor', 'shadow', 'silver', 'spruce', 'stone', 'summit',
+    'sunset', 'tangerine', 'thistle', 'thunder', 'timber', 'topaz', 'tulip', 'tundra', 'velvet', 'violet',
+    'walnut', 'willow', 'winter', 'zephyr', 'zinnia', 'sunrise', 'pearl', 'otter', 'maple', 'clover'];
+
+  function makePhrase() {
+    var n = parseInt($('phraseWords').value, 10);
+    var sep = $('phraseSep').value;
+    var cap = $('pCapital').checked;
+    var num = $('pNumber').checked;
+    var parts = [];
+    for (var i = 0; i < n; i++) {
+      var w = PHRASE_WORDS[randInt(PHRASE_WORDS.length)];
+      if (cap) w = w.charAt(0).toUpperCase() + w.slice(1);
+      parts.push(w);
+    }
+    var phrase = parts.join(sep);
+    if (num) phrase += sep + (randInt(90) + 10);
+    var bits = Math.round(n * Math.log2(PHRASE_WORDS.length) + (num ? 6.5 : 0));
+    $('phraseOut').textContent = phrase;
+    $('phraseBits').textContent = bits + '비트';
+    return phrase;
+  }
+
+  $('genLen').addEventListener('input', function () {
+    $('lenVal').textContent = this.value;
+    generate();
+  });
+  ['cUpper', 'cLower', 'cDigit', 'cSymbol', 'cNoAmbig'].forEach(function (id) {
+    $(id).addEventListener('change', function () { generate(); });
+  });
+  $('btnGen').addEventListener('click', function () { generate(); Lemon.hap(10); });
+  $('btnGenRefresh').addEventListener('click', function () { generate(); Lemon.hap(8); });
+  $('btnGenCopy').addEventListener('click', function () {
+    var v = $('genOut').textContent;
+    if (!v || v === '-') return;
+    Lemon.copy(v, '비밀번호를 복사했어요');
+  });
+  $('phraseWords').addEventListener('input', function () {
+    $('wordsVal').textContent = this.value;
+    makePhrase();
+  });
+  ['phraseSep', 'pCapital', 'pNumber'].forEach(function (id) {
+    $(id).addEventListener('change', makePhrase);
+  });
+  $('btnPhrase').addEventListener('click', function () { makePhrase(); Lemon.hap(10); });
+  $('btnPhraseRefresh').addEventListener('click', function () { makePhrase(); Lemon.hap(8); });
+  $('btnPhraseCopy').addEventListener('click', function () {
+    var v = $('phraseOut').textContent;
+    if (!v || v === '-') return;
+    Lemon.copy(v, '패스프레이즈를 복사했어요');
+  });
+
+  $('btnMakeLike').addEventListener('click', function () {
+    var base = $('pwInput').value;
+    if (!base) { Lemon.toast('먼저 진단할 비밀번호를 입력해 주세요', 'err'); return; }
+    var len = Math.max(16, Math.min(32, base.length + 4));
+    $('genLen').value = len;
+    $('lenVal').textContent = len;
+    var pw = generate();
+    if (pw) {
+      $('genOut').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      Lemon.toast('더 길고 강한 비밀번호를 만들었어요', 'ok');
+      Lemon.confetti(16);
+    }
+  });
+
+  /* ======================= encrypted vault ======================= */
+  var VKEY = 'lemon_pass_vault';
+  var ITER = 250000;
+  var vault = { key: null, items: [], meta: null, timer: null };
+
+  function b64(buf) {
+    var bytes = new Uint8Array(buf);
+    var s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+  function unb64(str) {
+    var bin = atob(str);
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function enc(str) { return new TextEncoder().encode(str); }
+  function dec(buf) { return new TextDecoder().decode(buf); }
+
+  function subtleOK() { return !!(window.crypto && window.crypto.subtle); }
+
+  async function deriveKey(pw, salt, iter) {
+    var base = await crypto.subtle.importKey('raw', enc(pw), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+    );
+  }
+
+  function readMeta() {
+    try {
+      var raw = localStorage.getItem(VKEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function writeMeta(meta) {
+    try { localStorage.setItem(VKEY, JSON.stringify(meta)); return true; }
+    catch (e) { return false; }
+  }
+
+  async function saveVault() {
+    if (!vault.key) return false;
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, vault.key, enc(JSON.stringify({ v: 1, items: vault.items })));
+    var meta = vault.meta;
+    meta.iv = b64(iv);
+    meta.ct = b64(ct);
+    meta.updated = Date.now();
+    vault.meta = meta;
+    var ok = writeMeta(meta);
+    if (ok) {
+      $('savedAt').textContent = Lemon.fmtDateTime(meta.updated) + ' 저장됨';
+      badge('암호화 자동 저장 ' + vault.items.length + '개 · ' + Lemon.fmtDateTime(meta.updated).slice(11), 'saved');
+    } else Lemon.toast('브라우저 저장 공간이 부족해요', 'err');
+    return ok;
+  }
+
+  var badgeEl = null;
+  function badge(text, state) {
+    if (!badgeEl) badgeEl = $('autosaveBadge');
+    if (!badgeEl) return;
+    badgeEl.textContent = text;
+    badgeEl.setAttribute('data-state', state || 'idle');
+  }
+
+  function setVaultState(state) {
+    $('vaultSetup').classList.toggle('hidden', state !== 'setup');
+    $('vaultLocked').classList.toggle('hidden', state !== 'locked');
+    $('vaultOpen').classList.toggle('hidden', state !== 'open');
+  }
+
+  function initVaultView() {
+    var meta = readMeta();
+    if (!meta) { setVaultState('setup'); badge('금고 없음', 'idle'); return; }
+    if (!vault.key) badge('잠김 · 자동 저장 꺼짐', 'off');
+    vault.meta = meta;
+    if (meta.hint) $('lockHint').textContent = '힌트: ' + meta.hint;
+    else $('lockHint').textContent = '마스터 비밀번호를 입력해 잠금을 해제하세요.';
+    if (vault.key) { setVaultState('open'); renderItems(); }
+    else setVaultState('locked');
+    $('vaultCount').textContent = vault.key ? vault.items.length : (meta.count || 0);
+  }
+
+  async function createVault() {
+    if (!subtleOK()) { Lemon.toast('이 브라우저는 Web Crypto를 지원하지 않아요', 'err'); return; }
+    var pw = $('setupPw').value;
+    var pw2 = $('setupPw2').value;
+    if (pw.length < 8) { Lemon.toast('마스터 비밀번호는 8자 이상으로 정하세요', 'err'); return; }
+    if (pw !== pw2) { Lemon.toast('두 입력이 일치하지 않습니다', 'err'); return; }
+    var a = analyze(pw);
+    if (a.score < 2) { Lemon.toast('마스터 비밀번호가 너무 약합니다 (' + a.label + ')', 'err'); return; }
+    var btn = $('btnCreateVault');
+    btn.disabled = true; btn.textContent = '금고 만드는 중…';
+    try {
+      var salt = crypto.getRandomValues(new Uint8Array(16));
+      var key = await deriveKey(pw, salt, ITER);
+      vault.key = key;
+      vault.items = [];
+      vault.meta = { v: 1, salt: b64(salt), iter: ITER, hint: $('setupHint').value.trim(), created: Date.now(), count: 0 };
+      await saveVault();
+      $('setupPw').value = ''; $('setupPw2').value = ''; $('setupHint').value = '';
+      setVaultState('open');
+      renderItems();
+      Lemon.toast('금고를 만들었어요', 'ok');
+      Lemon.confetti(20);
+      resetLockTimer();
+    } catch (err) {
+      if (window.console) console.error('[pass] create', err);
+      Lemon.toast('금고 생성에 실패했어요: ' + (err && err.message ? err.message : '오류'), 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = '금고 만들기';
+    }
+  }
+
+  async function unlockVault() {
+    var meta = readMeta();
+    if (!meta) { initVaultView(); return; }
+    var pw = $('unlockPw').value;
+    if (!pw) { Lemon.toast('마스터 비밀번호를 입력하세요', 'err'); return; }
+    var btn = $('btnUnlock');
+    btn.disabled = true; btn.textContent = '확인 중…';
+    $('unlockMsg').classList.add('hidden');
+    try {
+      var key = await deriveKey(pw, unb64(meta.salt), meta.iter || ITER);
+      var plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(meta.iv) }, key, unb64(meta.ct));
+      var data = JSON.parse(dec(plain));
+      vault.key = key;
+      vault.meta = meta;
+      vault.items = Array.isArray(data.items) ? data.items : [];
+      $('unlockPw').value = '';
+      setVaultState('open');
+      badge('암호화 자동 저장 준비', 'saved');
+      renderItems();
+      $('savedAt').textContent = Lemon.fmtDateTime(meta.updated) + ' 저장됨';
+      Lemon.toast('금고를 열었어요', 'ok');
+      Lemon.hap(14);
+      resetLockTimer();
+    } catch (err) {
+      $('unlockMsg').classList.remove('hidden');
+      Lemon.toast('마스터 비밀번호가 맞지 않습니다', 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = '잠금 해제';
+    }
+  }
+
+  function lockVault(silent) {
+    vault.key = null;
+    vault.items = [];
+    badge('잠김 · 자동 저장 꺼짐', 'off');
+    if (vault.timer) { clearTimeout(vault.timer); vault.timer = null; }
+    $('itemForm').classList.add('hidden');
+    $('vaultList').innerHTML = '';
+    initVaultView();
+    if (!silent) Lemon.toast('금고를 잠갔어요', 'info');
+  }
+
+  function resetLockTimer() {
+    if (vault.timer) clearTimeout(vault.timer);
+    if (!vault.key) return;
+    vault.timer = setTimeout(function () {
+      lockVault(true);
+      Lemon.toast('5분간 사용이 없어 금고를 자동으로 잠갔어요', 'info');
+    }, 5 * 60 * 1000);
+  }
+
+  ['click', 'keydown', 'pointerdown'].forEach(function (ev) {
+    document.addEventListener(ev, function () { if (vault.key) resetLockTimer(); }, { passive: true });
+  });
+
+  $('btnCreateVault').addEventListener('click', createVault);
+  $('btnUnlock').addEventListener('click', unlockVault);
+  $('unlockPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlockVault(); });
+  $('btnLock').addEventListener('click', function () { lockVault(false); });
+  $('setupPw').addEventListener('input', function () {
+    var a = analyze(this.value);
+    $('setupMeter').classList.remove('hidden');
+    $('setupFill').style.width = (this.value ? [8, 28, 52, 76, 100][a.score] : 0) + '%';
+    $('setupFill').style.background = a.color;
+    $('setupMsg').textContent = this.value ? a.label + ' · 해킹 예상 ' + a.crack : '';
+    $('setupMsg').style.color = a.color;
+  });
+
+  /* ---------------- items ---------------- */
+  var editing = null;
+
+  function renderItems() {
+    var q = ($('vaultSearch').value || '').trim().toLowerCase();
+    var list = vault.items.slice().sort(function (a, b) { return (b.upd || b.ts) - (a.upd || a.ts); });
+    if (q) {
+      list = list.filter(function (it) {
+        return (it.site || '').toLowerCase().indexOf(q) > -1 ||
+          (it.user || '').toLowerCase().indexOf(q) > -1 ||
+          (it.memo || '').toLowerCase().indexOf(q) > -1 ||
+          (it.url || '').toLowerCase().indexOf(q) > -1;
+      });
+    }
+    $('openCount').textContent = vault.items.length + '개 항목';
+    $('vaultCount').textContent = vault.items.length;
+    var box = $('vaultList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center"><div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3"><svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></div><p class="text-[12px] font-bold">' + (q ? '검색 결과가 없어요' : '저장된 비밀번호가 없어요') + '</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">' + (q ? '다른 검색어로 찾아보세요.' : '‘추가’를 눌러 첫 사이트를 저장해 보세요.') + '</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      var initial = (it.site || '?').trim().charAt(0).toUpperCase();
+      return '<div class="panel p-3 vault-item" data-item="' + it.id + '">' +
+        '<div class="flex items-start gap-3">' +
+        '<div class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center font-black text-[13px] shrink-0">' + Lemon.esc(initial) + '</div>' +
+        '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center gap-1.5"><p class="text-[12px] font-bold truncate">' + Lemon.esc(it.site || '이름 없음') + '</p>' +
+        (it.url ? '<a href="' + Lemon.esc(urlOf(it.url)) + '" target="_blank" rel="noopener noreferrer" class="text-[9px] text-brand-600 dark:text-brand-400 font-bold shrink-0">열기</a>' : '') +
+        '</div>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.user || '아이디 없음') + '</p>' +
+        '<p class="text-[11px] font-mono mt-1 truncate" data-pw="' + it.id + '">••••••••</p>' +
+        (it.memo ? '<p class="text-[10px] text-neutral-400 mt-0.5 truncate">' + Lemon.esc(it.memo) + '</p>' : '') +
+        '</div>' +
+        '<div class="flex items-center gap-1 shrink-0">' +
+        '<button class="icon-btn !w-8 !h-8" data-reveal="' + it.id + '" title="보기"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"></path><circle cx="12" cy="12" r="2.6"></circle></svg></button>' +
+        '<button class="icon-btn !w-8 !h-8" data-copy="' + it.id + '" title="복사"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>' +
+        '<button class="icon-btn !w-8 !h-8" data-edit="' + it.id + '" title="수정"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path></svg></button>' +
+        '<button class="icon-btn !w-8 !h-8 !text-rose-500" data-remove="' + it.id + '" title="삭제"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button>' +
+        '</div></div></div>';
+    }).join('');
+  }
+
+  function urlOf(u) {
+    if (!u) return '';
+    return /^https?:\/\//i.test(u) ? u : 'https://' + u;
+  }
+
+  function openForm(item) {
+    editing = item ? item.id : null;
+    $('itemFormTitle').textContent = item ? '항목 수정' : '새 항목';
+    $('fSite').value = item ? (item.site || '') : '';
+    $('fUrl').value = item ? (item.url || '') : '';
+    $('fUser').value = item ? (item.user || '') : '';
+    $('fPass').value = item ? (item.pass || '') : '';
+    $('fMemo').value = item ? (item.memo || '') : '';
+    $('itemForm').classList.remove('hidden');
+    $('itemForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(function () { $('fSite').focus(); }, 200);
+  }
+
+  async function saveItem() {
+    var site = $('fSite').value.trim();
+    var pass = $('fPass').value;
+    if (!site) { Lemon.toast('사이트명을 입력하세요', 'err'); return; }
+    if (!pass) { Lemon.toast('비밀번호를 입력하세요', 'err'); return; }
+    var payload = {
+      site: site,
+      url: $('fUrl').value.trim(),
+      user: $('fUser').value.trim(),
+      pass: pass,
+      memo: $('fMemo').value.trim(),
+      upd: Date.now()
+    };
+    if (editing) {
+      for (var i = 0; i < vault.items.length; i++) {
+        if (vault.items[i].id === editing) {
+          vault.items[i] = Object.assign({}, vault.items[i], payload);
+          break;
+        }
+      }
+    } else {
+      payload.id = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      payload.ts = Date.now();
+      vault.items.unshift(payload);
+    }
+    await saveVault();
+    vault.meta.count = vault.items.length;
+    if (vault.meta) { vault.meta.count = vault.items.length; writeMeta(vault.meta); }
+    $('itemForm').classList.add('hidden');
+    editing = null;
+    renderItems();
+    Lemon.toast('저장했어요 (암호화됨)', 'ok');
+    Lemon.hap(12);
+  }
+
+  $('btnAddItem').addEventListener('click', function () { openForm(null); });
+  $('btnCancelItem').addEventListener('click', function () { $('itemForm').classList.add('hidden'); editing = null; });
+  $('btnSaveItem').addEventListener('click', saveItem);
+  $('btnFormGen').addEventListener('click', function () {
+    var pw = generate();
+    if (pw) $('fPass').value = pw;
+  });
+  $('vaultSearch').addEventListener('input', renderItems);
+
+  $('vaultList').addEventListener('click', function (e) {
+    var b = e.target;
+    var id = b.getAttribute && (b.getAttribute('data-copy') || b.getAttribute('data-reveal') || b.getAttribute('data-edit') || b.getAttribute('data-remove'));
+    if (!id) return;
+    var item = vault.items.filter(function (x) { return x.id === id; })[0];
+    if (!item) return;
+    if (b.hasAttribute('data-copy')) { Lemon.copy(item.pass, '비밀번호를 복사했어요'); return; }
+    if (b.hasAttribute('data-reveal')) {
+      var el = document.querySelector('[data-pw="' + id + '"]');
+      if (el) {
+        var shown = el.getAttribute('data-shown') === '1';
+        el.textContent = shown ? '••••••••' : item.pass;
+        el.setAttribute('data-shown', shown ? '0' : '1');
+      }
+      return;
+    }
+    if (b.hasAttribute('data-edit')) { openForm(item); return; }
+    if (b.hasAttribute('data-remove')) {
+      if (!confirm('이 항목을 삭제할까요?')) return;
+      vault.items = vault.items.filter(function (x) { return x.id !== id; });
+      saveVault().then(function () { renderItems(); });
+      Lemon.toast('삭제했어요', 'info');
+    }
+  });
+
+  $('btnVaultFromDiag').addEventListener('click', function () {
+    var v = $('pwInput').value;
+    if (!v) { Lemon.toast('먼저 비밀번호를 입력하세요', 'err'); return; }
+    go('vault');
+    if (!vault.key) { Lemon.toast('먼저 금고를 열어 주세요', 'info'); return; }
+    openForm(null);
+    $('fPass').value = v;
+  });
+
+  /* ---------------- backup ---------------- */
+  $('btnExport').addEventListener('click', function () {
+    var meta = readMeta();
+    if (!meta) { Lemon.toast('금고가 없습니다', 'err'); return; }
+    var payload = { app: 'lemon-pass', v: 1, exported: new Date().toISOString(), vault: meta };
+    var d = new Date();
+    var name = 'lemonpass_backup_' + d.getFullYear() + Lemon.pad(d.getMonth() + 1) + Lemon.pad(d.getDate()) + '.json';
+    Lemon.download(name, JSON.stringify(payload), 'application/json');
+    Lemon.toast('암호화된 백업 파일을 내려받았어요', 'ok');
+  });
+
+  $('btnImport').addEventListener('click', function () { $('importFile').click(); });
+  $('btnImportFromLocked').addEventListener('click', function () { $('importFile').click(); });
+  $('importFile').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    var fr = new FileReader();
+    fr.onload = function () {
+      try {
+        var data = JSON.parse(fr.result);
+        var meta = data && data.vault ? data.vault : (data && data.salt && data.ct ? data : null);
+        if (!meta || !meta.salt || !meta.ct) throw new Error('형식이 올바르지 않습니다');
+        if (readMeta() && !confirm('지금 금고를 백업 파일로 바꿉니다. 계속할까요?')) return;
+        if (!writeMeta(meta)) throw new Error('저장 공간이 부족합니다');
+        vault.key = null; vault.items = [];
+        initVaultView();
+        Lemon.toast('백업을 가져왔어요. 마스터 비밀번호로 열어 주세요', 'ok');
+      } catch (err) {
+        Lemon.toast('가져오지 못했어요: ' + (err && err.message ? err.message : '형식 오류'), 'err');
+      }
+    };
+    fr.readAsText(f);
+    this.value = '';
+  });
+
+  $('btnResetVault').addEventListener('click', function () {
+    if (!confirm('금고와 저장된 모든 비밀번호를 삭제합니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+    localStorage.removeItem(VKEY);
+    vault.key = null; vault.items = []; vault.meta = null;
+    initVaultView();
+    Lemon.toast('금고를 초기화했어요', 'info');
+  });
+
+  /* ---------------- boot ---------------- */
+  generate();
+  makePhrase();
+  paintAnalysis(analyze(''));
+  initVaultView();
+
+  window.LemonPass = {
+    analyze: analyze,
+    generate: generate,
+    phrase: makePhrase,
+    vault: vault,
+    createVaultWith: function (pw) { $('setupPw').value = pw; $('setupPw2').value = pw; return createVault(); },
+    unlockWith: function (pw) { $('unlockPw').value = pw; return unlockVault(); },
+    addItem: async function (obj) {
+      obj.id = obj.id || ('v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
+      obj.ts = Date.now();
+      vault.items.unshift(obj);
+      await saveVault();
+      renderItems();
+      return obj;
+    },
+    lock: lockVault
+  };
+})();
+</script>
+</body>
+</html>

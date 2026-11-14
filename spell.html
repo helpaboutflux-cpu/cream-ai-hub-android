@@ -233,6 +233,11 @@ tailwind.config = {
 
   <!-- STUDIO -->
   <section data-view="studio" class="hidden space-y-4">
+        <div class="flex items-center justify-end gap-1.5">
+          <span id="autosaveBadge" class="as-badge">자동 저장 대기</span>
+          <button id="btnNewProject" class="ghost-btn !px-2.5 !py-1 !text-[10px]">새로 만들기</button>
+        </div>
+
     <div class="grid lg:grid-cols-[1.15fr_.85fr] gap-4 lg:items-start">
 
       <div class="panel p-4 sm:p-5 space-y-3">
@@ -485,6 +490,7 @@ tailwind.config = {
   function escHtml(s) { return Lemon.esc(s); }
 
   function render() {
+    markChanged();
     var text = editor.value;
     var visible = state.issues.filter(function (it) { return !state.ignored[issueKey(it)]; });
 
@@ -738,6 +744,32 @@ tailwind.config = {
     var del = e.target.closest('[data-del]');
     if (del) { ARCHIVE.remove(del.getAttribute('data-del')); renderArchive(); Lemon.toast('삭제했어요', 'info'); }
   });
+
+  /* ---------------- autosave ---------------- */
+  var AUTO = Lemon.project('lemon_spell_archive', { max: 20 });
+  function projectPayload() {
+    var text = editor.value;
+    if (!text.trim()) return null;
+    return {
+      title: text.trim().slice(0, 44).replace(/\s+/g, ' '),
+      sub: text.length + '자 · 교정 ' + state.issues.length + '건',
+      text: text,
+      chars: text.length,
+      issues: state.issues.length
+    };
+  }
+  function markChanged() {
+    if (!AUTO) return;
+    AUTO.touch(projectPayload);
+  }
+  $('btnNewProject').addEventListener('click', function () {
+    AUTO.newProject();
+    editor.value = '';
+    state.ignored = {};
+    rescan();
+    Lemon.toast('새 원고를 시작했어요', 'ok');
+  });
+  AUTO.bind('autosaveBadge');
 
   $('btnClearArc').addEventListener('click', function () {
     if (!ARCHIVE.count()) return Lemon.toast('비울 기록이 없어요', 'info');

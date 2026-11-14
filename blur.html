@@ -193,6 +193,11 @@ tailwind.config = {
 
   <!-- STUDIO -->
   <section data-view="studio" class="hidden space-y-4">
+        <div class="flex items-center justify-end gap-1.5">
+          <span id="autosaveBadge" class="as-badge">자동 저장 대기</span>
+          <button id="btnNewProject" class="ghost-btn !px-2.5 !py-1 !text-[10px]">새로 만들기</button>
+        </div>
+
 
     <div id="dropWrap" class="panel p-4 sm:p-6">
       <div id="dropArea" class="drop-area px-5 py-10 text-center cursor-pointer">
@@ -466,6 +471,7 @@ tailwind.config = {
   }
 
   function render() {
+    markChanged();
     if (!state.img) return;
     var W = canvas.width, H = canvas.height;
     ctx.clearRect(0, 0, W, H);
@@ -712,6 +718,39 @@ tailwind.config = {
     var del = e.target.closest('[data-del]');
     if (del) { ARCHIVE.remove(del.getAttribute('data-del')); renderArchive(); Lemon.toast('삭제했어요', 'info'); }
   });
+
+  /* ---------------- autosave ---------------- */
+  var AUTO = Lemon.project('lemon_blur_archive', { max: 10 });
+  function snapshotImage() {
+    if (!state.img) return null;
+    var c = document.createElement('canvas');
+    var k = Math.min(1, 900 / Math.max(state.img.naturalWidth, state.img.naturalHeight));
+    c.width = Math.round(state.img.naturalWidth * k);
+    c.height = Math.round(state.img.naturalHeight * k);
+    c.getContext('2d').drawImage(state.img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.72);
+  }
+  function projectPayload() {
+    if (!state.img) return null;
+    return {
+      title: '가린 사진 · ' + state.ops.length + '개 영역',
+      sub: state.img.naturalWidth + '×' + state.img.naturalHeight,
+      state: { img: snapshotImage(), ops: state.ops },
+      thumb: snapshotImage()
+    };
+  }
+  function markChanged() {
+    if (!AUTO) return;
+    AUTO.touch(projectPayload);
+  }
+  $('btnNewProject').addEventListener('click', function () {
+    AUTO.newProject();
+    state.img = null; state.ops = []; state.redo = [];
+    if ($('editorWrap')) $('editorWrap').classList.add('hidden');
+    if ($('dropWrap')) $('dropWrap').classList.remove('hidden');
+    Lemon.toast('새 작업을 시작해요', 'ok');
+  });
+  AUTO.bind('autosaveBadge');
 
   $('btnClearArc').addEventListener('click', function () {
     if (!ARCHIVE.count()) return Lemon.toast('비울 기록이 없어요', 'info');

@@ -182,6 +182,11 @@ tailwind.config = {
 
   <!-- STUDIO -->
   <section data-view="studio" class="hidden space-y-4">
+        <div class="flex items-center justify-end gap-1.5">
+          <span id="autosaveBadge" class="as-badge">자동 저장 대기</span>
+          <button id="btnNewProject" class="ghost-btn !px-2.5 !py-1 !text-[10px]">새로 만들기</button>
+        </div>
+
     <div class="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-4 lg:items-start">
 
       <div class="panel p-5 sm:p-7 text-center">
@@ -494,6 +499,7 @@ tailwind.config = {
       setPhase('완료', 100);
       renderGrades();
       state.last = { down: state.down, up: state.up, ping: state.ping, jitter: state.jitter, ts: Date.now() };
+      markChanged();
       $('btnSaveResult').disabled = false;
       Lemon.toast('측정을 마쳤어요', 'ok');
       Lemon.confetti(14);
@@ -621,6 +627,29 @@ tailwind.config = {
     var del = e.target.closest('[data-del]');
     if (del) { ARCHIVE.remove(del.getAttribute('data-del')); renderArchive(); Lemon.toast('삭제했어요', 'info'); }
   });
+
+  /* ---------------- autosave ---------------- */
+  var AUTO = Lemon.project('lemon_speed_archive', { max: 30 });
+  function projectPayload() {
+    var r = state.last;
+    if (!r) return null;
+    return {
+      title: r.down + ' Mbps',
+      sub: '핑 ' + r.ping + 'ms · 지터 ' + r.jitter + 'ms · 업 ' + r.up + ' Mbps',
+      down: r.down, up: r.up, ping: r.ping, jitter: r.jitter
+    };
+  }
+  function markChanged() {
+    if (!AUTO) return;
+    AUTO.touch(projectPayload);
+  }
+  $('btnNewProject').addEventListener('click', function () {
+    AUTO.newProject();
+    state.last = null;
+    if ($('btnSaveResult')) $('btnSaveResult').disabled = true;
+    Lemon.toast('새 측정을 시작할 수 있어요', 'ok');
+  });
+  AUTO.bind('autosaveBadge');
 
   $('btnClearArc').addEventListener('click', function () {
     if (!ARCHIVE.count()) return Lemon.toast('비울 기록이 없어요', 'info');

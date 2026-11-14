@@ -235,9 +235,92 @@
         save(list);
         return list;
       },
+      update: function (id, patch) {
+        var list = all();
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id === id) {
+            list[i] = Object.assign({}, list[i], patch, { ts: Date.now() });
+            save(list);
+            return list[i];
+          }
+        }
+        return null;
+      },
+      save: save,
       clear: function () { store.set(key, []); },
       count: function () { return all().length; }
     };
+  }
+
+  /* ---------------- project autosave ---------------- */
+  /* Keeps one archive record per working project: edits upsert the same id,
+     "새로 만들기" starts a fresh record so earlier work stays in the archive. */
+  function project(key, opts) {
+    opts = opts || {};
+    var arch = makeArchive(key, opts.max || 20);
+    var ACTIVE = key + '__active';
+    var timer = null, pending = null, badge = null;
+
+    function currentId() { var v = store.raw(ACTIVE, ''); return v || null; }
+    function stamp() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+    function setBadge(text, state) {
+      if (!badge) return;
+      badge.textContent = text;
+      badge.setAttribute('data-state', state || 'idle');
+    }
+    function flush() {
+      timer = null;
+      if (!pending) return null;
+      var payload;
+      try { payload = pending(); } catch (e) { return null; }
+      if (!payload) return null;
+      var id = currentId();
+      var rec = id ? arch.update(id, Object.assign({}, payload, { auto: true })) : null;
+      if (!rec) rec = arch.add(Object.assign({}, payload, { auto: true }));
+      if (rec) {
+        store.rawSet(ACTIVE, rec.id);
+        setBadge('자동 저장됨 ' + stamp(), 'saved');
+      }
+      return rec;
+    }
+    var api = {
+      archive: arch,
+      id: currentId,
+      bind: function (el) {
+        if (typeof el === 'string' && el.charAt(0) !== '#' && el.charAt(0) !== '[') el = '#' + el;
+        badge = typeof el === 'string' ? doc.querySelector(el) : el;
+        if (!badge) return;
+        if (!badge.classList.contains('as-badge')) badge.classList.add('as-badge');
+        setBadge(currentId() ? '자동 저장됨' : '자동 저장 대기', currentId() ? 'saved' : 'idle');
+      },
+      badgeState: function (text, state) { setBadge(text, state); },
+      touch: function (fn) {
+        pending = fn;
+        setBadge('저장 중…', 'saving');
+        clearTimeout(timer);
+        timer = setTimeout(flush, opts.delay || 1200);
+      },
+      flushNow: function (fn) {
+        if (fn) pending = fn;
+        clearTimeout(timer);
+        return flush();
+      },
+      newProject: function () {
+        if (pending) flush();
+        clearTimeout(timer);
+        timer = null;
+        pending = null;
+        store.rawSet(ACTIVE, '');
+        setBadge('새 프로젝트', 'new');
+      },
+      restore: function (id) {
+        var list = arch.all();
+        for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+        return null;
+      },
+      openProject: function (id) { store.rawSet(ACTIVE, id); setBadge('자동 저장됨 ' + stamp(), 'saved'); }
+    };
+    return api;
   }
 
   /* ---------------- reveal on scroll ---------------- */
@@ -350,6 +433,7 @@
     toggleTheme: toggleTheme,
     initTabs: initTabs,
     archive: makeArchive,
+    project: project,
     reveal: reveal,
     tilt: tilt,
     confetti: confetti,

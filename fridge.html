@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Fridge — 냉장고 유통기한·장보기 &amp; 사진 OCR 스캔</title>
+<meta name="description" content="냉장실·냉동실·실온 식재료의 유통기한을 D-Day로 관리하고, 포장지 사진을 찍으면 유통기한을 OCR로 읽어 자동 입력합니다. 다 먹은 재료는 장보기 목록으로 넘깁니다.">
+<meta name="theme-color" content="#16a34a">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { 50: '#ecf8f1', 100: '#daf0e2', 200: '#b4e2c5', 300: '#8ad1a4', 400: '#5cbf80', 500: '#16a34a', 600: '#149644', 700: '#117f3a', 800: '#0f6c31', 900: '#0c5828', 950: '#09441f' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #16a34a; --brand-2: #22c55e; --brand-deep: #15803d; }
+  .zone-btn {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .42rem .7rem; border-radius: .8rem; font-size: 11px; font-weight: 800;
+    border: 1px solid rgb(228 228 231); color: rgb(82 82 91); background: #fff;
+    transition: all .16s ease; white-space: nowrap;
+  }
+  .dark .zone-btn { border-color: rgb(45 45 50); color: rgb(161 161 170); background: rgb(24 24 27); }
+  .zone-btn.on { color: #fff; border-color: transparent; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 8px 18px -12px rgba(22,163,74,.8); }
+  .zone-btn:active { transform: scale(.96); }
+  .zone-btn svg { width: .85rem; height: .85rem; }
+
+  .item-card { transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .2s, border-color .2s; }
+  @media (hover: hover) { .item-card:hover { transform: translateY(-2px); box-shadow: 0 18px 34px -26px rgba(0,0,0,.45); } }
+
+  .dday { font-variant-numeric: tabular-nums; font-weight: 900; }
+  .dday-ok { color: #16a34a; }
+  .dark .dday-ok { color: #4ade80; }
+  .dday-soon { color: #d97706; }
+  .dark .dday-soon { color: #fbbf24; }
+  .dday-over { color: #e11d48; }
+  .dark .dday-over { color: #fb7185; }
+
+  .qty-btn {
+    width: 1.65rem; height: 1.65rem; border-radius: .55rem; display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid rgb(228 228 231); color: rgb(63 63 70); font-weight: 900; font-size: 12px;
+    background: #fff; transition: all .15s;
+  }
+  .dark .qty-btn { border-color: rgb(45 45 50); background: rgb(24 24 27); color: rgb(212 212 216); }
+  .qty-btn:active { transform: scale(.9); }
+
+  .scan-modal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: flex-end; justify-content: center; }
+  .scan-backdrop { position: absolute; inset: 0; background: rgba(9,9,11,.6); backdrop-filter: blur(4px); }
+  .scan-sheet {
+    position: relative; width: 100%; max-width: 42rem; max-height: 92vh; overflow-y: auto;
+    background: #fff; border-radius: 1.5rem 1.5rem 0 0; padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -20px 50px -20px rgba(0,0,0,.5);
+    animation: sheetUp .32s cubic-bezier(.22,1,.36,1) both;
+  }
+  .dark .scan-sheet { background: #121215; }
+  @media (min-width: 640px) {
+    .scan-modal { align-items: center; }
+    .scan-sheet { border-radius: 1.5rem; }
+  }
+  @keyframes sheetUp { from { transform: translateY(24px); opacity: .5; } to { transform: none; opacity: 1; } }
+
+  .scan-drop { border: 2px dashed rgb(212 212 216); border-radius: 1rem; transition: border-color .2s, background-color .2s; }
+  .dark .scan-drop { border-color: rgb(45 45 50); }
+  .scan-drop.over { border-color: var(--brand); background: rgba(22,163,74,.07); }
+
+  .date-chip {
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    padding: .5rem .65rem; border-radius: .7rem; border: 1px solid rgb(228 228 231); background: #fff;
+    font-size: 11px; font-weight: 700; cursor: pointer; transition: all .15s;
+  }
+  .dark .date-chip { border-color: rgb(45 45 50); background: rgb(24 24 27); }
+  .date-chip.on { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(22,163,74,.14); }
+
+  .bar-row { display: flex; align-items: center; gap: .6rem; font-size: 11px; font-weight: 700; }
+  .bar-out { flex: 1; height: .55rem; border-radius: 9999px; background: rgb(238 238 243); overflow: hidden; }
+  .dark .bar-out { background: rgb(39 39 42); }
+  .bar-in { height: 100%; border-radius: 9999px; transition: width .5s cubic-bezier(.22,1,.36,1); }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 o2 opacity-20" style="background:#22c55e"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18H6z"></path><path d="M6 10h12"></path><path d="M10 6.5h1.5M10 14h1.5"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Fridge</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">OCR SCAN</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">유통기한 · 장보기 관리</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="fridge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18H6z"></path><path d="M6 10h12"></path></svg>
+        <span>냉장고</span>
+        <span id="navFridgeCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+      <button class="nav-tab" data-tab="shop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11h11L21 7H6"></path><circle cx="9" cy="19" r="1.4"></circle><circle cx="18" cy="19" r="1.4"></circle></svg>
+        <span>장보기</span>
+        <span id="navShopCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+      <button class="nav-tab" data-tab="stats">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>
+        <span>통계</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            포장지 사진으로 유통기한 자동 인식
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            버려지는 음식 없이<br><span class="brand-text">냉장고 비우기</span>.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            우유팩에 찍힌 날짜를 사진으로 찍으면 유통기한을 읽어 D-Day로 정리해 둡니다. 다 먹은 재료는 한 번에 장보기 목록으로 넘어갑니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="fridge" id="heroScan">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h4l2-3h6l2 3h4v13H3z"></path><circle cx="12" cy="13" r="3.2"></circle></svg>
+              유통기한 스캔
+            </button>
+            <button class="ghost-btn" data-goto="shop">장보기 목록</button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text" id="homeSoon">0</p><p class="text-[10px] text-neutral-500">3일 내 임박</p></div>
+            <div><p class="text-lg font-black brand-text" id="homeTotal">0</p><p class="text-[10px] text-neutral-500">보관 중</p></div>
+            <div><p class="text-lg font-black brand-text" id="homeOver">0</p><p class="text-[10px] text-neutral-500">기한 지남</p></div>
+          </div>
+        </div>
+        <div class="panel p-4 space-y-2.5">
+          <div class="flex items-center justify-between text-[10px] font-bold text-neutral-400">
+            <span>임박 순</span><span class="font-mono">D-DAY</span>
+          </div>
+          <div id="homeList" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h4l2-3h6l2 3h4v13H3z"></path><circle cx="12" cy="13" r="3"></circle></svg></div>
+        <h3 class="text-[13px] font-bold">사진 OCR 인식</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">포장지의 ‘2026.11.20까지’ 같은 날짜를 읽어 채웁니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"></path></svg></div>
+        <h3 class="text-[13px] font-bold">구역별 관리</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">냉장실·냉동실·실온을 나눠 보관 위치까지 기억합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg></div>
+        <h3 class="text-[13px] font-bold">다 먹음 → 장보기</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">비운 재료가 자동으로 장바구니 목록에 들어갑니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg></div>
+        <h3 class="text-[13px] font-bold">낭비 통계</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">임박·만료 개수를 세어 이번 주에 뭘 먼저 먹을지 알려줍니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FRIDGE -->
+  <section data-view="fridge" class="hidden space-y-4">
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full brand-grad"></span>
+          <h2 class="text-[13px] font-black tracking-tight">냉장고</h2>
+          <span id="fridgeMeta" class="text-[10px] font-mono text-neutral-400"></span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btnScan" class="primary-btn !px-3 !py-2 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3 7h4l2-3h6l2 3h4v13H3z"></path><circle cx="12" cy="13" r="3.2"></circle></svg>
+            사진으로 스캔
+          </button>
+          <button id="btnAddItem" class="ghost-btn !px-3 !py-2 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            직접 추가
+          </button>
+          <span id="autosaveBadge" class="as-badge">자동 저장 대기</span>
+          <button id="btnNewProject" class="ghost-btn !px-3 !py-2 !text-[11px]">새로 만들기</button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+        <button class="zone-btn on" data-zone="all">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect></svg>
+          전체
+        </button>
+        <button class="zone-btn" data-zone="fridge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12v18H6z"></path><path d="M6 10h12"></path></svg>
+          냉장실
+        </button>
+        <button class="zone-btn" data-zone="freezer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M4 8l16 8M20 8L4 16"></path></svg>
+          냉동실
+        </button>
+        <button class="zone-btn" data-zone="room">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V9l8-5 8 5v11"></path></svg>
+          실온
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input id="itemSearch" type="text" class="lemon-input !py-2 !text-[12px]" placeholder="재료 이름 검색">
+        <select id="sortSel" class="lemon-select !py-2 !text-[11px] !w-auto">
+          <option value="dday">임박순</option>
+          <option value="recent">최근 추가</option>
+          <option value="name">이름순</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="itemList" class="grid grid-cols-1 lg:grid-cols-2 gap-2 items-start"></div>
+  </section>
+
+  <!-- SHOP -->
+  <section data-view="shop" class="hidden space-y-4">
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full brand-grad"></span>
+          <h2 class="text-[13px] font-black tracking-tight">장보기 목록</h2>
+          <span id="shopMeta" class="text-[10px] font-mono text-neutral-400"></span>
+        </div>
+        <button id="btnShopClear" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">산 것 지우기</button>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="shopInput" type="text" class="lemon-input !py-2.5 !text-[12px]" placeholder="살 것을 입력하고 Enter">
+        <button id="btnShopAdd" class="primary-btn !px-3.5 !py-2.5 !text-[11px] whitespace-nowrap">추가</button>
+      </div>
+      <div id="shopList" class="space-y-1.5"></div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section data-view="stats" class="hidden space-y-4">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4">
+        <p class="text-[10px] font-bold text-neutral-400">보관 중인 재료</p>
+        <p id="statTotal" class="text-2xl font-black brand-text tabular">0</p>
+      </div>
+      <div class="panel p-4">
+        <p class="text-[10px] font-bold text-neutral-400">3일 내 임박</p>
+        <p id="statSoon" class="text-2xl font-black tabular" style="color:#d97706">0</p>
+      </div>
+      <div class="panel p-4">
+        <p class="text-[10px] font-bold text-neutral-400">기한 지남</p>
+        <p id="statOver" class="text-2xl font-black tabular" style="color:#e11d48">0</p>
+      </div>
+      <div class="panel p-4">
+        <p class="text-[10px] font-bold text-neutral-400">장보기 남음</p>
+        <p id="statShop" class="text-2xl font-black tabular" style="color:#2563eb">0</p>
+      </div>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <h3 class="text-[13px] font-black tracking-tight">구역별 보관</h3>
+      <div id="zoneStats" class="space-y-2.5"></div>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <h3 class="text-[13px] font-black tracking-tight">유통기한 분포</h3>
+      <div id="expiryStats" class="space-y-2.5"></div>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-2">
+      <h3 class="text-[13px] font-black tracking-tight">먼저 먹을 것</h3>
+      <div id="eatFirst" class="space-y-1.5"></div>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-2">
+      <div class="flex items-center justify-between">
+        <h3 class="text-[13px] font-black tracking-tight">자동 저장 기록</h3>
+        <span class="text-[10px] text-neutral-400">작업할 때마다 자동으로 남습니다</span>
+      </div>
+      <div id="projList" class="space-y-1.5"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Fridge</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="cam.html" class="hover:text-brand-600 dark:hover:text-brand-400">Cam</a>
+      <a href="mark.html" class="hover:text-brand-600 dark:hover:text-brand-400">Mark</a>
+      <a href="pass.html" class="hover:text-brand-600 dark:hover:text-brand-400">Pass</a>
+      <a href="money.html" class="hover:text-brand-600 dark:hover:text-brand-400">Money</a>
+      <a href="ocr.html" class="hover:text-brand-600 dark:hover:text-brand-400">OCR</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<!-- scan modal -->
+<div id="scanModal" class="scan-modal hidden">
+  <div class="scan-backdrop" data-close-scan></div>
+  <div class="scan-sheet space-y-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full brand-grad"></span>
+        <h3 class="text-[13px] font-black tracking-tight">유통기한 사진 스캔</h3>
+      </div>
+      <button class="icon-btn" data-close-scan aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <div id="scanDrop" class="scan-drop p-4 text-center cursor-pointer">
+      <input type="file" id="scanFile" accept="image/*" class="hidden">
+      <div class="w-11 h-11 mx-auto rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-2">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h4l2-3h6l2 3h4v13H3z"></path><circle cx="12" cy="13" r="3.2"></circle></svg>
+      </div>
+      <p class="text-[12px] font-bold">포장지의 날짜 부분을 찍은 사진을 올려 주세요</p>
+      <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">파일 선택 · 끌어다 놓기 · Ctrl+V 붙여넣기</p>
+    </div>
+
+    <div id="scanPreviewWrap" class="hidden space-y-2">
+      <div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 relative" style="max-height:220px">
+        <canvas id="scanPreview" class="w-full h-auto block" style="max-height:220px;object-fit:contain"></canvas>
+      </div>
+      <div id="scanProgressWrap" class="hidden space-y-1">
+        <div class="progress-track"><div id="scanProgress" class="progress-fill" style="width:4%"></div></div>
+        <p id="scanStage" class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">인식 준비 중…</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="btnRunScan" class="primary-btn flex-1 !py-2.5 !text-[12px]">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>
+          날짜 읽기
+        </button>
+        <button id="btnScanReset" class="ghost-btn !py-2.5 !text-[12px]">다른 사진</button>
+      </div>
+    </div>
+
+    <div id="scanResult" class="hidden space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="lemon-label">인식된 날짜</span>
+        <span id="scanConf" class="text-[10px] font-mono text-neutral-400"></span>
+      </div>
+      <div id="dateChoices" class="space-y-1.5"></div>
+      <details class="rounded-lg border border-neutral-200 dark:border-neutral-800 p-2">
+        <summary class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 cursor-pointer">읽어낸 전체 텍스트 보기</summary>
+        <pre id="scanRaw" class="text-[10px] text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap mt-1.5 max-h-32 overflow-y-auto"></pre>
+      </details>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="grid grid-cols-2 gap-2.5">
+      <div class="col-span-2">
+        <span class="lemon-label">재료 이름</span>
+        <input id="scanName" type="text" class="lemon-input mt-1" placeholder="예: 서울우유 1L" maxlength="40">
+      </div>
+      <div>
+        <span class="lemon-label">보관 구역</span>
+        <select id="scanZone" class="lemon-select mt-1">
+          <option value="fridge">냉장실</option>
+          <option value="freezer">냉동실</option>
+          <option value="room">실온</option>
+        </select>
+      </div>
+      <div>
+        <span class="lemon-label">유통기한</span>
+        <input id="scanExpiry" type="date" class="lemon-input mt-1">
+      </div>
+      <div>
+        <span class="lemon-label">수량</span>
+        <input id="scanQty" type="number" min="1" max="99" value="1" class="lemon-input mt-1">
+      </div>
+      <div>
+        <span class="lemon-label">메모</span>
+        <input id="scanMemo" type="text" class="lemon-input mt-1" placeholder="선택" maxlength="40">
+      </div>
+    </div>
+    <p class="text-[10px] text-neutral-400 dark:text-neutral-500">사진은 기기에서만 처리되고 서버로 전송되지 않습니다. 인식 결과는 저장 전에 직접 고칠 수 있어요.</p>
+    <button id="btnScanSave" class="primary-btn btn-shimmer w-full !py-3 !text-[13px]">냉장고에 넣기</button>
+  </div>
+</div>
+
+<!-- item editor modal -->
+<div id="editModal" class="scan-modal hidden">
+  <div class="scan-backdrop" data-close-edit></div>
+  <div class="scan-sheet space-y-3">
+    <div class="flex items-center justify-between">
+      <h3 id="editTitle" class="text-[13px] font-black tracking-tight">재료 추가</h3>
+      <button class="icon-btn" data-close-edit aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="grid grid-cols-2 gap-2.5">
+      <div class="col-span-2">
+        <span class="lemon-label">재료 이름</span>
+        <input id="edName" type="text" class="lemon-input mt-1" placeholder="예: 계란" maxlength="40">
+      </div>
+      <div>
+        <span class="lemon-label">보관 구역</span>
+        <select id="edZone" class="lemon-select mt-1">
+          <option value="fridge">냉장실</option>
+          <option value="freezer">냉동실</option>
+          <option value="room">실온</option>
+        </select>
+      </div>
+      <div>
+        <span class="lemon-label">유통기한</span>
+        <input id="edExpiry" type="date" class="lemon-input mt-1">
+      </div>
+      <div>
+        <span class="lemon-label">수량</span>
+        <input id="edQty" type="number" min="1" max="99" value="1" class="lemon-input mt-1">
+      </div>
+      <div>
+        <span class="lemon-label">메모</span>
+        <input id="edMemo" type="text" class="lemon-input mt-1" placeholder="선택" maxlength="40">
+      </div>
+    </div>
+    <button id="btnEditSave" class="primary-btn w-full !py-2.5 !text-[12px]">저장</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var $ = function (id) { return document.getElementById(id); };
+
+  var IKEY = 'lemon_fridge_items';
+  var SKEY = 'lemon_fridge_shopping';
+  var AUTO = Lemon.project('lemon_fridge_projects', { max: 10 });
+
+  var ZONES = { fridge: '냉장실', freezer: '냉동실', room: '실온' };
+  var ZONE_COLOR = { fridge: '#16a34a', freezer: '#2563eb', room: '#d97706' };
+
+  var st = {
+    items: [],
+    shop: [],
+    zone: 'all',
+    sort: 'dday',
+    search: '',
+    editing: null,
+    scan: { img: null, canvas: null, picked: null, texts: [], busy: false }
+  };
+
+  /* ---------------- storage ---------------- */
+  function load() {
+    try {
+      var a = JSON.parse(localStorage.getItem(IKEY) || '[]');
+      st.items = Array.isArray(a) ? a : [];
+    } catch (e) { st.items = []; }
+    try {
+      var b = JSON.parse(localStorage.getItem(SKEY) || '[]');
+      st.shop = Array.isArray(b) ? b : [];
+    } catch (e) { st.shop = []; }
+  }
+  function saveItems() {
+    try { localStorage.setItem(IKEY, JSON.stringify(st.items)); }
+    catch (e) { Lemon.toast('저장 공간이 부족해요', 'err'); }
+    markChanged();
+  }
+  function saveShop() {
+    try { localStorage.setItem(SKEY, JSON.stringify(st.shop)); }
+    catch (e) { Lemon.toast('저장 공간이 부족해요', 'err'); }
+    markChanged();
+  }
+  function projectPayload() {
+    if (!st.items.length && !st.shop.length) return null;
+    var soon = 0, over = 0;
+    st.items.forEach(function (it) {
+      var n = daysLeft(it.expiry);
+      if (n === null) return;
+      if (n < 0) over++;
+      else if (n <= 3) soon++;
+    });
+    return {
+      title: '냉장고 · ' + st.items.length + '개',
+      sub: '임박 ' + soon + ' · 기한 지남 ' + over + ' · 장보기 ' + st.shop.filter(function (x) { return !x.done; }).length,
+      state: { items: st.items, shop: st.shop }
+    };
+  }
+  function markChanged() {
+    if (!AUTO) return;
+    AUTO.touch(projectPayload);
+  }
+  function restoreProject(rec) {
+    if (!rec || !rec.state) { Lemon.toast('되살릴 기록이 없어요', 'info'); return; }
+    if (!confirm('지금 냉장고를 이 기록으로 바꿀까요? 지금 목록은 보관함에 남습니다.')) return;
+    st.items = rec.state.items || [];
+    st.shop = rec.state.shop || [];
+    saveItems(); saveShop();
+    renderAll();
+    Lemon.toast('기록을 불러왔어요', 'ok');
+  }
+  function uid() { return 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+  /* ---------------- date helpers ---------------- */
+  function today0() {
+    var d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function parseISO(s) {
+    if (!s) return null;
+    var p = s.split('-');
+    if (p.length !== 3) return null;
+    var d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function daysLeft(iso) {
+    var d = parseISO(iso);
+    if (!d) return null;
+    return Math.round((d - today0()) / 86400000);
+  }
+  function isoOf(y, m, dd) {
+    return y + '-' + Lemon.pad(m) + '-' + Lemon.pad(dd);
+  }
+  function ddayLabel(n) {
+    if (n === null) return '기한 없음';
+    if (n < 0) return 'D+' + Math.abs(n);
+    if (n === 0) return 'D-Day';
+    return 'D-' + n;
+  }
+  function ddayClass(n) {
+    if (n === null) return '';
+    if (n < 0) return 'dday-over';
+    if (n <= 3) return 'dday-soon';
+    return 'dday-ok';
+  }
+
+  /* ---------------- rendering ---------------- */
+  function sortedItems() {
+    var list = st.items.slice();
+    if (st.zone !== 'all') list = list.filter(function (x) { return x.zone === st.zone; });
+    if (st.search) {
+      var q = st.search.toLowerCase();
+      list = list.filter(function (x) {
+        return (x.name || '').toLowerCase().indexOf(q) > -1 || (x.memo || '').toLowerCase().indexOf(q) > -1;
+      });
+    }
+    if (st.sort === 'dday') {
+      list.sort(function (a, b) {
+        var da = daysLeft(a.expiry), db = daysLeft(b.expiry);
+        if (da === null) da = 99999;
+        if (db === null) db = 99999;
+        return da - db;
+      });
+    } else if (st.sort === 'name') {
+      list.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'ko'); });
+    } else {
+      list.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    }
+    return list;
+  }
+
+  function renderAll() {
+    renderItems();
+    renderShop();
+    renderStats();
+    renderHome();
+  }
+
+  function badgeHtml(n) {
+    if (n === null) return '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500">기한 없음</span>';
+    if (n < 0) return '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">만료</span>';
+    if (n === 0) return '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">오늘까지</span>';
+    if (n <= 3) return '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">임박</span>';
+    if (n <= 7) return '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-400">주의</span>';
+    return '';
+  }
+
+  function renderItems() {
+    var list = sortedItems();
+    $('navFridgeCount').textContent = st.items.length;
+    $('fridgeMeta').textContent = list.length + '개 표시';
+    var box = $('itemList');
+    if (!st.items.length) {
+      box.innerHTML = '<div class="panel p-8 text-center lg:col-span-2"><div class="w-14 h-14 mx-auto rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h12v18H6z"></path><path d="M6 10h12"></path></svg></div>' +
+        '<p class="text-[13px] font-bold">냉장고가 비어 있어요</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">포장지 사진으로 유통기한을 읽거나 직접 추가해 보세요.</p>' +
+        '<div class="flex flex-wrap items-center justify-center gap-2 mt-4">' +
+        '<button class="primary-btn !py-2.5 !text-[11px]" data-act="scan">사진으로 스캔</button>' +
+        '<button class="ghost-btn !py-2.5 !text-[11px]" data-act="add">직접 추가</button>' +
+        '<button class="ghost-btn !py-2.5 !text-[11px]" data-act="demo">예시로 채우기</button>' +
+        '</div></div>';
+      return;
+    }
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-8 text-center lg:col-span-2"><p class="text-[12px] font-bold">조건에 맞는 재료가 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">구역이나 검색어를 바꿔 보세요.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      var n = daysLeft(it.expiry);
+      var pct = 0;
+      if (n !== null) pct = Math.max(0, Math.min(100, ((60 - Math.max(0, n)) / 60) * 100));
+      var barColor = n === null ? '#a1a1aa' : n < 0 ? '#e11d48' : n <= 3 ? '#d97706' : '#16a34a';
+      return '<div class="panel p-3.5 item-card" data-id="' + it.id + '">' +
+        '<div class="flex items-start gap-3">' +
+        '<div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:' + ZONE_COLOR[it.zone] + '1a;color:' + ZONE_COLOR[it.zone] + '">' +
+        '<svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + (it.zone === 'freezer' ? '<path d="M12 3v18M4 8l16 8M20 8L4 16"></path>' : it.zone === 'room' ? '<path d="M4 20V9l8-5 8 5v11"></path>' : '<path d="M6 3h12v18H6z"></path><path d="M6 10h12"></path>') + '</svg>' +
+        '</div>' +
+        '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center gap-1.5 flex-wrap">' +
+        '<p class="text-[13px] font-bold truncate">' + Lemon.esc(it.name || '이름 없음') + '</p>' +
+        badgeHtml(n) +
+        '<span class="text-[9px] font-bold text-neutral-400">' + ZONES[it.zone] + '</span>' +
+        '</div>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">' + (it.expiry ? it.expiry.replace(/-/g, '.') + ' 까지' : '기한 없음') + (it.memo ? ' · ' + Lemon.esc(it.memo) : '') + '</p>' +
+        '<div class="mt-2 h-1 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden max-w-[7rem]"><div style="width:' + pct.toFixed(0) + '%;height:100%;background:' + barColor + '"></div></div>' +
+        '</div>' +
+        '<div class="text-right shrink-0">' +
+        '<p class="dday ' + ddayClass(n) + ' text-[15px]">' + ddayLabel(n) + '</p>' +
+        '<div class="flex items-center gap-1 mt-1.5 justify-end">' +
+        '<button class="qty-btn" data-qty="-1" aria-label="수량 줄이기">−</button>' +
+        '<span class="text-[11px] font-black tabular w-6 text-center">' + (it.qty || 1) + '</span>' +
+        '<button class="qty-btn" data-qty="1" aria-label="수량 늘리기">+</button>' +
+        '</div>' +
+        '</div></div>' +
+        '<div class="flex items-center justify-end gap-1.5 mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px]" data-eat="1">다 먹음</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px]" data-edit="1">수정</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="1">삭제</button>' +
+        '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderShop() {
+    var left = st.shop.filter(function (x) { return !x.done; }).length;
+    $('navShopCount').textContent = left;
+    $('shopMeta').textContent = left + '개 남음 · 전체 ' + st.shop.length + '개';
+    var box = $('shopList');
+    if (!st.shop.length) {
+      box.innerHTML = '<div class="p-6 text-center"><p class="text-[12px] font-bold">장보기 목록이 비어 있어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">냉장고에서 ‘다 먹음’을 누르면 여기로 들어옵니다.</p></div>';
+      return;
+    }
+    box.innerHTML = st.shop.map(function (s) {
+      return '<div class="flex items-center gap-2.5 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 ' + (s.done ? 'opacity-50' : '') + '" data-shop="' + s.id + '">' +
+        '<button class="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ' + (s.done ? 'border-brand-500 bg-brand-500 text-white' : 'border-neutral-300 dark:border-neutral-600') + '" data-toggle="1">' +
+        (s.done ? '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4"><polyline points="4 12 9 17 20 6"></polyline></svg>' : '') +
+        '</button>' +
+        '<p class="flex-1 text-[12px] font-bold ' + (s.done ? 'line-through text-neutral-400' : '') + ' truncate">' + Lemon.esc(s.name) + '</p>' +
+        '<span class="text-[10px] font-mono text-neutral-400">×' + (s.qty || 1) + '</span>' +
+        '<button class="text-rose-500 text-[11px] font-bold px-1" data-shopdel="1">삭제</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderStats() {
+    var total = st.items.length;
+    var soon = 0, over = 0;
+    st.items.forEach(function (it) {
+      var n = daysLeft(it.expiry);
+      if (n === null) return;
+      if (n < 0) over++;
+      else if (n <= 3) soon++;
+    });
+    $('statTotal').textContent = total;
+    $('statSoon').textContent = soon;
+    $('statOver').textContent = over;
+    $('statShop').textContent = st.shop.filter(function (x) { return !x.done; }).length;
+
+    var zc = { fridge: 0, freezer: 0, room: 0 };
+    st.items.forEach(function (it) { if (zc[it.zone] !== undefined) zc[it.zone]++; });
+    var maxZ = Math.max(1, zc.fridge, zc.freezer, zc.room);
+    $('zoneStats').innerHTML = Object.keys(ZONES).map(function (k) {
+      return '<div class="bar-row"><span class="w-14 text-neutral-500 dark:text-neutral-400">' + ZONES[k] + '</span>' +
+        '<span class="bar-out"><span class="bar-in" style="width:' + Math.round(zc[k] / maxZ * 100) + '%;background:' + ZONE_COLOR[k] + '"></span></span>' +
+        '<span class="w-8 text-right tabular">' + zc[k] + '</span></div>';
+    }).join('');
+
+    var buckets = [
+      { label: '기한 지남', n: 0, color: '#e11d48' },
+      { label: '3일 내', n: 0, color: '#d97706' },
+      { label: '4~7일', n: 0, color: '#f59e0b' },
+      { label: '8일 이상', n: 0, color: '#16a34a' },
+      { label: '기한 없음', n: 0, color: '#a1a1aa' }
+    ];
+    st.items.forEach(function (it) {
+      var n = daysLeft(it.expiry);
+      if (n === null) buckets[4].n++;
+      else if (n < 0) buckets[0].n++;
+      else if (n <= 3) buckets[1].n++;
+      else if (n <= 7) buckets[2].n++;
+      else buckets[3].n++;
+    });
+    var maxB = Math.max(1, buckets.reduce(function (a, b) { return Math.max(a, b.n); }, 0));
+    $('expiryStats').innerHTML = buckets.map(function (b) {
+      return '<div class="bar-row"><span class="w-16 text-neutral-500 dark:text-neutral-400">' + b.label + '</span>' +
+        '<span class="bar-out"><span class="bar-in" style="width:' + Math.round(b.n / maxB * 100) + '%;background:' + b.color + '"></span></span>' +
+        '<span class="w-8 text-right tabular">' + b.n + '</span></div>';
+    }).join('');
+
+    renderProjects();
+
+    var first = st.items.slice().sort(function (a, b) {
+      var da = daysLeft(a.expiry); if (da === null) da = 99999;
+      var db = daysLeft(b.expiry); if (db === null) db = 99999;
+      return da - db;
+    }).slice(0, 5);
+    $('eatFirst').innerHTML = first.length ? first.map(function (it) {
+      var n = daysLeft(it.expiry);
+      return '<div class="flex items-center justify-between gap-2 text-[11px]"><span class="font-bold truncate">' + Lemon.esc(it.name) + '</span><span class="dday ' + ddayClass(n) + '">' + ddayLabel(n) + '</span></div>';
+    }).join('') : '<p class="text-[11px] text-neutral-400">먼저 먹을 재료가 없습니다.</p>';
+  }
+
+  function renderHome() {
+    var soon = 0, over = 0;
+    st.items.forEach(function (it) {
+      var n = daysLeft(it.expiry);
+      if (n === null) return;
+      if (n < 0) over++;
+      else if (n <= 3) soon++;
+    });
+    $('homeSoon').textContent = soon;
+    $('homeTotal').textContent = st.items.length;
+    $('homeOver').textContent = over;
+    var top = st.items.slice().sort(function (a, b) {
+      var da = daysLeft(a.expiry); if (da === null) da = 99999;
+      var db = daysLeft(b.expiry); if (db === null) db = 99999;
+      return da - db;
+    }).slice(0, 4);
+    $('homeList').innerHTML = top.length ? top.map(function (it) {
+      var n = daysLeft(it.expiry);
+      return '<div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl bg-black/[.03] dark:bg-white/[.05]">' +
+        '<span class="text-[11px] font-bold truncate">' + Lemon.esc(it.name) + '</span>' +
+        '<span class="dday text-[12px] ' + ddayClass(n) + '">' + ddayLabel(n) + '</span></div>';
+    }).join('') : '<p class="text-[11px] text-neutral-400 text-center py-3">아직 등록된 재료가 없어요</p>';
+  }
+
+  function renderProjects() {
+    var box = $('projList');
+    if (!box) return;
+    var list = AUTO.archive.all();
+    if (!list.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-400 py-2">아직 저장된 기록이 없어요. 재료를 추가하면 자동으로 남습니다.</p>';
+      return;
+    }
+    box.innerHTML = list.slice(0, 6).map(function (it) {
+      return '<div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800">' +
+        '<div class="min-w-0"><p class="text-[11px] font-bold truncate">' + Lemon.esc(it.title || '냉징고 기록') + '</p>' +
+        '<p class="text-[9.5px] text-neutral-400 truncate">' + Lemon.esc(it.sub || '') + ' · ' + Lemon.timeAgo(it.ts) + '</p></div>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] shrink-0" data-proj="' + it.id + '">불러오기</button></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-proj]');
+    if (!b) return;
+    restoreProject(AUTO.restore(b.getAttribute('data-proj')));
+  });
+
+  /* ---------------- item actions ---------------- */
+  function openEdit(item) {
+    st.editing = item ? item.id : null;
+    $('editTitle').textContent = item ? '재료 수정' : '재료 추가';
+    $('edName').value = item ? (item.name || '') : '';
+    $('edZone').value = item ? (item.zone || 'fridge') : 'fridge';
+    $('edExpiry').value = item ? (item.expiry || '') : '';
+    $('edQty').value = item ? (item.qty || 1) : 1;
+    $('edMemo').value = item ? (item.memo || '') : '';
+    $('editModal').classList.remove('hidden');
+  }
+
+  function saveEdit() {
+    var name = $('edName').value.trim();
+    if (!name) { Lemon.toast('재료 이름을 입력하세요', 'err'); return; }
+    var payload = {
+      name: name,
+      zone: $('edZone').value,
+      expiry: $('edExpiry').value || '',
+      qty: Math.max(1, parseInt($('edQty').value, 10) || 1),
+      memo: $('edMemo').value.trim()
+    };
+    if (st.editing) {
+      for (var i = 0; i < st.items.length; i++) {
+        if (st.items[i].id === st.editing) {
+          st.items[i] = Object.assign({}, st.items[i], payload);
+          break;
+        }
+      }
+    } else {
+      st.items.push(Object.assign({ id: uid(), ts: Date.now() }, payload));
+    }
+    saveItems();
+    $('editModal').classList.add('hidden');
+    renderAll();
+    Lemon.toast('저장했어요', 'ok');
+    Lemon.hap(10);
+  }
+
+  function findItem(id) {
+    return st.items.filter(function (x) { return x.id === id; })[0];
+  }
+
+  function eatItem(id) {
+    var it = findItem(id);
+    if (!it) return;
+    st.items = st.items.filter(function (x) { return x.id !== id; });
+    saveItems();
+    st.shop.push({ id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4), name: it.name, qty: it.qty || 1, done: false, ts: Date.now() });
+    saveShop();
+    renderAll();
+    Lemon.toast('“' + it.name + '”을(를) 장보기 목록에 넣었어요', 'ok');
+    Lemon.confetti(12);
+  }
+
+  $('itemList').addEventListener('click', function (e) {
+    var card = e.target.closest('[data-id]');
+    if (!card) {
+      var act = e.target.closest('[data-act]');
+      if (act) {
+        if (act.getAttribute('data-act') === 'demo') seedDemo();
+        else if (act.getAttribute('data-act') === 'scan') openScan();
+        else if (act.getAttribute('data-act') === 'add') openEdit(null);
+      }
+      return;
+    }
+    var id = card.getAttribute('data-id');
+    var it = findItem(id);
+    if (!it) return;
+    if (e.target.closest('[data-eat]')) { eatItem(id); return; }
+    if (e.target.closest('[data-edit]')) { openEdit(it); return; }
+    if (e.target.closest('[data-del]')) {
+      if (!confirm('“' + it.name + '”을(를) 삭제할까요?')) return;
+      st.items = st.items.filter(function (x) { return x.id !== id; });
+      saveItems(); renderAll();
+      Lemon.toast('삭제했어요', 'info');
+      return;
+    }
+    var qbtn = e.target.closest('[data-qty]');
+    if (qbtn) {
+      var delta = parseInt(qbtn.getAttribute('data-qty'), 10);
+      var q = (it.qty || 1) + delta;
+      if (q <= 0) { eatItem(id); return; }
+      it.qty = Math.min(99, q);
+      saveItems(); renderAll();
+      Lemon.hap(6);
+    }
+  });
+
+  $('btnAddItem').addEventListener('click', function () { openEdit(null); });
+  $('btnEditSave').addEventListener('click', saveEdit);
+  document.querySelectorAll('[data-close-edit]').forEach(function (el) {
+    el.addEventListener('click', function () { $('editModal').classList.add('hidden'); });
+  });
+
+  document.querySelectorAll('.zone-btn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.zone-btn').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      st.zone = b.getAttribute('data-zone');
+      renderItems();
+      Lemon.hap(6);
+    });
+  });
+  $('itemSearch').addEventListener('input', function () { st.search = this.value.trim(); renderItems(); });
+  $('sortSel').addEventListener('change', function () { st.sort = this.value; renderItems(); });
+
+  /* ---------------- shopping ---------------- */
+  function addShop() {
+    var v = $('shopInput').value.trim();
+    if (!v) return;
+    st.shop.push({ id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4), name: v, qty: 1, done: false, ts: Date.now() });
+    $('shopInput').value = '';
+    saveShop(); renderAll();
+    Lemon.hap(8);
+  }
+  $('btnShopAdd').addEventListener('click', addShop);
+  $('shopInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') addShop(); });
+
+  $('shopList').addEventListener('click', function (e) {
+    var row = e.target.closest('[data-shop]');
+    if (!row) return;
+    var id = row.getAttribute('data-shop');
+    var s = st.shop.filter(function (x) { return x.id === id; })[0];
+    if (!s) return;
+    if (e.target.closest('[data-shopdel]')) {
+      st.shop = st.shop.filter(function (x) { return x.id !== id; });
+      saveShop(); renderAll();
+      return;
+    }
+    s.done = !s.done;
+    saveShop(); renderAll();
+    Lemon.hap(6);
+  });
+
+  $('btnShopClear').addEventListener('click', function () {
+    var before = st.shop.length;
+    st.shop = st.shop.filter(function (x) { return !x.done; });
+    if (before === st.shop.length) { Lemon.toast('체크한 항목이 없어요', 'info'); return; }
+    saveShop(); renderAll();
+    Lemon.toast('산 것을 목록에서 지웠어요', 'ok');
+  });
+
+  /* ---------------- demo ---------------- */
+  function seedDemo() {
+    var t = today0();
+    function d(offset) {
+      var x = new Date(t.getTime() + offset * 86400000);
+      return isoOf(x.getFullYear(), x.getMonth() + 1, x.getDate());
+    }
+    var demo = [
+      { name: '서울우유 1L', zone: 'fridge', qty: 1, expiry: d(2), memo: '개봉 11/13' },
+      { name: '계란 10구', zone: 'fridge', qty: 6, expiry: d(12), memo: '' },
+      { name: '대파', zone: 'fridge', qty: 1, expiry: d(-1), memo: '씻어서 보관' },
+      { name: '삼겹살 500g', zone: 'freezer', qty: 1, expiry: d(45), memo: '소분 완료' },
+      { name: '김치', zone: 'fridge', qty: 1, expiry: d(30), memo: '' },
+      { name: '양파', zone: 'room', qty: 3, expiry: d(9), memo: '' }
+    ];
+    demo.forEach(function (d2) { d2.id = uid(); d2.ts = Date.now(); st.items.push(d2); });
+    saveItems(); renderAll();
+    Lemon.toast('예시 재료 6개를 넣었어요', 'ok');
+    Lemon.confetti(16);
+  }
+
+  /* ---------------- OCR scan ---------------- */
+  var CDN = [
+    { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0' },
+    { workerPath: 'https://unpkg.com/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://unpkg.com/tesseract.js-core@5.1.0' }
+  ];
+  var worker = null, workerLang = '';
+
+  function openScan() {
+    $('scanModal').classList.remove('hidden');
+    if (!st.scan.canvas) $('scanDrop').classList.remove('hidden');
+    Lemon.hap(8);
+    setTimeout(function () { $('scanFile').focus(); }, 100);
+  }
+  function closeScan() { $('scanModal').classList.add('hidden'); }
+
+  $('btnScan').addEventListener('click', openScan);
+  $('heroScan').addEventListener('click', function () { setTimeout(openScan, 260); });
+  document.querySelectorAll('[data-close-scan]').forEach(function (el) {
+    el.addEventListener('click', closeScan);
+  });
+  $('scanDrop').addEventListener('click', function () { $('scanFile').click(); });
+  $('scanFile').addEventListener('change', function () {
+    if (this.files && this.files[0]) scanIntake(this.files[0]);
+    this.value = '';
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    $('scanDrop').addEventListener(ev, function (e) { e.preventDefault(); this.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    $('scanDrop').addEventListener(ev, function (e) { e.preventDefault(); this.classList.remove('over'); });
+  });
+  $('scanDrop').addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) scanIntake(f);
+  });
+  document.addEventListener('paste', function (e) {
+    if ($('scanModal').classList.contains('hidden')) return;
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) {
+        scanIntake(items[i].getAsFile());
+        e.preventDefault();
+        return;
+      }
+    }
+  });
+
+  function scanIntake(file) {
+    if (!file) return;
+    if (file.type && file.type.indexOf('image') !== 0) { Lemon.toast('이미지 파일을 선택해 주세요', 'err'); return; }
+    var fr = new FileReader();
+    fr.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var canvas = $('scanPreview');
+        var maxW = 900;
+        var k = Math.min(1, maxW / Math.max(img.naturalWidth, img.naturalHeight));
+        canvas.width = Math.round(img.naturalWidth * k);
+        canvas.height = Math.round(img.naturalHeight * k);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        st.scan.img = img;
+        st.scan.canvas = canvas;
+        $('scanDrop').classList.add('hidden');
+        $('scanPreviewWrap').classList.remove('hidden');
+        $('scanResult').classList.add('hidden');
+        $('dateChoices').innerHTML = '';
+        Lemon.toast('사진을 불러왔어요. 날짜 읽기를 눌러 주세요', 'info');
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+
+  function setScanProgress(pct, label) {
+    $('scanProgressWrap').classList.remove('hidden');
+    $('scanProgress').style.width = Math.max(2, Math.min(100, pct)) + '%';
+    $('scanStage').textContent = label;
+  }
+
+  function buildScanCanvas() {
+    var src = st.scan.canvas;
+    var long = Math.max(src.width, src.height);
+    var scale = long < 1000 ? 1.8 : long < 1600 ? 1.2 : 1;
+    var w = Math.round(src.width * scale), h = Math.round(src.height * scale);
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, 0, 0, w, h);
+    var frame = ctx.getImageData(0, 0, w, h);
+    var d = frame.data;
+    var hist = new Uint32Array(256);
+    for (var i = 0; i < d.length; i += 4) {
+      var g = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0;
+      hist[g]++;
+    }
+    var n = d.length / 4, acc = 0, lo = 0, hi = 255;
+    for (var t = 0; t < 256; t++) { acc += hist[t]; if (acc >= n * 0.02) { lo = t; break; } }
+    acc = 0;
+    for (var t2 = 255; t2 >= 0; t2--) { acc += hist[t2]; if (acc >= n * 0.02) { hi = t2; break; } }
+    if (hi - lo < 20) { lo = 0; hi = 255; }
+    var scaleC = 255 / Math.max(1, hi - lo);
+    for (var j = 0; j < d.length; j += 4) {
+      var l = (d[j] * 299 + d[j + 1] * 587 + d[j + 2] * 114) / 1000;
+      var v = (l - lo) * scaleC * 1.18 - 10;
+      v = v < 0 ? 0 : v > 255 ? 255 : v;
+      d[j] = d[j + 1] = d[j + 2] = v;
+    }
+    ctx.putImageData(frame, 0, 0);
+    return c;
+  }
+
+  async function getWorker() {
+    if (worker) return worker;
+    var lang = 'kor+eng';
+    var lastErr = null;
+    for (var i = 0; i < CDN.length; i++) {
+      try {
+        var w = await Tesseract.createWorker(lang, 1, {
+          workerPath: CDN[i].workerPath,
+          corePath: CDN[i].corePath,
+          langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+          logger: function (m) {
+            if (!m) return;
+            var s = m.status || '';
+            var p = typeof m.progress === 'number' ? m.progress : 0;
+            if (s.indexOf('loading tesseract core') > -1) setScanProgress(6 + p * 8, '인식 엔진 준비 중…');
+            else if (s.indexOf('loading language') > -1) setScanProgress(16 + p * 30, '한글 인식 데이터 내려받는 중… (첫 실행만)');
+            else if (s.indexOf('initializing') > -1) setScanProgress(50 + p * 10, '엔진 초기화 중…');
+            else if (s.indexOf('recognizing') > -1) setScanProgress(62 + p * 34, '날짜를 찾는 중…');
+          },
+          errorHandler: function (e) { if (window.console) console.warn('[fridge ocr]', e); }
+        });
+        try { await w.setParameters({ preserve_interword_spaces: '1' }); } catch (e2) { }
+        try { await w.setParameters({ tessedit_pageseg_mode: '6' }); } catch (e3) { }
+        worker = w;
+        workerLang = lang;
+        return w;
+      } catch (err) {
+        lastErr = err;
+        if (window.console) console.warn('[fridge] cdn failed', i, err && err.message);
+      }
+    }
+    throw lastErr || new Error('worker init failed');
+  }
+
+  /* ---- date detection ---- */
+  var KEYWORDS = ['유통기한', '소비기한', 'EXP', 'exp', '까지', '까지입니다', '사용기한', '품질유지'];
+
+  function scoreAt(text, idx, len) {
+    var before = text.slice(Math.max(0, idx - 18), idx);
+    var after = text.slice(idx + len, idx + len + 6);
+    var score = 0;
+    for (var i = 0; i < KEYWORDS.length; i++) {
+      if (before.indexOf(KEYWORDS[i]) > -1) { score = 3; break; }
+    }
+    if (!score && after.indexOf('까지') > -1) score = 2;
+    if (!score && (before.indexOf('까지') > -1 || after.indexOf('EXP') > -1)) score = 1;
+    return score;
+  }
+
+  function detectDates(text) {
+    var found = [];
+    var seen = {};
+    if (!text) return found;
+    var flat = text.replace(/\s+/g, ' ');
+
+    function push(y, m, d, raw, idx) {
+      y = parseInt(y, 10); m = parseInt(m, 10); d = parseInt(d, 10);
+      if (y < 100) y += 2000;
+      if (y < 2000 || y > 2100) return;
+      if (m < 1 || m > 12) return;
+      if (d < 1 || d > 31) return;
+      var probe = new Date(y, m - 1, d);
+      if (probe.getMonth() !== m - 1) return;
+      var iso = isoOf(y, m, d);
+      var sc = scoreAt(flat, idx, raw.length);
+      if (seen[iso]) {
+        if (sc > seen[iso].score) { seen[iso].score = sc; seen[iso].near = sc > 0; }
+        return;
+      }
+      var rec = { iso: iso, raw: raw, near: sc > 0, score: sc, idx: idx };
+      seen[iso] = rec;
+      found.push(rec);
+    }
+
+    var re1 = /(20\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/g;
+    var m1;
+    while ((m1 = re1.exec(flat)) !== null) push(m1[1], m1[2], m1[3], m1[0], m1.index);
+
+    var re2 = /(?:\b|^)(\d{2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{1,2})(?!\d)/g;
+    var m2;
+    while ((m2 = re2.exec(flat)) !== null) {
+      if (m2.index > 0 && /\d/.test(flat.charAt(m2.index - 1))) continue;
+      push(m2[1], m2[2], m2[3], m2[0], m2.index);
+    }
+
+    var re3 = /(20\d{2})(\d{2})(\d{2})/g;
+    var m3;
+    while ((m3 = re3.exec(flat)) !== null) {
+      var before = m3.index > 0 ? flat.charAt(m3.index - 1) : '';
+      var after = flat.charAt(m3.index + m3[0].length);
+      if (/\d/.test(before) || /\d/.test(after)) continue;
+      push(m3[1], m3[2], m3[3], m3[0], m3.index);
+    }
+
+    found.sort(function (a, b) {
+      if (a.score !== b.score) return b.score - a.score;
+      if (a.iso !== b.iso) return a.iso < b.iso ? 1 : -1;
+      return a.idx - b.idx;
+    });
+    return found;
+  }
+
+  async function runScan() {
+    if (!st.scan.canvas) { Lemon.toast('먼저 사진을 올려 주세요', 'err'); return; }
+    if (st.scan.busy) return;
+    if (typeof Tesseract === 'undefined') { Lemon.toast('인식 엔진을 불러오지 못했어요. 네트워크를 확인해 주세요', 'err'); return; }
+    st.scan.busy = true;
+    $('btnRunScan').disabled = true;
+    $('scanResult').classList.add('hidden');
+    setScanProgress(3, '준비 중…');
+    try {
+      var canvas = buildScanCanvas();
+      var w = await getWorker();
+      setScanProgress(62, '날짜를 찾는 중…');
+      var ret = await w.recognize(canvas);
+      var text = (ret && ret.data && ret.data.text) || '';
+      var conf = Math.round((ret && ret.data && ret.data.confidence) || 0);
+      setScanProgress(100, '인식 완료');
+      setTimeout(function () { $('scanProgressWrap').classList.add('hidden'); }, 500);
+
+      $('scanRaw').textContent = text.trim() || '(읽어낸 텍스트가 없습니다)';
+      $('scanConf').textContent = '신뢰도 ' + conf + '%';
+      st.scan.texts = detectDates(text);
+
+      if (!st.scan.texts.length) {
+        $('dateChoices').innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400">날짜를 찾지 못했어요. 아래에 직접 입력할 수 있습니다.</p>';
+        $('scanResult').classList.remove('hidden');
+        Lemon.toast('날짜를 찾지 못했어요. 직접 입력해 주세요', 'err');
+        return;
+      }
+      renderDateChoices();
+      $('scanResult').classList.remove('hidden');
+      Lemon.toast('날짜 ' + st.scan.texts.length + '개를 찾았어요', 'ok');
+      Lemon.hap(14);
+    } catch (err) {
+      if (window.console) console.error('[fridge] scan failed', err);
+      $('scanProgressWrap').classList.add('hidden');
+      Lemon.toast('인식에 실패했어요: ' + (err && err.message ? err.message : '오류'), 'err');
+    } finally {
+      st.scan.busy = false;
+      $('btnRunScan').disabled = false;
+    }
+  }
+
+  function renderDateChoices() {
+    var box = $('dateChoices');
+    box.innerHTML = st.scan.texts.map(function (t, i) {
+      var n = daysLeft(t.iso);
+      var label = t.iso.replace(/-/g, '.') + (n === null ? '' : ' · ' + ddayLabel(n));
+      return '<button class="date-chip ' + (i === 0 ? 'on' : '') + '" data-date="' + t.iso + '">' +
+        '<span class="mono">' + label + '</span>' +
+        (t.near ? '<span class="text-[9px] font-bold text-brand-600 dark:text-brand-400">유통기한 근처</span>' : '<span class="text-[9px] text-neutral-400">' + Lemon.esc(t.raw.trim()) + '</span>') +
+        '</button>';
+    }).join('');
+    if (st.scan.texts[0]) $('scanExpiry').value = st.scan.texts[0].iso;
+    st.scan.picked = st.scan.texts[0] ? st.scan.texts[0].iso : null;
+  }
+
+  $('dateChoices').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-date]');
+    if (!b) return;
+    document.querySelectorAll('#dateChoices .date-chip').forEach(function (x) { x.classList.remove('on'); });
+    b.classList.add('on');
+    var iso = b.getAttribute('data-date');
+    $('scanExpiry').value = iso;
+    st.scan.picked = iso;
+    Lemon.hap(6);
+  });
+
+  $('btnRunScan').addEventListener('click', runScan);
+  $('btnScanReset').addEventListener('click', function () {
+    st.scan.img = null; st.scan.canvas = null; st.scan.texts = [];
+    $('scanPreviewWrap').classList.add('hidden');
+    $('scanDrop').classList.remove('hidden');
+    $('scanResult').classList.add('hidden');
+    $('scanProgressWrap').classList.add('hidden');
+  });
+
+  $('btnScanSave').addEventListener('click', function () {
+    var name = $('scanName').value.trim();
+    if (!name) { Lemon.toast('재료 이름을 입력하세요', 'err'); $('scanName').focus(); return; }
+    var expiry = $('scanExpiry').value || '';
+    st.items.push({
+      id: uid(),
+      ts: Date.now(),
+      name: name,
+      zone: $('scanZone').value,
+      expiry: expiry,
+      qty: Math.max(1, parseInt($('scanQty').value, 10) || 1),
+      memo: $('scanMemo').value.trim()
+    });
+    saveItems();
+    renderAll();
+    closeScan();
+    $('scanName').value = ''; $('scanMemo').value = ''; $('scanQty').value = 1;
+    $('scanResult').classList.add('hidden');
+    $('scanPreviewWrap').classList.add('hidden');
+    $('scanDrop').classList.remove('hidden');
+    st.scan.canvas = null; st.scan.img = null;
+    Lemon.toast('냉장고에 넣었어요', 'ok');
+    Lemon.confetti(18);
+  });
+
+  /* ---------------- boot ---------------- */
+  document.addEventListener('click', function (e) {
+    var g = e.target.closest('[data-goto]');
+    if (g) { go(g.getAttribute('data-goto')); }
+  });
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail.view === 'stats') { renderStats(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      $('scanModal').classList.add('hidden');
+      $('editModal').classList.add('hidden');
+    }
+  });
+
+  $('btnNewProject').addEventListener('click', function () {
+    AUTO.newProject();
+    st.items = [];
+    st.shop = [];
+    saveItems(); saveShop();
+    renderAll();
+    Lemon.toast('새 냉장고를 시작했어요', 'ok');
+    Lemon.hap(10);
+  });
+
+  load();
+  renderAll();
+  AUTO.bind('autosaveBadge');
+
+  window.LemonFridge = {
+    state: st,
+    detectDates: detectDates,
+    runScan: runScan,
+    loadScanDataUrl: function (url, cb) {
+      var img = new Image();
+      img.onload = function () {
+        var canvas = $('scanPreview');
+        var k = Math.min(1, 900 / Math.max(img.naturalWidth, img.naturalHeight));
+        canvas.width = Math.round(img.naturalWidth * k);
+        canvas.height = Math.round(img.naturalHeight * k);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        st.scan.img = img; st.scan.canvas = canvas;
+        $('scanModal').classList.remove('hidden');
+        $('scanDrop').classList.add('hidden');
+        $('scanPreviewWrap').classList.remove('hidden');
+        if (cb) cb();
+      };
+      img.src = url;
+    },
+    seedDemo: seedDemo
+  };
+})();
+</script>
+</body>
+</html>
