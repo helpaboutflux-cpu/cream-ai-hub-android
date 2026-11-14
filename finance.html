@@ -176,6 +176,23 @@ tailwind.config = {
           <div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-900">
             <iframe id="tvChart" class="tv-frame" height="460" allowtransparency="true" scrolling="no" title="실시간 차트"></iframe>
           </div>
+          <div id="krPanel" class="hidden space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-baseline gap-2">
+                <span id="krPrice" class="text-[20px] font-black tabular">-</span>
+                <span id="krChange" class="text-[11px] font-bold tabular">-</span>
+                <span id="krSource" class="text-[9px] font-mono text-neutral-400"></span>
+              </div>
+              <div class="seg" id="krSeg">
+                <button data-krset="D" class="on">일봉</button>
+                <button data-krset="W">주봉</button>
+                <button data-krset="5">분봉</button>
+              </div>
+            </div>
+            <div id="krChart" class="rounded-xl bg-neutral-50 dark:bg-neutral-900/60" style="height:340px;width:100%"></div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5" id="krStats"></div>
+            <p id="krNote" class="text-[10px] text-neutral-400 hidden"></p>
+          </div>
           <p id="chartNote" class="text-[10px] text-neutral-400 hidden">차트를 불러오지 못했어요. TradingView에서 직접 확인해 주세요.</p>
         </div>
 
@@ -397,6 +414,7 @@ tailwind.config = {
     });
     $('tvOpen').href = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(sym);
     $('chartNote').classList.add('hidden');
+    krToggle(sym);
     // 위젯이 네트워크에서 막힌 경우 안내 문구를 띄운다 (CORS 없는 도달성 확인)
     try {
       fetch($('tvChart').src, { mode: 'no-cors', cache: 'no-store' }).then(function () {
@@ -406,6 +424,167 @@ tailwind.config = {
       });
     } catch (e) { }
   }
+
+  /* ---------------- Korean stock chart (Yahoo + Lightweight Charts) ---------------- */
+  var krChart = null, krSeries = null, krLoading = false, lwcPromise = null, krSeq = 0;
+  var KR_PROXIES = [
+    'https://proxy.cors.dev/?url=',
+    'https://corsproxy.io/?url=',
+    'https://api.allorigins.win/raw?url='
+  ];
+  function isKrSym(sym) { return /^KRX:/i.test(String(sym)); }
+  function yahooCandidates(sym) {
+    var code = String(sym).split(':')[1] || '';
+    if (/^KOSPI200$/i.test(code)) return ['^KS200'];
+    if (/^KOSPI$/i.test(code)) return ['^KS11'];
+    if (/^KOSDAQ$/i.test(code)) return ['^KQ11'];
+    return [code + '.KS', code + '.KQ'];
+  }
+  function krParams() {
+    if (st.interval === 'W') return { interval: '1wk', range: '5y' };
+    if (st.interval === 'D') return { interval: '1d', range: '1y' };
+    if (st.interval === '1') return { interval: '5m', range: '5d' };
+    return { interval: '60m', range: '3mo' };
+  }
+  function loadLwc() {
+    if (window.LightweightCharts) return Promise.resolve();
+    if (lwcPromise) return lwcPromise;
+    lwcPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js';
+      s.onload = function () { resolve(); };
+      s.onerror = function () { lwcPromise = null; reject(new Error('lwc load failed')); };
+      document.head.appendChild(s);
+    });
+    return lwcPromise;
+  }
+  function yahooFetch(url) {
+    var chain = Promise.reject(new Error('start'));
+    KR_PROXIES.forEach(function (proxy) {
+      chain = chain.catch(function () {
+        return fetch(proxy + encodeURIComponent(url), { cache: 'no-store' }).then(function (r) {
+          if (!r.ok) throw new Error('http ' + r.status);
+          return r.json();
+        }).then(function (json) {
+          if (!json || !json.chart || !json.chart.result || !json.chart.result.length) throw new Error('empty');
+          return json;
+        });
+      });
+    });
+    return chain;
+  }
+  function fetchKr(cands, p) {
+    var seq = Promise.reject(new Error('none'));
+    cands.forEach(function (sym) {
+      seq = seq.catch(function () {
+        var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) +
+          '?interval=' + p.interval + '&range=' + p.range + '&includePrePost=false';
+        return yahooFetch(url).then(function (json) { json.__sym = sym; return json; });
+      });
+    });
+    return seq;
+  }
+  function fmtPrice(v) {
+    if (v === null || v === undefined || isNaN(v)) return '-';
+    return Math.round(v).toLocaleString('ko-KR');
+  }
+  function krToggle(sym) {
+    var kr = isKrSym(sym);
+    $('krPanel').classList.toggle('hidden', !kr);
+    var frameBox = $('tvChart') ? $('tvChart').parentNode : null;
+    if (frameBox) frameBox.classList.toggle('hidden', kr);
+    if (kr) {
+      var segs = document.querySelectorAll('#krSeg button');
+      for (var i = 0; i < segs.length; i++) {
+        var v = segs[i].getAttribute('data-krset');
+        var on = (v === 'D' && st.interval === 'D') || (v === 'W' && st.interval === 'W') || (v === '5' && (st.interval === '1' || st.interval === '5'));
+        segs[i].classList.toggle('on', on);
+      }
+      loadKrChart(sym);
+    }
+  }
+  function loadKrChart(sym) {
+    var my = ++krSeq;
+    var dark = Lemon.isDark();
+    $('krNote').classList.add('hidden');
+    $('krStats').innerHTML = '<div class="panel-soft p-2 text-center text-[10px] text-neutral-400">불러오는 중…</div>';
+    $('krSource').textContent = 'Yahoo Finance';
+    Promise.all([loadLwc(), fetchKr(yahooCandidates(sym), krParams())]).then(function (out) {
+      if (my !== krSeq) return;
+      var json = out[1];
+      var r = json.chart.result[0];
+      var ts = r.timestamp || [];
+      var q = r.indicators && r.indicators.quote ? r.indicators.quote[0] : null;
+      if (!q) throw new Error('no quote');
+      var candles = [];
+      for (var i = 0; i < ts.length; i++) {
+        var o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i];
+        if (o === null || h === null || l === null || c === null) continue;
+        candles.push({ time: ts[i], open: o, high: h, low: l, close: c });
+      }
+      if (!candles.length) throw new Error('no candles');
+      var meta = r.meta || {};
+      var last = candles[candles.length - 1];
+      var prevClose = meta.chartPreviousClose || meta.previousClose || (candles.length > 1 ? candles[candles.length - 2].close : last.open);
+      var price = meta.regularMarketPrice || last.close;
+      var diff = price - prevClose;
+      var pct = prevClose ? (diff / prevClose) * 100 : 0;
+      var up = diff >= 0;
+      $('krPrice').textContent = fmtPrice(price) + (meta.currency === 'KRW' ? '원' : '');
+      $('krPrice').style.color = up ? '#10b981' : '#f43f5e';
+      $('krChange').textContent = (up ? '+' : '') + fmtPrice(diff) + ' (' + (up ? '+' : '') + pct.toFixed(2) + '%)';
+      $('krChange').style.color = up ? '#10b981' : '#f43f5e';
+      $('krSource').textContent = json.__sym + ' · ' + krParams().interval;
+      var vol = q.volume && q.volume[q.volume.length - 1];
+      var stats = [
+        ['시가', fmtPrice(last.open)],
+        ['고가', fmtPrice(last.high)],
+        ['저가', fmtPrice(last.low)],
+        ['거래량', vol ? Math.round(vol).toLocaleString('ko-KR') : '-']
+      ];
+      $('krStats').innerHTML = stats.map(function (s) {
+        return '<div class="panel-soft p-2 text-center"><p class="text-[9px] font-bold text-neutral-400">' + s[0] + '</p><p class="text-[12px] font-black tabular">' + s[1] + '</p></div>';
+      }).join('');
+
+      var el = $('krChart');
+      if (krChart) { try { krChart.remove(); } catch (e) { } krChart = null; krSeries = null; }
+      el.innerHTML = '';
+      krChart = LightweightCharts.createChart(el, {
+        width: el.clientWidth || 600,
+        height: 340,
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: dark ? '#a1a1aa' : '#52525b' },
+        grid: { vertLines: { color: dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)' }, horzLines: { color: dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)' } },
+        rightPriceScale: { borderVisible: false },
+        timeScale: { borderVisible: false, timeVisible: st.interval !== 'D' && st.interval !== 'W' },
+        crosshair: { mode: 0 }
+      });
+      krSeries = krChart.addCandlestickSeries({
+        upColor: '#10b981', downColor: '#f43f5e', borderVisible: false,
+        wickUpColor: '#10b981', wickDownColor: '#f43f5e'
+      });
+      krSeries.setData(candles);
+      krChart.timeScale().fitContent();
+      $('krNote').classList.add('hidden');
+    }).catch(function (err) {
+      if (my !== krSeq) return;
+      if (window.console) console.warn('[finance] kr chart failed', err);
+      $('krStats').innerHTML = '';
+      $('krNote').classList.remove('hidden');
+      $('krNote').textContent = '한국 종목 차트를 불러오지 못했어요. TradingView 임베드로 대체합니다.';
+      var frameBox = $('tvChart') ? $('tvChart').parentNode : null;
+      if (frameBox) frameBox.classList.remove('hidden');
+      $('krSource').textContent = '대체 차트';
+    });
+  }
+  document.querySelectorAll('[data-krset]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      st.interval = b.getAttribute('data-krset');
+      loadWidgets();
+    });
+  });
+  window.addEventListener('resize', function () {
+    if (krChart && $('krChart')) krChart.applyOptions({ width: $('krChart').clientWidth || 600 });
+  });
 
   document.addEventListener('lemon:theme', function () { loadWidgets(); });
 

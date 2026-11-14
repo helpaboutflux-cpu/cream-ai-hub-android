@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Chart — 표 하나로 끝내는 차트 메이커</title>
+<meta name="description" content="CSV나 표를 붙여 넣으면 막대·꺾은선·도넛·레이더 차트를 실시간으로 그리고 고화질 PNG로 저장합니다.">
+<meta name="theme-color" content="#0284c7">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#0284c7', light: '#38bdf8', deep: '#075985', 50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e', 950: '#082f49' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0284c7; --brand-2: #38bdf8; --brand-deep: #075985; }
+  #chartCanvas { display: block; width: 100%; border-radius: 1rem; }
+  .pal-dot { width: 2rem; height: 2rem; border-radius: .6rem; border: 2px solid transparent; transition: transform .14s, border-color .18s; }
+  .pal-dot.on { border-color: var(--brand); transform: scale(1.06); }
+  .row-item { transition: background-color .15s; }
+  .row-item:focus-within { background: rgba(2, 132, 199, .06); }
+  .chart-tab { transition: transform .14s, color .18s, background-color .18s; }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#38bdf8"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Chart</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">DATA</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">표 → 차트 → PNG</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="asBadge" class="as-badge hidden sm:inline-flex">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-6M22 19H2"></path></svg>
+        <span>차트 만들기</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            CSV 붙여넣기 · 실시간 전환
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            표만 있으면<br><span class="brand-text">차트는 3초</span>입니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            엑셀에서 복사한 두 줄을 붙여 넣으면 막대·꺾은선·도넛·레이더로 바로 그려집니다. 색 팔레트와 단위를 바꾸고 고화질 PNG로 저장하세요.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              차트 만들기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text">4</p><p class="text-[10px] text-neutral-500">차트 종류</p></div>
+            <div><p class="text-lg font-black brand-text">5</p><p class="text-[10px] text-neutral-500">색 팔레트</p></div>
+            <div><p class="text-lg font-black brand-text">PNG</p><p class="text-[10px] text-neutral-500">2배 고화질</p></div>
+          </div>
+        </div>
+        <div class="panel p-4">
+          <div class="flex items-end gap-2 h-40">
+            <div class="flex-1 rounded-t-lg brand-grad" style="height:38%"></div>
+            <div class="flex-1 rounded-t-lg brand-grad" style="height:64%"></div>
+            <div class="flex-1 rounded-t-lg brand-grad" style="height:48%"></div>
+            <div class="flex-1 rounded-t-lg brand-grad" style="height:92%"></div>
+            <div class="flex-1 rounded-t-lg brand-grad" style="height:72%"></div>
+          </div>
+          <div class="flex justify-between mt-2 text-[9px] font-bold text-neutral-400">
+            <span>1월</span><span>2월</span><span>3월</span><span>4월</span><span>5월</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 stagger">
+      <div class="panel p-5 space-y-2"><div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg></div><h3 class="font-bold text-sm">막대 차트</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">항목별 크기를 한눈에 비교합니다. 값 라벨을 켜고 끌 수 있습니다.</p></div>
+      <div class="panel p-5 space-y-2"><div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-9"></path></svg></div><h3 class="font-bold text-sm">꺾은선 차트</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">시간에 따른 변화와 추세를 부드러운 곡선과 영역으로 보여줍니다.</p></div>
+      <div class="panel p-5 space-y-2"><div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l7 4"></path></svg></div><h3 class="font-bold text-sm">도넛 차트</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">구성 비율을 가운데 합계와 함께 보여주고 범례를 붙입니다.</p></div>
+      <div class="panel p-5 space-y-2"><div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4-3 7-7 9-4-2-7-5-7-9V7z"></path></svg></div><h3 class="font-bold text-sm">레이더 차트</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">여러 항목의 균형을 다각형으로 비교합니다. 3개 이상일 때 가장 좋습니다.</p></div>
+    </div>
+
+    <div class="panel p-5 sm:p-6 space-y-3">
+      <h2 class="text-sm font-black">예시 데이터로 시작</h2>
+      <div class="grid sm:grid-cols-3 gap-2.5" id="sampleRow"></div>
+    </div>
+  </section>
+
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-3">
+    <div class="grid lg:grid-cols-[1fr_340px] gap-3 items-start">
+      <div class="space-y-3 min-w-0">
+        <div class="panel p-3 sm:p-4 space-y-3">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <input id="chartTitle" type="text" class="lemon-input !text-[13px] font-black !py-2 max-w-[260px]" placeholder="차트 제목" maxlength="40" value="월별 지출">
+            <div class="flex items-center gap-1">
+              <button class="pill-btn !py-1.5 !px-2.5 !text-[11px] ctype on" data-type="bar">막대</button>
+              <button class="pill-btn !py-1.5 !px-2.5 !text-[11px] ctype" data-type="line">꺾은선</button>
+              <button class="pill-btn !py-1.5 !px-2.5 !text-[11px] ctype" data-type="donut">도넛</button>
+              <button class="pill-btn !py-1.5 !px-2.5 !text-[11px] ctype" data-type="radar">레이더</button>
+            </div>
+          </div>
+          <div class="rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+            <canvas id="chartCanvas" width="1200" height="760"></canvas>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button id="btnPng" class="primary-btn !py-2 !px-3 !text-[11px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              PNG 저장
+            </button>
+            <button id="btnSaveArc" class="ghost-btn !py-2 !px-3 !text-[11px]">보관함 저장</button>
+            <span class="grow"></span>
+            <span class="text-[10px] font-mono text-neutral-400" id="rowCount">0행</span>
+          </div>
+        </div>
+
+        <div class="panel p-3 sm:p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-[12px] font-black">데이터</h3>
+            <div class="flex items-center gap-1.5">
+              <button id="btnPaste" class="ghost-btn !py-1.5 !px-2.5 !text-[10px]">CSV 붙여넣기</button>
+              <button id="btnAddRow" class="ghost-btn !py-1.5 !px-2.5 !text-[10px]">행 추가</button>
+            </div>
+          </div>
+          <div id="pasteBox" class="hidden space-y-2">
+            <textarea id="csvInput" rows="5" class="lemon-textarea !text-[12px] font-mono" placeholder="1월,120&#10;2월,240&#10;3월,180"></textarea>
+            <div class="flex gap-1.5">
+              <button id="btnApplyCsv" class="primary-btn !py-2 !px-3 !text-[11px]">표에 넣기</button>
+              <button id="btnCancelCsv" class="ghost-btn !py-2 !px-3 !text-[11px]">취소</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-[1fr_92px_28px] gap-1.5 text-[9px] font-black text-neutral-400 uppercase px-1">
+            <span>항목</span><span>값</span><span></span>
+          </div>
+          <div id="rowList" class="space-y-1"></div>
+        </div>
+      </div>
+
+      <div class="space-y-2.5">
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[11px] font-black">색 팔레트</h3>
+          <div class="grid grid-cols-5 gap-1.5" id="palRow"></div>
+        </div>
+        <div class="panel p-3 space-y-2.5">
+          <h3 class="text-[11px] font-black">표시</h3>
+          <div class="flex items-center justify-between"><span class="lemon-label">단위</span><input id="chartUnit" type="text" class="lemon-input !w-24 !py-1 !text-[11px]" value="원" maxlength="8"></div>
+          <label class="flex items-center justify-between panel-soft px-2.5 py-2 cursor-pointer">
+            <span class="text-[11px] font-bold">값 라벨 표시</span>
+            <input type="checkbox" id="optValues" class="accent-brand-500 w-4 h-4" checked>
+          </label>
+          <label class="flex items-center justify-between panel-soft px-2.5 py-2 cursor-pointer">
+            <span class="text-[11px] font-bold">범례 표시</span>
+            <input type="checkbox" id="optLegend" class="accent-brand-500 w-4 h-4" checked>
+          </label>
+          <label class="flex items-center justify-between panel-soft px-2.5 py-2 cursor-pointer">
+            <span class="text-[11px] font-bold">투명 배경 (PNG)</span>
+            <input type="checkbox" id="optTransparent" class="accent-brand-500 w-4 h-4">
+          </label>
+          <label class="flex items-center justify-between panel-soft px-2.5 py-2 cursor-pointer">
+            <span class="text-[11px] font-bold">가로 막대</span>
+            <input type="checkbox" id="optHorizontal" class="accent-brand-500 w-4 h-4">
+          </label>
+        </div>
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[11px] font-black">요약</h3>
+          <div id="statBox" class="space-y-1 text-[11px]"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">작업하던 차트가 자동 저장됩니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Chart · Lemon soft 37대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3"><a href="canvas.html" class="hover:underline">Lemon Canvas</a><a href="grid.html" class="hover:underline">Lemon Grid</a><a href="index.html" class="hover:underline">Developer Hub</a></div>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+  var AUTO = Lemon.project('lemon_chart_archive', { max: 14 });
+  AUTO.bind('asBadge');
+
+  var PALETTES = {
+    ocean: ['#0284c7', '#0ea5e9', '#38bdf8', '#06b6d4', '#155e75', '#7dd3fc', '#0369a1'],
+    sunset: ['#f97316', '#fb7185', '#f43f5e', '#fbbf24', '#e11d48', '#fdba74', '#a16207'],
+    forest: ['#059669', '#10b981', '#34d399', '#65a30d', '#166534', '#a3e635', '#047857'],
+    violet: ['#7c3aed', '#8b5cf6', '#a78bfa', '#c026d3', '#4f46e5', '#e879f9', '#5b21b6'],
+    mono: ['#111114', '#3f3f46', '#52525b', '#71717a', '#a1a1aa', '#52525b', '#27272a']
+  };
+  var SAMPLES = {
+    '월별 지출': { title: '월별 지출', unit: '만원', type: 'bar', data: [['1월', 82], ['2월', 64], ['3월', 91], ['4월', 73], ['5월', 108], ['6월', 95]] },
+    '요일별 집중': { title: '요일별 집중 시간', unit: '분', type: 'line', data: [['월', 120], ['화', 95], ['수', 140], ['목', 110], ['금', 160], ['토', 70], ['일', 45]] },
+    '시간 배분': { title: '하루 시간 배분', unit: '시간', type: 'donut', data: [['공부', 6], ['수업', 4], ['이동', 2], ['식사', 2], ['여가', 3], ['수면', 7]] }
+  };
+
+  var st = {
+    title: '월별 지출',
+    type: 'bar',
+    unit: '원',
+    palette: 'ocean',
+    values: true,
+    legend: true,
+    transparent: false,
+    horizontal: false,
+    rows: [['1월', 120000], ['2월', 240000], ['3월', 180000], ['4월', 260000]]
+  };
+  var booted = false;
+
+  /* ---------------- helpers ---------------- */
+  function fmt(n) {
+    if (st.unit === '원') return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '원';
+    var v = Math.round(n * 10) / 10;
+    return v + (st.unit ? st.unit : '');
+  }
+  function shortNum(n) {
+    var a = Math.abs(n);
+    if (a >= 100000000) return (n / 100000000).toFixed(1) + '억';
+    if (a >= 10000) return (n / 10000).toFixed(a >= 1000000 ? 0 : 1) + '만';
+    if (a >= 1000) return (n / 1000).toFixed(a >= 10000 ? 0 : 1) + '천';
+    return String(Math.round(n));
+  }
+  function colors() { return PALETTES[st.palette]; }
+  function colorAt(i) {
+    var c = colors();
+    return c[i % c.length];
+  }
+  function isDark() { return Lemon.isDark(); }
+  function textColor() { return isDark() ? '#e4e4e7' : '#27272a'; }
+  function subColor() { return isDark() ? 'rgba(228,228,231,.55)' : 'rgba(63,63,70,.55)'; }
+  function gridColor() { return isDark() ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.08)'; }
+
+  /* ---------------- rows editor ---------------- */
+  function renderRows() {
+    var box = $('rowList');
+    box.innerHTML = st.rows.map(function (r, i) {
+      return '<div class="row-item grid grid-cols-[1fr_92px_28px] gap-1.5 items-center px-1 py-0.5 rounded-lg">' +
+        '<input class="lemon-input !py-1 !text-[11px] row-label" data-i="' + i + '" value="' + Lemon.esc(r[0]) + '" placeholder="항목" maxlength="20">' +
+        '<input class="lemon-input !py-1 !text-[11px] font-mono row-value" data-i="' + i + '" value="' + Lemon.esc(String(r[1])) + '" inputmode="decimal">' +
+        '<button class="mini text-[13px] text-rose-500 font-bold" data-remove="' + i + '" title="삭제">×</button></div>';
+    }).join('');
+    $('rowCount').textContent = st.rows.length + '행';
+    renderStats();
+  }
+  function renderStats() {
+    var nums = st.rows.map(function (r) { return Number(r[1]) || 0; });
+    var sum = nums.reduce(function (a, b) { return a + b; }, 0);
+    var max = nums.length ? Math.max.apply(null, nums) : 0;
+    var min = nums.length ? Math.min.apply(null, nums) : 0;
+    var avg = nums.length ? sum / nums.length : 0;
+    $('statBox').innerHTML =
+      '<div class="flex justify-between"><span class="text-neutral-500 dark:text-neutral-400">합계</span><b>' + fmt(sum) + '</b></div>' +
+      '<div class="flex justify-between"><span class="text-neutral-500 dark:text-neutral-400">평균</span><b>' + fmt(avg) + '</b></div>' +
+      '<div class="flex justify-between"><span class="text-neutral-500 dark:text-neutral-400">최대</span><b>' + fmt(max) + '</b></div>' +
+      '<div class="flex justify-between"><span class="text-neutral-500 dark:text-neutral-400">최소</span><b>' + fmt(min) + '</b></div>';
+  }
+  $('rowList').addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.classList.contains('row-label')) {
+      st.rows[parseInt(t.getAttribute('data-i'), 10)][0] = t.value;
+      draw(); markChanged();
+    } else if (t.classList.contains('row-value')) {
+      var v = Number(String(t.value).replace(/[^0-9.\-]/g, ''));
+      st.rows[parseInt(t.getAttribute('data-i'), 10)][1] = isNaN(v) ? 0 : v;
+      renderStats(); draw(); markChanged();
+    }
+  });
+  $('rowList').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-remove]') : null;
+    if (!b) return;
+    st.rows.splice(parseInt(b.getAttribute('data-remove'), 10), 1);
+    renderRows(); draw(); markChanged();
+  });
+  $('btnAddRow').addEventListener('click', function () {
+    st.rows.push(['항목 ' + (st.rows.length + 1), 0]);
+    renderRows(); draw(); markChanged();
+  });
+  $('btnPaste').addEventListener('click', function () {
+    $('pasteBox').classList.toggle('hidden');
+    if (!$('pasteBox').classList.contains('hidden')) $('csvInput').focus();
+  });
+  $('btnCancelCsv').addEventListener('click', function () { $('pasteBox').classList.add('hidden'); });
+  $('btnApplyCsv').addEventListener('click', function () {
+    var txt = $('csvInput').value || '';
+    var rows = [];
+    txt.split(/\r?\n/).forEach(function (line) {
+      if (!line.trim()) return;
+      var parts = line.indexOf('\t') > -1 ? line.split('\t') : line.split(',');
+      parts = parts.map(function (p) { return p.trim().replace(/^["']|["']$/g, ''); });
+      if (parts.length < 2) return;
+      var label = parts[0];
+      var val = Number(parts[1].replace(/[^0-9.\-]/g, ''));
+      if (!label || isNaN(val)) return;
+      if (/^(항목|label|name|이름)$/i.test(label) && !rows.length) return;
+      rows.push([label, val]);
+    });
+    if (!rows.length) { Lemon.toast('두 열(항목, 값) 형식으로 붙여넣어 주세요', 'err'); return; }
+    st.rows = rows.slice(0, 30);
+    renderRows(); draw(); markChanged();
+    $('pasteBox').classList.add('hidden');
+    Lemon.toast(rows.length + '행을 표에 넣었어요', 'ok');
+  });
+
+  /* ---------------- palettes / options ---------------- */
+  function renderPalettes() {
+    $('palRow').innerHTML = Object.keys(PALETTES).map(function (k) {
+      return '<button class="pal-dot ' + (k === st.palette ? 'on' : '') + '" data-pal="' + k + '" style="background:' +
+        PALETTES[k][0] + ';border-color:' + (k === st.palette ? 'var(--brand)' : 'transparent') + '"></button>';
+    }).join('');
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-pal]') : null;
+    if (!b) return;
+    st.palette = b.getAttribute('data-pal');
+    renderPalettes(); draw(); markChanged();
+  });
+
+  document.querySelectorAll('.ctype').forEach(function (b) {
+    b.addEventListener('click', function () {
+      st.type = b.getAttribute('data-type');
+      document.querySelectorAll('.ctype').forEach(function (x) { x.classList.toggle('on', x === b); });
+      draw(); markChanged();
+    });
+  });
+  $('chartTitle').addEventListener('input', function () { st.title = this.value; draw(); markChanged(); });
+  $('chartUnit').addEventListener('input', function () { st.unit = this.value; renderStats(); draw(); markChanged(); });
+  $('optValues').addEventListener('change', function () { st.values = this.checked; draw(); markChanged(); });
+  $('optLegend').addEventListener('change', function () { st.legend = this.checked; draw(); markChanged(); });
+  $('optTransparent').addEventListener('change', function () { st.transparent = this.checked; draw(); markChanged(); });
+  $('optHorizontal').addEventListener('change', function () { st.horizontal = this.checked; draw(); markChanged(); });
+
+  /* ---------------- drawing ---------------- */
+  var canvas = $('chartCanvas');
+
+  function roundTop(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, Math.abs(h));
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+  }
+
+  function draw() {
+    var dark = isDark();
+    var W = canvas.width, H = canvas.height;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    if (!st.transparent) {
+      ctx.fillStyle = dark ? '#0f0f13' : '#ffffff';
+      ctx.fillRect(0, 0, W, H);
+      var glow = ctx.createRadialGradient(W * 0.85, 0, 0, W * 0.85, 0, W * 0.7);
+      glow.addColorStop(0, dark ? 'rgba(2,132,199,.22)' : 'rgba(2,132,199,.10)');
+      glow.addColorStop(1, 'rgba(2,132,199,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+    }
+    var padX = 70, padTop = 96, padBottom = 96;
+    var titleSize = 34;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = textColor();
+    ctx.font = '900 ' + titleSize + 'px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(st.title || '차트', padX, 58);
+    if (st.unit) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = subColor();
+      ctx.font = '700 20px -apple-system, sans-serif';
+      ctx.fillText('단위 · ' + st.unit, W - padX, 60);
+      ctx.textAlign = 'left';
+    }
+    var area = { x: padX, y: padTop, w: W - padX * 2, h: H - padTop - padBottom };
+    if (st.legend && (st.type === 'donut' || st.type === 'line')) area.h -= 54;
+
+    var rows = st.rows.filter(function (r) { return String(r[0]).length || Number(r[1]); });
+    if (!rows.length) {
+      ctx.fillStyle = subColor();
+      ctx.font = '700 22px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('데이터를 2행 이상 넣어 주세요', W / 2, H / 2);
+      return;
+    }
+    if (st.type === 'bar') drawBar(ctx, rows, area);
+    else if (st.type === 'line') drawLine(ctx, rows, area);
+    else if (st.type === 'donut') drawDonut(ctx, rows, area);
+    else drawRadar(ctx, rows, area);
+  }
+
+  function drawBar(ctx, rows, a) {
+    var nums = rows.map(function (r) { return Number(r[1]) || 0; });
+    var max = Math.max.apply(null, nums);
+    var min = Math.min.apply(null, nums);
+    var top = max > 0 ? max : 1;
+    if (min < 0) top = max - min;
+    var horizontal = st.horizontal;
+    if (horizontal) {
+      var rowH = Math.min(70, a.h / rows.length);
+      var labelW = 150;
+      ctx.font = '700 20px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      rows.forEach(function (r) {
+        var t = String(r[0]);
+        var w = ctx.measureText(t).width;
+        if (w + 24 > labelW) labelW = w + 24;
+      });
+      labelW = Math.min(labelW, a.w * 0.4);
+      var barMax = a.w - labelW - 90;
+      rows.forEach(function (r, i) {
+        var n = Number(r[1]) || 0;
+        var y = a.y + i * rowH + rowH * 0.18;
+        var h = rowH * 0.64;
+        var w = barMax * (Math.abs(n) / (top || 1));
+        ctx.fillStyle = subColor();
+        ctx.font = '700 20px -apple-system, "Apple SD Gothic Neo", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(r[0]).slice(0, 12), a.x, y + h / 2);
+        ctx.fillStyle = colorAt(i);
+        roundRight(ctx, a.x + labelW, y, Math.max(4, w), h, 12);
+        ctx.fill();
+        if (st.values) {
+          ctx.fillStyle = textColor();
+          ctx.font = '800 19px -apple-system, sans-serif';
+          ctx.fillText(fmt(n), a.x + labelW + Math.max(4, w) + 14, y + h / 2);
+        }
+      });
+      return;
+    }
+    var n2 = rows.length;
+    var slot = a.w / n2;
+    var barW = Math.min(96, slot * 0.56);
+    var baseY = a.y + a.h;
+    // grid
+    ctx.strokeStyle = gridColor();
+    ctx.lineWidth = 2;
+    ctx.font = '600 17px -apple-system, sans-serif';
+    for (var g = 0; g <= 4; g++) {
+      var gy = a.y + (a.h / 4) * g;
+      ctx.beginPath(); ctx.moveTo(a.x, gy); ctx.lineTo(a.x + a.w, gy); ctx.stroke();
+      ctx.fillStyle = subColor();
+      ctx.textAlign = 'left';
+      ctx.fillText(shortNum(top * (1 - g / 4)), a.x - 12 - ctx.measureText(shortNum(top * (1 - g / 4))).width, gy + 1);
+    }
+    rows.forEach(function (r, i) {
+      var n = Number(r[1]) || 0;
+      var h = Math.max(2, (Math.abs(n) / (top || 1)) * (a.h - 6));
+      var x = a.x + slot * i + (slot - barW) / 2;
+      var grad = ctx.createLinearGradient(x, baseY - h, x, baseY);
+      grad.addColorStop(0, colorAt(i));
+      grad.addColorStop(1, shade(colorAt(i), -0.22));
+      ctx.fillStyle = grad;
+      roundTop(ctx, x, baseY - h, barW, h, Math.min(14, barW / 3));
+      ctx.fill();
+      if (st.values) {
+        ctx.fillStyle = textColor();
+        ctx.font = '800 18px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(shortNum(n), x + barW / 2, baseY - h - 18);
+      }
+      ctx.fillStyle = subColor();
+      ctx.font = '700 18px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.textAlign = 'center';
+      var label = String(r[0]);
+      while (ctx.measureText(label).width > slot - 6 && label.length > 2) label = label.slice(0, -1) + '…';
+      ctx.fillText(label, x + barW / 2, baseY + 30);
+    });
+  }
+
+  function roundRight(ctx, x, y, w, h, r) {
+    r = Math.min(r, h / 2, w);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+  }
+
+  function shade(hex, amt) {
+    var h = hex.replace('#', '');
+    var n = parseInt(h, 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    var f = function (v) { return Math.max(0, Math.min(255, Math.round(v + v * amt))); };
+    var s = function (v) { var q = f(v).toString(16); return q.length < 2 ? '0' + q : q; };
+    return '#' + s(r) + s(g) + s(b);
+  }
+
+  function drawLine(ctx, rows, a) {
+    var nums = rows.map(function (r) { return Number(r[1]) || 0; });
+    var max = Math.max.apply(null, nums), min = Math.min.apply(null, nums);
+    var hi = max + (max - min) * 0.15 || 1;
+    var lo = min - (max - min) * 0.15;
+    if (hi === lo) { hi = min + 1; lo = min - 1; }
+    var n = rows.length;
+    var stepX = n > 1 ? a.w / (n - 1) : 0;
+    function px(i) { return n > 1 ? a.x + stepX * i : a.x + a.w / 2; }
+    function py(v) { return a.y + a.h - ((v - lo) / (hi - lo)) * a.h; }
+    ctx.strokeStyle = gridColor();
+    ctx.lineWidth = 2;
+    ctx.font = '600 17px -apple-system, sans-serif';
+    for (var g = 0; g <= 4; g++) {
+      var gy = a.y + (a.h / 4) * g;
+      ctx.beginPath(); ctx.moveTo(a.x, gy); ctx.lineTo(a.x + a.w, gy); ctx.stroke();
+      var val = hi - (hi - lo) * (g / 4);
+      ctx.fillStyle = subColor();
+      ctx.textAlign = 'right';
+      ctx.fillText(shortNum(val), a.x - 12, gy + 1);
+    }
+    var grad = ctx.createLinearGradient(0, a.y, 0, a.y + a.h);
+    grad.addColorStop(0, hexA(colorAt(0), 0.35));
+    grad.addColorStop(1, hexA(colorAt(0), 0));
+    ctx.beginPath();
+    ctx.moveTo(px(0), a.y + a.h);
+    for (var i = 0; i < n; i++) ctx.lineTo(px(i), py(nums[i]));
+    ctx.lineTo(px(n - 1), a.y + a.h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.beginPath();
+    for (var j = 0; j < n; j++) {
+      if (j === 0) ctx.moveTo(px(j), py(nums[j])); else ctx.lineTo(px(j), py(nums[j]));
+    }
+    ctx.strokeStyle = colorAt(0);
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    for (var k = 0; k < n; k++) {
+      ctx.beginPath();
+      ctx.arc(px(k), py(nums[k]), 7, 0, Math.PI * 2);
+      ctx.fillStyle = isDark() ? '#0f0f13' : '#fff';
+      ctx.fill();
+      ctx.strokeStyle = colorAt(0);
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      if (st.values) {
+        ctx.fillStyle = textColor();
+        ctx.font = '800 17px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(shortNum(nums[k]), px(k), py(nums[k]) - 20);
+      }
+      ctx.fillStyle = subColor();
+      ctx.font = '700 17px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(rows[k][0]).slice(0, 8), px(k), a.y + a.h + 30);
+    }
+    if (st.legend) {
+      ctx.fillStyle = colorAt(0);
+      roundRectFill(ctx, a.x, a.y + a.h + 62, 16, 16, 4);
+      ctx.fillStyle = subColor();
+      ctx.font = '700 18px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(st.title + ' 추이', a.x + 26, a.y + a.h + 71);
+    }
+  }
+
+  function hexA(hex, a) {
+    var h = hex.replace('#', '');
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function roundRectFill(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawDonut(ctx, rows, a) {
+    var nums = rows.map(function (r) { return Math.max(0, Number(r[1]) || 0); });
+    var total = nums.reduce(function (x, y) { return x + y; }, 0) || 1;
+    var cx = a.x + a.w * 0.36;
+    var cy = a.y + a.h / 2;
+    var R = Math.min(a.w * 0.32, a.h * 0.48);
+    var r = R * 0.6;
+    var start = -Math.PI / 2;
+    rows.forEach(function (row, i) {
+      var ang = (nums[i] / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, start, start + ang);
+      ctx.arc(cx, cy, r, start + ang, start, true);
+      ctx.closePath();
+      ctx.fillStyle = colorAt(i);
+      ctx.fill();
+      if (isDark()) { ctx.strokeStyle = '#0f0f13'; ctx.lineWidth = 4; ctx.stroke(); }
+      start += ang;
+    });
+    if (st.transparent) {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = textColor();
+    ctx.font = '900 ' + Math.round(R * 0.36) + 'px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(shortNum(total), cx, cy - R * 0.1);
+    ctx.fillStyle = subColor();
+    ctx.font = '700 ' + Math.round(R * 0.17) + 'px -apple-system, sans-serif';
+    ctx.fillText('합계', cx, cy + R * 0.2);
+
+    var lx = a.x + a.w * 0.68;
+    var ly = a.y + Math.max(10, a.h / 2 - rows.length * 26);
+    rows.forEach(function (row, i) {
+      ctx.fillStyle = colorAt(i);
+      roundRectFill(ctx, lx, ly + i * 44, 18, 18, 5);
+      ctx.fillStyle = textColor();
+      ctx.font = '700 20px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(String(row[0]).slice(0, 10), lx + 30, ly + i * 44 + 10);
+      ctx.fillStyle = subColor();
+      ctx.font = '800 18px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(Math.round(nums[i] / total * 100) + '%  ' + fmt(nums[i]), a.x + a.w, ly + i * 44 + 10);
+    });
+  }
+
+  function drawRadar(ctx, rows, a) {
+    var nums = rows.map(function (r) { return Math.max(0, Number(r[1]) || 0); });
+    var max = Math.max.apply(null, nums) || 1;
+    var n = rows.length;
+    if (n < 3) {
+      ctx.fillStyle = subColor();
+      ctx.font = '700 20px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('레이더 차트는 3개 이상 항목이 필요해요', a.x + a.w / 2, a.y + a.h / 2);
+      return;
+    }
+    var cx = a.x + a.w / 2, cy = a.y + a.h / 2 + 10;
+    var R = Math.min(a.w, a.h) * 0.36;
+    for (var ring = 1; ring <= 4; ring++) {
+      ctx.beginPath();
+      for (var i = 0; i < n; i++) {
+        var ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+        var rr = R * (ring / 4);
+        var x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = gridColor();
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.font = '700 18px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    for (var j = 0; j < n; j++) {
+      var a2 = -Math.PI / 2 + (j / n) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a2) * R, cy + Math.sin(a2) * R);
+      ctx.strokeStyle = gridColor();
+      ctx.stroke();
+      var lx = cx + Math.cos(a2) * (R + 26), ly = cy + Math.sin(a2) * (R + 26);
+      ctx.fillStyle = subColor();
+      ctx.textAlign = Math.cos(a2) > 0.25 ? 'left' : Math.cos(a2) < -0.25 ? 'right' : 'center';
+      ctx.fillText(String(rows[j][0]).slice(0, 8), lx, ly);
+    }
+    ctx.beginPath();
+    for (var k = 0; k < n; k++) {
+      var ka = -Math.PI / 2 + (k / n) * Math.PI * 2;
+      var kr = R * (nums[k] / max);
+      var kx = cx + Math.cos(ka) * kr, ky = cy + Math.sin(ka) * kr;
+      if (k === 0) ctx.moveTo(kx, ky); else ctx.lineTo(kx, ky);
+    }
+    ctx.closePath();
+    ctx.fillStyle = hexA(colorAt(0), 0.28);
+    ctx.fill();
+    ctx.strokeStyle = colorAt(0);
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    for (var m = 0; m < n; m++) {
+      var ma = -Math.PI / 2 + (m / n) * Math.PI * 2;
+      var mr = R * (nums[m] / max);
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(ma) * mr, cy + Math.sin(ma) * mr, 6, 0, Math.PI * 2);
+      ctx.fillStyle = colorAt(m);
+      ctx.fill();
+      if (st.values) {
+        ctx.fillStyle = textColor();
+        ctx.font = '800 16px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(shortNum(nums[m]), cx + Math.cos(ma) * (mr + 18), cy + Math.sin(ma) * (mr + 18) - 8);
+      }
+    }
+  }
+
+  /* ---------------- export ---------------- */
+  function exportCanvas() {
+    var oldT = st.transparent;
+    st.transparent = st.transparent;
+    var c = document.createElement('canvas');
+    c.width = 1600; c.height = 1000;
+    var target = c.getContext('2d');
+    draw();
+    target.drawImage(canvas, 0, 0, c.width, c.height);
+    st.transparent = oldT;
+    return c;
+  }
+
+  $('btnPng').addEventListener('click', function () {
+    var c = document.createElement('canvas');
+    c.width = 1600; c.height = 1000;
+    c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+    c.toBlob(function (b) {
+      if (!b) { Lemon.toast('이미지 생성에 실패했어요', 'err'); return; }
+      Lemon.downloadBlob('lemon-chart-' + Date.now() + '.png', b);
+      Lemon.toast('PNG로 저장했어요 (1600 x 1000)', 'ok');
+      Lemon.confetti(12);
+    }, 'image/png');
+  });
+
+  document.addEventListener('lemon:theme', function () { draw(); });
+
+  /* ---------------- samples ---------------- */
+  function renderSamples() {
+    $('sampleRow').innerHTML = Object.keys(SAMPLES).map(function (k) {
+      return '<button class="panel-soft p-3 text-left hover:border-brand-400" data-sample="' + k + '">' +
+        '<p class="text-[12px] font-bold">' + k + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400">' + SAMPLES[k].type + ' · ' + SAMPLES[k].data.length + '개 항목</p></button>';
+    }).join('');
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-sample]') : null;
+    if (!b) return;
+    var s = SAMPLES[b.getAttribute('data-sample')];
+    st.title = s.title; st.unit = s.unit; st.type = s.type;
+    st.rows = s.data.map(function (r) { return [r[0], r[1]]; });
+    $('chartTitle').value = st.title;
+    $('chartUnit').value = st.unit;
+    document.querySelectorAll('.ctype').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-type') === st.type); });
+    renderRows(); draw(); markChanged();
+    go('studio');
+    Lemon.toast('예시 데이터를 넣었어요', 'ok');
+  });
+
+  /* ---------------- autosave ---------------- */
+  function payload() {
+    var thumb = document.createElement('canvas');
+    thumb.width = 320; thumb.height = 200;
+    thumb.getContext('2d').drawImage(canvas, 0, 0, 320, 200);
+    return {
+      title: st.title || '차트',
+      sub: st.type + ' · ' + st.rows.length + '항목',
+      thumb: thumb.toDataURL('image/jpeg', 0.6),
+      data: { title: st.title, type: st.type, unit: st.unit, palette: st.palette, values: st.values, legend: st.legend, transparent: st.transparent, horizontal: st.horizontal, rows: st.rows }
+    };
+  }
+  function markChanged() {
+    if (!booted) return;
+    AUTO.touch(payload);
+  }
+
+  function renderArchive() {
+    var list = AUTO.archive.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center col-span-full"><p class="text-[12px] font-bold">저장된 차트가 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">차트를 만들면 자동으로 저장됩니다.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-2.5">' +
+        '<div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 mb-2">' +
+        (it.thumb ? '<img src="' + it.thumb + '" alt="" class="w-full h-auto block">' : '') + '</div>' +
+        '<p class="text-[11px] font-bold truncate">' + Lemon.esc(it.title || '차트') + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.sub || '') + '</p>' +
+        '<p class="text-[9px] text-neutral-400 mt-0.5">' + Lemon.timeAgo(it.ts) + '</p>' +
+        '<div class="flex gap-1 mt-2"><button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-load="' + it.id + '">열기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var l = e.target.closest ? e.target.closest('[data-load]') : null;
+    if (l) {
+      var rec = AUTO.restore(l.getAttribute('data-load'));
+      if (!rec || !rec.data) return;
+      var d = rec.data;
+      st.title = d.title; st.type = d.type; st.unit = d.unit; st.palette = d.palette;
+      st.values = d.values; st.legend = d.legend; st.transparent = d.transparent; st.horizontal = d.horizontal;
+      st.rows = d.rows;
+      $('chartTitle').value = st.title;
+      $('chartUnit').value = st.unit;
+      $('optValues').checked = st.values; $('optLegend').checked = st.legend;
+      $('optTransparent').checked = st.transparent; $('optHorizontal').checked = st.horizontal;
+      document.querySelectorAll('.ctype').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-type') === st.type); });
+      AUTO.openProject(rec.id);
+      renderPalettes(); renderRows(); draw(); go('studio');
+      Lemon.toast('차트를 열었어요', 'ok');
+      return;
+    }
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if (del) {
+      AUTO.archive.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('삭제했어요', 'info');
+    }
+  });
+
+  $('btnSaveArc').addEventListener('click', function () {
+    AUTO.flushNow(payload);
+    renderArchive();
+    Lemon.toast('보관함에 저장했어요', 'ok');
+  });
+  $('btnClearArc').addEventListener('click', function () {
+    if (!AUTO.archive.count()) { Lemon.toast('비울 기록이 없어요', 'info'); return; }
+    if (window.confirm('보관함을 모두 비울까요?')) { AUTO.archive.clear(); renderArchive(); Lemon.toast('보관함을 비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  /* ---------------- boot ---------------- */
+  renderPalettes();
+  renderSamples();
+  renderRows();
+  draw();
+  renderArchive();
+  booted = true;
+})();
+</script>
+</body>
+</html>

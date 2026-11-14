@@ -29,6 +29,12 @@ tailwind.config = {
 <link rel="stylesheet" href="lemon-ui.css">
 <style>
   :root { --brand: #f97316; --brand-2: #fb7185; --brand-deep: #c2410c; }
+  input[type="date"].lemon-input, input[type="time"].lemon-input { color: rgb(24 24 27); color-scheme: light; min-height: 2.3rem; }
+  .dark input[type="date"].lemon-input, .dark input[type="time"].lemon-input { color: rgb(244 244 245); color-scheme: dark; }
+  select.lemon-select { color: rgb(24 24 27); }
+  .dark select.lemon-select { color: rgb(244 244 245); }
+  select.lemon-select option { color: #18181b; background: #ffffff; }
+  .dark select.lemon-select option { color: #f4f4f5; background: #18181b; }
   .bag-col { min-height: 120px; }
   .pack-item { transition: opacity .18s, transform .18s, background-color .18s; }
   .pack-item.done { opacity: .45; }
@@ -177,7 +183,9 @@ tailwind.config = {
           <option value="cross">크로스백</option>
           <option value="cabin">기내가방</option>
         </select>
-        <button id="btnAddItem" class="primary-btn px-3 py-2 rounded-xl text-[11px] font-bold">추가</button>
+        <button id="btnAddItem" class="primary-btn shrink-0 !p-0 w-11 h-11 rounded-xl flex items-center justify-center" aria-label="짐 추가" title="짐 추가">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
       </div>
     </div>
 
@@ -197,6 +205,32 @@ tailwind.config = {
         <a id="gcalLink" class="ghost-btn px-3 py-1.5 rounded-xl text-[11px] font-bold" target="_blank" rel="noopener" href="#">구글 캘린더</a>
       </div>
       <p class="text-[10px] text-neutral-500 dark:text-neutral-400">알림은 브라우저가 열려 있을 때 동작합니다. 폰 캘린더 알람은 .ics 파일이 확실합니다.</p>
+    </div>
+
+    <div class="panel p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-[12px] font-black">여행 환율 계산기</h3>
+        <span id="fxState" class="text-[10px] font-mono text-neutral-400">환율 불러오는 중…</span>
+      </div>
+      <div class="grid sm:grid-cols-[1fr_auto] gap-2 items-end">
+        <div class="flex gap-1.5">
+          <select id="fxCur" class="lemon-select !py-2 !text-[12px] w-32 shrink-0"></select>
+          <input id="fxAmount" type="number" min="0" step="0.01" value="100" inputmode="decimal" class="lemon-input !py-2 !text-[13px] font-mono">
+        </div>
+        <div class="text-right">
+          <p class="text-[9px] font-bold text-neutral-400">원화로</p>
+          <p id="fxKrw" class="text-xl font-black brand-text">- 원</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1.5" id="fxQuick"></div>
+      <div class="hr"></div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 shrink-0">반대로</span>
+        <input id="fxKrwIn" type="number" min="0" step="100" value="100000" inputmode="decimal" class="lemon-input !py-1.5 !text-[12px] font-mono">
+        <span class="text-[10px] font-bold text-neutral-400 shrink-0">원</span>
+        <span id="fxOut" class="ml-auto text-[14px] font-black">-</span>
+      </div>
+      <p class="text-[10px] text-neutral-400 leading-relaxed">open.er-api.com의 일별 고시 환율을 기준으로 계산합니다. 실제 카드·환전 수수료는 별도입니다.</p>
     </div>
   </section>
 
@@ -788,6 +822,86 @@ tailwind.config = {
   $('btnHeroStart').addEventListener('click', function () { go('studio'); });
   $('btnHeroRules').addEventListener('click', function () { go('rules'); });
 
+  /* ---------- travel fx ---------- */
+  var FX = {
+    rates: null,
+    fallback: {
+      USD: 1380, JPY: 9.1, EUR: 1495, CNY: 191, THB: 39.4, VND: 0.054,
+      GBP: 1755, TWD: 43.2, HKD: 176, SGD: 1025, AUD: 905, CAD: 1005, PHP: 24.3, MYR: 310
+    }
+  };
+  var FX_UNITS = { JPY: 100, VND: 1000 };
+  var FX_LABEL = {
+    USD: '미국 달러', JPY: '일본 엔', EUR: '유로', CNY: '중국 위안', THB: '태국 바트',
+    VND: '베트남 동', GBP: '영국 파운드', TWD: '대만 달러', HKD: '홍콩 달러',
+    SGD: '싱가포르 달러', AUD: '호주 달러', CAD: '캐나다 달러', PHP: '필리핀 페소', MYR: '말레이시아 링깃'
+  };
+  var FX_SYMBOL = { USD: '$', JPY: '¥', EUR: '€', CNY: '¥', THB: '฿', VND: '₫', GBP: '£', TWD: 'NT$', HKD: 'HK$', SGD: 'S$', AUD: 'A$', CAD: 'C$', PHP: '₱', MYR: 'RM' };
+
+  function fxKrwPer(code) {
+    if (code === 'KRW') return 1;
+    if (FX.rates && FX.rates[code]) return 1 / FX.rates[code];
+    return FX.fallback[code] || 0;
+  }
+  function fmtWon(v) {
+    if (!isFinite(v)) return '- 원';
+    return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '원';
+  }
+  function renderFx() {
+    var code = $('fxCur').value || 'USD';
+    var amt = parseFloat($('fxAmount').value) || 0;
+    var per = fxKrwPer(code);
+    $('fxKrw').textContent = fmtWon(amt * per);
+    var krwIn = parseFloat($('fxKrwIn').value) || 0;
+    var out = per > 0 ? krwIn / per : 0;
+    var sym = FX_SYMBOL[code] || '';
+    var rounded = out >= 100 ? Math.round(out) : Math.round(out * 100) / 100;
+    $('fxOut').textContent = sym + rounded.toLocaleString('ko-KR') + ' ' + code;
+  }
+  function fillFxSelect() {
+    var codes = Object.keys(FX_LABEL);
+    $('fxCur').innerHTML = codes.map(function (c) {
+      return '<option value="' + c + '">' + c + ' · ' + FX_LABEL[c] + '</option>';
+    }).join('');
+    $('fxCur').value = 'USD';
+    $('fxQuick').innerHTML = ['USD', 'JPY', 'EUR', 'CNY', 'THB', 'VND', 'GBP', 'TWD'].map(function (c) {
+      return '<button class="ghost-btn !px-2 !py-1 !text-[10px] font-bold" data-fx="' + c + '">' +
+        (FX_UNITS[c] ? FX_UNITS[c] : 1) + ' ' + c + '</button>';
+    }).join('');
+  }
+  function loadFx() {
+    $('fxState').textContent = '환율 불러오는 중…';
+    fetch('https://open.er-api.com/v6/latest/KRW', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (json) {
+        if (!json || !json.rates) throw new Error('no rates');
+        FX.rates = json.rates;
+        $('fxState').textContent = '실시간 · ' + String(json.time_last_update_utc || '').slice(5, 16);
+        renderFx();
+      })
+      .catch(function () {
+        $('fxState').textContent = '오프라인 기준값 사용';
+        renderFx();
+      });
+  }
+  function initFx() {
+    fillFxSelect();
+    $('fxCur').addEventListener('change', renderFx);
+    $('fxAmount').addEventListener('input', renderFx);
+    $('fxKrwIn').addEventListener('input', renderFx);
+    $('fxQuick').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-fx]') : null;
+      if (!b) return;
+      var code = b.getAttribute('data-fx');
+      $('fxCur').value = code;
+      $('fxAmount').value = FX_UNITS[code] || 1;
+      renderFx();
+      Lemon.hap(8);
+    });
+    renderFx();
+    loadFx();
+  }
+
   /* ---------- boot ---------- */
   renderPresetRow();
   renderRuleChips();
@@ -795,6 +909,13 @@ tailwind.config = {
   wh();
   loadShared();
   syncArchive();
+  initFx();
+  if (!st.date) {
+    var d0 = new Date();
+    var nd = new Date(d0.getTime() + 86400000);
+    st.date = nd.getFullYear() + '-' + Lemon.pad(nd.getMonth() + 1) + '-' + Lemon.pad(nd.getDate());
+    $('tripDate').value = st.date;
+  }
   if (!st.items.length) {
     // first visit: start with the day-trip essentials
     PRESETS['당일치기'].forEach(function (row) { addItem(row[0], row[1], row[2]); });

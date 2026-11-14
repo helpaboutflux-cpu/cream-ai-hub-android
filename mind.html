@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Mind — 마인드맵 · 생각 정리</title>
+<meta name="description" content="중심 주제에서 가지를 뻗어 생각을 정리하고, 자동 배치·드래그 미세조정·색 태그·PNG와 마크다운 목차 내보내기를 지원합니다.">
+<meta name="theme-color" content="#4f46e5">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#4f46e5', light: '#a78bfa', deep: '#3730a3', 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81', 950: '#1e1b4b' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #4f46e5; --brand-2: #8b5cf6; --brand-deep: #3730a3; }
+  #mapWrap { position: relative; overflow: hidden; touch-action: none; cursor: grab; }
+  #mapWrap.dragging { cursor: grabbing; }
+  #mapSvg { display: block; width: 100%; }
+  .mnode { cursor: pointer; }
+  .mnode rect { transition: filter .16s, stroke .16s; }
+  .mnode.sel rect { stroke: #4f46e5; stroke-width: 3; filter: drop-shadow(0 6px 14px rgba(79,70,229,.35)); }
+  .mnode text { user-select: none; pointer-events: none; }
+  .collapse-btn { cursor: pointer; }
+  .zoom-btn { transition: transform .14s, background-color .18s; }
+  .zoom-btn:active { transform: scale(.92); }
+  .col-dot { width: 1.6rem; height: 1.6rem; border-radius: 9999px; border: 2px solid transparent; transition: transform .14s, border-color .18s; }
+  .col-dot.on { border-color: #fff; box-shadow: 0 0 0 2px var(--brand); transform: scale(1.08); }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#a78bfa"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.5"></circle><circle cx="19" cy="6" r="2.5"></circle><circle cx="19" cy="18" r="2.5"></circle><path d="M7.3 11.2 16.7 7M7.3 12.8 16.7 17"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Mind</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">MINDMAP</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">생각 정리 · 마인드맵</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="asBadge" class="as-badge hidden sm:inline-flex">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.5"></circle><circle cx="19" cy="6" r="2.5"></circle><circle cx="19" cy="18" r="2.5"></circle><path d="M7.3 11.2 16.7 7M7.3 12.8 16.7 17"></path></svg>
+        <span>마인드맵</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            중심에서 가지로, 자동 배치
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            머릿속 생각을<br><span class="brand-text">한 장의 지도</span>로.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            중심 주제 하나로 시작합니다. 가지를 붙이고 접고 끌어 옮기면 배치가 알아서 균형을 잡습니다. 마크다운 목차로도 꺼내 쓸 수 있어요.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              마인드맵 열기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+        </div>
+        <div class="panel p-4">
+          <svg viewBox="0 0 320 200" class="w-full">
+            <path d="M110 100 Q 150 60 190 52" stroke="#a5b4fc" stroke-width="2" fill="none"></path>
+            <path d="M110 100 Q 150 100 190 100" stroke="#a5b4fc" stroke-width="2" fill="none"></path>
+            <path d="M110 100 Q 150 140 190 148" stroke="#a5b4fc" stroke-width="2" fill="none"></path>
+            <rect x="20" y="84" width="90" height="32" rx="12" fill="#4f46e5"></rect>
+            <text x="65" y="105" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">이번 주 계획</text>
+            <rect x="190" y="38" width="110" height="28" rx="10" fill="#eef2ff" stroke="#c7d2fe"></rect>
+            <text x="245" y="57" text-anchor="middle" font-size="11" font-weight="700" fill="#3730a3">수학 3단원</text>
+            <rect x="190" y="86" width="110" height="28" rx="10" fill="#eef2ff" stroke="#c7d2fe"></rect>
+            <text x="245" y="105" text-anchor="middle" font-size="11" font-weight="700" fill="#3730a3">영어 단어 50</text>
+            <rect x="190" y="134" width="110" height="28" rx="10" fill="#eef2ff" stroke="#c7d2fe"></rect>
+            <text x="245" y="153" text-anchor="middle" font-size="11" font-weight="700" fill="#3730a3">발표 준비</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">자동 균형 배치</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">가지가 늘어나도 겹치지 않게 트리와 방사형 배치를 자동으로 다시 계산합니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">접기와 펼치기</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">세부 가지를 접어 큰 흐름만 보거나 다시 펼칩니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">끌어서 미세조정</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">자동 배치 위에 손으로 위치를 조금씩 옮겨 원하는 모양을 만듭니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">색 태그</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">중요도나 갈래를 색으로 구분합니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">줌 · 패닝</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">지도를 넓게 보거나 특정 가지로 확대합니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">PNG · 마크다운</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">이미지로 저장하거나 목차 형태의 마크다운으로 내보냅니다.</p></div>
+    </div>
+  </section>
+
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-3">
+    <div class="panel p-3 flex flex-wrap items-center gap-1.5">
+      <button id="btnAddChild" class="primary-btn !py-2 !px-3 !text-[11px]">하위 가지</button>
+      <button id="btnAddSibling" class="ghost-btn !py-2 !px-3 !text-[11px]">형제 가지</button>
+      <button id="btnEdit" class="ghost-btn !py-2 !px-3 !text-[11px]">이름 수정</button>
+      <button id="btnCollapse" class="ghost-btn !py-2 !px-3 !text-[11px]">접기/펼치기</button>
+      <button id="btnDelete" class="ghost-btn !py-2 !px-3 !text-[11px] !text-rose-500">삭제</button>
+      <span class="grow"></span>
+      <button id="btnPng" class="ghost-btn !py-2 !px-3 !text-[11px]">PNG</button>
+      <button id="btnMd" class="ghost-btn !py-2 !px-3 !text-[11px]">마크다운</button>
+      <button id="btnNewMap" class="ghost-btn !py-2 !px-3 !text-[11px]">새 지도</button>
+    </div>
+
+    <div class="grid lg:grid-cols-[1fr_280px] gap-3 items-start">
+      <div class="panel p-0 overflow-hidden">
+        <div id="mapWrap" class="bg-neutral-50 dark:bg-neutral-900" style="height:520px">
+          <svg id="mapSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <div class="flex items-center justify-between px-3 py-2 border-t border-neutral-200 dark:border-neutral-800">
+          <div class="flex items-center gap-1">
+            <button class="zoom-btn icon-btn !w-7 !h-7" data-zoom="out">−</button>
+            <span id="zoomVal" class="text-[10px] font-mono w-10 text-center">100%</span>
+            <button class="zoom-btn icon-btn !w-7 !h-7" data-zoom="in">+</button>
+            <button class="zoom-btn ghost-btn !py-1 !px-2 !text-[10px] ml-1" data-zoom="fit">맞춤</button>
+          </div>
+          <div class="flex items-center gap-1">
+            <button class="pill-btn !py-1 !px-2 !text-[10px] mode-btn on" data-mode="tree">트리</button>
+            <button class="pill-btn !py-1 !px-2 !text-[10px] mode-btn" data-mode="radial">방사형</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-2.5">
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[11px] font-black">선택한 가지</h3>
+          <input id="nodeText" type="text" class="lemon-input !text-[12px]" placeholder="내용" maxlength="40">
+          <div class="flex flex-wrap gap-1.5" id="colorRow"></div>
+          <p id="nodeInfo" class="text-[10px] text-neutral-500 dark:text-neutral-400">중심 주제를 선택하세요</p>
+        </div>
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[11px] font-black">안내</h3>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed">노드를 누르면 선택되고, 다시 끌면 위치를 옮깁니다. 빈 곳을 끌면 화면이 이동합니다. 휠로 확대·축소됩니다.</p>
+          <div class="hr"></div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400">전체 <b id="nodeCount" class="text-brand-600 dark:text-brand-400">1</b>개 가지</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">작업하던 지도가 자동 저장됩니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Mind · Lemon soft 37대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3"><a href="diary.html" class="hover:underline">Lemon Diary</a><a href="canvas.html" class="hover:underline">Lemon Canvas</a><a href="index.html" class="hover:underline">Developer Hub</a></div>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+  var AUTO = Lemon.project('lemon_mind_archive', { max: 14 });
+  AUTO.bind('asBadge');
+
+  var TAGS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#e11d48', '#8b5cf6', '#64748b'];
+  var NODE_H = 44;
+  var V_GAP = 16;
+  var H_GAP = 78;
+
+  function uid() { return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+  var st = {
+    mode: 'tree',
+    nodes: {},
+    root: null,
+    sel: null,
+    zoom: 1,
+    panX: 0,
+    panY: 0
+  };
+  var booted = false;
+
+  function makeRoot(text) {
+    var id = uid();
+    st.nodes = {};
+    st.nodes[id] = { id: id, text: text || '중심 주제', parent: null, children: [], color: TAGS[0], collapsed: false, dx: 0, dy: 0 };
+    st.root = id;
+    st.sel = id;
+    st.panX = 0; st.panY = 0; st.zoom = 1;
+  }
+
+  function node(id) { return st.nodes[id]; }
+  function selNode() { return st.sel ? st.nodes[st.sel] : null; }
+  function walk(id, fn) {
+    var n = st.nodes[id];
+    if (!n) return;
+    fn(n);
+    n.children.forEach(function (c) { walk(c, fn); });
+  }
+
+  /* ---------------- measure / layout ---------------- */
+  function textWidth(text, size) {
+    var w = 0;
+    for (var i = 0; i < text.length; i++) {
+      w += /[\uAC00-\uD7A3\u3131-\u318E]/.test(text[i]) ? size : size * 0.56;
+    }
+    return w;
+  }
+  function nodeBox(n) {
+    var size = n.parent ? 13 : 15;
+    var w = Math.min(220, Math.max(78, textWidth(n.text, size) + 30));
+    var h = n.parent ? NODE_H : 50;
+    return { w: w, h: h, size: size };
+  }
+
+  function layoutTree() {
+    var cursor = 0;
+    var positions = {};
+    function rec(id, depth) {
+      var n = node(id);
+      if (!n) return;
+      n._x = depth * (H_GAP + 150);
+      if (!n.children.length || n.collapsed) {
+        n._y = cursor;
+        cursor += NODE_H + V_GAP;
+      } else {
+        var ys = [];
+        n.children.forEach(function (c) { rec(c, depth + 1); ys.push(node(c)._y); });
+        n._y = (ys[0] + ys[ys.length - 1]) / 2;
+      }
+      positions[id] = { x: n._x, y: n._y };
+    }
+    rec(st.root, 0);
+    return positions;
+  }
+
+  function leafCount(id) {
+    var n = node(id);
+    if (!n) return 0;
+    if (!n.children.length || n.collapsed) return 1;
+    var s = 0;
+    n.children.forEach(function (c) { s += leafCount(c); });
+    return s;
+  }
+
+  function layoutRadial() {
+    var positions = {};
+    var root = node(st.root);
+    positions[st.root] = { x: 0, y: 0 };
+    var total = 0;
+    root.children.forEach(function (c) { total += leafCount(c); });
+    var start = -Math.PI / 2;
+    root.children.forEach(function (cid) {
+      var span = (leafCount(cid) / Math.max(1, total)) * Math.PI * 2;
+      place(cid, 1, start, start + span);
+      start += span;
+    });
+    function place(id, depth, a0, a1) {
+      var n = node(id);
+      var mid = (a0 + a1) / 2;
+      var R = 170 * depth;
+      positions[id] = { x: Math.cos(mid) * R, y: Math.sin(mid) * R };
+      if (n.collapsed || !n.children.length) return;
+      var tot = 0;
+      n.children.forEach(function (c) { tot += leafCount(c); });
+      var s = a0;
+      n.children.forEach(function (c) {
+        var sp = (leafCount(c) / Math.max(1, tot)) * (a1 - a0);
+        place(c, depth + 1, s, s + sp);
+        s += sp;
+      });
+    }
+    return positions;
+  }
+
+  /* ---------------- render ---------------- */
+  function isDark() { return Lemon.isDark(); }
+
+  function render() {
+    var wrap = $('mapWrap');
+    var W = wrap.clientWidth || 720;
+    var H = wrap.clientHeight || 520;
+    var svg = $('mapSvg');
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+    var pos = st.mode === 'tree' ? layoutTree() : layoutRadial();
+    // bounds
+    var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    Object.keys(pos).forEach(function (id) {
+      var p = pos[id], n = node(id);
+      var b = nodeBox(n);
+      minX = Math.min(minX, p.x - b.w / 2);
+      maxX = Math.max(maxX, p.x + b.w / 2);
+      minY = Math.min(minY, p.y - b.h / 2);
+      maxY = Math.max(maxY, p.y + b.h / 2);
+    });
+    if (!Object.keys(pos).length) { svg.innerHTML = ''; return; }
+    var ox = W / 2 - (minX + maxX) / 2 + st.panX;
+    var oy = H / 2 - (minY + maxY) / 2 + st.panY;
+    var z = st.zoom;
+    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', 'translate(' + ox + ',' + oy + ') scale(' + z + ')');
+
+    var linkLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    var nodeLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.appendChild(linkLayer);
+    g.appendChild(nodeLayer);
+
+    // links
+    Object.keys(st.nodes).forEach(function (id) {
+      var n = st.nodes[id];
+      if (!n.parent || !pos[id] || !pos[n.parent]) return;
+      var p = pos[id], pp = pos[n.parent];
+      var nb = nodeBox(n), pb = nodeBox(node(n.parent));
+      var x1 = pp.x + pb.w / 2, y1 = pp.y;
+      var x2 = p.x - nb.w / 2, y2 = p.y;
+      if (st.mode === 'radial') {
+        x1 = pp.x + Math.cos(Math.atan2(p.y - pp.y, p.x - pp.x)) * pb.w * 0.32;
+        y1 = pp.y + Math.sin(Math.atan2(p.y - pp.y, p.x - pp.x)) * pb.w * 0.32;
+        x2 = p.x - Math.cos(Math.atan2(p.y - pp.y, p.x - pp.x)) * nb.w * 0.34;
+        y2 = p.y - Math.sin(Math.atan2(p.y - pp.y, p.x - pp.x)) * nb.w * 0.34;
+      }
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      var d;
+      if (st.mode === 'radial') {
+        d = 'M' + x1 + ',' + y1 + ' Q ' + ((x1 + x2) / 2) + ',' + ((y1 + y2) / 2) + ' ' + x2 + ',' + y2;
+      } else {
+        var mx = (x1 + x2) / 2;
+        d = 'M' + x1 + ',' + y1 + ' C ' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2;
+      }
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', n.color);
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('opacity', '0.55');
+      linkLayer.appendChild(path);
+    });
+
+    // nodes
+    Object.keys(pos).forEach(function (id) {
+      var n = node(id);
+      var p = pos[id];
+      var b = nodeBox(n);
+      var x = p.x - b.w / 2 + (n.dx || 0);
+      var y = p.y - b.h / 2 + (n.dy || 0);
+      var grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      grp.setAttribute('class', 'mnode' + (id === st.sel ? ' sel' : ''));
+      grp.setAttribute('data-id', id);
+      grp.setAttribute('transform', 'translate(' + x + ',' + y + ')');
+
+      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', 0);
+      rect.setAttribute('y', 0);
+      rect.setAttribute('width', b.w);
+      rect.setAttribute('height', b.h);
+      rect.setAttribute('rx', Math.min(16, b.h / 2.6));
+      if (!n.parent) {
+        rect.setAttribute('fill', n.color);
+        rect.setAttribute('stroke', 'none');
+      } else {
+        rect.setAttribute('fill', isDark() ? 'rgba(24,24,27,.92)' : '#ffffff');
+        rect.setAttribute('stroke', n.color);
+        rect.setAttribute('stroke-width', '2');
+      }
+      grp.appendChild(rect);
+
+      var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', b.w / 2);
+      label.setAttribute('y', b.h / 2 + b.size * 0.36);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', b.size);
+      label.setAttribute('font-weight', n.parent ? '700' : '900');
+      label.setAttribute('fill', n.parent ? (isDark() ? '#e4e4e7' : '#27272a') : '#ffffff');
+      var shown = n.text.length > 22 ? n.text.slice(0, 21) + '…' : n.text;
+      label.textContent = shown;
+      grp.appendChild(label);
+
+      if (n.children.length) {
+        var cb = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        cb.setAttribute('class', 'collapse-btn');
+        cb.setAttribute('data-collapse', id);
+        var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        var cxp = st.mode === 'radial' ? b.w / 2 : b.w;
+        var cyp = b.h / 2;
+        circle.setAttribute('cx', cxp);
+        circle.setAttribute('cy', cyp);
+        circle.setAttribute('r', 9);
+        circle.setAttribute('fill', isDark() ? '#18181b' : '#ffffff');
+        circle.setAttribute('stroke', n.color);
+        circle.setAttribute('stroke-width', '2');
+        cb.appendChild(circle);
+        var sign = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        sign.setAttribute('x', cxp);
+        sign.setAttribute('y', cyp + 4);
+        sign.setAttribute('text-anchor', 'middle');
+        sign.setAttribute('font-size', '12');
+        sign.setAttribute('font-weight', '900');
+        sign.setAttribute('fill', n.color);
+        sign.textContent = n.collapsed ? String(n.children.length) : '−';
+        cb.appendChild(sign);
+        grp.appendChild(cb);
+      }
+      nodeLayer.appendChild(grp);
+    });
+
+    svg.innerHTML = '';
+    svg.appendChild(g);
+    $('zoomVal').textContent = Math.round(st.zoom * 100) + '%';
+    var count = 0;
+    walk(st.root, function () { count++; });
+    $('nodeCount').textContent = count;
+  }
+
+  /* ---------------- selection & actions ---------------- */
+  function select(id) {
+    st.sel = id;
+    var n = node(id);
+    if (n) {
+      $('nodeText').value = n.text;
+      $('nodeInfo').textContent = n.parent ? '하위 가지 · ' + n.children.length + '개 자식' : '중심 주제';
+      renderColors();
+    }
+    render();
+  }
+
+  function renderColors() {
+    var n = selNode();
+    $('colorRow').innerHTML = TAGS.map(function (c) {
+      return '<button class="col-dot ' + (n && n.color === c ? 'on' : '') + '" data-color="' + c + '" style="background:' + c + '"></button>';
+    }).join('');
+  }
+
+  function addChild() {
+    var p = st.sel ? node(st.sel) : node(st.root);
+    if (!p) return;
+    var id = uid();
+    st.nodes[id] = { id: id, text: '새 가지', parent: p.id, children: [], color: p.color, collapsed: false, dx: 0, dy: 0 };
+    p.children.push(id);
+    p.collapsed = false;
+    select(id);
+    markChanged();
+    setTimeout(function () { $('nodeText').focus(); $('nodeText').select(); }, 60);
+  }
+
+  function addSibling() {
+    var n = selNode();
+    if (!n || !n.parent) { addChild(); return; }
+    var p = node(n.parent);
+    var id = uid();
+    st.nodes[id] = { id: id, text: '새 가지', parent: p.id, children: [], color: n.color, collapsed: false, dx: 0, dy: 0 };
+    var idx = p.children.indexOf(n.id);
+    p.children.splice(idx + 1, 0, id);
+    select(id);
+    markChanged();
+  }
+
+  function removeNode() {
+    var n = selNode();
+    if (!n) return;
+    if (!n.parent) {
+      if (!window.confirm('중심 주제를 지우면 모든 가지가 사라집니다. 계속할까요?')) return;
+      makeRoot('중심 주제');
+      select(st.root);
+      render();
+      markChanged();
+      return;
+    }
+    var p = node(n.parent);
+    p.children = p.children.filter(function (c) { return c !== n.id; });
+    walk(n.id, function (x) { delete st.nodes[x.id]; });
+    st.sel = p.id;
+    select(p.id);
+    markChanged();
+    Lemon.toast('가지를 지웠어요', 'info');
+  }
+
+  $('btnAddChild').addEventListener('click', addChild);
+  $('btnAddSibling').addEventListener('click', addSibling);
+  $('btnDelete').addEventListener('click', removeNode);
+  $('btnCollapse').addEventListener('click', function () {
+    var n = selNode();
+    if (!n || !n.children.length) { Lemon.toast('접을 가지가 없어요', 'info'); return; }
+    n.collapsed = !n.collapsed;
+    render(); markChanged();
+  });
+  $('btnEdit').addEventListener('click', function () { $('nodeText').focus(); $('nodeText').select(); });
+  $('nodeText').addEventListener('input', function () {
+    var n = selNode();
+    if (!n) return;
+    n.text = this.value || ' ';
+    render(); markChanged();
+  });
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('[data-color]') : null;
+    if (c) {
+      var n = selNode();
+      if (!n) return;
+      n.color = c.getAttribute('data-color');
+      renderColors(); render(); markChanged();
+    }
+  });
+
+  /* ---------------- svg interactions ---------------- */
+  var wrap = $('mapWrap');
+  var ptr = null;
+
+  wrap.addEventListener('pointerdown', function (ev) {
+    var col = ev.target.closest ? ev.target.closest('[data-collapse]') : null;
+    if (col) {
+      var cid = col.getAttribute('data-collapse');
+      var n = node(cid);
+      if (n) { n.collapsed = !n.collapsed; render(); markChanged(); }
+      ev.preventDefault();
+      return;
+    }
+    var g = ev.target.closest ? ev.target.closest('[data-id]') : null;
+    if (g) {
+      var id = g.getAttribute('data-id');
+      select(id);
+      var startX = ev.clientX, startY = ev.clientY;
+      var n2 = node(id);
+      var ox = n2.dx || 0, oy = n2.dy || 0;
+      ptr = { mode: 'node', id: id, sx: startX, sy: startY, ox: ox, oy: oy, moved: false };
+      wrap.setPointerCapture && wrap.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+      return;
+    }
+    ptr = { mode: 'pan', sx: ev.clientX, sy: ev.clientY, px: st.panX, py: st.panY };
+    wrap.classList.add('dragging');
+    wrap.setPointerCapture && wrap.setPointerCapture(ev.pointerId);
+  });
+
+  wrap.addEventListener('pointermove', function (ev) {
+    if (!ptr) return;
+    if (ptr.mode === 'pan') {
+      st.panX = ptr.px + (ev.clientX - ptr.sx);
+      st.panY = ptr.py + (ev.clientY - ptr.sy);
+      render();
+      return;
+    }
+    var dx = (ev.clientX - ptr.sx) / st.zoom;
+    var dy = (ev.clientY - ptr.sy) / st.zoom;
+    if (Math.abs(dx) + Math.abs(dy) < 2) return;
+    ptr.moved = true;
+    var n = node(ptr.id);
+    if (!n) return;
+    n.dx = Math.round(ptr.ox + dx);
+    n.dy = Math.round(ptr.oy + dy);
+    render();
+  });
+
+  wrap.addEventListener('pointerup', function () {
+    if (ptr && ptr.mode === 'pan') wrap.classList.remove('dragging');
+    if (ptr && ptr.mode === 'node' && ptr.moved) markChanged();
+    ptr = null;
+  });
+  wrap.addEventListener('pointercancel', function () { ptr = null; wrap.classList.remove('dragging'); });
+
+  wrap.addEventListener('wheel', function (ev) {
+    ev.preventDefault();
+    var delta = ev.deltaY > 0 ? -0.1 : 0.1;
+    st.zoom = Math.max(0.35, Math.min(2.4, st.zoom + delta));
+    render();
+  }, { passive: false });
+
+  document.querySelectorAll('[data-zoom]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-zoom');
+      if (k === 'in') st.zoom = Math.min(2.4, st.zoom + 0.15);
+      else if (k === 'out') st.zoom = Math.max(0.35, st.zoom - 0.15);
+      else { st.zoom = 1; st.panX = 0; st.panY = 0; }
+      render();
+    });
+  });
+  document.querySelectorAll('.mode-btn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      st.mode = b.getAttribute('data-mode');
+      document.querySelectorAll('.mode-btn').forEach(function (x) { x.classList.toggle('on', x === b); });
+      render(); markChanged();
+    });
+  });
+
+  /* ---------------- export ---------------- */
+  function exportPng() {
+    var pos = st.mode === 'tree' ? layoutTree() : layoutRadial();
+    var pad = 60;
+    var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    Object.keys(pos).forEach(function (id) {
+      var p = pos[id], n = node(id), b = nodeBox(n);
+      minX = Math.min(minX, p.x - b.w / 2 + (n.dx || 0));
+      maxX = Math.max(maxX, p.x + b.w / 2 + (n.dx || 0));
+      minY = Math.min(minY, p.y - b.h / 2 + (n.dy || 0));
+      maxY = Math.max(maxY, p.y + b.h / 2 + (n.dy || 0));
+    });
+    var W = Math.ceil(maxX - minX + pad * 2);
+    var H = Math.ceil(maxY - minY + pad * 2);
+    var scale = 2;
+    var c = document.createElement('canvas');
+    c.width = W * scale;
+    c.height = H * scale;
+    var ctx = c.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = isDark() ? '#0f0f13' : '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    var ox = pad - minX, oy = pad - minY;
+    // links
+    Object.keys(st.nodes).forEach(function (id) {
+      var n = st.nodes[id];
+      if (!n.parent || !pos[id] || !pos[n.parent]) return;
+      var p = pos[id], pp = pos[n.parent];
+      var nb = nodeBox(n), pb = nodeBox(node(n.parent));
+      var cx1 = pp.x + (n.parent === st.root ? pb.w / 2 : 0) + ox;
+      var cy1 = pp.y + oy;
+      var cx2 = p.x + ox - nb.w / 2;
+      var cy2 = p.y + oy;
+      if (st.mode === 'radial') {
+        var ang = Math.atan2(p.y - pp.y, p.x - pp.x);
+        cx1 = pp.x + Math.cos(ang) * pb.w * 0.32 + ox;
+        cy1 = pp.y + Math.sin(ang) * pb.w * 0.32 + oy;
+        cx2 = p.x - Math.cos(ang) * nb.w * 0.34 + ox;
+        cy2 = p.y - Math.sin(ang) * nb.w * 0.34 + oy;
+      }
+      ctx.beginPath();
+      ctx.moveTo(cx1, cy1);
+      var mx = (cx1 + cx2) / 2;
+      ctx.bezierCurveTo(mx, cy1, mx, cy2, cx2, cy2);
+      ctx.strokeStyle = n.color;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+    // nodes
+    Object.keys(pos).forEach(function (id) {
+      var n = node(id), p = pos[id], b = nodeBox(n);
+      var x = p.x - b.w / 2 + (n.dx || 0) + ox;
+      var y = p.y - b.h / 2 + (n.dy || 0) + oy;
+      ctx.beginPath();
+      var r = Math.min(16, b.h / 2.6);
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + b.w, y, x + b.w, y + b.h, r);
+      ctx.arcTo(x + b.w, y + b.h, x, y + b.h, r);
+      ctx.arcTo(x, y + b.h, x, y, r);
+      ctx.arcTo(x, y, x + b.w, y, r);
+      ctx.closePath();
+      if (!n.parent) { ctx.fillStyle = n.color; ctx.fill(); }
+      else {
+        ctx.fillStyle = isDark() ? '#18181b' : '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = n.color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.fillStyle = n.parent ? (isDark() ? '#e4e4e7' : '#27272a') : '#ffffff';
+      ctx.font = (n.parent ? '700 ' : '900 ') + b.size + 'px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      var shown = n.text.length > 22 ? n.text.slice(0, 21) + '…' : n.text;
+      ctx.fillText(shown, x + b.w / 2, y + b.h / 2);
+    });
+    c.toBlob(function (blob) {
+      if (!blob) { Lemon.toast('이미지 생성에 실패했어요', 'err'); return; }
+      Lemon.downloadBlob('lemon-mind-' + Date.now() + '.png', blob);
+      Lemon.toast('PNG로 저장했어요', 'ok');
+      Lemon.confetti(10);
+    }, 'image/png');
+  }
+
+  function exportMd() {
+    var lines = [];
+    function rec(id, depth) {
+      var n = node(id);
+      lines.push(new Array(depth + 1).join('  ') + '- ' + n.text);
+      n.children.forEach(function (c) { rec(c, depth + 1); });
+    }
+    rec(st.root, 0);
+    Lemon.download('lemon-mind.md', lines.join('\n'), 'text/markdown;charset=utf-8');
+    Lemon.toast('마크다운 목차로 저장했어요', 'ok');
+  }
+
+  $('btnPng').addEventListener('click', exportPng);
+  $('btnMd').addEventListener('click', exportMd);
+
+  /* ---------------- autosave ---------------- */
+  function payload() {
+    return {
+      title: node(st.root) ? node(st.root).text : '마인드맵',
+      sub: countNodes() + '개 가지 · ' + (st.mode === 'tree' ? '트리' : '방사형'),
+      thumb: '',
+      data: { mode: st.mode, nodes: st.nodes, root: st.root, sel: st.sel }
+    };
+  }
+  function countNodes() { var c = 0; walk(st.root, function () { c++; }); return c; }
+  function markChanged() {
+    if (!booted) return;
+    AUTO.touch(payload);
+  }
+
+  function renderArchive() {
+    var list = AUTO.archive.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center col-span-full"><p class="text-[12px] font-bold">저장된 지도가 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">가지를 추가하면 자동으로 저장됩니다.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-3"><p class="text-[12px] font-bold truncate">' + Lemon.esc(it.title || '마인드맵') + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.sub || '') + '</p>' +
+        '<p class="text-[9px] text-neutral-400 mt-0.5">' + Lemon.timeAgo(it.ts) + '</p>' +
+        '<div class="flex gap-1 mt-2"><button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-load="' + it.id + '">열기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var l = e.target.closest ? e.target.closest('[data-load]') : null;
+    if (l) {
+      var rec = AUTO.restore(l.getAttribute('data-load'));
+      if (!rec || !rec.data) return;
+      st.mode = rec.data.mode || 'tree';
+      st.nodes = rec.data.nodes || {};
+      st.root = rec.data.root;
+      st.sel = rec.data.sel || st.root;
+      st.zoom = 1; st.panX = 0; st.panY = 0;
+      document.querySelectorAll('.mode-btn').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-mode') === st.mode); });
+      AUTO.openProject(rec.id);
+      select(st.sel);
+      go('studio');
+      Lemon.toast('지도를 열었어요', 'ok');
+      return;
+    }
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if (del) {
+      AUTO.archive.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('삭제했어요', 'info');
+    }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!AUTO.archive.count()) { Lemon.toast('비울 기록이 없어요', 'info'); return; }
+    if (window.confirm('보관함을 모두 비울까요?')) { AUTO.archive.clear(); renderArchive(); Lemon.toast('보관함을 비웠어요', 'info'); }
+  });
+
+  $('btnNewMap').addEventListener('click', function () {
+    AUTO.newProject();
+    makeRoot('새 주제');
+    select(st.root);
+    render();
+    markChanged();
+    Lemon.toast('새 지도를 시작했어요', 'ok');
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+  document.addEventListener('lemon:theme', function () { render(); });
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail.view === 'studio') setTimeout(render, 30);
+    if (e.detail.view === 'archive') renderArchive();
+  });
+  window.addEventListener('resize', function () { render(); });
+
+  /* ---------------- boot ---------------- */
+  makeRoot('이번 주 계획');
+  (function seed() {
+    var root = node(st.root);
+    var kids = ['수학 3단원', '영어 단어 50', '발표 준비'];
+    kids.forEach(function (t, i) {
+      var id = uid();
+      st.nodes[id] = { id: id, text: t, parent: st.root, children: [], color: TAGS[i % TAGS.length], collapsed: false, dx: 0, dy: 0 };
+      root.children.push(id);
+    });
+  })();
+  select(st.root);
+  renderArchive();
+  booted = true;
+})();
+</script>
+</body>
+</html>

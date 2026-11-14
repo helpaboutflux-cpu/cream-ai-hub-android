@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Clock — 세계 시차 · 타이머 · 스톱워치 · 알람</title>
+<meta name="description" content="서울·도쿄·뉴욕·런던 시간을 한 슬라이더로 동시에 맞춰 보고, 타이머·랩타임 스톱워치·소리 알람까지 한 화면에서 씁니다.">
+<meta name="theme-color" content="#0369a1">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#0369a1', light: '#38bdf8', deep: '#075985', 50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e', 950: '#082f49' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0369a1; --brand-2: #0ea5e9; --brand-deep: #075985; }
+  .clock-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; letter-spacing: -.03em; }
+  .city-row { transition: background-color .16s, border-color .16s; }
+  .city-row:hover { border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+  .lap-row { animation: lapIn .25s ease both; }
+  @keyframes lapIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .tick-mark { stroke: currentColor; }
+  #dialHands line { transition: transform .2s cubic-bezier(.3,1.4,.5,1); }
+  .alarm-card { transition: border-color .18s; }
+  .alarm-card.on { border-color: color-mix(in srgb, var(--brand) 50%, transparent); }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#38bdf8"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Clock</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">TIME</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">세계 시차 · 타이머 · 알람</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="asBadge" class="as-badge hidden sm:inline-flex">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="clock">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+        <span>시계</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            시차 · 타이머 · 알람
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            시간 하나로<br><span class="brand-text">모든 도시</span>를 봅니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            슬라이더를 밀면 서울·도쿄·뉴욕·런던이 같은 순간으로 움직입니다. 통화 시간을 잡고, 타이머와 랩 스톱워치, 소리 알람까지 여기서 끝냅니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="clock">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              시간 맞추기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400">지금 서울 <b id="heroTime" class="font-mono text-brand-600 dark:text-brand-400">--:--:--</b></p>
+        </div>
+        <div class="panel p-4 flex items-center justify-center">
+          <svg viewBox="0 0 200 200" class="w-44 h-44">
+            <circle cx="100" cy="100" r="92" fill="none" stroke="rgba(120,140,160,.25)" stroke-width="2"></circle>
+            <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(120,140,160,.15)" stroke-width="1"></circle>
+            <line x1="100" y1="100" x2="100" y2="52" stroke="#0ea5e9" stroke-width="5" stroke-linecap="round"></line>
+            <line x1="100" y1="100" x2="138" y2="118" stroke="#111827" stroke-width="4" stroke-linecap="round" opacity=".8"></line>
+            <circle cx="100" cy="100" r="5" fill="#0ea5e9"></circle>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 stagger">
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">세계 시차 슬라이더</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">하루 24시간을 밀어 각 도시가 몇 시인지 동시에 확인합니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">타이머</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">분·초를 정해 시작하고 남은 시간을 큰 숫자로 봅니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">랩 스톱워치</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">구간 기록을 남기고 가장 빠른 랩을 표시합니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">브라우저 알람</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">정한 시각에 소리와 알림으로 알려줍니다.</p></div>
+    </div>
+  </section>
+
+  <!-- CLOCK -->
+  <section data-view="clock" class="hidden space-y-3">
+    <div class="grid lg:grid-cols-[300px_1fr] gap-3 items-start">
+      <div class="panel p-4 flex flex-col items-center gap-2">
+        <svg id="dial" viewBox="0 0 200 200" class="w-52 h-52">
+          <circle cx="100" cy="100" r="94" fill="none" class="tick-mark" stroke-width="2" opacity=".22"></circle>
+          <g id="dialTicks"></g>
+          <g id="dialHands">
+            <line id="handH" x1="100" y1="100" x2="100" y2="58" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity=".85"></line>
+            <line id="handM" x1="100" y1="100" x2="100" y2="34" stroke="var(--brand-2)" stroke-width="4" stroke-linecap="round"></line>
+            <line id="handS" x1="100" y1="100" x2="100" y2="26" stroke="#e11d48" stroke-width="1.6" stroke-linecap="round"></line>
+          </g>
+          <circle id="dialDot" cx="100" cy="100" r="4.5" fill="var(--brand-2)"></circle>
+        </svg>
+        <p id="digitalTime" class="clock-num text-3xl font-black">--:--:--</p>
+        <p id="digitalDate" class="text-[11px] text-neutral-500 dark:text-neutral-400">-</p>
+        <div class="flex gap-1.5 mt-1">
+          <span class="chip" id="ampmChip">오전</span>
+          <span class="chip" id="zoneChip">서울</span>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <div class="panel p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-[12px] font-black">세계 시차</h2>
+            <button id="btnAddCity" class="ghost-btn !py-1.5 !px-2.5 !text-[10px]">도시 추가</button>
+          </div>
+          <div class="space-y-1.5">
+            <input type="range" id="timeSlider" class="lemon-range" min="-720" max="720" value="0" step="5">
+            <div class="flex items-center justify-between text-[10px] font-bold text-neutral-500 dark:text-neutral-400">
+              <span id="sliderLabel">지금</span>
+              <button id="btnNow" class="ghost-btn !py-1 !px-2 !text-[10px]">현재 시각</button>
+            </div>
+          </div>
+          <div id="cityList" class="space-y-1.5"></div>
+          <div id="cityPicker" class="hidden panel-soft p-2 space-y-1.5 max-h-56 overflow-y-auto no-scrollbar"></div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div class="panel p-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[12px] font-black">타이머</h2>
+              <span id="timerState" class="text-[10px] font-bold text-neutral-400">대기</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <input id="timerMin" type="number" min="0" max="180" value="5" class="lemon-input !w-16 !py-1.5 !text-[12px] font-mono text-center">
+              <span class="text-[10px] font-bold text-neutral-400">분</span>
+              <input id="timerSec" type="number" min="0" max="59" value="0" class="lemon-input !w-16 !py-1.5 !text-[12px] font-mono text-center">
+              <span class="text-[10px] font-bold text-neutral-400">초</span>
+              <div class="flex gap-1 ml-auto">
+                <button id="btnTimerStart" class="primary-btn !py-1.5 !px-2.5 !text-[11px]">시작</button>
+                <button id="btnTimerReset" class="ghost-btn !py-1.5 !px-2.5 !text-[11px]">초기화</button>
+              </div>
+            </div>
+            <div class="progress-track h-2"><div id="timerFill" class="progress-fill" style="width:0%"></div></div>
+            <p id="timerDisplay" class="clock-num text-3xl font-black text-center">05:00</p>
+          </div>
+
+          <div class="panel p-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <h2 class="text-[12px] font-black">스톱워치</h2>
+              <span id="swState" class="text-[10px] font-bold text-neutral-400">대기</span>
+            </div>
+            <p id="swDisplay" class="clock-num text-3xl font-black text-center">00:00.00</p>
+            <div class="flex gap-1.5">
+              <button id="btnSwStart" class="primary-btn !py-1.5 !px-2.5 !text-[11px] flex-1">시작</button>
+              <button id="btnSwLap" class="ghost-btn !py-1.5 !px-2.5 !text-[11px]">랩</button>
+              <button id="btnSwReset" class="ghost-btn !py-1.5 !px-2.5 !text-[11px]">초기화</button>
+            </div>
+            <div id="lapList" class="space-y-1 max-h-32 overflow-y-auto no-scrollbar"></div>
+          </div>
+        </div>
+
+        <div class="panel p-4 space-y-2">
+          <div class="flex items-center justify-between">
+            <h2 class="text-[12px] font-black">알람</h2>
+            <button id="btnAskNotify" class="ghost-btn !py-1.5 !px-2.5 !text-[10px]">알림 허용</button>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <input id="alarmTime" type="time" value="07:00" class="lemon-input !w-auto !py-1.5 !text-[12px] font-mono">
+            <input id="alarmLabel" type="text" value="기상" class="lemon-input !py-1.5 !text-[12px] flex-1" placeholder="이름" maxlength="20">
+            <button id="btnAddAlarm" class="primary-btn !py-1.5 !px-2.5 !text-[11px]">추가</button>
+          </div>
+          <div id="alarmList" class="space-y-1.5"></div>
+          <p class="text-[10px] text-neutral-400 leading-relaxed">소리는 브라우저가 열려 있을 때만 울립니다. 화면을 닫으면 알림이 오지 않아요.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">도시 목록과 알람 설정이 자동 저장됩니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Clock · Lemon soft 37대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3"><a href="mind.html" class="hover:underline">Lemon Mind</a><a href="pack.html" class="hover:underline">Lemon Pack</a><a href="index.html" class="hover:underline">Developer Hub</a></div>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+  var AUTO = Lemon.project('lemon_clock_archive', { max: 12 });
+  AUTO.bind('asBadge');
+
+  var CITIES = [
+    { id: 'seoul', name: '서울', tz: 'Asia/Seoul' },
+    { id: 'tokyo', name: '도쿄', tz: 'Asia/Tokyo' },
+    { id: 'beijing', name: '베이징', tz: 'Asia/Shanghai' },
+    { id: 'bangkok', name: '방콕', tz: 'Asia/Bangkok' },
+    { id: 'singapore', name: '싱가포르', tz: 'Asia/Singapore' },
+    { id: 'delhi', name: '뉴델리', tz: 'Asia/Kolkata' },
+    { id: 'dubai', name: '두바이', tz: 'Asia/Dubai' },
+    { id: 'moscow', name: '모스크바', tz: 'Europe/Moscow' },
+    { id: 'berlin', name: '베를린', tz: 'Europe/Berlin' },
+    { id: 'paris', name: '파리', tz: 'Europe/Paris' },
+    { id: 'london', name: '런던', tz: 'Europe/London' },
+    { id: 'newyork', name: '뉴욕', tz: 'America/New_York' },
+    { id: 'chicago', name: '시카고', tz: 'America/Chicago' },
+    { id: 'la', name: '로스앤젤레스', tz: 'America/Los_Angeles' },
+    { id: 'saopaulo', name: '상파울루', tz: 'America/Sao_Paulo' },
+    { id: 'sydney', name: '시드니', tz: 'Australia/Sydney' },
+    { id: 'auckland', name: '오클랜드', tz: 'Pacific/Auckland' },
+    { id: 'honolulu', name: '호놀룰루', tz: 'Pacific/Honolulu' },
+    { id: 'vancouver', name: '밴쿠버', tz: 'America/Vancouver' },
+    { id: 'jakarta', name: '자카르타', tz: 'Asia/Jakarta' }
+  ];
+  var LOCAL_TZ = 'Asia/Seoul';
+
+  var state = {
+    cities: ['seoul', 'tokyo', 'newyork', 'london'],
+    offset: 0,
+    alarms: [{ id: 'a1', time: '07:00', label: '기상', on: true }],
+    timerMin: 5,
+    laps: []
+  };
+  var booted = false;
+
+  /* ---------------- formatting ---------------- */
+  function cityById(id) {
+    for (var i = 0; i < CITIES.length; i++) if (CITIES[i].id === id) return CITIES[i];
+    return null;
+  }
+  function partsIn(date, tz) {
+    try {
+      var fmt = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, weekday: 'short', day: '2-digit', month: '2-digit' });
+      var o = {};
+      fmt.formatToParts(date).forEach(function (p) { o[p.type] = p.value; });
+      return o;
+    } catch (e) {
+      return { hour: '00', minute: '00', second: '00', weekday: '', day: '01', month: '01' };
+    }
+  }
+  function tzOffsetMinutes(date, tz) {
+    try {
+      var dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      var p = {};
+      dtf.formatToParts(date).forEach(function (x) { p[x.type] = x.value; });
+      var asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+      return Math.round((asUTC - date.getTime()) / 60000);
+    } catch (e) { return 0; }
+  }
+  var WEEK = { Mon: '월', Tue: '화', Wed: '수', Thu: '목', Fri: '금', Sat: '토', Sun: '일' };
+
+  /* ---------------- clock ---------------- */
+  function renderClock() {
+    var now = new Date();
+    var local = partsIn(now, LOCAL_TZ);
+    var hh = parseInt(local.hour, 10) % 24;
+    var mm = parseInt(local.minute, 10);
+    var ss = parseInt(local.second, 10);
+    $('digitalTime').textContent = Lemon.pad(hh) + ':' + Lemon.pad(mm) + ':' + Lemon.pad(ss);
+    $('digitalDate').textContent = now.getFullYear() + '년 ' + parseInt(local.month, 10) + '월 ' + parseInt(local.day, 10) + '일 ' + (WEEK[local.weekday] || '') + '요일';
+    $('ampmChip').textContent = hh < 12 ? '오전' : '오후';
+    $('heroTime').textContent = Lemon.pad(hh) + ':' + Lemon.pad(mm) + ':' + Lemon.pad(ss);
+    var hAng = (hh % 12) * 30 + mm * 0.5;
+    var mAng = mm * 6 + ss * 0.1;
+    var sAng = ss * 6;
+    $('handH').setAttribute('transform', 'rotate(' + hAng + ' 100 100)');
+    $('handM').setAttribute('transform', 'rotate(' + mAng + ' 100 100)');
+    $('handS').setAttribute('transform', 'rotate(' + sAng + ' 100 100)');
+  }
+
+  function buildTicks() {
+    var g = $('dialTicks');
+    var html = '';
+    for (var i = 0; i < 60; i++) {
+      var big = i % 5 === 0;
+      var a = (i / 60) * Math.PI * 2 - Math.PI / 2;
+      var r1 = big ? 78 : 84;
+      var r2 = 88;
+      var x1 = 100 + Math.cos(a) * r1, y1 = 100 + Math.sin(a) * r1;
+      var x2 = 100 + Math.cos(a) * r2, y2 = 100 + Math.sin(a) * r2;
+      html += '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="currentColor" stroke-width="' + (big ? 2.4 : 1) + '" opacity="' + (big ? '.55' : '.25') + '" stroke-linecap="round"></line>';
+    }
+    g.innerHTML = html;
+  }
+
+  /* ---------------- world cities ---------------- */
+  function renderCities() {
+    var base = new Date(Date.now() + state.offset * 60000);
+    var localOff = tzOffsetMinutes(base, LOCAL_TZ);
+    $('cityList').innerHTML = state.cities.map(function (id) {
+      var c = cityById(id);
+      if (!c) return '';
+      var p = partsIn(base, c.tz);
+      var hh = parseInt(p.hour, 10) % 24;
+      var off = tzOffsetMinutes(base, c.tz);
+      var diff = Math.round((off - localOff) / 60 * 10) / 10;
+      var diffLabel = diff === 0 ? '같은 시간' : (diff > 0 ? '+' + diff + '시간' : diff + '시간');
+      var night = hh < 6 || hh >= 19;
+      return '<div class="city-row panel-soft px-3 py-2 flex items-center gap-2 border border-transparent">' +
+        '<span class="w-2 h-2 rounded-full shrink-0" style="background:' + (night ? '#334155' : '#0ea5e9') + '"></span>' +
+        '<div class="min-w-0"><p class="text-[11px] font-bold truncate">' + c.name + '</p>' +
+        '<p class="text-[9px] text-neutral-500 dark:text-neutral-400">' + diffLabel + ' · ' + (WEEK[p.weekday] || '') + ' ' + parseInt(p.month, 10) + '/' + parseInt(p.day, 10) + '</p></div>' +
+        '<span class="clock-num ml-auto text-[15px] font-black">' + Lemon.pad(hh) + ':' + p.minute + '</span>' +
+        '<button class="text-[11px] text-neutral-400 font-bold px-1" data-rmcity="' + c.id + '">×</button></div>';
+    }).join('');
+  }
+
+  function renderCityPicker() {
+    var box = $('cityPicker');
+    box.innerHTML = CITIES.map(function (c) {
+      var on = state.cities.indexOf(c.id) > -1;
+      return '<button class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11px] font-bold ' +
+        (on ? 'bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800') +
+        '" data-addcity="' + c.id + '"><span>' + c.name + '</span><span class="text-[9px] font-mono text-neutral-400">' + c.tz + '</span></button>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var rm = e.target.closest ? e.target.closest('[data-rmcity]') : null;
+    if (rm) {
+      var id = rm.getAttribute('data-rmcity');
+      state.cities = state.cities.filter(function (x) { return x !== id; });
+      renderCities(); renderCityPicker(); markChanged();
+      return;
+    }
+    var add = e.target.closest ? e.target.closest('[data-addcity]') : null;
+    if (add) {
+      var cid = add.getAttribute('data-addcity');
+      if (state.cities.indexOf(cid) > -1) state.cities = state.cities.filter(function (x) { return x !== cid; });
+      else state.cities.push(cid);
+      renderCities(); renderCityPicker(); markChanged();
+    }
+  });
+
+  $('btnAddCity').addEventListener('click', function () {
+    $('cityPicker').classList.toggle('hidden');
+  });
+
+  $('timeSlider').addEventListener('input', function () {
+    state.offset = parseInt(this.value, 10);
+    var m = Math.abs(state.offset);
+    $('sliderLabel').textContent = state.offset === 0 ? '지금' :
+      (state.offset > 0 ? '+' : '-') + Math.floor(m / 60) + '시간 ' + (m % 60 ? (m % 60) + '분' : '');
+    renderCities();
+  });
+  $('btnNow').addEventListener('click', function () {
+    state.offset = 0;
+    $('timeSlider').value = 0;
+    $('sliderLabel').textContent = '지금';
+    renderCities();
+  });
+
+  /* ---------------- timer ---------------- */
+  var timer = { total: 300, left: 300, running: false, endAt: 0 };
+
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.ceil(sec));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return Lemon.pad(m) + ':' + Lemon.pad(s);
+  }
+  function timerStart() {
+    if (timer.running) {
+      timer.running = false;
+      timer.left = Math.max(0, (timer.endAt - Date.now()) / 1000);
+      $('btnTimerStart').textContent = '계속';
+      $('timerState').textContent = '일시정지';
+      return;
+    }
+    if (timer.left <= 0) {
+      var m = parseInt($('timerMin').value, 10) || 0;
+      var s = parseInt($('timerSec').value, 10) || 0;
+      timer.left = m * 60 + s;
+      timer.total = timer.left;
+    }
+    if (timer.left <= 0) { Lemon.toast('시간을 정해 주세요', 'err'); return; }
+    timer.endAt = Date.now() + timer.left * 1000;
+    timer.running = true;
+    $('btnTimerStart').textContent = '일시정지';
+    $('timerState').textContent = '작동 중';
+  }
+  $('btnTimerStart').addEventListener('click', timerStart);
+  $('btnTimerReset').addEventListener('click', function () {
+    timer.running = false;
+    var m = parseInt($('timerMin').value, 10) || 0;
+    var s = parseInt($('timerSec').value, 10) || 0;
+    timer.total = m * 60 + s;
+    timer.left = timer.total;
+    $('btnTimerStart').textContent = '시작';
+    $('timerState').textContent = '대기';
+    $('timerDisplay').textContent = fmtClock(timer.left);
+    $('timerFill').style.width = '0%';
+  });
+  function tickTimer() {
+    if (!timer.running) return;
+    var left = (timer.endAt - Date.now()) / 1000;
+    timer.left = left;
+    if (left <= 0) {
+      timer.running = false;
+      timer.left = 0;
+      $('btnTimerStart').textContent = '시작';
+      $('timerState').textContent = '완료';
+      $('timerDisplay').textContent = '00:00';
+      $('timerFill').style.width = '100%';
+      ringBell(true);
+      Lemon.toast('타이머가 끝났어요', 'ok');
+      notify('타이머 완료', '정한 시간이 지났습니다');
+      return;
+    }
+    $('timerDisplay').textContent = fmtClock(left);
+    var pct = timer.total > 0 ? (1 - left / timer.total) * 100 : 0;
+    $('timerFill').style.width = Math.min(100, pct) + '%';
+  }
+
+  /* ---------------- stopwatch ---------------- */
+  var sw = { running: false, startAt: 0, elapsed: 0, last: 0 };
+
+  function fmtSw(ms) {
+    var cs = Math.floor(ms / 10) % 100;
+    var s = Math.floor(ms / 1000) % 60;
+    var m = Math.floor(ms / 60000);
+    return Lemon.pad(m) + ':' + Lemon.pad(s) + '.' + Lemon.pad(cs);
+  }
+  $('btnSwStart').addEventListener('click', function () {
+    if (sw.running) {
+      sw.elapsed += Date.now() - sw.startAt;
+      sw.running = false;
+      $('btnSwStart').textContent = '계속';
+      $('swState').textContent = '일시정지';
+      return;
+    }
+    sw.startAt = Date.now();
+    sw.running = true;
+    $('btnSwStart').textContent = '일시정지';
+    $('swState').textContent = '작동 중';
+  });
+  $('btnSwLap').addEventListener('click', function () {
+    var t = sw.running ? sw.elapsed + (Date.now() - sw.startAt) : sw.elapsed;
+    if (t <= 0) { Lemon.toast('먼저 시작하세요', 'err'); return; }
+    state.laps.unshift(t);
+    state.laps = state.laps.slice(0, 12);
+    renderLaps();
+    markChanged();
+  });
+  $('btnSwReset').addEventListener('click', function () {
+    sw.running = false; sw.elapsed = 0; sw.startAt = 0;
+    state.laps = [];
+    $('btnSwStart').textContent = '시작';
+    $('swState').textContent = '대기';
+    $('swDisplay').textContent = '00:00.00';
+    renderLaps();
+    markChanged();
+  });
+  function renderLaps() {
+    var best = state.laps.length ? Math.min.apply(null, state.laps) : 0;
+    $('lapList').innerHTML = state.laps.map(function (t, i) {
+      var gap = i < state.laps.length - 1 ? t - state.laps[i + 1] : t;
+      return '<div class="lap-row flex items-center justify-between text-[10px] font-mono px-1">' +
+        '<span class="text-neutral-400">랩 ' + (state.laps.length - i) + '</span>' +
+        '<span class="font-bold">' + fmtSw(t) + '</span>' +
+        '<span class="' + (t === best ? 'text-brand-600 dark:text-brand-400 font-bold' : 'text-neutral-400') + '">+' + fmtSw(gap) + '</span></div>';
+    }).join('');
+  }
+  function tickSw() {
+    if (!sw.running) return;
+    $('swDisplay').textContent = fmtSw(sw.elapsed + (Date.now() - sw.startAt));
+  }
+
+  /* ---------------- alarms ---------------- */
+  var audioCtx = null;
+  function ringBell(count) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var now = audioCtx.currentTime;
+      var reps = count ? 4 : 2;
+      for (var i = 0; i < reps; i++) {
+        var o = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.value = i % 2 === 0 ? 880 : 660;
+        g.gain.setValueAtTime(0, now + i * 0.35);
+        g.gain.linearRampToValueAtTime(0.22, now + i * 0.35 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.35 + 0.3);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(now + i * 0.35); o.stop(now + i * 0.35 + 0.32);
+      }
+    } catch (e) { }
+  }
+  function notify(title, body) {
+    try {
+      if (window.Notification && Notification.permission === 'granted') new Notification(title, { body: body });
+    } catch (e) { }
+  }
+  $('btnAskNotify').addEventListener('click', function () {
+    if (!window.Notification) { Lemon.toast('이 브라우저는 알림을 지원하지 않아요', 'info'); return; }
+    Notification.requestPermission().then(function (p) {
+      Lemon.toast(p === 'granted' ? '알림을 허용했어요' : '알림이 차단되어 있어요', p === 'granted' ? 'ok' : 'info');
+    });
+  });
+
+  function renderAlarms() {
+    var box = $('alarmList');
+    if (!state.alarms.length) {
+      box.innerHTML = '<p class="text-[10px] text-neutral-400 py-1">알람이 없어요. 시간을 정해 추가하세요.</p>';
+      return;
+    }
+    box.innerHTML = state.alarms.map(function (a) {
+      return '<div class="alarm-card panel-soft px-3 py-2 flex items-center gap-2 ' + (a.on ? 'on' : '') + '">' +
+        '<span class="clock-num text-[15px] font-black ' + (a.on ? '' : 'opacity-40') + '">' + a.time + '</span>' +
+        '<span class="text-[10px] font-bold truncate ' + (a.on ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-400') + '">' + Lemon.esc(a.label) + '</span>' +
+        '<div class="ml-auto flex items-center gap-1">' +
+        '<button class="text-[10px] font-bold px-1.5 py-0.5 rounded ' + (a.on ? 'text-brand-600 dark:text-brand-400' : 'text-neutral-400') + '" data-togglealarm="' + a.id + '">' + (a.on ? '켜짐' : '꺼짐') + '</button>' +
+        '<button class="text-[11px] text-neutral-400 font-bold px-1" data-rmalarm="' + a.id + '">×</button></div></div>';
+    }).join('');
+  }
+  $('btnAddAlarm').addEventListener('click', function () {
+    var t = $('alarmTime').value;
+    if (!t) { Lemon.toast('시간을 정해 주세요', 'err'); return; }
+    state.alarms.push({ id: 'a' + Date.now().toString(36), time: t, label: $('alarmLabel').value || '알람', on: true });
+    renderAlarms(); markChanged();
+    Lemon.toast(t + ' 알람을 추가했어요', 'ok');
+  });
+  document.addEventListener('click', function (e) {
+    var tg = e.target.closest ? e.target.closest('[data-togglealarm]') : null;
+    if (tg) {
+      var id = tg.getAttribute('data-togglealarm');
+      state.alarms.forEach(function (a) { if (a.id === id) a.on = !a.on; });
+      renderAlarms(); markChanged();
+      return;
+    }
+    var rm = e.target.closest ? e.target.closest('[data-rmalarm]') : null;
+    if (rm) {
+      var rid = rm.getAttribute('data-rmalarm');
+      state.alarms = state.alarms.filter(function (a) { return a.id !== rid; });
+      renderAlarms(); markChanged();
+    }
+  });
+
+  var fired = {};
+  function checkAlarms() {
+    var now = new Date();
+    var key = Lemon.pad(now.getHours()) + ':' + Lemon.pad(now.getMinutes());
+    state.alarms.forEach(function (a) {
+      if (!a.on) return;
+      if (a.time !== key) return;
+      var stamp = key + '|' + now.toDateString();
+      if (fired[a.id] === stamp) return;
+      fired[a.id] = stamp;
+      ringBell(true);
+      notify('알람 · ' + a.label, key);
+      Lemon.toast('알람: ' + a.label + ' (' + key + ')', 'ok');
+    });
+  }
+
+  /* ---------------- boot / loop ---------------- */
+  function renderAll() {
+    renderClock();
+    renderCities();
+    renderCityPicker();
+    renderLaps();
+    renderAlarms();
+  }
+
+  setInterval(function () {
+    renderClock();
+    renderCities();
+    tickTimer();
+    tickSw();
+    checkAlarms();
+  }, 500);
+
+  /* ---------------- autosave ---------------- */
+  function payload() {
+    return {
+      title: '도시 ' + state.cities.length + '곳 · 알람 ' + state.alarms.length + '개',
+      sub: state.cities.map(function (id) { var c = cityById(id); return c ? c.name : id; }).join(' · '),
+      thumb: '',
+      data: { cities: state.cities, alarms: state.alarms, timerMin: state.timerMin }
+    };
+  }
+  function markChanged() {
+    if (!booted) return;
+    AUTO.touch(payload);
+  }
+
+  function renderArchive() {
+    var list = AUTO.archive.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center col-span-full"><p class="text-[12px] font-bold">저장된 설정이 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">도시나 알람을 바꾸면 자동 저장됩니다.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-3"><p class="text-[12px] font-bold truncate">' + Lemon.esc(it.title) + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.sub || '') + '</p>' +
+        '<p class="text-[9px] text-neutral-400 mt-0.5">' + Lemon.timeAgo(it.ts) + '</p>' +
+        '<div class="flex gap-1 mt-2"><button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-load="' + it.id + '">불러오기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var l = e.target.closest ? e.target.closest('[data-load]') : null;
+    if (l) {
+      var rec = AUTO.restore(l.getAttribute('data-load'));
+      if (!rec || !rec.data) return;
+      state.cities = rec.data.cities || state.cities;
+      state.alarms = rec.data.alarms || state.alarms;
+      AUTO.openProject(rec.id);
+      renderAll();
+      go('clock');
+      Lemon.toast('설정을 불러왔어요', 'ok');
+      return;
+    }
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if (del) {
+      AUTO.archive.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('삭제했어요', 'info');
+    }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!AUTO.archive.count()) { Lemon.toast('비울 기록이 없어요', 'info'); return; }
+    if (window.confirm('보관함을 모두 비울까요?')) { AUTO.archive.clear(); renderArchive(); Lemon.toast('보관함을 비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+  document.addEventListener('lemon:view', function (e) { if (e.detail.view === 'archive') renderArchive(); });
+  document.addEventListener('lemon:theme', function () { renderClock(); });
+
+  buildTicks();
+  $('timerDisplay').textContent = fmtClock(300);
+  $('timerFill').style.width = '0%';
+  renderAll();
+  renderArchive();
+  booted = true;
+})();
+</script>
+</body>
+</html>

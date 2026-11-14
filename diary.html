@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Diary — 기분 캘린더가 있는 일기장</title>
+<meta name="description" content="기분 색으로 하루를 남기고 사진을 붙이는 일기장. 선택형 잠금 비밀번호를 설정하면 PBKDF2 + AES-256-GCM으로 암호화해 저장합니다.">
+<meta name="theme-color" content="#db2777">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#db2777', light: '#f472b6', deep: '#9d174d', 50: '#fdf2f8', 100: '#fce7f3', 200: '#fbcfe8', 300: '#f9a8d4', 400: '#f472b6', 500: '#ec4899', 600: '#db2777', 700: '#be185d', 800: '#9d174d', 900: '#831843', 950: '#500724' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #db2777; --brand-2: #f472b6; --brand-deep: #9d174d; }
+  .mood-btn { transition: transform .14s, box-shadow .18s, border-color .18s; }
+  .mood-btn.on { transform: translateY(-2px) scale(1.04); }
+  .cal-cell { position: relative; border-radius: .7rem; min-height: 54px; transition: background-color .16s, transform .12s; }
+  .cal-cell.has { cursor: pointer; }
+  .cal-cell:active { transform: scale(.96); }
+  .entry-card { transition: border-color .18s, transform .18s; }
+  .entry-card:hover { border-color: color-mix(in srgb, var(--brand) 50%, transparent); transform: translateY(-1px); }
+  .ph-grid img { border-radius: .6rem; }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#f472b6"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><path d="M9 7h7M9 11h5"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Diary</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">PRIVATE</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">기분 캘린더 일기</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="saveBadge" class="as-badge hidden sm:inline-flex">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="write">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path></svg>
+        <span>오늘 쓰기</span>
+      </button>
+      <button class="nav-tab" data-tab="calendar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M8 3v4M16 3v4M3 11h18"></path></svg>
+        <span>기분 캘린더</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- lock gate -->
+  <section id="lockGate" class="hidden">
+    <div class="panel p-6 sm:p-10 max-w-md mx-auto text-center space-y-4">
+      <div class="w-12 h-12 mx-auto rounded-2xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+      </div>
+      <div>
+        <h2 class="text-lg font-black">일기가 잠겨 있어요</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1" id="lockHint">잠금 비밀번호를 입력하면 암호가 풀립니다.</p>
+      </div>
+      <input id="unlockPw" type="password" class="lemon-input text-center !py-3" placeholder="잠금 비밀번호" autocomplete="current-password">
+      <button id="btnUnlock" class="primary-btn w-full !py-3">열기</button>
+      <p class="text-[10px] text-neutral-400 leading-relaxed">비밀번호는 서버로 전송되지 않습니다. 잊어버리면 되돌릴 수 없으니 꼭 기억해 두세요.</p>
+    </div>
+  </section>
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            기분 색 · 월간 캘린더
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            오늘의 기분을<br><span class="brand-text">색으로</span> 남깁니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            여섯 가지 기분 색 중 하나를 고르고 몇 줄만 적으면 됩니다. 한 달이 색으로 채워지고, 마음에 들면 잠금 비밀번호를 걸어 암호화하세요.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="write">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              오늘 일기 쓰기
+            </button>
+            <button class="ghost-btn" data-goto="calendar">기분 캘린더</button>
+          </div>
+          <div class="flex items-center gap-1.5 pt-1" id="heroMoods"></div>
+        </div>
+        <div class="panel p-4 space-y-2">
+          <p class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400" id="heroMonth">이번 달</p>
+          <div class="grid grid-cols-7 gap-1" id="heroCal"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">기분 6색</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">기쁨·설렘·평온·피곤·슬픔·화남을 색으로 남깁니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">사진 첨부</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">그날의 사진을 최대 4장까지 붙입니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">월간 기분 캘린더</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">한 달이 어떤 색이었는지 한눈에 보고 그날로 돌아갑니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">선택형 잠금</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">쓰지 않으면 그냥 저장, 설정하면 AES-256-GCM으로 암호화해 저장합니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">검색</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">제목과 본문에서 기억나는 단어로 찾습니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">자동 저장</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">쓰는 동안 계속 저장되어 브라우저를 닫아도 남습니다.</p></div>
+    </div>
+  </section>
+
+  <!-- WRITE -->
+  <section data-view="write" class="hidden space-y-3">
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <input id="entryDate" type="date" class="lemon-input !w-auto !py-2 !text-[12px] font-mono">
+        <div class="flex items-center gap-1.5">
+          <button id="btnToday" class="ghost-btn !py-2 !px-3 !text-[11px]">오늘</button>
+          <button id="btnNewEntry" class="ghost-btn !py-2 !px-3 !text-[11px]">새로 쓰기</button>
+          <button id="btnSaveEntry" class="primary-btn !py-2 !px-3 !text-[11px]">저장</button>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5" id="moodRow"></div>
+      <input id="entryTitle" type="text" class="lemon-input !text-[13px] font-bold" placeholder="제목 (선택)" maxlength="40">
+      <textarea id="entryBody" class="lemon-textarea !text-[13px]" rows="9" placeholder="오늘은 어떤 하루였나요?"></textarea>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="ghost-btn !py-2 !px-3 !text-[11px] cursor-pointer">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 16-5-5L5 20"></path></svg>
+          사진 붙이기
+          <input type="file" id="photoInput" accept="image/*" multiple class="hidden">
+        </label>
+        <span id="photoHint" class="text-[10px] text-neutral-500 dark:text-neutral-400">0 / 4장</span>
+        <span class="grow"></span>
+        <span id="charCount" class="text-[10px] font-mono text-neutral-400">0자</span>
+      </div>
+      <div id="photoGrid" class="grid grid-cols-4 gap-1.5 ph-grid"></div>
+    </div>
+
+    <div class="panel p-4 space-y-2">
+      <h3 class="text-[12px] font-black">최근 기록</h3>
+      <div id="recentList" class="space-y-1.5"></div>
+    </div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section data-view="calendar" class="hidden space-y-3">
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex items-center justify-between">
+        <button id="btnPrevMonth" class="icon-btn" aria-label="이전 달">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"></path></svg>
+        </button>
+        <div class="text-center">
+          <p id="calTitle" class="text-[14px] font-black">2026년 11월</p>
+          <p id="calSummary" class="text-[10px] text-neutral-500 dark:text-neutral-400">0일 기록</p>
+        </div>
+        <button id="btnNextMonth" class="icon-btn" aria-label="다음 달">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+      <div class="grid grid-cols-7 gap-1 text-center text-[9px] font-black text-neutral-400">
+        <span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span><span>일</span>
+      </div>
+      <div class="grid grid-cols-7 gap-1" id="calGrid"></div>
+      <div class="flex flex-wrap items-center gap-2 pt-1" id="legendRow"></div>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-2">
+      <div class="flex items-center gap-2">
+        <input id="searchInput" type="text" class="lemon-input !py-2 !text-[12px]" placeholder="제목·본문 검색">
+        <button id="btnSearch" class="ghost-btn !py-2 !px-3 !text-[11px]">검색</button>
+      </div>
+      <div id="searchResults" class="space-y-1.5"></div>
+    </div>
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <h3 class="text-[12px] font-black">잠금</h3>
+      <div id="lockOff" class="space-y-2">
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">지금은 암호화 없이 이 브라우저에만 저장됩니다. 비밀번호를 설정하면 PBKDF2 + AES-256-GCM으로 암호화해 저장합니다.</p>
+        <div class="grid sm:grid-cols-2 gap-2">
+          <input id="newPw" type="password" class="lemon-input !text-[12px]" placeholder="잠금 비밀번호 (6자 이상)" autocomplete="new-password">
+          <input id="newPw2" type="password" class="lemon-input !text-[12px]" placeholder="같은 비밀번호 다시" autocomplete="new-password">
+        </div>
+        <button id="btnSetLock" class="primary-btn !py-2 !px-3 !text-[11px]">잠금 설정</button>
+      </div>
+      <div id="lockOn" class="space-y-2 hidden">
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">일기가 암호화되어 저장되고 있어요. 지금 잠그거나 비밀번호를 해제할 수 있습니다.</p>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnLockNow" class="ghost-btn !py-2 !px-3 !text-[11px]">지금 잠그기</button>
+          <button id="btnRemoveLock" class="ghost-btn !py-2 !px-3 !text-[11px] !text-rose-500">잠금 해제</button>
+          <button id="btnWipe" class="ghost-btn !py-2 !px-3 !text-[11px] !text-rose-500">모두 삭제</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Diary · Lemon soft 37대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3"><a href="mind.html" class="hover:underline">Lemon Mind</a><a href="pass.html" class="hover:underline">Lemon Pass</a><a href="index.html" class="hover:underline">Developer Hub</a></div>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+
+  var MOODS = [
+    { key: 'joy', label: '기쁨', color: '#f59e0b' },
+    { key: 'flut', label: '설렘', color: '#ec4899' },
+    { key: 'calm', label: '평온', color: '#10b981' },
+    { key: 'tired', label: '피곤', color: '#64748b' },
+    { key: 'sad', label: '슬픔', color: '#3b82f6' },
+    { key: 'angry', label: '화남', color: '#e11d48' }
+  ];
+
+  var META_KEY = 'lemon_diary_meta';
+  var DATA_KEY = 'lemon_diary_data';
+  var ITER = 200000;
+
+  var state = {
+    view: 'home',
+    entries: [],
+    locked: false,
+    key: null,
+    meta: null,
+    editing: null,
+    calYear: new Date().getFullYear(),
+    calMonth: new Date().getMonth(),
+    photos: [],
+    dirty: false
+  };
+  var saveTimer = null;
+
+  /* ---------------- crypto helpers ---------------- */
+  function te() { return new TextEncoder(); }
+  function b64(buf) {
+    var b = new Uint8Array(buf), s = '';
+    for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    return btoa(s);
+  }
+  function unb64(str) {
+    var s = atob(str), b = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+    return b;
+  }
+  async function deriveKey(pw, salt, iter) {
+    var base = await crypto.subtle.importKey('raw', te().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+    );
+  }
+  async function encryptJson(obj, key) {
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, te().encode(JSON.stringify(obj)));
+    var all = new Uint8Array(iv.length + ct.byteLength);
+    all.set(iv, 0);
+    all.set(new Uint8Array(ct), iv.length);
+    return b64(all);
+  }
+  async function decryptJson(payload, key) {
+    var raw = unb64(payload);
+    var iv = raw.slice(0, 12);
+    var ct = raw.slice(12);
+    var pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ct);
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+
+  /* ---------------- storage ---------------- */
+  function readMeta() {
+    try { var raw = localStorage.getItem(META_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+  function writeMeta(m) {
+    try { localStorage.setItem(META_KEY, JSON.stringify(m)); return true; } catch (e) { return false; }
+  }
+  function readPlain() {
+    try { var raw = localStorage.getItem(DATA_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+
+  function badge(text, stateName) {
+    var b = $('saveBadge');
+    if (!b) return;
+    b.textContent = text;
+    b.setAttribute('data-state', stateName || 'idle');
+  }
+
+  async function persist() {
+    if (state.locked) return;
+    var payload = { v: 1, updated: Date.now(), entries: state.entries };
+    try {
+      if (state.key && state.meta) {
+        var ct = await encryptJson(payload, state.key);
+        var meta = JSON.parse(JSON.stringify(state.meta));
+        meta.ct = ct;
+        meta.count = state.entries.length;
+        meta.updated = Date.now();
+        if (!writeMeta(meta)) { badge('저장 공간 부족', 'idle'); return; }
+        state.meta = meta;
+        localStorage.removeItem(DATA_KEY);
+        badge('암호화 저장 ' + state.entries.length + '편', 'saved');
+      } else {
+        localStorage.setItem(DATA_KEY, JSON.stringify(payload));
+        badge('저장됨 ' + state.entries.length + '편', 'saved');
+      }
+    } catch (e) {
+      badge('저장 실패', 'idle');
+    }
+  }
+
+  function markChanged() {
+    if (state.locked) return;
+    state.dirty = true;
+    badge('저장 중…', 'saving');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { persist(); }, 900);
+  }
+
+  /* ---------------- lock flow ---------------- */
+  function showGate(on) {
+    $('lockGate').classList.toggle('hidden', !on);
+    document.querySelectorAll('main > section[data-view]').forEach(function (s) { if (on) s.classList.add('hidden'); });
+    if (!on) {
+      var view = location.hash ? location.hash.replace('#', '') : 'home';
+      go(view);
+    }
+  }
+
+  async function tryUnlock() {
+    var pw = $('unlockPw').value;
+    if (!pw) { Lemon.toast('비밀번호를 입력하세요', 'err'); return; }
+    var meta = state.meta || readMeta();
+    if (!meta) return;
+    badge('푸는 중…', 'saving');
+    try {
+      var key = await deriveKey(pw, unb64(meta.salt), meta.iter || ITER);
+      var data = await decryptJson(meta.ct, key);
+      state.key = key;
+      state.locked = false;
+      state.entries = Array.isArray(data.entries) ? data.entries : [];
+      badge('열림 · 암호화 저장', 'saved');
+      $('unlockPw').value = '';
+      showGate(false);
+      renderAll();
+      Lemon.toast('일기를 열었어요', 'ok');
+      resetIdleLock();
+    } catch (e) {
+      badge('암호화 저장', 'idle');
+      Lemon.toast('비밀번호가 맞지 않아요', 'err');
+    }
+  }
+
+  var idleTimer = null;
+  function resetIdleLock() {
+    if (!state.key) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      state.key = null;
+      state.locked = true;
+      state.entries = [];
+      badge('자동 잠김', 'idle');
+      showGate(true);
+      $('lockHint').textContent = '10분 동안 쓰지 않아 자동으로 잠갔어요.';
+    }, 10 * 60 * 1000);
+  }
+  ['click', 'keydown', 'input'].forEach(function (ev) {
+    document.addEventListener(ev, function () { if (state.key) resetIdleLock(); }, { passive: true });
+  });
+
+  $('btnUnlock').addEventListener('click', tryUnlock);
+  $('unlockPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') tryUnlock(); });
+
+  $('btnSetLock').addEventListener('click', async function () {
+    var a = $('newPw').value, b = $('newPw2').value;
+    if (a.length < 6) { Lemon.toast('비밀번호는 6자 이상으로 정하세요', 'err'); return; }
+    if (a !== b) { Lemon.toast('두 비밀번호가 달라요', 'err'); return; }
+    var salt = crypto.getRandomValues(new Uint8Array(16));
+    var key = await deriveKey(a, salt, ITER);
+    state.key = key;
+    state.meta = { v: 1, salt: b64(salt), iter: ITER, created: Date.now() };
+    $('newPw').value = ''; $('newPw2').value = '';
+    await persist();
+    renderLockUi();
+    Lemon.toast('잠금을 걸었어요. 이제 암호화해 저장합니다', 'ok');
+    resetIdleLock();
+  });
+
+  $('btnLockNow').addEventListener('click', function () {
+    persist().then(function () {
+      state.key = null;
+      state.locked = true;
+      state.entries = [];
+      $('lockHint').textContent = '잠금 비밀번호를 입력하면 암호가 풀립니다.';
+      badge('잠김', 'idle');
+      showGate(true);
+      Lemon.toast('일기를 잠갔어요', 'info');
+    });
+  });
+
+  $('btnRemoveLock').addEventListener('click', async function () {
+    if (!window.confirm('잠금을 풀면 일기가 암호화되지 않고 저장됩니다. 계속할까요?')) return;
+    var entries = state.entries.slice();
+    state.key = null;
+    state.meta = null;
+    localStorage.removeItem(META_KEY);
+    state.entries = entries;
+    await persist();
+    renderLockUi();
+    Lemon.toast('잠금을 풀었어요', 'info');
+  });
+
+  $('btnWipe').addEventListener('click', function () {
+    if (!window.confirm('모든 일기를 삭제합니다. 되돌릴 수 없어요. 계속할까요?')) return;
+    state.entries = [];
+    state.photos = [];
+    state.editing = null;
+    localStorage.removeItem(DATA_KEY);
+    localStorage.removeItem(META_KEY);
+    state.key = null;
+    state.meta = null;
+    state.locked = false;
+    persist();
+    renderAll();
+    renderLockUi();
+    Lemon.toast('모두 삭제했어요', 'info');
+  });
+
+  function renderLockUi() {
+    var hasLock = !!state.meta;
+    $('lockOff').classList.toggle('hidden', hasLock);
+    $('lockOn').classList.toggle('hidden', !hasLock);
+  }
+
+  /* ---------------- moods ---------------- */
+  function renderMoods() {
+    $('moodRow').innerHTML = MOODS.map(function (m, i) {
+      return '<button class="mood-btn pill-btn !px-3 !py-2 !text-[11px] ' + (state.editing && state.editing.mood === i ? 'on' : '') +
+        '" data-mood="' + i + '"><span class="w-3 h-3 rounded-full" style="background:' + m.color + '"></span>' + m.label + '</button>';
+    }).join('');
+    $('heroMoods').innerHTML = MOODS.map(function (m) {
+      return '<span class="inline-flex items-center gap-1 text-[10px] font-bold text-neutral-500 dark:text-neutral-400"><span class="w-2 h-2 rounded-full" style="background:' + m.color + '"></span>' + m.label + '</span>';
+    }).join('');
+    $('legendRow').innerHTML = MOODS.map(function (m) {
+      return '<span class="inline-flex items-center gap-1 text-[10px] font-bold text-neutral-500 dark:text-neutral-400"><span class="w-2.5 h-2.5 rounded-full" style="background:' + m.color + '"></span>' + m.label + '</span>';
+    }).join('');
+  }
+
+  /* ---------------- writing ---------------- */
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + '-' + Lemon.pad(d.getMonth() + 1) + '-' + Lemon.pad(d.getDate());
+  }
+
+  function newEntry(date) {
+    state.editing = {
+      id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+      date: date || todayStr(),
+      title: '',
+      body: '',
+      mood: 2,
+      photos: [],
+      ts: Date.now()
+    };
+    state.photos = [];
+    fillEditor();
+  }
+
+  function fillEditor() {
+    var e = state.editing;
+    if (!e) return;
+    $('entryDate').value = e.date;
+    $('entryTitle').value = e.title || '';
+    $('entryBody').value = e.body || '';
+    state.photos = (e.photos || []).slice();
+    renderPhotos();
+    renderMoods();
+    $('charCount').textContent = (e.body || '').length + '자';
+  }
+
+  function renderPhotos() {
+    $('photoHint').textContent = state.photos.length + ' / 4장';
+    $('photoGrid').innerHTML = state.photos.map(function (src, i) {
+      return '<div class="relative rounded-lg overflow-hidden"><img src="' + src + '" alt="" class="w-full block" style="aspect-ratio:1/1;object-fit:cover">' +
+        '<button class="absolute top-0.5 right-0.5 w-4 h-4 rounded bg-black/60 text-white text-[9px] font-black" data-rmphoto="' + i + '">×</button></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (ev) {
+    var mb = ev.target.closest ? ev.target.closest('[data-mood]') : null;
+    if (mb) {
+      var i = parseInt(mb.getAttribute('data-mood'), 10);
+      if (state.editing) state.editing.mood = i;
+      renderMoods();
+      markChanged();
+      return;
+    }
+    var rm = ev.target.closest ? ev.target.closest('[data-rmphoto]') : null;
+    if (rm) {
+      state.photos.splice(parseInt(rm.getAttribute('data-rmphoto'), 10), 1);
+      if (state.editing) state.editing.photos = state.photos.slice();
+      renderPhotos();
+      markChanged();
+      return;
+    }
+    var d = ev.target.closest ? ev.target.closest('[data-open]') : null;
+    if (d) {
+      var id = d.getAttribute('data-open');
+      var found = null;
+      state.entries.forEach(function (x) { if (x.id === id) found = x; });
+      if (found) { state.editing = JSON.parse(JSON.stringify(found)); fillEditor(); go('write'); }
+      return;
+    }
+    var del = ev.target.closest ? ev.target.closest('[data-delete]') : null;
+    if (del) {
+      var did = del.getAttribute('data-delete');
+      if (!window.confirm('이 일기를 지울까요?')) return;
+      state.entries = state.entries.filter(function (x) { return x.id !== did; });
+      markChanged();
+      renderAll();
+      Lemon.toast('지웠어요', 'info');
+    }
+  });
+
+  $('photoInput').addEventListener('change', function () {
+    var files = Array.prototype.slice.call(this.files || []);
+    this.value = '';
+    var room = 4 - state.photos.length;
+    if (room <= 0) { Lemon.toast('사진은 4장까지 붙일 수 있어요', 'err'); return; }
+    files.slice(0, room).forEach(function (f) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var im = new Image();
+        im.onload = function () {
+          var k = Math.min(1, 900 / Math.max(im.naturalWidth, im.naturalHeight));
+          var c = document.createElement('canvas');
+          c.width = Math.round(im.naturalWidth * k);
+          c.height = Math.round(im.naturalHeight * k);
+          c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+          state.photos.push(c.toDataURL('image/jpeg', 0.82));
+          if (state.editing) state.editing.photos = state.photos.slice();
+          renderPhotos();
+          markChanged();
+        };
+        im.src = fr.result;
+      };
+      fr.readAsDataURL(f);
+    });
+  });
+
+  ['entryTitle', 'entryBody'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      if (!state.editing) newEntry($('entryDate').value || todayStr());
+      var e = state.editing;
+      e.date = $('entryDate').value || todayStr();
+      e.title = $('entryTitle').value;
+      e.body = $('entryBody').value;
+      e.photos = state.photos.slice();
+      $('charCount').textContent = e.body.length + '자';
+      markChanged();
+    });
+  });
+  $('entryDate').addEventListener('change', function () {
+    if (!state.editing) return;
+    state.editing.date = this.value;
+    markChanged();
+  });
+
+  function saveEntry() {
+    if (!state.editing) newEntry();
+    var e = state.editing;
+    e.date = $('entryDate').value || todayStr();
+    e.title = $('entryTitle').value.trim();
+    e.body = $('entryBody').value;
+    e.photos = state.photos.slice();
+    e.ts = Date.now();
+    if (!e.body.trim() && !e.photos.length && !e.title) {
+      Lemon.toast('내용을 조금 적어 주세요', 'err');
+      return;
+    }
+    var found = -1;
+    state.entries.forEach(function (x, i) { if (x.id === e.id) found = i; });
+    if (found > -1) state.entries[found] = e;
+    else state.entries.unshift(e);
+    state.entries.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    persist();
+    renderAll();
+    Lemon.toast('일기를 저장했어요', 'ok');
+    Lemon.confetti(10);
+  }
+  $('btnSaveEntry').addEventListener('click', saveEntry);
+  $('btnToday').addEventListener('click', function () {
+    $('entryDate').value = todayStr();
+    if (state.editing) { state.editing.date = todayStr(); markChanged(); }
+  });
+  $('btnNewEntry').addEventListener('click', function () {
+    newEntry(todayStr());
+    $('entryTitle').focus();
+    Lemon.toast('새 일기를 시작했어요', 'ok');
+  });
+
+  /* ---------------- lists / calendar ---------------- */
+  function moodOf(entry) {
+    return MOODS[entry && typeof entry.mood === 'number' ? entry.mood : 2] || MOODS[2];
+  }
+
+  function entryCard(e) {
+    var m = moodOf(e);
+    return '<div class="entry-card panel-soft p-2.5 flex items-start gap-2.5 cursor-pointer" data-open="' + e.id + '">' +
+      '<span class="w-2 self-stretch rounded-full shrink-0" style="background:' + m.color + '"></span>' +
+      '<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5">' +
+      '<p class="text-[11px] font-black">' + Lemon.esc(e.title || (e.body || '').slice(0, 20) || '제목 없음') + '</p>' +
+      '<span class="text-[9px] font-mono text-neutral-400 shrink-0">' + Lemon.esc(e.date) + '</span></div>' +
+      '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 line-clamp-2">' + Lemon.esc((e.body || '').slice(0, 60)) + '</p>' +
+      '<span class="text-[9px] font-bold" style="color:' + m.color + '">' + m.label + '</span>' +
+      (e.photos && e.photos.length ? '<span class="text-[9px] text-neutral-400 ml-1.5">사진 ' + e.photos.length + '</span>' : '') +
+      '</div><button class="text-[10px] text-rose-500 font-bold shrink-0" data-delete="' + e.id + '">삭제</button></div>';
+  }
+
+  function renderRecent() {
+    var list = state.entries.slice(0, 8);
+    $('recentList').innerHTML = list.length ? list.map(entryCard).join('') :
+      '<p class="text-[10px] text-neutral-400 py-2">아직 기록이 없어요. 첫 일기를 남겨 보세요.</p>';
+  }
+
+  function renderCalendar() {
+    var y = state.calYear, m = state.calMonth;
+    $('calTitle').textContent = y + '년 ' + (m + 1) + '월';
+    var first = new Date(y, m, 1);
+    var startDow = (first.getDay() + 6) % 7;
+    var days = new Date(y, m + 1, 0).getDate();
+    var byDate = {};
+    state.entries.forEach(function (e) { byDate[e.date] = e; });
+    var today = todayStr();
+    var html = '';
+    for (var i = 0; i < startDow; i++) html += '<div></div>';
+    var count = 0;
+    for (var d = 1; d <= days; d++) {
+      var key = y + '-' + Lemon.pad(m + 1) + '-' + Lemon.pad(d);
+      var e = byDate[key];
+      var m2 = e ? moodOf(e) : null;
+      if (e) count++;
+      var isToday = key === today;
+      html += '<div class="cal-cell flex flex-col items-center justify-center ' + (e ? 'has' : '') + '" ' +
+        (e ? 'data-open="' + e.id + '"' : '') + ' style="' +
+        (m2 ? 'background:' + hexA(m2.color, 0.18) + ';border:1px solid ' + hexA(m2.color, 0.45) : 'border:1px solid transparent') + '">' +
+        '<span class="text-[10px] font-bold ' + (isToday ? 'text-brand-600 dark:text-brand-400' : 'text-neutral-500 dark:text-neutral-400') + '">' + d + '</span>' +
+        (m2 ? '<span class="w-1.5 h-1.5 rounded-full mt-0.5" style="background:' + m2.color + '"></span>' : '') +
+        '</div>';
+    }
+    $('calGrid').innerHTML = html;
+    $('calSummary').textContent = count + '일 기록 · ' + state.entries.length + '편 전체';
+  }
+
+  function hexA(hex, a) {
+    var h = String(hex).replace('#', '');
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function renderHeroCal() {
+    var now = new Date();
+    var first = new Date(now.getFullYear(), now.getMonth(), 1);
+    var startDow = (first.getDay() + 6) % 7;
+    var days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    var byDate = {};
+    state.entries.forEach(function (e) { byDate[e.date] = e; });
+    var html = '';
+    for (var i = 0; i < startDow; i++) html += '<span></span>';
+    for (var d = 1; d <= days; d++) {
+      var key = now.getFullYear() + '-' + Lemon.pad(now.getMonth() + 1) + '-' + Lemon.pad(d);
+      var e = byDate[key];
+      var m = e ? moodOf(e) : null;
+      html += '<span class="aspect-square rounded-md flex items-center justify-center text-[8px] font-bold" style="' +
+        (m ? 'background:' + m.color + ';color:#fff' : 'color:#9ca3af') + '">' + d + '</span>';
+    }
+    $('heroCal').innerHTML = html;
+    $('heroMonth').textContent = (now.getMonth() + 1) + '월 기분';
+  }
+
+  function renderSearch() {
+    var q = ($('searchInput').value || '').trim().toLowerCase();
+    if (!q) { $('searchResults').innerHTML = ''; return; }
+    var hits = state.entries.filter(function (e) {
+      return (e.title || '').toLowerCase().indexOf(q) > -1 || (e.body || '').toLowerCase().indexOf(q) > -1;
+    });
+    $('searchResults').innerHTML = hits.length ? hits.map(entryCard).join('') :
+      '<p class="text-[10px] text-neutral-400 py-2">"' + Lemon.esc(q) + '" 와 맞는 기록이 없어요.</p>';
+  }
+
+  function renderAll() {
+    renderRecent();
+    renderCalendar();
+    renderHeroCal();
+    renderSearch();
+    renderLockUi();
+  }
+
+  $('btnPrevMonth').addEventListener('click', function () {
+    state.calMonth--;
+    if (state.calMonth < 0) { state.calMonth = 11; state.calYear--; }
+    renderCalendar();
+  });
+  $('btnNextMonth').addEventListener('click', function () {
+    state.calMonth++;
+    if (state.calMonth > 11) { state.calMonth = 0; state.calYear++; }
+    renderCalendar();
+  });
+  $('searchInput').addEventListener('input', renderSearch);
+  $('btnSearch').addEventListener('click', renderSearch);
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail.view === 'calendar') renderCalendar();
+    if (e.detail.view === 'write' && !state.editing) newEntry(todayStr());
+  });
+  window.addEventListener('beforeunload', function () { if (state.dirty) persist(); });
+
+  /* ---------------- boot ---------------- */
+  (async function boot() {
+    renderMoods();
+    $('entryDate').value = todayStr();
+    var meta = readMeta();
+    if (meta && meta.ct) {
+      state.meta = meta;
+      state.locked = true;
+      badge('잠김', 'idle');
+      showGate(true);
+      return;
+    }
+    var plain = readPlain();
+    state.entries = plain && Array.isArray(plain.entries) ? plain.entries : [];
+    state.locked = false;
+    badge(state.entries.length ? '저장됨 ' + state.entries.length + '편' : '자동 저장 대기', state.entries.length ? 'saved' : 'idle');
+    renderAll();
+    newEntry(todayStr());
+  })();
+})();
+</script>
+</body>
+</html>

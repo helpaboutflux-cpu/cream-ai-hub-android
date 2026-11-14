@@ -295,6 +295,15 @@ tailwind.config = {
       <div class="panel p-4 sm:p-5">
         <h2 class="text-[13px] font-black mb-3">내보내기</h2>
         <div class="space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[12px] font-semibold">시간표 위치</span>
+            <div class="seg" id="posSeg">
+              <button data-pos="top">상단</button>
+              <button data-pos="center">중앙</button>
+              <button data-pos="bottom">하단</button>
+            </div>
+          </div>
+          <p class="text-[10px] text-neutral-400 dark:text-neutral-500 leading-relaxed" id="posHint">잠금화면 시계 아래에 시간표가 오도록 배치합니다.</p>
           <button id="btnPng" class="primary-btn w-full !py-2.5 !text-[12px]">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             잠금화면 이미지 저장 (1080×2400)
@@ -481,6 +490,7 @@ tailwind.config = {
     edit: null,
     color: COLORS[0],
     history: [],
+    pos: 'top',
     bg: { img: null, blur: 10, dim: 44 }
   };
 
@@ -655,6 +665,13 @@ tailwind.config = {
   }
   bindSeg('segDays', 'data-days', function (v) { state.days = parseInt(v, 10); renderGrid(); markChanged(); });
   bindSeg('segPeriods', 'data-periods', function (v) { state.periods = parseInt(v, 10); renderGrid(); markChanged(); });
+  bindSeg('posSeg', 'data-pos', function (v) {
+    state.pos = v || 'top';
+    $('posHint').textContent = v === 'bottom' ? '시계 아래 하단에 시간표 카드를 깔아 둡니다.' :
+      v === 'center' ? '화면 정중앙에 시간표를 놓습니다.' : '화면 위쪽에 시간표를 놓습니다.';
+    updateBgPreview();
+    markChanged();
+  });
 
   $('startTime').addEventListener('input', function () { state.start = this.value; renderGrid(); markChanged(); });
   $('classMin').addEventListener('input', function () { state.classMin = Math.max(20, parseInt(this.value, 10) || 50); renderGrid(); markChanged(); });
@@ -710,7 +727,7 @@ tailwind.config = {
     '금': 4, '금요일': 4, 'fri': 4, 'friday': 4,
     '토': 5, '토요일': 5, 'sat': 5, 'saturday': 5
   };
-  var OCR = { canvas: null, running: false, parsed: null };
+  var OCR = { canvas: null, img: null, running: false, parsed: null };
   var CDNS = [
     { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0' },
     { workerPath: 'https://unpkg.com/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://unpkg.com/tesseract.js-core@5.1.0' }
@@ -766,6 +783,7 @@ tailwind.config = {
         cv.height = Math.round(img.naturalHeight * k);
         cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
         OCR.canvas = cv;
+        OCR.img = img;
         $('ocrDrop').classList.add('hidden');
         $('ocrPreviewWrap').classList.remove('hidden');
         $('ocrResult').classList.add('hidden');
@@ -836,7 +854,7 @@ tailwind.config = {
           },
           errorHandler: function (e) { if (window.console) console.warn('[table ocr]', e); }
         });
-        try { await w.setParameters({ preserve_interword_spaces: '1' }); } catch (e2) { }
+        try { await w.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: '6' }); } catch (e2) { }
         ocrWorker = w;
         return w;
       } catch (err) {
@@ -1049,6 +1067,223 @@ tailwind.config = {
     $('ocrResult').classList.remove('hidden');
   }
 
+  /* ---------------- cell-level OCR (colour aware, 2-pass) ---------------- */
+  function makeScaledCanvas(img, maxW) {
+    var k = Math.min(1, maxW / img.naturalWidth);
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * k));
+    c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  function detectCellBoxes(cv) {
+    var W = cv.width, H = cv.height;
+    var d = cv.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    var mask = new Uint8Array(W * H);
+    for (var i = 0; i < W * H; i++) {
+      var r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2];
+      var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      var lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      // saturated, mid-bright pixels: coloured subject chips. Dark banner and grey cells fall out here.
+      if (mx - mn >= 40 && lum > 55 && lum < 245 && mn >= 25) mask[i] = 1;
+    }
+    var seen = new Uint8Array(W * H);
+    var boxes = [];
+    var stack = [];
+    for (var idx = 0; idx < W * H; idx++) {
+      if (!mask[idx] || seen[idx]) continue;
+      var minX = W, minY = H, maxX = 0, maxY = 0, area = 0;
+      stack.length = 0;
+      stack.push(idx);
+      seen[idx] = 1;
+      while (stack.length) {
+        var p = stack.pop();
+        var px = p % W, py = (p - px) / W;
+        area++;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+        if (px > 0 && mask[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; stack.push(p - 1); }
+        if (px < W - 1 && mask[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; stack.push(p + 1); }
+        if (py > 0 && mask[p - W] && !seen[p - W]) { seen[p - W] = 1; stack.push(p - W); }
+        if (py < H - 1 && mask[p + W] && !seen[p + W]) { seen[p + W] = 1; stack.push(p + W); }
+      }
+      var w = maxX - minX + 1, h = maxY - minY + 1;
+      if (area < 600) continue;
+      if (area / (w * h) < 0.55) continue;
+      var ratio = w / h;
+      if (ratio < 1.15 || ratio > 4.2) continue;
+      if (w < 36 || h < 18) continue;
+      boxes.push({ x: minX, y: minY, w: w, h: h, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 });
+    }
+    return boxes;
+  }
+
+  function groupAxis(boxes, key, tol) {
+    var sorted = boxes.slice().sort(function (a, b) { return a[key] - b[key]; });
+    var groups = [];
+    sorted.forEach(function (b) {
+      var g = groups[groups.length - 1];
+      if (g && Math.abs(b[key] - g.center) <= tol) {
+        g.items.push(b);
+        var sum = 0;
+        g.items.forEach(function (x) { sum += x[key]; });
+        g.center = sum / g.items.length;
+      } else {
+        groups.push({ items: [b], center: b[key] });
+      }
+    });
+    return groups;
+  }
+  function nearestGroup(groups, value, key) {
+    var best = 0, dist = Infinity;
+    for (var i = 0; i < groups.length; i++) {
+      var dd = Math.abs(value - groups[i].center);
+      if (dd < dist) { dist = dd; best = i; }
+    }
+    return best;
+  }
+
+  function cellCrop(work, box, scale, invert) {
+    var padX = Math.round(box.w * 0.10), padY = Math.round(box.h * 0.12);
+    var sx = Math.max(0, Math.round((box.x - padX) * scale));
+    var sy = Math.max(0, Math.round((box.y - padY) * scale));
+    var sw = Math.min(work.width - sx, Math.round((box.w + padX * 2) * scale));
+    var sh = Math.min(work.height - sy, Math.round((box.h + padY * 2) * scale));
+    if (sw < 8 || sh < 8) return null;
+    var up = Math.max(1, Math.min(3, Math.round(420 / sw)));
+    var c = document.createElement('canvas');
+    c.width = sw * up;
+    c.height = sh * up;
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(work, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    var frame = ctx.getImageData(0, 0, c.width, c.height);
+    var d = frame.data, i;
+    if (invert) {
+      for (i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
+    } else {
+      var lo = 255, hi = 0;
+      for (i = 0; i < d.length; i += 4) {
+        var gv = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+        d[i] = d[i + 1] = d[i + 2] = gv;
+        if (gv < lo) lo = gv;
+        if (gv > hi) hi = gv;
+      }
+      var sc = 255 / Math.max(1, hi - lo);
+      for (i = 0; i < d.length; i += 4) {
+        var v = (d[i] - lo) * sc;
+        d[i] = d[i + 1] = d[i + 2] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+    }
+    ctx.putImageData(frame, 0, 0);
+    return c;
+  }
+
+  function cleanCellLine(s) {
+    return String(s || '').replace(/\s+/g, ' ').replace(/^[\s|·•\-–—+]+/, '').replace(/[\s|·•]+$/, '').trim();
+  }
+
+  function parseCellText(raw) {
+    var lines = String(raw || '').split(/\n/).map(cleanCellLine).filter(function (l) {
+      if (!l) return false;
+      if (/^[+\-·•|~_=.]+$/.test(l)) return false;
+      if (/교시/.test(l) && l.replace(/[^0-9]/g, '').length <= 2) return false;
+      return /[가-힣A-Za-z0-9]/.test(l);
+    });
+    if (!lines.length) return null;
+    var subject = '', room = '', prof = '';
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i];
+      var both = l.match(/^([가-힣A-Za-z·]{2,10})\s*(\d\s*-\s*\d.*)$/);
+      if (!subject) {
+        if (both) { subject = both[1]; room = both[2]; }
+        else subject = l;
+        continue;
+      }
+      if (/실|관|층|동|호|룸|room/i.test(l) || /\d-\d/.test(l)) { if (!room) room = l; }
+      else if (!prof) prof = l;
+    }
+    subject = subject.replace(/[^가-힣A-Za-z0-9]/g, '').slice(0, 14);
+    room = room.replace(/\s+/g, '').replace(/[^가-힣A-Za-z0-9\-]/g, '').slice(0, 14);
+    prof = prof.replace(/\s+/g, ' ').replace(/[^가-힣A-Za-z0-9 ]/g, '').trim().slice(0, 10);
+    if (!subject) return null;
+    return { subject: subject, room: room, prof: prof };
+  }
+
+  function cellScore(text) {
+    if (!text) return -100;
+    var hangul = (text.match(/[가-힣]/g) || []).length;
+    var latin = (text.match(/[A-Za-z]/g) || []).length;
+    var noise = (text.match(/[^가-힣A-Za-z0-9\s\-.]/g) || []).length;
+    return hangul * 4 + latin - noise * 2;
+  }
+
+  async function readCell(worker, work, box, scale) {
+    var best = null, bestScore = -100;
+    for (var pass = 0; pass < 2; pass++) {
+      var crop = cellCrop(work, box, scale, pass === 0);
+      if (!crop) continue;
+      var ret = await worker.recognize(crop);
+      var text = (ret && ret.data && ret.data.text) || '';
+      var score = cellScore(text);
+      if (score > bestScore) {
+        bestScore = score;
+        best = parseCellText(text);
+      }
+      if (best && /[가-힣]{2,}/.test(best.subject) && bestScore >= 8) break;
+    }
+    return best;
+  }
+
+  async function ocrByCells(worker) {
+    if (!OCR.img) return null;
+    var det = makeScaledCanvas(OCR.img, 520);
+    var work = makeScaledCanvas(OCR.img, 1800);
+    var boxes = detectCellBoxes(det);
+    if (boxes.length < 2) {
+      if (window.console) console.warn('[table ocr] coloured chips not found', boxes.length);
+      return null;
+    }
+    var widths = boxes.map(function (b) { return b.w; }).sort(function (a, b) { return a - b; });
+    var heights = boxes.map(function (b) { return b.h; }).sort(function (a, b) { return a - b; });
+    var medW = widths[Math.floor(widths.length / 2)];
+    var medH = heights[Math.floor(heights.length / 2)];
+    var colGroups = groupAxis(boxes, 'cx', medW * 0.62);
+    var rowGroups = groupAxis(boxes, 'cy', medH * 0.62);
+    if (colGroups.length > 6) colGroups = colGroups.slice(0, 6);
+    var scale = work.width / det.width;
+    var cells = {};
+    var total = 0;
+    for (var ri = 0; ri < rowGroups.length; ri++) {
+      ocrProgress(58 + ((ri + 1) / rowGroups.length) * 38, '과목 칸 읽는 중… ' + (ri + 1) + '/' + rowGroups.length);
+      for (var bi = 0; bi < rowGroups[ri].items.length; bi++) {
+        var box = rowGroups[ri].items[bi];
+        var ci = nearestGroup(colGroups, box.cx);
+        var content = await readCell(worker, work, box, scale);
+        if (!content) continue;
+        cells[ci + '-' + (ri + 1)] = content;
+        total++;
+      }
+    }
+    if (!total) return null;
+    return {
+      days: colGroups.length,
+      periods: rowGroups.length,
+      rowCount: rowGroups.length,
+      cols: colGroups.map(function (g) { return { day: colGroups.indexOf(g), cx: g.center }; }),
+      rows: rowGroups.map(function (g, i) { return { n: i + 1, cy: g.center }; }),
+      cells: cells,
+      ignored: boxes.length - total
+    };
+  }
+
   async function runOcr() {
     if (!OCR.canvas) { Lemon.toast('먼저 시간표 사진을 올려 주세요', 'err'); return; }
     if (OCR.running) return;
@@ -1058,11 +1293,17 @@ tailwind.config = {
     $('ocrResult').classList.add('hidden');
     ocrProgress(3, '준비 중…');
     try {
-      var cv = buildOcrCanvas();
       var w = await getOcrWorker();
-      ocrProgress(60, '표의 글자를 읽는 중…');
-      var ret = await w.recognize(cv);
-      var words = toWords(ret && ret.data);
+      ocrProgress(56, '시간표 칸을 찾는 중…');
+      var parsed = null;
+      try { parsed = await ocrByCells(w); } catch (errCell) { if (window.console) console.warn('[table] cell ocr failed', errCell); }
+      if (!parsed || !Object.keys(parsed.cells).length) {
+        ocrProgress(64, '표 전체를 읽는 중…');
+        var cv = buildOcrCanvas();
+        var ret = await w.recognize(cv);
+        var words = toWords(ret && ret.data);
+        parsed = parseTimetable(words);
+      }
       ocrProgress(100, '인식 완료');
       setTimeout(function () { $('ocrProgressWrap').classList.add('hidden'); }, 500);
       var parsed = parseTimetable(words);
@@ -1274,26 +1515,29 @@ tailwind.config = {
     var pad = 60;
     ctx.textBaseline = 'alphabetic';
 
-    // header
-    ctx.fillStyle = 'rgba(255,255,255,.55)';
-    ctx.font = '600 30px -apple-system, "Apple SD Gothic Neo", sans-serif';
-    ctx.textAlign = 'left';
-    var now = new Date();
-    ctx.fillText((now.getMonth() + 1) + '월 ' + now.getDate() + '일 ' + ['일', '월', '화', '수', '목', '금', '토'][now.getDay()] + '요일', pad, 140);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 62px -apple-system, "Apple SD Gothic Neo", sans-serif';
-    ctx.fillText(state.title || '시간표', pad, 230);
-
-    // grid
     var days = DAYS_ALL.slice(0, state.days);
-    var top = 300;
     var timeW = 96;
     var gridW = W - pad * 2;
     var colW = (gridW - timeW) / days.length;
     var headH = 66;
-    var rowH = Math.min(190, (H - top - 300) / state.periods);
     var gap = 8;
+    var rowH = Math.min(170, (H - 620) / state.periods);
+    var gridH = headH + state.periods * rowH;
+    var top = 300;
+    if (state.pos === 'center') top = Math.round((H - gridH) / 2 - 10);
+    else if (state.pos === 'bottom') top = Math.round(H - 210 - gridH);
+    top = Math.max(280, Math.min(H - gridH - 130, top));
+
+    // header: date + title just above the card
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.font = '600 30px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'left';
+    var now = new Date();
+    ctx.fillText((now.getMonth() + 1) + '월 ' + now.getDate() + '일 ' + ['일', '월', '화', '수', '목', '금', '토'][now.getDay()] + '요일', pad, top - 100);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 62px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(state.title || '시간표', pad, top - 40);
 
     ctx.font = '800 28px -apple-system, "Apple SD Gothic Neo", sans-serif';
     ctx.textAlign = 'center';
@@ -1393,7 +1637,7 @@ tailwind.config = {
 
   /* ---------------- archive ---------------- */
   function snapshotCfg() {
-    return { title: state.title, days: state.days, periods: state.periods, start: state.start, classMin: state.classMin, cells: state.cells };
+    return { title: state.title, days: state.days, periods: state.periods, start: state.start, classMin: state.classMin, cells: state.cells, pos: state.pos };
   }
 
   $('btnSave').addEventListener('click', function () {
@@ -1438,8 +1682,10 @@ tailwind.config = {
       state.start = item.cfg.start;
       state.classMin = item.cfg.classMin;
       state.cells = item.cfg.cells || {};
+      state.pos = item.cfg.pos || 'top';
       state.history = [];
       syncSegs();
+      document.querySelectorAll('#posSeg button').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-pos') === state.pos); });
       renderGrid();
       AUTO.openProject(item.id);
       updateBgPreview();

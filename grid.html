@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Grid — 사진 콜라주 · 분할 · 이어붙이기</title>
+<meta name="description" content="사진 2~6장을 2분할·3분할·4분할·Before/After·세로 이어붙이기로 배치하고 여백과 모서리를 다듬어 PNG/JPG로 저장합니다.">
+<meta name="theme-color" content="#e11d48">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#e11d48', light: '#fb923c', deep: '#9f1239', 50: '#fff1f2', 100: '#ffe4e6', 200: '#fecdd3', 300: '#fda4af', 400: '#fb7185', 500: '#f43f5e', 600: '#e11d48', 700: '#be123c', 800: '#9f1239', 900: '#881337', 950: '#4c0519' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #e11d48; --brand-2: #fb923c; --brand-deep: #9f1239; }
+  #gridCanvas { display: block; width: 100%; border-radius: 1rem; }
+  .ph-item { transition: transform .16s, border-color .18s, box-shadow .18s; }
+  .ph-item.on { border-color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent); }
+  .layout-btn { transition: transform .14s, border-color .18s, color .18s; }
+  .layout-btn.on { border-color: var(--brand); color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+  .drop-zone { transition: border-color .18s, background-color .18s; }
+  .drop-zone.over { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, transparent); }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#fb923c"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"></rect><rect x="13" y="3" width="8" height="8" rx="1.5"></rect><rect x="3" y="13" width="8" height="8" rx="1.5"></rect><rect x="13" y="13" width="8" height="8" rx="1.5"></rect></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Grid</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">PHOTO</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">콜라주 · 분할 · 이어붙이기</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="asBadge" class="as-badge hidden sm:inline-flex">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 12h18M12 3v18"></path></svg>
+        <span>콜라주 만들기</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            사진만 올리면 배치 끝
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            흩어진 사진을<br><span class="brand-text">한 장</span>으로.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            여행 사진, 전후 비교, 긴 캡처까지. 2~6장을 고르면 분할 배치가 자동으로 잡히고, 여백과 모서리만 다듬으면 됩니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              사진 올리기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+        </div>
+        <div class="panel p-3">
+          <div class="grid grid-cols-3 gap-1.5">
+            <div class="col-span-2 rounded-lg" style="aspect-ratio:4/3;background:linear-gradient(135deg,#e11d48,#fb923c)"></div>
+            <div class="rounded-lg" style="aspect-ratio:4/5;background:linear-gradient(135deg,#fb7185,#fda4af)"></div>
+            <div class="rounded-lg" style="aspect-ratio:4/3;background:linear-gradient(135deg,#fb923c,#fdba74)"></div>
+            <div class="col-span-2 rounded-lg" style="aspect-ratio:8/3;background:linear-gradient(135deg,#9f1239,#e11d48)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 stagger">
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">2분할</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">좌우 또는 위아래로 정확히 반 나눕니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">3 · 4분할</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">세 칸 나누기, 큰 사진 하나 + 작은 둘, 2x2 격자.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">Before / After</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">전후 사진을 좌우로 붙이고 라벨을 얹습니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">세로 이어붙이기</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">캡처 여러 장을 자르지 않고 위아래로 이어 한 장에 담습니다.</p></div>
+    </div>
+
+    <div class="panel p-5 sm:p-6">
+      <h2 class="text-sm font-black mb-2">캔버스 크기</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="homeSizes"></div>
+    </div>
+  </section>
+
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-3">
+    <div class="grid lg:grid-cols-[1fr_330px] gap-3 items-start">
+      <div class="space-y-3 min-w-0">
+        <div class="panel p-3 sm:p-4 space-y-3">
+          <div id="dropZone" class="drop-zone rounded-2xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 p-6 text-center cursor-pointer">
+            <div class="w-10 h-10 mx-auto rounded-2xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300 mb-2">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4"></path><path d="M7 9l5-5 5 5"></path><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path></svg>
+            </div>
+            <p class="text-[12px] font-bold">사진을 끌어다 놓거나 눌러서 선택</p>
+            <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">2~6장 · JPG · PNG · Ctrl+V 붙여넣기</p>
+            <input type="file" id="photoInput" accept="image/*" multiple class="hidden">
+          </div>
+          <div id="photoRow" class="grid grid-cols-4 sm:grid-cols-6 gap-1.5"></div>
+          <div class="rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900">
+            <canvas id="gridCanvas" width="1080" height="1080"></canvas>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button id="btnPng" class="primary-btn !py-2 !px-3 !text-[11px]">PNG 저장</button>
+            <button id="btnJpg" class="ghost-btn !py-2 !px-3 !text-[11px]">JPG 저장</button>
+            <span class="grow"></span>
+            <span id="cellInfo" class="text-[10px] font-mono text-neutral-400">0 / 0칸</span>
+            <button id="btnClear" class="ghost-btn !py-2 !px-3 !text-[11px] !text-rose-500">전체 비우기</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-2.5">
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[11px] font-black">배치</h3>
+          <div class="grid grid-cols-2 gap-1.5" id="layoutRow"></div>
+        </div>
+        <div class="panel p-3 space-y-2">
+          <h3 class="text-[11px] font-black">캔버스</h3>
+          <div class="grid grid-cols-2 gap-1.5" id="sizeRow"></div>
+        </div>
+        <div class="panel p-3 space-y-2.5">
+          <h3 class="text-[11px] font-black">여백 · 모서리 · 배경</h3>
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">여백</span><span id="gapVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">8</span></div>
+            <input type="range" id="gapRange" class="lemon-range" min="0" max="40" value="8">
+          </div>
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">모서리 둥글기</span><span id="radiusVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">0</span></div>
+            <input type="range" id="radiusRange" class="lemon-range" min="0" max="60" value="0">
+          </div>
+          <div class="flex items-center justify-between"><span class="lemon-label">배경색</span><input type="color" id="bgColor" value="#ffffff"></div>
+          <div class="flex items-center justify-between"><span class="lemon-label">바깥 여백</span>
+            <input type="range" id="padRange" class="lemon-range !w-28" min="0" max="60" value="0">
+          </div>
+          <label class="flex items-center justify-between panel-soft px-2.5 py-2 cursor-pointer" id="labelWrap">
+            <span class="text-[11px] font-bold">Before / After 라벨</span>
+            <input type="checkbox" id="optLabels" class="accent-brand-500 w-4 h-4" checked>
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">작업하던 콜라주가 자동 저장됩니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Grid · Lemon soft 37대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3"><a href="canvas.html" class="hover:underline">Lemon Canvas</a><a href="erase.html" class="hover:underline">Lemon Erase</a><a href="index.html" class="hover:underline">Developer Hub</a></div>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+  var AUTO = Lemon.project('lemon_grid_archive', { max: 12 });
+  AUTO.bind('asBadge');
+
+  var SIZES = {
+    sq: { w: 1080, h: 1080, label: '정사각', sub: '1080 x 1080' },
+    port: { w: 1080, h: 1350, label: '세로', sub: '1080 x 1350' },
+    story: { w: 1080, h: 1920, label: '스토리', sub: '1080 x 1920' },
+    wide: { w: 1200, h: 630, label: '와이드', sub: '1200 x 630' }
+  };
+  var LAYOUTS = {
+    '2h': { label: '2분할 · 좌우', n: 2, cells: [[0, 0, .5, 1], [.5, 0, .5, 1]] },
+    '2v': { label: '2분할 · 상하', n: 2, cells: [[0, 0, 1, .5], [0, .5, 1, .5]] },
+    '3c': { label: '3분할 · 세로 3칸', n: 3, cells: [[0, 0, 1 / 3, 1], [1 / 3, 0, 1 / 3, 1], [2 / 3, 0, 1 / 3, 1]] },
+    '3b': { label: '3분할 · 큰 칸 + 2', n: 3, cells: [[0, 0, .62, 1], [.62, 0, .38, .5], [.62, .5, .38, .5]] },
+    '4': { label: '4분할 · 2x2', n: 4, cells: [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, .5, .5], [.5, .5, .5, .5]] },
+    '5': { label: '5분할', n: 5, cells: [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, 1 / 3, .5], [1 / 3, .5, 1 / 3, .5], [2 / 3, .5, 1 / 3, .5]] },
+    '6': { label: '6분할 · 3x2', n: 6, cells: [[0, 0, 1 / 3, .5], [1 / 3, 0, 1 / 3, .5], [2 / 3, 0, 1 / 3, .5], [0, .5, 1 / 3, .5], [1 / 3, .5, 1 / 3, .5], [2 / 3, .5, 1 / 3, .5]] },
+    'ba': { label: 'Before / After', n: 2, cells: [[0, 0, .5, 1], [.5, 0, .5, 1]], labels: ['BEFORE', 'AFTER'] },
+    'long': { label: '세로 이어붙이기', n: 6, cells: null }
+  };
+
+  var st = {
+    size: 'sq',
+    layout: '2h',
+    gap: 8,
+    radius: 0,
+    pad: 0,
+    bg: '#ffffff',
+    labels: true,
+    photos: []
+  };
+  var booted = false;
+  var canvas = $('gridCanvas');
+
+  /* ---------------- photos ---------------- */
+  function readFiles(files) {
+    var list = Array.prototype.slice.call(files || []).filter(function (f) { return f.type && f.type.indexOf('image') === 0; });
+    if (!list.length) return;
+    var room = 6 - st.photos.length;
+    if (room <= 0) { Lemon.toast('사진은 최대 6장까지 넣을 수 있어요', 'err'); return; }
+    list = list.slice(0, room);
+    var done = 0;
+    list.forEach(function (f) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var im = new Image();
+        im.onload = function () {
+          var maxSide = 1400;
+          var w = im.naturalWidth, h = im.naturalHeight;
+          var k = Math.min(1, maxSide / Math.max(w, h));
+          var c = document.createElement('canvas');
+          c.width = Math.round(w * k); c.height = Math.round(h * k);
+          c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+          st.photos.push({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), src: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height });
+          done++;
+          if (done === list.length) {
+            autoLayout();
+            renderPhotos(); draw(); markChanged();
+            Lemon.toast(st.photos.length + '장을 올렸어요', 'ok');
+          }
+        };
+        im.src = fr.result;
+      };
+      fr.readAsDataURL(f);
+    });
+  }
+
+  function autoLayout() {
+    var n = st.photos.length;
+    if (st.layout === 'long') return;
+    var want = n <= 2 ? '2h' : n === 3 ? '3b' : n === 4 ? '4' : n === 5 ? '5' : '6';
+    if (LAYOUTS[st.layout] && LAYOUTS[st.layout].n < n) st.layout = want;
+  }
+
+  $('dropZone').addEventListener('click', function () { $('photoInput').click(); });
+  $('photoInput').addEventListener('change', function () { readFiles(this.files); this.value = ''; });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    $('dropZone').addEventListener(ev, function (e) { e.preventDefault(); $('dropZone').classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    $('dropZone').addEventListener(ev, function (e) { e.preventDefault(); $('dropZone').classList.remove('over'); });
+  });
+  $('dropZone').addEventListener('drop', function (e) {
+    if (e.dataTransfer && e.dataTransfer.files) readFiles(e.dataTransfer.files);
+  });
+  document.addEventListener('paste', function (e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    var files = [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) files.push(items[i].getAsFile());
+    }
+    if (files.length) { readFiles(files); e.preventDefault(); }
+  });
+
+  function renderPhotos() {
+    var box = $('photoRow');
+    if (!st.photos.length) {
+      box.innerHTML = '<p class="col-span-full text-[10px] text-neutral-400 py-1">아직 사진이 없어요.</p>';
+      $('cellInfo').textContent = '0 / 0칸';
+      return;
+    }
+    box.innerHTML = st.photos.map(function (p, i) {
+      return '<div class="ph-item relative rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800" data-ph="' + i + '">' +
+        '<img src="' + p.src + '" alt="" class="w-full block" style="aspect-ratio:1/1;object-fit:cover">' +
+        '<span class="absolute top-0.5 left-0.5 text-[8px] font-black px-1 rounded bg-black/60 text-white">' + (i + 1) + '</span>' +
+        '<div class="absolute bottom-0 right-0 flex gap-0.5 p-0.5">' +
+        '<button class="w-4 h-4 rounded bg-black/60 text-white text-[9px] font-black" data-left="' + i + '">‹</button>' +
+        '<button class="w-4 h-4 rounded bg-black/60 text-white text-[9px] font-black" data-right="' + i + '">›</button>' +
+        '<button class="w-4 h-4 rounded bg-rose-500 text-white text-[9px] font-black" data-del="' + i + '">×</button>' +
+        '</div></div>';
+    }).join('');
+    var lay = LAYOUTS[st.layout];
+    var filled = Math.min(st.photos.length, lay.cells ? lay.cells.length : st.photos.length);
+    $('cellInfo').textContent = filled + ' / ' + (lay.cells ? lay.cells.length : st.photos.length) + '칸';
+  }
+
+  $('photoRow').addEventListener('click', function (e) {
+    var l = e.target.closest ? e.target.closest('[data-left]') : null;
+    var r = e.target.closest ? e.target.closest('[data-right]') : null;
+    var d = e.target.closest ? e.target.closest('[data-del]') : null;
+    if (l) { swap(parseInt(l.getAttribute('data-left'), 10), -1); return; }
+    if (r) { swap(parseInt(r.getAttribute('data-right'), 10), 1); return; }
+    if (d) {
+      st.photos.splice(parseInt(d.getAttribute('data-del'), 10), 1);
+      renderPhotos(); draw(); markChanged();
+      Lemon.toast('사진을 뺐어요', 'info');
+    }
+  });
+  function swap(i, dir) {
+    var j = i + dir;
+    if (j < 0 || j >= st.photos.length) return;
+    var t = st.photos[i]; st.photos[i] = st.photos[j]; st.photos[j] = t;
+    renderPhotos(); draw(); markChanged();
+  }
+
+  $('btnClear').addEventListener('click', function () {
+    st.photos = [];
+    renderPhotos(); draw(); markChanged();
+    Lemon.toast('사진을 모두 비웠어요', 'info');
+  });
+
+  /* ---------------- controls ---------------- */
+  function renderLayouts() {
+    $('layoutRow').innerHTML = Object.keys(LAYOUTS).map(function (k) {
+      return '<button class="layout-btn pill-btn !px-2 !py-1.5 !text-[10px] ' + (k === st.layout ? 'on' : '') + '" data-layout="' + k + '">' + LAYOUTS[k].label + '</button>';
+    }).join('');
+    $('labelWrap').classList.toggle('hidden', st.layout !== 'ba');
+  }
+  function renderSizes() {
+    var html = Object.keys(SIZES).map(function (k) {
+      return '<button class="pill-btn flex-col !items-start !gap-0 !px-2 !py-1.5 ' + (k === st.size ? 'on' : '') + '" data-size="' + k + '">' +
+        '<span class="text-[10px] font-bold">' + SIZES[k].label + '</span>' +
+        '<span class="text-[8px] font-mono opacity-70">' + SIZES[k].sub + '</span></button>';
+    }).join('');
+    $('sizeRow').innerHTML = html;
+    $('homeSizes').innerHTML = Object.keys(SIZES).map(function (k) {
+      return '<button class="panel-soft p-3 text-left hover:border-brand-400" data-size="' + k + '" data-start="1">' +
+        '<p class="text-[12px] font-bold">' + SIZES[k].label + '</p>' +
+        '<p class="text-[10px] font-mono text-neutral-500">' + SIZES[k].sub + '</p></button>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var lb = e.target.closest ? e.target.closest('[data-layout]') : null;
+    if (lb) {
+      st.layout = lb.getAttribute('data-layout');
+      if (st.layout !== 'long' && st.photos.length > LAYOUTS[st.layout].n) {
+        Lemon.toast('이 배치는 ' + LAYOUTS[st.layout].n + '장까지예요. 앞에서부터 사용합니다', 'info');
+      }
+      renderLayouts(); renderPhotos(); draw(); markChanged();
+      return;
+    }
+    var sb = e.target.closest ? e.target.closest('[data-size]') : null;
+    if (sb) {
+      st.size = sb.getAttribute('data-size');
+      renderSizes(); draw(); markChanged();
+      if (sb.getAttribute('data-start')) go('studio');
+    }
+  });
+
+  $('gapRange').addEventListener('input', function () {
+    st.gap = parseInt(this.value, 10);
+    $('gapVal').textContent = this.value;
+    draw(); markChanged();
+  });
+  $('radiusRange').addEventListener('input', function () {
+    st.radius = parseInt(this.value, 10);
+    $('radiusVal').textContent = this.value;
+    draw(); markChanged();
+  });
+  $('padRange').addEventListener('input', function () { st.pad = parseInt(this.value, 10); draw(); markChanged(); });
+  $('bgColor').addEventListener('input', function () { st.bg = this.value; draw(); markChanged(); });
+  $('optLabels').addEventListener('change', function () { st.labels = this.checked; draw(); markChanged(); });
+
+  /* ---------------- drawing ---------------- */
+  function roundRectPath(ctx, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function drawCover(ctx, im, x, y, w, h) {
+    var ir = im.naturalWidth / im.naturalHeight, cr = w / h;
+    var dw, dh;
+    if (ir > cr) { dh = h; dw = h * ir; } else { dw = w; dh = w / ir; }
+    ctx.drawImage(im, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  }
+
+  function buildCanvas() {
+    var sz = SIZES[st.size];
+    var W = sz.w, H = sz.h;
+    if (st.layout === 'long' && st.photos.length) {
+      var gapL = st.gap, padL = st.pad;
+      var innerW = W - padL * 2;
+      var totalH = padL * 2 + (st.photos.length - 1) * gapL;
+      var heights = st.photos.map(function (p) {
+        var im = getImg(p.src);
+        var ratio = im && im.naturalWidth ? im.naturalHeight / im.naturalWidth : p.h / p.w;
+        return Math.round(innerW * ratio);
+      });
+      heights.forEach(function (h) { totalH += h; });
+      H = totalH;
+    }
+    var c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = st.bg;
+    ctx.fillRect(0, 0, W, H);
+    if (!st.photos.length) {
+      ctx.fillStyle = 'rgba(120,120,140,.35)';
+      ctx.font = '700 26px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('사진을 올려 주세요', W / 2, H / 2);
+      return c;
+    }
+
+    if (st.layout === 'long') {
+      var y = st.pad;
+      var innerW2 = W - st.pad * 2;
+      st.photos.forEach(function (p, i) {
+        var im = getImg(p.src);
+        var ratio = im && im.naturalWidth ? im.naturalHeight / im.naturalWidth : p.h / p.w;
+        var h = Math.round(innerW2 * ratio);
+        if (im) {
+          ctx.save();
+          roundRectPath(ctx, st.pad, y, innerW2, h, st.radius);
+          ctx.clip();
+          drawCover(ctx, im, st.pad, y, innerW2, h);
+          ctx.restore();
+        }
+        y += h + st.gap;
+      });
+      return c;
+    }
+
+    var lay = LAYOUTS[st.layout];
+    var cells = lay.cells;
+    var g = st.gap, pad = st.pad;
+    var innerW3 = W - pad * 2, innerH = H - pad * 2;
+    cells.forEach(function (cell, i) {
+      var x = pad + cell[0] * innerW3 + (cell[0] > 0 ? g / 2 : 0);
+      var yy = pad + cell[1] * innerH + (cell[1] > 0 ? g / 2 : 0);
+      var w = cell[2] * innerW3 - (cell[0] > 0 ? g / 2 : 0) - (cell[0] + cell[2] < 0.999 ? g / 2 : 0);
+      var h = cell[3] * innerH - (cell[1] > 0 ? g / 2 : 0) - (cell[1] + cell[3] < 0.999 ? g / 2 : 0);
+      w = Math.max(1, w); h = Math.max(1, h);
+      var p = st.photos[i];
+      if (p) {
+        var im = getImg(p.src);
+        if (im) {
+          ctx.save();
+          roundRectPath(ctx, x, yy, w, h, st.radius);
+          ctx.clip();
+          drawCover(ctx, im, x, yy, w, h);
+          ctx.restore();
+        }
+      }
+      if (st.layout === 'ba' && st.labels && lay.labels[i]) {
+        var label = lay.labels[i];
+        var fs = Math.round(Math.min(w, h) * 0.055 + 14);
+        ctx.font = '900 ' + fs + 'px -apple-system, sans-serif';
+        var tw = ctx.measureText(label).width;
+        var bx = x + 22, by = yy + 22;
+        ctx.fillStyle = 'rgba(0,0,0,.55)';
+        roundRectPath(ctx, bx, by, tw + 32, fs + 24, 10);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, bx + 16, by + (fs + 24) / 2);
+      }
+    });
+    return c;
+  }
+
+  var imgCache = {};
+  function getImg(src) {
+    if (imgCache[src]) return imgCache[src].complete ? imgCache[src] : null;
+    var im = new Image();
+    im.onload = function () { draw(); };
+    im.src = src;
+    imgCache[src] = im;
+    return null;
+  }
+
+  function draw() {
+    var c = buildCanvas();
+    canvas.width = c.width;
+    canvas.height = c.height;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(c, 0, 0);
+  }
+
+  /* ---------------- export ---------------- */
+  function save(type) {
+    var c = buildCanvas();
+    c.toBlob(function (b) {
+      if (!b) { Lemon.toast('저장에 실패했어요', 'err'); return; }
+      Lemon.downloadBlob('lemon-grid-' + Date.now() + '.' + (type === 'jpeg' ? 'jpg' : 'png'), b);
+      Lemon.toast((type === 'jpeg' ? 'JPG' : 'PNG') + '로 저장했어요 (' + c.width + ' x ' + c.height + ')', 'ok');
+      Lemon.confetti(12);
+    }, type === 'jpeg' ? 'image/jpeg' : 'image/png', 0.94);
+  }
+  $('btnPng').addEventListener('click', function () { save('png'); });
+  $('btnJpg').addEventListener('click', function () { save('jpeg'); });
+
+  /* ---------------- autosave ---------------- */
+  function payload() {
+    var c = buildCanvas();
+    var t = document.createElement('canvas');
+    t.width = 300;
+    t.height = Math.round(300 * c.height / c.width);
+    t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+    return {
+      title: LAYOUTS[st.layout].label + ' · ' + st.photos.length + '장',
+      sub: SIZES[st.size].sub + ' · 여백 ' + st.gap,
+      thumb: t.toDataURL('image/jpeg', 0.6),
+      data: { size: st.size, layout: st.layout, gap: st.gap, radius: st.radius, pad: st.pad, bg: st.bg, labels: st.labels, photos: st.photos }
+    };
+  }
+  function markChanged() {
+    if (!booted) return;
+    AUTO.touch(payload);
+  }
+
+  function renderArchive() {
+    var list = AUTO.archive.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center col-span-full"><p class="text-[12px] font-bold">저장된 콜라주가 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">사진을 올리면 자동으로 저장됩니다.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-2.5"><div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 mb-2">' +
+        (it.thumb ? '<img src="' + it.thumb + '" alt="" class="w-full h-auto block">' : '') + '</div>' +
+        '<p class="text-[11px] font-bold truncate">' + Lemon.esc(it.title) + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.sub || '') + '</p>' +
+        '<p class="text-[9px] text-neutral-400 mt-0.5">' + Lemon.timeAgo(it.ts) + '</p>' +
+        '<div class="flex gap-1 mt-2"><button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-load="' + it.id + '">열기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var l = e.target.closest ? e.target.closest('[data-load]') : null;
+    if (l) {
+      var rec = AUTO.restore(l.getAttribute('data-load'));
+      if (!rec || !rec.data) return;
+      var d = rec.data;
+      st.size = d.size; st.layout = d.layout; st.gap = d.gap; st.radius = d.radius;
+      st.pad = d.pad; st.bg = d.bg; st.labels = d.labels; st.photos = d.photos || [];
+      $('gapRange').value = st.gap; $('gapVal').textContent = st.gap;
+      $('radiusRange').value = st.radius; $('radiusVal').textContent = st.radius;
+      $('padRange').value = st.pad;
+      $('bgColor').value = st.bg;
+      $('optLabels').checked = st.labels;
+      AUTO.openProject(rec.id);
+      renderLayouts(); renderSizes(); renderPhotos(); draw(); go('studio');
+      Lemon.toast('콜라주를 열었어요', 'ok');
+      return;
+    }
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if (del && del.parentNode && del.parentNode.parentNode && del.parentNode.parentNode.hasAttribute('data-ph')) return;
+    if (del) {
+      AUTO.archive.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('삭제했어요', 'info');
+    }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!AUTO.archive.count()) { Lemon.toast('비울 기록이 없어요', 'info'); return; }
+    if (window.confirm('보관함을 모두 비울까요?')) { AUTO.archive.clear(); renderArchive(); Lemon.toast('보관함을 비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  /* ---------------- boot ---------------- */
+  renderLayouts();
+  renderSizes();
+  renderPhotos();
+  draw();
+  renderArchive();
+  booted = true;
+})();
+</script>
+</body>
+</html>

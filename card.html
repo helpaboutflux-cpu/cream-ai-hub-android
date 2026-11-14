@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Card — QR 명함 · 디지털 명함</title>
+<meta name="description" content="이름과 연락처를 넣으면 vCard 3.0 표준 QR 코드가 달린 모바일 명함을 만들고 PNG로 저장하거나 링크로 공유합니다.">
+<meta name="theme-color" content="#1e293b">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#1e293b', light: '#60a5fa', deep: '#0f172a', 50: '#f0f4ff', 100: '#e0eaff', 200: '#c7d8fe', 300: '#a5bffc', 400: '#7ca6f8', 500: '#4f86ee', 600: '#3b6fd4', 700: '#2f57a8', 800: '#24407c', 900: '#1b2f57', 950: '#101c33' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #1e293b; --brand-2: #3b82f6; --brand-deep: #0f172a; }
+  .biz-card { width: 100%; max-width: 340px; aspect-ratio: 9/16; border-radius: 1.6rem; position: relative; overflow: hidden; }
+  .biz-card .emblem { width: 3rem; height: 3rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; }
+  .qr-wrap { background: #fff; border-radius: 1rem; padding: 8px; display: inline-flex; }
+  .qr-wrap img, .qr-wrap canvas { display: block; width: 100% !important; height: auto !important; }
+  .theme-chip { transition: transform .14s, border-color .18s; }
+  .theme-chip.on { border-color: var(--brand-2); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-2) 35%, transparent); }
+  .inp-row { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: .5rem; }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-24 o2 opacity-20" style="background:#3b82f6"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><circle cx="8" cy="11" r="2"></circle><path d="M4.8 16c.4-1.6 1.7-2.5 3.2-2.5s2.8.9 3.2 2.5"></path><path d="M15 10h4M15 13h3"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Card</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">vCARD</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">QR 명함 · 연락처 저장</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="asBadge" class="as-badge hidden sm:inline-flex">자동 저장 대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M2.5 10h19"></path></svg>
+        <span>명함 만들기</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            vCard 3.0 · 스캔하면 연락처 저장
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            종이 명함 없이<br><span class="brand-text">QR 하나</span>로 건넵니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            이름, 소속, 연락처를 넣으면 카메라로 찍는 순간 연락처에 저장되는 QR 명함이 만들어집니다. 이미지로 저장하거나 링크로 보내세요.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              명함 만들기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+        </div>
+        <div class="flex justify-center">
+          <div class="biz-card p-5 flex flex-col justify-between" style="background:linear-gradient(150deg,#1e293b,#0f172a 60%,#1e3a8a)">
+            <div>
+              <p class="text-[9px] font-mono tracking-widest text-white/50">LEMON SOFT</p>
+              <p class="text-white text-2xl font-black mt-3">김레몬</p>
+              <p class="text-white/70 text-[11px] font-bold">프로덕트 디자이너</p>
+            </div>
+            <div class="flex items-end justify-between">
+              <div class="text-white/60 text-[9px] space-y-0.5">
+                <p>010-0000-0000</p>
+                <p>hello@example.com</p>
+              </div>
+              <div class="qr-wrap w-16 h-16"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 stagger">
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">vCard 3.0 QR</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">표준 형식이라 아이폰·갤럭시 카메라 모두 연락처로 인식합니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">4가지 테마</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">다크, 화이트, 그라데이션, 슬레이트 중에서 고릅니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">PNG 저장</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">명함을 이미지로 저장해 프로필이나 메신저에 올립니다.</p></div>
+      <div class="panel p-5 space-y-2"><h3 class="font-bold text-sm">링크 공유</h3><p class="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">명함 정보가 담긴 주소를 그대로 보냅니다.</p></div>
+    </div>
+  </section>
+
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-3">
+    <div class="grid lg:grid-cols-[340px_1fr] gap-3 items-start">
+      <div class="panel p-3 space-y-2">
+        <div class="inp-row"><span class="lemon-label">이름</span><input id="fName" type="text" class="lemon-input !py-1.5 !text-[12px]" value="김레몬" maxlength="24"></div>
+        <div class="inp-row"><span class="lemon-label">직책</span><input id="fTitle" type="text" class="lemon-input !py-1.5 !text-[12px]" value="프로덕트 디자이너" maxlength="30"></div>
+        <div class="inp-row"><span class="lemon-label">소속</span><input id="fOrg" type="text" class="lemon-input !py-1.5 !text-[12px]" value="Lemon soft" maxlength="30"></div>
+        <div class="inp-row"><span class="lemon-label">휴대폰</span><input id="fPhone" type="tel" class="lemon-input !py-1.5 !text-[12px]" value="010-0000-0000" maxlength="20"></div>
+        <div class="inp-row"><span class="lemon-label">이메일</span><input id="fEmail" type="email" class="lemon-input !py-1.5 !text-[12px]" value="hello@example.com" maxlength="60"></div>
+        <div class="inp-row"><span class="lemon-label">웹</span><input id="fWeb" type="text" class="lemon-input !py-1.5 !text-[12px]" value="lemons.example.com" maxlength="70"></div>
+        <div class="inp-row"><span class="lemon-label">SNS</span><input id="fSns" type="text" class="lemon-input !py-1.5 !text-[12px]" value="@lemon" maxlength="40"></div>
+        <div class="inp-row"><span class="lemon-label">슬로건</span><input id="fSlogan" type="text" class="lemon-input !py-1.5 !text-[12px]" value="작게 만들고 오래 씁니다" maxlength="40"></div>
+        <div class="pt-1">
+          <span class="lemon-label">테마</span>
+          <div class="grid grid-cols-4 gap-1.5 mt-1" id="themeRow"></div>
+        </div>
+        <div class="flex items-center justify-between pt-1">
+          <span class="lemon-label">QR 코드</span>
+          <label class="flex items-center gap-1.5 text-[10px] font-bold"><input type="checkbox" id="optQr" class="accent-brand-500 w-4 h-4" checked> 표시</label>
+        </div>
+      </div>
+
+      <div class="space-y-3 min-w-0">
+        <div class="panel p-4 sm:p-6 flex flex-col items-center gap-3">
+          <div id="cardHost" class="biz-card"></div>
+          <div class="w-full max-w-[340px] flex flex-wrap items-center gap-1.5">
+            <button id="btnPng" class="primary-btn !py-2 !px-3 !text-[11px]">명함 PNG</button>
+            <button id="btnShare" class="ghost-btn !py-2 !px-3 !text-[11px]">링크 복사</button>
+            <button id="btnVcf" class="ghost-btn !py-2 !px-3 !text-[11px]">vCard 파일</button>
+            <span class="grow"></span>
+            <span id="qrNote" class="text-[9px] text-neutral-400"></span>
+          </div>
+        </div>
+        <div class="panel p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-[11px] font-black">QR 내용 (vCard 3.0)</h3>
+            <button id="btnCopyVcard" class="ghost-btn !py-1 !px-2 !text-[10px]">복사</button>
+          </div>
+          <pre id="vcardText" class="text-[9.5px] font-mono leading-relaxed whitespace-pre-wrap break-all bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-2.5 max-h-40 overflow-y-auto no-scrollbar"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">만든 명함이 자동 저장됩니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <span>Lemon Card · Lemon soft 37대 독립 웹 프로덕트</span>
+    <div class="flex items-center gap-3"><a href="qr.html" class="hover:underline">Lemon QR</a><a href="bio.html" class="hover:underline">Lemon Bio</a><a href="index.html" class="hover:underline">Developer Hub</a></div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var go = Lemon.initTabs('home');
+  var AUTO = Lemon.project('lemon_card_archive', { max: 16 });
+  AUTO.bind('asBadge');
+
+  var THEMES = {
+    dark: { label: '다크', bg: 'linear-gradient(150deg,#1e293b,#0f172a 60%,#1e3a8a)', fg: '#ffffff', sub: 'rgba(255,255,255,.66)' },
+    white: { label: '화이트', bg: '#ffffff', fg: '#0f172a', sub: 'rgba(15,23,42,.55)' },
+    grad: { label: '그라데이션', bg: 'linear-gradient(150deg,#1e293b,#2563eb 55%,#60a5fa)', fg: '#ffffff', sub: 'rgba(255,255,255,.72)' },
+    slate: { label: '슬레이트', bg: 'linear-gradient(160deg,#334155,#0f172a)', fg: '#f8fafc', sub: 'rgba(248,250,252,.6)' }
+  };
+
+  var data = {
+    name: '김레몬', title: '프로덕트 디자이너', org: 'Lemon soft',
+    phone: '010-0000-0000', email: 'hello@example.com', web: 'lemons.example.com', sns: '@lemon',
+    slogan: '작게 만들고 오래 씁니다', theme: 'dark', qr: true
+  };
+  var booted = false;
+  var qrApi = null;
+
+  /* ---------------- vCard ---------------- */
+  function vcardOf(d) {
+    var esc = function (s) { return String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n'); };
+    var parts = String(d.name || '').trim().split(/\s+/);
+    var family = parts.length > 1 ? parts[0] : '';
+    var given = parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || '');
+    var lines = [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      'N:' + esc(family) + ';' + esc(given) + ';;;',
+      'FN:' + esc(d.name),
+      d.org ? 'ORG:' + esc(d.org) : '',
+      d.title ? 'TITLE:' + esc(d.title) : '',
+      d.phone ? 'TEL;TYPE=CELL:' + esc(d.phone) : '',
+      d.email ? 'EMAIL;TYPE=INTERNET:' + esc(d.email) : '',
+      d.web ? 'URL:' + esc(d.web) : '',
+      d.sns ? 'X-SOCIALPROFILE;TYPE=instagram:' + esc(d.sns) : '',
+      d.slogan ? 'NOTE:' + esc(d.slogan) : '',
+      'REV:' + new Date().toISOString().replace(/\.\d{3}/, ''),
+      'END:VCARD'
+    ];
+    return lines.filter(Boolean).join('\r\n') + '\r\n';
+  }
+
+  /* ---------------- rendering ---------------- */
+  function renderThemes() {
+    $('themeRow').innerHTML = Object.keys(THEMES).map(function (k) {
+      var t = THEMES[k];
+      return '<button class="theme-chip rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden' + (data.theme === k ? ' on' : '') + '" data-theme="' + k + '" style="height:34px">' +
+        '<span class="block w-full h-4" style="background:' + t.bg + '"></span>' +
+        '<span class="block text-[8px] font-bold py-0.5">' + t.label + '</span></button>';
+    }).join('');
+  }
+
+  function renderCard() {
+    var t = THEMES[data.theme] || THEMES.dark;
+    var light = data.theme === 'white';
+    var initial = (data.name || '?').trim().charAt(0);
+    var host = $('cardHost');
+    host.style.background = t.bg;
+    if (light) host.style.boxShadow = '0 20px 50px -30px rgba(15,23,42,.45), inset 0 0 0 1px rgba(15,23,42,.08)';
+    var rows = '';
+    function row(kind, value) {
+      if (!value) return '';
+      var icons = {
+        phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 3 5a1 1 0 0 1 1-1z"></path>',
+        mail: '<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path>',
+        web: '<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"></path>',
+        sns: '<circle cx="12" cy="12" r="4"></circle><rect x="3" y="3" width="18" height="18" rx="5"></rect>'
+      };
+      return '<div class="flex items-center gap-2">' +
+        '<span style="color:' + t.sub + '"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + icons[kind] + '</svg></span>' +
+        '<span class="text-[10px] font-semibold truncate" style="color:' + t.fg + '">' + Lemon.esc(value) + '</span></div>';
+    }
+    rows = row('phone', data.phone) + row('mail', data.email) + row('web', data.web) + row('sns', data.sns);
+    host.innerHTML =
+      '<div class="p-5 h-full flex flex-col justify-between">' +
+      '<div>' +
+      '<p class="text-[8.5px] font-mono tracking-[.18em]" style="color:' + t.sub + '">' + Lemon.esc((data.org || 'LEMON SOFT').toUpperCase()) + '</p>' +
+      '<div class="mt-4 flex items-center gap-2.5">' +
+      '<span class="emblem" style="background:' + (light ? 'rgba(15,23,42,.08)' : 'rgba(255,255,255,.14)') + ';color:' + t.fg + '">' + Lemon.esc(initial) + '</span>' +
+      '<div class="min-w-0"><p class="text-[20px] font-black leading-tight truncate" style="color:' + t.fg + '">' + Lemon.esc(data.name || '이름') + '</p>' +
+      '<p class="text-[10px] font-bold truncate" style="color:' + t.sub + '">' + Lemon.esc(data.title || '') + '</p></div></div>' +
+      (data.slogan ? '<p class="text-[9.5px] mt-3 leading-snug" style="color:' + t.sub + '">' + Lemon.esc(data.slogan) + '</p>' : '') +
+      '</div>' +
+      '<div class="space-y-1.5">' + rows + '</div>' +
+      '<div class="flex items-end justify-between gap-2">' +
+      '<p class="text-[8px] font-mono" style="color:' + t.sub + '">SCAN TO SAVE</p>' +
+      '<div id="qrSlot" class="qr-wrap w-[68px] h-[68px]"></div>' +
+      '</div></div>';
+    renderQr();
+  }
+
+  function renderQr() {
+    var slot = $('qrSlot');
+    if (!slot) return;
+    slot.innerHTML = '';
+    if (!data.qr) { slot.style.display = 'none'; $('qrNote').textContent = 'QR 숨김'; return; }
+    slot.style.display = 'inline-flex';
+    if (typeof QRCode === 'undefined') {
+      $('qrNote').textContent = 'QR 라이브러리 로딩 실패 · 아래 vCard 복사 사용';
+      return;
+    }
+    try {
+      new QRCode(slot, {
+        text: vcardOf(data),
+        width: 132, height: 132,
+        colorDark: '#0f172a', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      qrApi = slot;
+      $('qrNote').textContent = '스캔하면 연락처로 저장됩니다';
+    } catch (e) {
+      $('qrNote').textContent = 'QR 생성 실패 · vCard 복사로 대체';
+    }
+  }
+
+  function syncFields() {
+    $('fName').value = data.name;
+    $('fTitle').value = data.title;
+    $('fOrg').value = data.org;
+    $('fPhone').value = data.phone;
+    $('fEmail').value = data.email;
+    $('fWeb').value = data.web;
+    $('fSns').value = data.sns;
+    $('fSlogan').value = data.slogan;
+    $('optQr').checked = !!data.qr;
+    $('vcardText').textContent = vcardOf(data);
+  }
+
+  function refresh() {
+    $('vcardText').textContent = vcardOf(data);
+    renderCard();
+    markChanged();
+  }
+
+  ['fName', 'fTitle', 'fOrg', 'fPhone', 'fEmail', 'fWeb', 'fSns', 'fSlogan'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      var map = { fName: 'name', fTitle: 'title', fOrg: 'org', fPhone: 'phone', fEmail: 'email', fWeb: 'web', fSns: 'sns', fSlogan: 'slogan' };
+      data[map[id]] = this.value;
+      refresh();
+    });
+  });
+  $('optQr').addEventListener('change', function () { data.qr = this.checked; refresh(); });
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-theme]') : null;
+    if (!b) return;
+    data.theme = b.getAttribute('data-theme');
+    renderThemes(); refresh();
+  });
+
+  /* ---------------- export ---------------- */
+  function cardCanvas() {
+    var W = 1080, H = 1920;
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var ctx = c.getContext('2d');
+    var theme = data.theme;
+    if (theme === 'white') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
+    else {
+      var g = ctx.createLinearGradient(0, 0, W, H);
+      if (theme === 'grad') { g.addColorStop(0, '#1e293b'); g.addColorStop(0.55, '#2563eb'); g.addColorStop(1, '#60a5fa'); }
+      else if (theme === 'slate') { g.addColorStop(0, '#334155'); g.addColorStop(1, '#0f172a'); }
+      else { g.addColorStop(0, '#1e293b'); g.addColorStop(0.6, '#0f172a'); g.addColorStop(1, '#1e3a8a'); }
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    var light = theme === 'white';
+    var fg = light ? '#0f172a' : '#ffffff';
+    var sub = light ? 'rgba(15,23,42,.55)' : 'rgba(255,255,255,.66)';
+    var pad = 90;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = sub;
+    ctx.font = '600 26px -apple-system, sans-serif';
+    ctx.fillText(String(data.org || 'LEMON SOFT').toUpperCase(), pad, 170);
+
+    ctx.beginPath();
+    ctx.arc(pad + 52, 300, 52, 0, Math.PI * 2);
+    ctx.fillStyle = light ? 'rgba(15,23,42,.08)' : 'rgba(255,255,255,.14)';
+    ctx.fill();
+    ctx.fillStyle = fg;
+    ctx.font = '900 46px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText((data.name || '?').charAt(0), pad + 52, 316);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = fg;
+    ctx.font = '900 78px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(data.name || '이름', pad + 130, 300);
+    ctx.fillStyle = sub;
+    ctx.font = '700 34px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(data.title || '', pad + 130, 350);
+
+    if (data.slogan) {
+      ctx.fillStyle = sub;
+      ctx.font = '600 30px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.fillText(data.slogan, pad, 470);
+    }
+
+    var rows = [['휴대폰', data.phone], ['이메일', data.email], ['웹', data.web], ['SNS', data.sns]];
+    var y = 620;
+    rows.forEach(function (r) {
+      if (!r[1]) return;
+      ctx.fillStyle = sub;
+      ctx.font = '700 24px -apple-system, sans-serif';
+      ctx.fillText(r[0], pad, y);
+      ctx.fillStyle = fg;
+      ctx.font = '700 34px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.fillText(r[1], pad, y + 46);
+      y += 120;
+    });
+
+    var qrCanvas = null;
+    var slot = $('qrSlot');
+    if (slot) qrCanvas = slot.querySelector('canvas');
+    if (qrCanvas && data.qr) {
+      var size = 300;
+      ctx.fillStyle = '#ffffff';
+      var qx = W - pad - size, qy = H - pad - size;
+      ctx.beginPath();
+      var r2 = 30;
+      ctx.moveTo(qx + r2, qy);
+      ctx.arcTo(qx + size, qy, qx + size, qy + size, r2);
+      ctx.arcTo(qx + size, qy + size, qx, qy + size, r2);
+      ctx.arcTo(qx, qy + size, qx, qy, r2);
+      ctx.arcTo(qx, qy, qx + size, qy, r2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.drawImage(qrCanvas, qx + 24, qy + 24, size - 48, size - 48);
+      ctx.fillStyle = sub;
+      ctx.font = '600 22px -apple-system, sans-serif';
+      ctx.fillText('SCAN TO SAVE', pad, H - pad);
+    }
+    return c;
+  }
+
+  $('btnPng').addEventListener('click', function () {
+    var c = cardCanvas();
+    c.toBlob(function (b) {
+      if (!b) { Lemon.toast('이미지 생성에 실패했어요', 'err'); return; }
+      Lemon.downloadBlob('lemon-card-' + (data.name || 'card') + '.png', b);
+      Lemon.toast('명함 PNG를 저장했어요', 'ok');
+      Lemon.confetti(12);
+    }, 'image/png');
+  });
+
+  $('btnVcf').addEventListener('click', function () {
+    Lemon.download((data.name || 'contact') + '.vcf', vcardOf(data), 'text/vcard;charset=utf-8');
+    Lemon.toast('vCard 파일을 저장했어요', 'ok');
+  });
+
+  $('btnCopyVcard').addEventListener('click', function () { Lemon.copy(vcardOf(data), 'vCard 내용을 복사했어요'); });
+
+  function shareUrl() {
+    var payload = { n: data.name, t: data.title, o: data.org, p: data.phone, e: data.email, w: data.web, s: data.sns, g: data.slogan, th: data.theme };
+    var enc = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    return location.origin + location.pathname + '#card=' + enc;
+  }
+
+  $('btnShare').addEventListener('click', function () {
+    var url = shareUrl();
+    Lemon.copy(url, '명함 링크를 복사했어요');
+  });
+
+  function loadFromHash() {
+    var h = location.hash || '';
+    if (h.indexOf('#card=') !== 0) return false;
+    try {
+      var json = decodeURIComponent(escape(atob(h.slice(6))));
+      var p = JSON.parse(json);
+      data.name = p.n || data.name;
+      data.title = p.t || data.title;
+      data.org = p.o || data.org;
+      data.phone = p.p || data.phone;
+      data.email = p.e || data.email;
+      data.web = p.w || data.web;
+      data.sns = p.s || data.sns;
+      data.slogan = p.g || data.slogan;
+      data.theme = p.th || data.theme;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ---------------- autosave ---------------- */
+  function payload() {
+    return {
+      title: data.name || '명함',
+      sub: (data.title || '') + (data.org ? ' · ' + data.org : ''),
+      thumb: '',
+      data: JSON.parse(JSON.stringify(data))
+    };
+  }
+  function markChanged() {
+    if (!booted) return;
+    AUTO.touch(payload);
+  }
+
+  function renderArchive() {
+    var list = AUTO.archive.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center col-span-full"><p class="text-[12px] font-bold">저장된 명함이 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">정보를 입력하면 자동으로 저장됩니다.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      var d = it.data || {};
+      var t = THEMES[d.theme] || THEMES.dark;
+      return '<div class="panel p-2.5"><div class="rounded-xl p-3 mb-2" style="background:' + t.bg + '">' +
+        '<p class="text-[13px] font-black" style="color:' + t.fg + '">' + Lemon.esc(d.name || '이름') + '</p>' +
+        '<p class="text-[9px]" style="color:' + t.sub + '">' + Lemon.esc((d.title || '') + (d.org ? ' · ' + d.org : '')) + '</p></div>' +
+        '<p class="text-[9px] text-neutral-400">' + Lemon.timeAgo(it.ts) + '</p>' +
+        '<div class="flex gap-1 mt-2"><button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-load="' + it.id + '">열기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var l = e.target.closest ? e.target.closest('[data-load]') : null;
+    if (l) {
+      var rec = AUTO.restore(l.getAttribute('data-load'));
+      if (!rec || !rec.data) return;
+      data = Object.assign({}, data, rec.data);
+      AUTO.openProject(rec.id);
+      renderThemes(); syncFields(); refresh(); go('studio');
+      Lemon.toast('명함을 열었어요', 'ok');
+      return;
+    }
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if (del) {
+      AUTO.archive.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('삭제했어요', 'info');
+    }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!AUTO.archive.count()) { Lemon.toast('비울 기록이 없어요', 'info'); return; }
+    if (window.confirm('보관함을 모두 비울까요?')) { AUTO.archive.clear(); renderArchive(); Lemon.toast('보관함을 비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  /* ---------------- boot ---------------- */
+  renderThemes();
+  if (loadFromHash()) { /* shared card */ }
+  syncFields();
+  renderCard();
+  renderArchive();
+  booted = true;
+  if (location.hash.indexOf('#card=') === 0) {
+    setTimeout(function () { go('studio'); }, 60);
+  }
+})();
+</script>
+</body>
+</html>

@@ -421,6 +421,13 @@ tailwind.config = {
           </div>
         </div>
         <div class="meter-track"><div id="secBar" class="meter-fill" style="width:0%"></div></div>
+        <div class="flex items-center justify-between rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-950/30 px-2.5 py-2">
+          <span class="flex items-center gap-1.5 text-[10px] font-black text-sky-700 dark:text-sky-400">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="15" r="4"></circle><path d="M10.8 12.2 20 3M17 6l2 2M14.5 8.5l2 2"></path></svg>
+            API 키 / 토큰 보관
+          </span>
+          <span class="text-[11px] font-mono font-black text-sky-700 dark:text-sky-400"><span id="secApi">0</span> 개</span>
+        </div>
         <div id="dupBox" class="hidden rounded-xl border border-amber-300/70 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 p-2.5 space-y-1">
           <p class="text-[11px] font-black text-amber-700 dark:text-amber-400">
             같은 비밀번호를 여러 사이트에서 쓰고 있어요 · <span id="dupCount">0</span>건
@@ -435,32 +442,50 @@ tailwind.config = {
           <h3 id="itemFormTitle" class="text-[12px] font-black">새 항목</h3>
           <button id="btnCancelItem" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">취소</button>
         </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button class="pill-btn !text-[11px] item-type on" data-ftype="login">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+            비밀번호
+          </button>
+          <button class="pill-btn !text-[11px] item-type" data-ftype="apikey">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="15" r="4"></circle><path d="M10.8 12.2 20 3M17 6l2 2M14.5 8.5l2 2"></path></svg>
+            API 키 / 토큰
+          </button>
+        </div>
         <div class="grid sm:grid-cols-2 gap-2.5">
           <div>
-            <span class="lemon-label">사이트명</span>
+            <span id="fSiteLabel" class="lemon-label">사이트명</span>
             <input id="fSite" type="text" class="lemon-input mt-1" placeholder="예: 네이버" maxlength="40">
           </div>
-          <div>
+          <div id="fieldUrl">
             <span class="lemon-label">URL (선택)</span>
             <input id="fUrl" type="text" class="lemon-input mt-1" placeholder="naver.com" maxlength="120">
           </div>
-          <div>
+          <div id="fieldUser">
             <span class="lemon-label">아이디</span>
             <input id="fUser" type="text" class="lemon-input mt-1" placeholder="아이디 또는 이메일" maxlength="80" autocomplete="off">
           </div>
           <div>
-            <span class="lemon-label">비밀번호</span>
+            <span id="fPassLabel" class="lemon-label">비밀번호</span>
             <div class="flex gap-1.5 mt-1">
-              <input id="fPass" type="text" class="lemon-input pw-input" placeholder="비밀번호" maxlength="120" autocomplete="off">
+              <input id="fPass" type="text" class="lemon-input pw-input" placeholder="비밀번호" maxlength="300" autocomplete="off">
               <button id="btnFormGen" class="icon-btn shrink-0" title="강력한 비밀번호 생성">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 4v5h-5"></path></svg>
               </button>
             </div>
           </div>
+          <div id="fieldEnv" class="hidden sm:col-span-2">
+            <span class="lemon-label">환경</span>
+            <div class="seg mt-1" id="envSeg">
+              <button data-env="Production" class="on">Production</button>
+              <button data-env="Staging">Staging</button>
+              <button data-env="Dev">Dev</button>
+            </div>
+          </div>
         </div>
         <div>
           <span class="lemon-label">메모 (선택)</span>
-          <textarea id="fMemo" class="lemon-textarea mt-1" rows="2" maxlength="200" placeholder="2단계 인증 백업 코드 등"></textarea>
+          <textarea id="fMemo" class="lemon-textarea mt-1" rows="2" maxlength="200" placeholder="2단계 인증 백업 코드, 만료일 등"></textarea>
         </div>
         <button id="btnSaveItem" class="primary-btn w-full !py-2.5 !text-[12px]">저장</button>
       </div>
@@ -955,6 +980,35 @@ tailwind.config = {
 
   /* ---------------- items ---------------- */
   var editing = null;
+  var itemType = 'login';
+  var itemEnv = 'Production';
+
+  function setItemType(t) {
+    itemType = t === 'apikey' ? 'apikey' : 'login';
+    var api = itemType === 'apikey';
+    document.querySelectorAll('.item-type').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-ftype') === itemType);
+    });
+    $('fieldUrl').classList.toggle('hidden', api);
+    $('fieldUser').classList.toggle('hidden', api);
+    $('fieldEnv').classList.toggle('hidden', !api);
+    $('fSiteLabel').textContent = api ? '서비스명' : '사이트명';
+    $('fSite').placeholder = api ? '예: OpenAI' : '예: 네이버';
+    $('fPassLabel').textContent = api ? 'API 키 / 토큰 값' : '비밀번호';
+    $('fPass').placeholder = api ? 'sk-... 로 시작하는 키' : '비밀번호';
+    $('btnFormGen').classList.toggle('hidden', api);
+  }
+  function syncEnv() {
+    document.querySelectorAll('#envSeg button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-env') === itemEnv);
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('.item-type') : null;
+    if (t) { setItemType(t.getAttribute('data-ftype')); return; }
+    var env = e.target.closest ? e.target.closest('#envSeg button') : null;
+    if (env) { itemEnv = env.getAttribute('data-env'); syncEnv(); }
+  });
 
   var dupFilter = false;
 
@@ -971,11 +1025,14 @@ tailwind.config = {
 
   function paintSecurity() {
     var map = passwordMap();
-    var total = vault.items.length;
+    var loginItems = vault.items.filter(function (it) { return it.type !== 'apikey'; });
+    var apiCount = vault.items.length - loginItems.length;
+    if ($('secApi')) $('secApi').textContent = apiCount;
+    var total = loginItems.length;
     var safe = 0, mid = 0, weak = 0;
     var dupItems = 0;
     var bitsSum = 0;
-    vault.items.forEach(function (it) {
+    loginItems.forEach(function (it) {
       var a = analyze(it.pass || '');
       bitsSum += Math.min(120, a.bits || 0);
       if (a.score >= 3) safe++;
@@ -987,6 +1044,7 @@ tailwind.config = {
     if ($('secSafe')) $('secSafe').textContent = safe;
     if ($('secMid')) $('secMid').textContent = mid;
     if ($('secWeak')) $('secWeak').textContent = weak;
+    if ($('openCount')) $('openCount').textContent = vault.items.length + '개 항목' + (apiCount ? ' · API ' + apiCount : '');
 
     // 전체 보안 점수: 평균 엔트로피(70점 상한) + 안전 비중 + 중복 감점
     var score = 0;
@@ -1030,10 +1088,12 @@ tailwind.config = {
         return (it.site || '').toLowerCase().indexOf(q) > -1 ||
           (it.user || '').toLowerCase().indexOf(q) > -1 ||
           (it.memo || '').toLowerCase().indexOf(q) > -1 ||
+          (it.env || '').toLowerCase().indexOf(q) > -1 ||
           (it.url || '').toLowerCase().indexOf(q) > -1;
       });
     }
-    $('openCount').textContent = vault.items.length + '개 항목';
+    var apiN = vault.items.filter(function (x) { return x.type === 'apikey'; }).length;
+    $('openCount').textContent = vault.items.length + '개 항목' + (apiN ? ' · API ' + apiN : '');
     $('vaultCount').textContent = vault.items.length;
     var box = $('vaultList');
     if (!list.length) {
@@ -1047,12 +1107,14 @@ tailwind.config = {
         '<div class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center font-black text-[13px] shrink-0">' + Lemon.esc(initial) + '</div>' +
         '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center gap-1.5"><p class="text-[12px] font-bold truncate">' + Lemon.esc(it.site || '이름 없음') + '</p>' +
-        ((dupMap[it.pass || ''] || []).length > 1 ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0">중복</span>' : '') +
-        ((analyze(it.pass || '').score <= 1) ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-rose-500 text-white shrink-0">취약</span>' : '') +
+        (it.type === 'apikey' ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-sky-600 text-white shrink-0">API</span>' : '') +
+        (it.type === 'apikey' && it.env ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 shrink-0">' + Lemon.esc(it.env) + '</span>' : '') +
+        ((dupMap[it.pass || ''] || []).length > 1 && it.type !== 'apikey' ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0">중복</span>' : '') +
+        ((analyze(it.pass || '').score <= 1 && it.type !== 'apikey') ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-rose-500 text-white shrink-0">취약</span>' : '') +
         (it.url ? '<a href="' + Lemon.esc(urlOf(it.url)) + '" target="_blank" rel="noopener noreferrer" class="text-[9px] text-brand-600 dark:text-brand-400 font-bold shrink-0">열기</a>' : '') +
         '</div>' +
-        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.user || '아이디 없음') + '</p>' +
-        '<p class="text-[11px] font-mono mt-1 truncate" data-pw="' + it.id + '">••••••••</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.type === 'apikey' ? ('토큰 · ' + (it.env || 'Production')) : (it.user || '아이디 없음')) + '</p>' +
+        '<p class="text-[11px] font-mono mt-1 truncate" data-pw="' + it.id + '">' + (it.type === 'apikey' ? '••••••••••••' : '••••••••') + '</p>' +
         (it.memo ? '<p class="text-[10px] text-neutral-400 mt-0.5 truncate">' + Lemon.esc(it.memo) + '</p>' : '') +
         '</div>' +
         '<div class="flex items-center gap-1 shrink-0">' +
@@ -1072,6 +1134,9 @@ tailwind.config = {
   function openForm(item) {
     editing = item ? item.id : null;
     $('itemFormTitle').textContent = item ? '항목 수정' : '새 항목';
+    itemEnv = (item && item.env) || 'Production';
+    setItemType(item && item.type === 'apikey' ? 'apikey' : 'login');
+    syncEnv();
     $('fSite').value = item ? (item.site || '') : '';
     $('fUrl').value = item ? (item.url || '') : '';
     $('fUser').value = item ? (item.user || '') : '';
@@ -1083,15 +1148,18 @@ tailwind.config = {
   }
 
   async function saveItem() {
+    var api = itemType === 'apikey';
     var site = $('fSite').value.trim();
     var pass = $('fPass').value;
-    if (!site) { Lemon.toast('사이트명을 입력하세요', 'err'); return; }
-    if (!pass) { Lemon.toast('비밀번호를 입력하세요', 'err'); return; }
+    if (!site) { Lemon.toast(api ? '서비스명을 입력하세요' : '사이트명을 입력하세요', 'err'); return; }
+    if (!pass) { Lemon.toast(api ? 'API 키 값을 입력하세요' : '비밀번호를 입력하세요', 'err'); return; }
     var payload = {
+      type: itemType,
       site: site,
-      url: $('fUrl').value.trim(),
-      user: $('fUser').value.trim(),
+      url: api ? '' : $('fUrl').value.trim(),
+      user: api ? '' : $('fUser').value.trim(),
       pass: pass,
+      env: api ? itemEnv : '',
       memo: $('fMemo').value.trim(),
       upd: Date.now()
     };
@@ -1113,7 +1181,7 @@ tailwind.config = {
     $('itemForm').classList.add('hidden');
     editing = null;
     renderItems();
-    Lemon.toast('저장했어요 (암호화됨)', 'ok');
+    Lemon.toast(api ? 'API 키를 암호화해 저장했어요' : '저장했어요 (암호화됨)', 'ok');
     Lemon.hap(12);
   }
 
