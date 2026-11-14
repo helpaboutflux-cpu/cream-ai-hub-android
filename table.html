@@ -1115,10 +1115,11 @@ tailwind.config = {
       }
       var w = maxX - minX + 1, h = maxY - minY + 1;
       if (area < 600) continue;
-      if (area / (w * h) < 0.55) continue;
+      // a coloured chip fills most of its box (text holes ~5%); the round FAB fills ~78%
+      if (area / (w * h) < 0.85) continue;
       var ratio = w / h;
-      if (ratio < 1.15 || ratio > 4.2) continue;
-      if (w < 36 || h < 18) continue;
+      if (ratio < 0.8 || ratio > 4.5) continue;
+      if (w < 34 || h < 26) continue;
       boxes.push({ x: minX, y: minY, w: w, h: h, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 });
     }
     return boxes;
@@ -1249,6 +1250,25 @@ tailwind.config = {
 
   var OCR_DEBUG = location.search.indexOf('debug') > -1;
 
+  async function readPeriodColumn(worker, work, det, minColX) {
+    var sx = 0, sw = Math.max(24, Math.round(minColX * (work.width / det.width) - 4));
+    var top = 0, sh = work.height;
+    var c = document.createElement('canvas');
+    var up = 2;
+    c.width = sw * up; c.height = sh * up;
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(work, sx, top, sw, sh, 0, 0, c.width, c.height);
+    var ret = await worker.recognize(c);
+    var text = (ret && ret.data && ret.data.text) || '';
+    var nums = (text.match(/\b\d{1,2}\b/g) || []).map(function (x) { return parseInt(x, 10); })
+      .filter(function (n) { return n >= 1 && n <= 12; });
+    var max = 0;
+    nums.forEach(function (n) { if (n > max) max = n; });
+    return max;
+  }
+
   async function ocrByCells(worker) {
     if (!OCR.img) return null;
     var det = makeScaledCanvas(OCR.img, 520);
@@ -1280,6 +1300,13 @@ tailwind.config = {
       }
     }
     if (!total) return null;
+    var maxPeriod = rowGroups.length;
+    try {
+      var minX = boxes.reduce(function (m, b) { return Math.min(m, b.x); }, 9999);
+      var pm = await readPeriodColumn(worker, work, det, minX);
+      if (pm >= rowGroups.length && pm <= 12) maxPeriod = pm;
+    } catch (eP) { }
+    if (!total) return null;
     if (OCR_DEBUG) {
       window.__ocrDebug = {
         detW: det.width, workW: work.width,
@@ -1308,7 +1335,7 @@ tailwind.config = {
     }
     return {
       days: colGroups.length,
-      periods: rowGroups.length,
+      periods: maxPeriod,
       rowCount: rowGroups.length,
       cols: colGroups.map(function (g) { return { day: colGroups.indexOf(g), cx: g.center }; }),
       rows: rowGroups.map(function (g, i) { return { n: i + 1, cy: g.center }; }),
