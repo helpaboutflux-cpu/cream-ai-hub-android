@@ -85,6 +85,21 @@ tailwind.config = {
   }
   .dark .date-chip { border-color: rgb(45 45 50); background: rgb(24 24 27); }
   .date-chip.on { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(22,163,74,.14); }
+  .scan-stage { touch-action: none; user-select: none; }
+  .scan-stage canvas { max-height: 260px; object-fit: contain; }
+  .crop-box {
+    position: absolute; border: 2px dashed rgba(34,197,94,.95);
+    background: rgba(34,197,94,.14); border-radius: .4rem;
+    pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,.35);
+  }
+  .preset-chip {
+    font-size: 10px; font-weight: 700; padding: .28rem .55rem; border-radius: .6rem;
+    border: 1px solid rgb(228 228 231); background: rgb(250 250 250); white-space: nowrap;
+  }
+  .dark .preset-chip { border-color: rgb(45 45 50); background: rgb(24 24 27); }
+  .preset-chip:active { transform: scale(.95); }
+  .item-thumb { width: 40px; height: 40px; border-radius: .75rem; object-fit: cover; flex-shrink: 0; border: 1px solid rgb(228 228 231); }
+  .dark .item-thumb { border-color: rgb(45 45 50); }
 
   .bar-row { display: flex; align-items: center; gap: .6rem; font-size: 11px; font-weight: 700; }
   .bar-out { flex: 1; height: .55rem; border-radius: 9999px; background: rgb(238 238 243); overflow: hidden; }
@@ -373,8 +388,19 @@ tailwind.config = {
     </div>
 
     <div id="scanPreviewWrap" class="hidden space-y-2">
-      <div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 relative" style="max-height:220px">
-        <canvas id="scanPreview" class="w-full h-auto block" style="max-height:220px;object-fit:contain"></canvas>
+      <div class="rounded-xl overflow-hidden bg-neutral-900 relative scan-stage">
+        <canvas id="scanPreview" class="w-full h-auto block"></canvas>
+        <div id="cropBox" class="crop-box hidden"></div>
+        <div class="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-black/55 text-white pointer-events-none">드래그해 날짜 부분만 지정</div>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <button class="rot-btn ghost-btn !px-2 !py-1 !text-[10px]" data-rot="-15">-15°</button>
+        <button class="rot-btn ghost-btn !px-2 !py-1 !text-[10px]" data-rot="-5">-5°</button>
+        <span id="rotLabel" class="text-[10px] font-mono font-bold w-10 text-center">0°</span>
+        <button class="rot-btn ghost-btn !px-2 !py-1 !text-[10px]" data-rot="5">+5°</button>
+        <button class="rot-btn ghost-btn !px-2 !py-1 !text-[10px]" data-rot="15">+15°</button>
+        <button id="btnAutoDeskew" class="ghost-btn !px-2 !py-1 !text-[10px]">자동 수평</button>
+        <button id="btnCropClear" class="ghost-btn !px-2 !py-1 !text-[10px] hidden">자르기 해제</button>
       </div>
       <div id="scanProgressWrap" class="hidden space-y-1">
         <div class="progress-track"><div id="scanProgress" class="progress-fill" style="width:4%"></div></div>
@@ -404,6 +430,10 @@ tailwind.config = {
     <div class="hr"></div>
 
     <div class="grid grid-cols-2 gap-2.5">
+      <div class="col-span-2 space-y-1.5">
+        <span class="lemon-label">자주 쓰는 식품</span>
+        <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto thin-scroll" data-preset-row="scan"></div>
+      </div>
       <div class="col-span-2">
         <span class="lemon-label">재료 이름</span>
         <input id="scanName" type="text" class="lemon-input mt-1" placeholder="예: 서울우유 1L" maxlength="40">
@@ -445,6 +475,10 @@ tailwind.config = {
       </button>
     </div>
     <div class="grid grid-cols-2 gap-2.5">
+      <div class="col-span-2 space-y-1.5">
+        <span class="lemon-label">자주 쓰는 식품</span>
+        <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto thin-scroll" data-preset-row="edit"></div>
+      </div>
       <div class="col-span-2">
         <span class="lemon-label">재료 이름</span>
         <input id="edName" type="text" class="lemon-input mt-1" placeholder="예: 계란" maxlength="40">
@@ -488,6 +522,97 @@ tailwind.config = {
   var AUTO = Lemon.project('lemon_fridge_projects', { max: 10 });
 
   var ZONES = { fridge: '냉장실', freezer: '냉동실', room: '실온' };
+
+  // 자주 쓰는 기본 식품 프리셋 (보관 구역 + 권장 보관 일수)
+  var FOOD_PRESETS = [
+    { name: '우유', zone: 'fridge', days: 9, cat: 'milk' },
+    { name: '계란', zone: 'fridge', days: 21, cat: 'egg' },
+    { name: '두부', zone: 'fridge', days: 7, cat: 'tofu' },
+    { name: '요거트', zone: 'fridge', days: 14, cat: 'dairy' },
+    { name: '치즈', zone: 'fridge', days: 30, cat: 'dairy' },
+    { name: '햄·소시지', zone: 'fridge', days: 14, cat: 'meat' },
+    { name: '삼겹살', zone: 'freezer', days: 90, cat: 'meat' },
+    { name: '소고기', zone: 'freezer', days: 120, cat: 'meat' },
+    { name: '닭고기', zone: 'freezer', days: 90, cat: 'meat' },
+    { name: '김치', zone: 'fridge', days: 60, cat: 'kimchi' },
+    { name: '양파', zone: 'room', days: 30, cat: 'veg' },
+    { name: '대파', zone: 'fridge', days: 14, cat: 'veg' },
+    { name: '당근', zone: 'fridge', days: 21, cat: 'veg' },
+    { name: '사과', zone: 'fridge', days: 30, cat: 'fruit' },
+    { name: '바나나', zone: 'room', days: 7, cat: 'fruit' },
+    { name: '식빵', zone: 'room', days: 5, cat: 'bread' },
+    { name: '생수', zone: 'room', days: 180, cat: 'water' },
+    { name: '주스', zone: 'fridge', days: 10, cat: 'water' },
+    { name: '라면', zone: 'room', days: 180, cat: 'noodle' },
+    { name: '밥', zone: 'freezer', days: 30, cat: 'rice' },
+    { name: '만두', zone: 'freezer', days: 90, cat: 'frozen' },
+    { name: '버터', zone: 'fridge', days: 60, cat: 'dairy' },
+    { name: '간장', zone: 'room', days: 365, cat: 'sauce' },
+    { name: '고추장', zone: 'fridge', days: 180, cat: 'sauce' }
+  ];
+
+  var CAT_ICON = {
+    milk: '<path d="M9 3h6l1 4v13a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7z"></path><path d="M9 7h6"></path>',
+    egg: '<path d="M12 3c3 4 5 7 5 10a5 5 0 0 1-10 0c0-3 2-6 5-10z"></path>',
+    tofu: '<rect x="5" y="6" width="14" height="12" rx="1.5"></rect><path d="M5 10h14"></path>',
+    dairy: '<path d="M7 4h10v16H7z"></path><path d="M7 9h10"></path><circle cx="12" cy="14" r="1.4"></circle>',
+    meat: '<path d="M6 12a5 5 0 0 1 5-5h4a4 4 0 0 1 0 8h-4a5 5 0 0 1-5-3z"></path><circle cx="10" cy="12" r="1.4"></circle>',
+    kimchi: '<path d="M4 9h16l-2 10H6z"></path><path d="M8 9V6M12 9V5M16 9V6"></path>',
+    veg: '<path d="M12 20c0-5 3-9 8-9-1 6-4 9-8 9z"></path><path d="M12 20C9 16 5 15 4 10c5 0 8 3 8 10z"></path>',
+    fruit: '<circle cx="12" cy="13" r="6"></circle><path d="M12 7c0-2 1.5-3.5 3.5-3.5"></path>',
+    bread: '<path d="M4 10a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v8H4z"></path><path d="M8 7V5M12 7V5M16 7V5"></path>',
+    water: '<path d="M8 4h8v16H8z"></path><path d="M8 9h8"></path>',
+    noodle: '<path d="M4 11h16"></path><path d="M6 11c0 5 2.7 8 6 8s6-3 6-8"></path><path d="M9 7l1-3M13 7l1-3"></path>',
+    rice: '<path d="M5 11h14l-1.5 8h-11z"></path><path d="M8 11c0-3 1.8-5 4-5s4 2 4 5"></path>',
+    frozen: '<path d="M12 3v18M4 8l16 8M20 8L4 16"></path>',
+    sauce: '<path d="M9 8h6l1 12H8z"></path><path d="M10 8V4h4v4"></path>'
+  };
+
+  function catOf(name) {
+    var n = name || '';
+    for (var i = 0; i < FOOD_PRESETS.length; i++) {
+      if (n.indexOf(FOOD_PRESETS[i].name.charAt(0)) > -1 && n.indexOf(FOOD_PRESETS[i].name.split('·')[0]) > -1) return FOOD_PRESETS[i].cat;
+    }
+    if (/우유|밀크/.test(n)) return 'milk';
+    if (/계란|달걀/.test(n)) return 'egg';
+    if (/두부/.test(n)) return 'tofu';
+    if (/치즈|요거트|요구르트|버터/.test(n)) return 'dairy';
+    if (/고기|삼겹|소고기|닭|햄|소시지|베이컨/.test(n)) return 'meat';
+    if (/김치/.test(n)) return 'kimchi';
+    if (/양파|대파|당근|오이|채소|마늘/.test(n)) return 'veg';
+    if (/사과|바나나|딸기|포도|과일/.test(n)) return 'fruit';
+    if (/빵/.test(n)) return 'bread';
+    if (/주스|생수|물|음료/.test(n)) return 'water';
+    if (/라면|면/.test(n)) return 'noodle';
+    if (/밥/.test(n)) return 'rice';
+    if (/만두|냉동/.test(n)) return 'frozen';
+    if (/간장|고추장|된장|소스/.test(n)) return 'sauce';
+    return '';
+  }
+
+  function presetChipsHtml(mode) {
+    return FOOD_PRESETS.map(function (p, i) {
+      return '<button class="preset-chip" data-preset="' + i + '">' + p.name + '</button>';
+    }).join('');
+  }
+
+  function applyPreset(p, mode) {
+    var days = p.days || 14;
+    var d = new Date();
+    d.setDate(d.getDate() + days);
+    var iso = isoOf(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    if (mode === 'scan') {
+      $('scanName').value = p.name;
+      $('scanZone').value = p.zone;
+      $('scanExpiry').value = iso;
+    } else {
+      $('edName').value = p.name;
+      $('edZone').value = p.zone;
+      $('edExpiry').value = iso;
+    }
+    Lemon.toast(p.name + ' · ' + ZONES[p.zone] + ' · 기본 ' + days + '일로 채웠어요', 'ok');
+    Lemon.hap(8);
+  }
   var ZONE_COLOR = { fridge: '#16a34a', freezer: '#2563eb', room: '#d97706' };
 
   var st = {
@@ -497,7 +622,7 @@ tailwind.config = {
     sort: 'dday',
     search: '',
     editing: null,
-    scan: { img: null, canvas: null, picked: null, texts: [], busy: false }
+    scan: { img: null, canvas: null, picked: null, texts: [], busy: false, rot: 0, crop: null, angle: null, conf: 0 }
   };
 
   /* ---------------- storage ---------------- */
@@ -652,9 +777,11 @@ tailwind.config = {
       var barColor = n === null ? '#a1a1aa' : n < 0 ? '#e11d48' : n <= 3 ? '#d97706' : '#16a34a';
       return '<div class="panel p-3.5 item-card" data-id="' + it.id + '">' +
         '<div class="flex items-start gap-3">' +
-        '<div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:' + ZONE_COLOR[it.zone] + '1a;color:' + ZONE_COLOR[it.zone] + '">' +
-        '<svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + (it.zone === 'freezer' ? '<path d="M12 3v18M4 8l16 8M20 8L4 16"></path>' : it.zone === 'room' ? '<path d="M4 20V9l8-5 8 5v11"></path>' : '<path d="M6 3h12v18H6z"></path><path d="M6 10h12"></path>') + '</svg>' +
-        '</div>' +
+        (it.thumb
+          ? '<img src="' + it.thumb + '" alt="" class="item-thumb">'
+          : '<div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:' + ZONE_COLOR[it.zone] + '1a;color:' + ZONE_COLOR[it.zone] + '">' +
+            '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (CAT_ICON[catOf(it.name)] || '<path d="M6 3走了h12v18H6z"></path>') + '</svg>' +
+            '</div>') +
         '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center gap-1.5 flex-wrap">' +
         '<p class="text-[13px] font-bold truncate">' + Lemon.esc(it.name || '이름 없음') + '</p>' +
@@ -1026,24 +1153,113 @@ tailwind.config = {
     fr.onload = function () {
       var img = new Image();
       img.onload = function () {
-        var canvas = $('scanPreview');
-        var maxW = 900;
-        var k = Math.min(1, maxW / Math.max(img.naturalWidth, img.naturalHeight));
-        canvas.width = Math.round(img.naturalWidth * k);
-        canvas.height = Math.round(img.naturalHeight * k);
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         st.scan.img = img;
-        st.scan.canvas = canvas;
+        st.scan.rot = 0;
+        st.scan.crop = null;
+        st.scan.angle = null;
+        $('rotLabel').textContent = '0°';
+        $('cropBox').classList.add('hidden');
+        $('btnCropClear').classList.add('hidden');
         $('scanDrop').classList.add('hidden');
         $('scanPreviewWrap').classList.remove('hidden');
         $('scanResult').classList.add('hidden');
         $('dateChoices').innerHTML = '';
-        Lemon.toast('사진을 불러왔어요. 날짜 읽기를 눌러 주세요', 'info');
+        drawPreview();
+        Lemon.toast('사진을 불러왔어요. 필요하면 기울기를 맞추거나 날짜 부분을 골라 주세요', 'info');
       };
       img.src = fr.result;
     };
     fr.readAsDataURL(file);
   }
+
+  // preview = source rotated by st.scan.rot; crop box is drawn on top (normalized to preview)
+  function drawPreview() {
+    var img = st.scan.img;
+    if (!img) return;
+    var canvas = $('scanPreview');
+    var maxW = 900;
+    var k = Math.min(1, maxW / Math.max(img.naturalWidth, img.naturalHeight));
+    var baseW = Math.round(img.naturalWidth * k), baseH = Math.round(img.naturalHeight * k);
+    var rad = (st.scan.rot || 0) * Math.PI / 180;
+    var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+    canvas.width = Math.round(baseW * cos + baseH * sin);
+    canvas.height = Math.round(baseW * sin + baseH * cos);
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(rad);
+    ctx.drawImage(img, -baseW / 2, -baseH / 2, baseW, baseH);
+    st.scan.canvas = canvas;
+  }
+
+  function rotateBy(deg) {
+    st.scan.rot = Math.max(-45, Math.min(45, (st.scan.rot || 0) + deg));
+    $('rotLabel').textContent = st.scan.rot + '°';
+    st.scan.crop = null;
+    $('cropBox').classList.add('hidden');
+    $('btnCropClear').classList.add('hidden');
+    drawPreview();
+  }
+
+  document.querySelectorAll('.rot-btn').forEach(function (b) {
+    b.addEventListener('click', function () { rotateBy(parseInt(b.getAttribute('data-rot'), 10)); });
+  });
+  $('btnCropClear').addEventListener('click', function () {
+    st.scan.crop = null;
+    $('cropBox').classList.add('hidden');
+    this.classList.add('hidden');
+  });
+
+  // crop selection by dragging on the preview
+  (function () {
+    var stage = document.querySelector('.scan-stage');
+    var dragStart = null;
+    function pos(e) {
+      var r = $('scanPreview').getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+        y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))
+      };
+    }
+    function paint() {
+      var c = st.scan.crop, box = $('cropBox'), r = $('scanPreview').getBoundingClientRect(), host = stage.getBoundingClientRect();
+      if (!c) { box.classList.add('hidden'); return; }
+      box.classList.remove('hidden');
+      box.style.left = (r.left - host.left + c.x * r.width) + 'px';
+      box.style.top = (r.top - host.top + c.y * r.height) + 'px';
+      box.style.width = (c.w * r.width) + 'px';
+      box.style.height = (c.h * r.height) + 'px';
+    }
+    stage.addEventListener('pointerdown', function (e) {
+      if (!st.scan.img || e.target.closest('button')) return;
+      dragStart = pos(e);
+      st.scan.crop = { x: dragStart.x, y: dragStart.y, w: 0, h: 0 };
+      paint();
+    });
+    stage.addEventListener('pointermove', function (e) {
+      if (!dragStart) return;
+      var p = pos(e);
+      st.scan.crop = {
+        x: Math.min(dragStart.x, p.x), y: Math.min(dragStart.y, p.y),
+        w: Math.abs(p.x - dragStart.x), h: Math.abs(p.y - dragStart.y)
+      };
+      paint();
+    });
+    stage.addEventListener('pointerup', function () {
+      if (!dragStart) return;
+      dragStart = null;
+      if (!st.scan.crop || st.scan.crop.w < 0.04 || st.scan.crop.h < 0.02) {
+        st.scan.crop = null;
+        $('cropBox').classList.add('hidden');
+        $('btnCropClear').classList.add('hidden');
+        return;
+      }
+      $('btnCropClear').classList.remove('hidden');
+      Lemon.hap(8);
+      Lemon.toast('이 부분만 읽어볼게요. 날짜 읽기를 눌러 주세요', 'ok');
+    });
+    window.addEventListener('resize', paint);
+  })();
 
   function setScanProgress(pct, label) {
     $('scanProgressWrap').classList.remove('hidden');
@@ -1051,39 +1267,221 @@ tailwind.config = {
     $('scanStage').textContent = label;
   }
 
-  function buildScanCanvas() {
-    var src = st.scan.canvas;
-    var long = Math.max(src.width, src.height);
-    var scale = long < 1000 ? 1.8 : long < 1600 ? 1.2 : 1;
-    var w = Math.round(src.width * scale), h = Math.round(src.height * scale);
-    var c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    var ctx = c.getContext('2d', { willReadFrequently: true });
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(src, 0, 0, w, h);
+  /* ---- image processing helpers ---- */
+  function grayContrast(ctx, w, h, cfg) {
+    cfg = cfg || {};
     var frame = ctx.getImageData(0, 0, w, h);
-    var d = frame.data;
-    var hist = new Uint32Array(256);
-    for (var i = 0; i < d.length; i += 4) {
-      var g = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0;
-      hist[g]++;
+    var d = frame.data, n = w * h;
+    var g = new Float32Array(n);
+    for (var i = 0, j = 0; j < n; j++, i += 4) g[j] = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    if (cfg.sharpen) {
+      var src = Float32Array.from(g);
+      for (var y = 1; y < h - 1; y++) {
+        for (var x = 1; x < w - 1; x++) {
+          var idx = y * w + x;
+          var v = 5 * src[idx] - src[idx - 1] - src[idx + 1] - src[idx - w] - src[idx + w];
+          g[idx] = v < 0 ? 0 : v > 255 ? 255 : v;
+        }
+      }
     }
-    var n = d.length / 4, acc = 0, lo = 0, hi = 255;
+    var hist = new Uint32Array(256);
+    for (var k = 0; k < n; k++) hist[Math.max(0, Math.min(255, g[k] | 0))]++;
+    var acc = 0, lo = 0, hi = 255;
     for (var t = 0; t < 256; t++) { acc += hist[t]; if (acc >= n * 0.02) { lo = t; break; } }
     acc = 0;
     for (var t2 = 255; t2 >= 0; t2--) { acc += hist[t2]; if (acc >= n * 0.02) { hi = t2; break; } }
     if (hi - lo < 20) { lo = 0; hi = 255; }
-    var scaleC = 255 / Math.max(1, hi - lo);
-    for (var j = 0; j < d.length; j += 4) {
-      var l = (d[j] * 299 + d[j + 1] * 587 + d[j + 2] * 114) / 1000;
-      var v = (l - lo) * scaleC * 1.18 - 10;
-      v = v < 0 ? 0 : v > 255 ? 255 : v;
-      d[j] = d[j + 1] = d[j + 2] = v;
+    var sc = 255 / Math.max(1, hi - lo);
+    for (var q = 0, p2 = 0; q < n; q++, p2 += 4) {
+      var val = (g[q] - lo) * sc * (cfg.gain || 1.2) - (cfg.bias === undefined ? 12 : cfg.bias);
+      val = val < 0 ? 0 : val > 255 ? 255 : val;
+      d[p2] = d[p2 + 1] = d[p2 + 2] = val;
     }
     ctx.putImageData(frame, 0, 0);
+    return g;
+  }
+
+  // Build the canvas OCR sees: crop (image space) -> rotation -> scale -> contrast
+  function buildScanCanvas(opt) {
+    opt = opt || {};
+    var img = st.scan.img;
+    if (!img) return null;
+    var W = img.naturalWidth, H = img.naturalHeight;
+    var crop = opt.crop || null;
+    var rot = opt.rot || 0;
+
+    var sx = crop ? crop.x * W : 0;
+    var sy = crop ? crop.y * H : 0;
+    var sw = crop ? Math.max(8, crop.w * W) : W;
+    var sh = crop ? Math.max(8, crop.h * H) : H;
+
+    var scale = opt.scale || (Math.max(sw, sh) < 500 ? 4 : Math.max(sw, sh) < 900 ? 3 : 2);
+    var rad = rot * Math.PI / 180;
+    var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+    var cw = Math.round((sw * cos + sh * sin) * scale);
+    var ch = Math.round((sw * sin + sh * cos) * scale);
+
+    var c = document.createElement('canvas');
+    c.width = Math.max(16, cw);
+    c.height = Math.max(16, ch);
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(rad);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+
+    grayContrast(ctx, c.width, c.height, { sharpen: true, gain: opt.gain || 1.22, bias: opt.bias });
+    var longSide = Math.max(c.width, c.height);
+    if (longSide > 2200) {
+      var k2 = 2200 / longSide;
+      var s2 = document.createElement('canvas');
+      s2.width = Math.round(c.width * k2);
+      s2.height = Math.round(c.height * k2);
+      var sctx2 = s2.getContext('2d');
+      sctx2.imageSmoothingEnabled = true;
+      sctx2.imageSmoothingQuality = 'high';
+      sctx2.drawImage(c, 0, 0, s2.width, s2.height);
+      return s2;
+    }
     return c;
+  }
+
+  // Estimate the dominant text angle (deskew) from row ink projection
+  function estimateAngle() {
+    var img = st.scan.img;
+    if (!img) return 0;
+    var small = document.createElement('canvas');
+    var k = Math.min(1, 320 / Math.max(img.naturalWidth, img.naturalHeight));
+    small.width = Math.max(40, Math.round(img.naturalWidth * k));
+    small.height = Math.max(40, Math.round(img.naturalHeight * k));
+    var sctx = small.getContext('2d', { willReadFrequently: true });
+    sctx.fillStyle = '#fff'; sctx.fillRect(0, 0, small.width, small.height);
+    sctx.drawImage(img, 0, 0, small.width, small.height);
+    var g = grayContrast(sctx, small.width, small.height, { gain: 1.3 });
+
+    var work = document.createElement('canvas');
+    var wctx = work.getContext('2d', { willReadFrequently: true });
+    var best = { ang: 0, score: -1 };
+    var angles = [];
+    for (var a = -40; a <= 40; a += 2.5) angles.push(a);
+    for (var i = 0; i < angles.length; i++) {
+      var rad = angles[i] * Math.PI / 180;
+      var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+      var nw = Math.round(small.width * cos + small.height * sin);
+      var nh = Math.round(small.width * sin + small.height * cos);
+      work.width = nw; work.height = nh;
+      wctx.fillStyle = '#fff'; wctx.fillRect(0, 0, nw, nh);
+      wctx.save();
+      wctx.translate(nw / 2, nh / 2);
+      wctx.rotate(rad);
+      wctx.drawImage(small, -small.width / 2, -small.height / 2);
+      wctx.restore();
+      var fr = wctx.getImageData(0, 0, nw, nh);
+      var d = fr.data;
+      var rows = new Float32Array(nh);
+      for (var y = 0; y < nh; y++) {
+        var sum = 0, base = y * nw * 4;
+        for (var x = 0; x < nw; x++) {
+          var v = d[base + x * 4];
+          if (v < 110) sum++;
+        }
+        rows[y] = sum;
+      }
+      var score = 0;
+      for (var r = 0; r < nh; r++) score += rows[r] * rows[r];
+      if (score > best.score) best = { ang: angles[i], score: score };
+    }
+    return Math.round(best.ang * 10) / 10;
+  }
+
+  // Estimate the text angle inside a crop region (used when the package fills only part of the photo)
+  function estimateAngleIn(crop) {
+    var img = st.scan.img;
+    if (!img) return 0;
+    var W = img.naturalWidth, H = img.naturalHeight;
+    var sw = Math.round(crop.w * W), sh = Math.round(crop.h * H);
+    if (sw < 8 || sh < 8) return 0;
+    var k = Math.min(1, 300 / Math.max(sw, sh));
+    var base = document.createElement('canvas');
+    base.width = Math.max(40, Math.round(sw * k));
+    base.height = Math.max(40, Math.round(sh * k));
+    var bc = base.getContext('2d', { willReadFrequently: true });
+    bc.fillStyle = '#fff'; bc.fillRect(0, 0, base.width, base.height);
+    bc.drawImage(img, crop.x * W, crop.y * H, sw, sh, 0, 0, base.width, base.height);
+    return projectBestAngle(base);
+  }
+
+  function projectBestAngle(base) {
+    var work = document.createElement('canvas');
+    var wc = work.getContext('2d', { willReadFrequently: true });
+    var best = { a: 0, s: -1 };
+    for (var a = -40; a <= 40; a += 2.5) {
+      var rad = a * Math.PI / 180;
+      var cs = Math.abs(Math.cos(rad)), sn = Math.abs(Math.sin(rad));
+      var nw = Math.round(base.width * cs + base.height * sn);
+      var nh = Math.round(base.width * sn + base.height * cs);
+      work.width = nw; work.height = nh;
+      wc.fillStyle = '#fff'; wc.fillRect(0, 0, nw, nh);
+      wc.save();
+      wc.translate(nw / 2, nh / 2);
+      wc.rotate(rad);
+      wc.drawImage(base, -base.width / 2, -base.height / 2);
+      wc.restore();
+      var d = wc.getImageData(0, 0, nw, nh).data;
+      var rows = new Float32Array(nh);
+      for (var y = 0; y < nh; y++) {
+        var sum = 0, bb = y * nw * 4;
+        for (var x = 0; x < nw; x++) if (d[bb + x * 4] < 110) sum++;
+        rows[y] = sum;
+      }
+      var score = 0;
+      for (var r = 0; r < nh; r++) score += rows[r] * rows[r];
+      if (score > best.s) best = { a: a, s: score };
+    }
+    return Math.round(best.a * 10) / 10;
+  }
+
+  function findTextBands(canvas) {
+    // returns up to 3 crops (normalized) of horizontal bands with dense small text
+    var w = canvas.width, h = canvas.height;
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    var d = ctx.getImageData(0, 0, w, h).data;
+    var rows = new Float32Array(h);
+    for (var y = 0; y < h; y++) {
+      var sum = 0, base = y * w * 4;
+      for (var x = 0; x < w; x += 2) { if (d[base + x * 4] < 100) sum++; }
+      rows[y] = sum;
+    }
+    var max = 0;
+    for (var i = 0; i < h; i++) if (rows[i] > max) max = rows[i];
+    if (max < 3) return [];
+    var thr = max * 0.22;
+    var bands = [], cur = null;
+    for (var y2 = 0; y2 < h; y2++) {
+      if (rows[y2] > thr) {
+        if (!cur) cur = { y0: y2, y1: y2, ink: 0 };
+        cur.y1 = y2;
+        cur.ink += rows[y2];
+      } else if (cur) {
+        if (cur.y1 - cur.y0 >= Math.max(6, h * 0.012)) bands.push(cur);
+        cur = null;
+      }
+    }
+    if (cur) bands.push(cur);
+    bands = bands.filter(function (b) { return (b.y1 - b.y0) < h * 0.5; });
+    bands.forEach(function (b) {
+      b.density = b.ink / Math.max(1, (b.y1 - b.y0) * w);
+    });
+    bands.sort(function (a, b) { return b.density - a.density; });
+    return bands.slice(0, 3).map(function (b) {
+      var padY = (b.y1 - b.y0) * 0.45;
+      var y0 = Math.max(0, b.y0 - padY), y1 = Math.min(h, b.y1 + padY);
+      return { x: 0, y: y0 / h, w: 1, h: (y1 - y0) / h };
+    });
   }
 
   async function getWorker() {
@@ -1097,13 +1495,13 @@ tailwind.config = {
           corePath: CDN[i].corePath,
           langPath: 'https://tessdata.projectnaptha.com/4.0.0',
           logger: function (m) {
-            if (!m) return;
-            var s = m.status || '';
+            if (!m || !st.scan.busy) return;
+            var stt = m.status || '';
             var p = typeof m.progress === 'number' ? m.progress : 0;
-            if (s.indexOf('loading tesseract core') > -1) setScanProgress(6 + p * 8, '인식 엔진 준비 중…');
-            else if (s.indexOf('loading language') > -1) setScanProgress(16 + p * 30, '한글 인식 데이터 내려받는 중… (첫 실행만)');
-            else if (s.indexOf('initializing') > -1) setScanProgress(50 + p * 10, '엔진 초기화 중…');
-            else if (s.indexOf('recognizing') > -1) setScanProgress(62 + p * 34, '날짜를 찾는 중…');
+            if (stt.indexOf('loading tesseract core') > -1) setScanProgress(4 + p * 6, '인식 엔진 준비 중…');
+            else if (stt.indexOf('loading language') > -1) setScanProgress(10 + p * 22, '한글 인식 데이터 내려받는 중… (첫 실행만)');
+            else if (stt.indexOf('initializing') > -1) setScanProgress(32 + p * 8, '엔진 초기화 중…');
+            else if (stt.indexOf('recognizing') > -1) setScanProgress(st.scan.passPct || 45, '여러 각도로 날짜를 찾는 중…');
           },
           errorHandler: function (e) { if (window.console) console.warn('[fridge ocr]', e); }
         });
@@ -1135,27 +1533,59 @@ tailwind.config = {
     return score;
   }
 
+  // 연도가 없는 MM.DD 는 오늘 기준 가장 가까운 미래(올해 또는 내년)로 보정한다
+  function nearestYear(m, d) {
+    var now = new Date();
+    var y = now.getFullYear();
+    var probe = new Date(y, m - 1, d);
+    if (probe.getMonth() !== m - 1) return null;
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (probe.getTime() < today.getTime() - 86400000 * 45) y += 1; // 45일 이상 지난 날짜는 내년으로
+    return y;
+  }
+
   function detectDates(text) {
     var found = [];
     var seen = {};
     if (!text) return found;
     var flat = text.replace(/\s+/g, ' ');
 
-    function push(y, m, d, raw, idx) {
-      y = parseInt(y, 10); m = parseInt(m, 10); d = parseInt(d, 10);
-      if (y < 100) y += 2000;
+    function push(y, m, d, raw, idx, noYear) {
+      m = parseInt(m, 10); d = parseInt(d, 10);
+      if (noYear || y === undefined || y === null || y === '') {
+        var ny = nearestYear(m, d);
+        if (!ny) return;
+        // 같은 월·일의 '올해(이미 지난) 날짜'도 후보로 남겨 사용자가 고를 수 있게 한다
+        var nowY = new Date().getFullYear();
+        if (ny !== nowY && m >= 1 && d >= 1) {
+          var pastIso = isoOf(nowY, m, d);
+          if (!seen[pastIso]) {
+            var psc = Math.max(0, scoreAt(flat, idx, raw.length) - 2);
+            var prec = { iso: pastIso, raw: raw, near: psc > 0, score: psc, idx: idx, noYear: true, past: true };
+            seen[pastIso] = prec;
+            found.push(prec);
+          }
+        }
+        y = ny;
+      } else {
+        y = parseInt(y, 10);
+        if (y < 100) y += 2000;
+      }
       if (y < 2000 || y > 2100) return;
       if (m < 1 || m > 12) return;
       if (d < 1 || d > 31) return;
+      if (/[%]/.test(raw)) return;               // 100% 같은 표기는 날짜가 아님
+      if (/\d{5,}/.test(raw.replace(/[^0-9]/g, ''))) return;
       var probe = new Date(y, m - 1, d);
       if (probe.getMonth() !== m - 1) return;
       var iso = isoOf(y, m, d);
       var sc = scoreAt(flat, idx, raw.length);
+      if (noYear) sc = Math.max(0, sc - 1); // 연도 없는 표기는 살짝 신뢰도를 낮게
       if (seen[iso]) {
         if (sc > seen[iso].score) { seen[iso].score = sc; seen[iso].near = sc > 0; }
         return;
       }
-      var rec = { iso: iso, raw: raw, near: sc > 0, score: sc, idx: idx };
+      var rec = { iso: iso, raw: raw, near: sc > 0, score: sc, idx: idx, noYear: !!noYear };
       seen[iso] = rec;
       found.push(rec);
     }
@@ -1180,6 +1610,26 @@ tailwind.config = {
       push(m3[1], m3[2], m3[3], m3[0], m3.index);
     }
 
+    // 05.26. 처럼 연도 없이 월.일 두 자리로 찍힌 표기 (가장 흔한 우유팩 형식)
+    var re4 = /(?:^|[^0-9])(\d{2})\s*[.\-\/]\s*(\d{2})(?=\s*[.\-\/\s]|$|[^0-9])/g;
+    var m4;
+    while ((m4 = re4.exec(flat)) !== null) {
+      var mm = parseInt(m4[1], 10), dd = parseInt(m4[2], 10);
+      if (mm < 1 || mm > 12 || dd < 1 || dd > 31) continue;
+      if (mm >= 19 && mm <= 21) continue;          // 연도로 보이는 숫자 제외
+      push('', mm, dd, m4[0], m4.index, true);
+    }
+    // 0526 처럼 붙여 쓴 4자리
+    var re5 = /(?:^|[^0-9])(\d{2})(\d{2})(?=\s|$|[^0-9])/g;
+    var m5;
+    while ((m5 = re5.exec(flat)) !== null) {
+      var mm5 = parseInt(m5[1], 10), dd5 = parseInt(m5[2], 10);
+      if (mm5 < 1 || mm5 > 12 || dd5 < 1 || dd5 > 31) continue;
+      if (mm5 >= 19 && mm5 <= 21) continue;
+      if (!scoreAt(flat, m5.index, m5[0].length)) continue;   // 붙여쓴 숫자는 키워드 근처일 때만
+      push('', mm5, dd5, m5[0], m5.index, true);
+    }
+
     found.sort(function (a, b) {
       if (a.score !== b.score) return b.score - a.score;
       if (a.iso !== b.iso) return a.iso < b.iso ? 1 : -1;
@@ -1188,37 +1638,159 @@ tailwind.config = {
     return found;
   }
 
+  function dateValue(list) {
+    if (!list || !list.length) return 0;
+    var best = list[0];
+    return (best.score || 0) * 10;
+  }
+
+  async function ocrAttempt(w, canvas, opt) {
+    opt = opt || {};
+    try {
+      await w.setParameters({ tessedit_pageseg_mode: opt.psm || '6' });
+      if (opt.whitelist) await w.setParameters({ tessedit_char_whitelist: opt.whitelist });
+      else await w.setParameters({ tessedit_char_whitelist: '' });
+    } catch (e) { }
+    var ret = await w.recognize(canvas);
+    var text = (ret && ret.data && ret.data.text) || '';
+    var conf = Math.round((ret && ret.data && ret.data.confidence) || 0);
+    var dates = detectDates(text);
+    var kw = 0;
+    KEYWORDS.forEach(function (k) { if (text.indexOf(k) > -1) kw += 2; });
+    return {
+      text: text,
+      conf: conf,
+      dates: dates,
+      score: dateValue(dates) + kw + conf * 0.25,
+      label: opt.label || ''
+    };
+  }
+
   async function runScan() {
-    if (!st.scan.canvas) { Lemon.toast('먼저 사진을 올려 주세요', 'err'); return; }
+    if (!st.scan.img) { Lemon.toast('먼저 사진을 올려 주세요', 'err'); return; }
     if (st.scan.busy) return;
     if (typeof Tesseract === 'undefined') { Lemon.toast('인식 엔진을 불러오지 못했어요. 네트워크를 확인해 주세요', 'err'); return; }
     st.scan.busy = true;
     $('btnRunScan').disabled = true;
     $('scanResult').classList.add('hidden');
     setScanProgress(3, '준비 중…');
+    var attempts = [];
     try {
-      var canvas = buildScanCanvas();
       var w = await getWorker();
-      setScanProgress(62, '날짜를 찾는 중…');
-      var ret = await w.recognize(canvas);
-      var text = (ret && ret.data && ret.data.text) || '';
-      var conf = Math.round((ret && ret.data && ret.data.confidence) || 0);
+      st.scan.passPct = 45;
+      var baseCrop = st.scan.crop;
+      var baseRot = st.scan.rot || 0;
+
+      function strongDate(a) {
+        if (!a || !a.dates.length) return false;
+        for (var i = 0; i < a.dates.length; i++) {
+          var d = a.dates[i];
+          if (d.past) continue;
+          if (d.score > 0) return true;
+          if (d.noYear && /[.\-\/]/.test(d.raw)) return true;   // 05.26 처럼 구분자가 있는 월.일
+        }
+        return false;
+      }
+      function consider(a) {
+        if (!a) return;
+        attempts.push(a);
+        if (!best || (strongDate(a) && !strongDate(best)) || (a.score > best.score && !strongDate(best))) best = a;
+      }
+      var best = null;
+
+      // 1) 사용자가 고른 상태(자르기/회전) 그대로
+      var c1 = buildScanCanvas({ crop: baseCrop, rot: baseRot });
+      if (c1) {
+        setScanProgress(48, baseCrop ? '선택한 부분을 읽는 중…' : '사진 전체를 읽는 중…');
+        consider(await ocrAttempt(w, c1, { label: baseCrop ? '선택 영역' : '기본' }));
+      }
+
+      // 2) 자동 수평(deskew) 각도 추정 후 다시
+      var ang = 0;
+      if (!baseCrop) {
+        setScanProgress(56, '기울기를 계산하는 중…');
+        ang = estimateAngle();
+        st.scan.angle = ang;
+        if (Math.abs(ang - baseRot) > 1.5 && !strongDate(best)) {
+          var c2 = buildScanCanvas({ crop: null, rot: ang });
+          if (c2) {
+            setScanProgress(62, '수평 보정(' + ang + '도) 후 다시 읽는 중…');
+            consider(await ocrAttempt(w, c2, { label: '수평 보정 ' + ang + '도' }));
+          }
+        }
+      }
+
+      // 3) 사진 안 후보 영역마다 그 영역의 기울기를 스스로 계산해 다시 읽기
+      if (!strongDate(best)) {
+        var regions = baseCrop
+          ? [{ x: baseCrop.x, y: baseCrop.y, w: baseCrop.w, h: baseCrop.h }]
+          : [
+            { x: 0.36, y: 0.08, w: 0.34, h: 0.20 },
+            { x: 0.30, y: 0.05, w: 0.42, h: 0.28 },
+            { x: 0.22, y: 0.06, w: 0.56, h: 0.30 },
+            { x: 0.18, y: 0.24, w: 0.64, h: 0.40 }
+          ];
+        for (var ri = 0; ri < regions.length && !strongDate(best); ri++) {
+          var localAng = estimateAngleIn(regions[ri]);
+          var angles = [localAng, localAng + 8, localAng - 8, 0];
+          if (baseCrop) angles = [baseRot, localAng, baseRot + 12];
+          for (var ai = 0; ai < angles.length && !strongDate(best); ai++) {
+            if (ai > 0 && Math.abs(angles[ai] - angles[ai - 1]) < 2) continue;
+            setScanProgress(68 + ri * 6 + ai * 2, '영역 ' + (ri + 1) + '/' + regions.length + ' · 기울기 ' + Math.round(angles[ai]) + '도 시도 중…');
+            var rc = buildScanCanvas({ crop: regions[ri], rot: angles[ai], scale: 3.4 });
+            if (!rc) continue;
+            consider(await ocrAttempt(w, rc, { label: '영역 ' + (ri + 1) + ' · ' + Math.round(angles[ai]) + '도' }));
+          }
+        }
+      }
+
+      // 4) 숫자 전용 모드로 마지막 시도
+      if (!strongDate(best)) {
+        setScanProgress(92, '숫자만 골라 다시 읽는 중…');
+        var cAng2 = st.scan.angle === null ? baseRot : st.scan.angle;
+        var c4 = buildScanCanvas({ crop: baseCrop, rot: (baseCrop ? baseRot : cAng2), scale: 2.6, gain: 1.35, bias: 6 });
+        if (c4) consider(await ocrAttempt(w, c4, { label: '숫자 강조', whitelist: '0123456789.: ' }));
+      }
+
+      st.scan.attempts = attempts;
       setScanProgress(100, '인식 완료');
       setTimeout(function () { $('scanProgressWrap').classList.add('hidden'); }, 500);
 
-      $('scanRaw').textContent = text.trim() || '(읽어낸 텍스트가 없습니다)';
-      $('scanConf').textContent = '신뢰도 ' + conf + '%';
-      st.scan.texts = detectDates(text);
+      var allText = attempts.map(function (a) { return a.text; }).join('\n');
+      $('scanRaw').textContent = allText.trim() || '(읽어낸 텍스트가 없습니다)';
+      st.scan.conf = best ? best.conf : 0;
+      $('scanConf').textContent = '신뢰도 ' + st.scan.conf + '%' + (best && best.label ? ' · ' + best.label : '');
 
-      if (!st.scan.texts.length) {
-        $('dateChoices').innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400">날짜를 찾지 못했어요. 아래에 직접 입력할 수 있습니다.</p>';
+      // 날짜 후보 병합 (중복 제거)
+      var merged = [], seenIso = {};
+      attempts.forEach(function (a) {
+        a.dates.forEach(function (dt) {
+          if (seenIso[dt.iso]) {
+            if (dt.score > seenIso[dt.iso].score) { seenIso[dt.iso].score = dt.score; seenIso[dt.iso].near = dt.score > 0; }
+            return;
+          }
+          seenIso[dt.iso] = dt;
+          merged.push(dt);
+        });
+      });
+      merged.sort(function (a, b) {
+        if (a.score !== b.score) return b.score - a.score;
+        return a.iso < b.iso ? 1 : -1;
+      });
+      st.scan.texts = merged;
+
+      var suggestedName = suggestName(allText);
+      if (suggestedName && !$('scanName').value.trim()) $('scanName').value = suggestedName;
+
+      if (!merged.length) {
+        $('dateChoices').innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400">날짜를 찾지 못했어요. 날짜 부분만 드래그해 선택한 뒤 다시 시도하거나 아래에 직접 입력해 주세요.</p>';
         $('scanResult').classList.remove('hidden');
-        Lemon.toast('날짜를 찾지 못했어요. 직접 입력해 주세요', 'err');
+        Lemon.toast('날짜를 찾지 못했어요. 날짜 부분만 골라 다시 시도해 보세요', 'err');
         return;
       }
       renderDateChoices();
       $('scanResult').classList.remove('hidden');
-      Lemon.toast('날짜 ' + st.scan.texts.length + '개를 찾았어요', 'ok');
+      Lemon.toast('날짜 ' + merged.length + '개 후보를 찾았어요', 'ok');
       Lemon.hap(14);
     } catch (err) {
       if (window.console) console.error('[fridge] scan failed', err);
@@ -1228,6 +1800,42 @@ tailwind.config = {
       st.scan.busy = false;
       $('btnRunScan').disabled = false;
     }
+  }
+
+  /* ---- food / brand suggestion from recognized text ---- */
+  var FOOD_WORDS = [
+    { re: /서울우유|매일우유|남양|우유|밀크/i, name: '우유', zone: 'fridge' },
+    { re: /계란|달걀|에그/i, name: '계란', zone: 'fridge' },
+    { re: /두부/i, name: '두부', zone: 'fridge' },
+    { re: /요구르트|요거트|yogurt/i, name: '요거트', zone: 'fridge' },
+    { re: /치즈|cheese/i, name: '치즈', zone: 'fridge' },
+    { re: /햄|소시지|베이컨/i, name: '햄·소시지', zone: 'fridge' },
+    { re: /김치/i, name: '김치', zone: 'fridge' },
+    { re: /삼겹살|소고기|돼지고기|닭고기|한우/i, name: '고기', zone: 'freezer' },
+    { re: /식빵|빵|bread/i, name: '식빵', zone: 'room' },
+    { re: /주스|쥬스|juice/i, name: '주스', zone: 'fridge' },
+    { re: /생수|광천수|water/i, name: '생수', zone: 'room' },
+    { re: /라면/i, name: '라면', zone: 'room' },
+    { re: /사과|바나나|딸기|포도|과일/i, name: '과일', zone: 'fridge' },
+    { re: /양파|대파|파|마늘|당근|오이|채소/i, name: '채소', zone: 'fridge' }
+  ];
+
+  function suggestName(text) {
+    if (!text) return '';
+    for (var i = 0; i < FOOD_WORDS.length; i++) {
+      if (FOOD_WORDS[i].re.test(text)) {
+        var brand = '';
+        if (/서울우유/.test(text)) brand = '서울우유 ';
+        else if (/매일우유/.test(text)) brand = '매일우유 ';
+        else if (/남양/.test(text)) brand = '남양 ';
+        if (FOOD_WORDS[i].name === '우유' && /1\s*L|1000|1리터/i.test(text)) brand += '1L ';
+        var nm = (brand + FOOD_WORDS[i].name).trim();
+        var zone = FOOD_WORDS[i].zone;
+        if ($('scanZone') && !st.scan.picked) $('scanZone').value = zone;
+        return nm;
+      }
+    }
+    return '';
   }
 
   function renderDateChoices() {
@@ -1275,7 +1883,8 @@ tailwind.config = {
       zone: $('scanZone').value,
       expiry: expiry,
       qty: Math.max(1, parseInt($('scanQty').value, 10) || 1),
-      memo: $('scanMemo').value.trim()
+      memo: $('scanMemo').value.trim(),
+      thumb: makeThumb()
     });
     saveItems();
     renderAll();
@@ -1288,6 +1897,31 @@ tailwind.config = {
     Lemon.toast('냉장고에 넣었어요', 'ok');
     Lemon.confetti(18);
   });
+
+  /* ---------------- presets & thumbnails ---------------- */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-preset-row]'), function (row) {
+    var mode = row.getAttribute('data-preset-row');
+    row.innerHTML = presetChipsHtml(mode);
+    row.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-preset]');
+      if (!b) return;
+      var p = FOOD_PRESETS[parseInt(b.getAttribute('data-preset'), 10)];
+      if (p) applyPreset(p, mode);
+    });
+  });
+
+  function makeThumb() {
+    var src = st.scan.img;
+    if (!src) return '';
+    var c = document.createElement('canvas');
+    c.width = 120; c.height = 120;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 120, 120);
+    var side = Math.min(src.naturalWidth, src.naturalHeight);
+    var sx = (src.naturalWidth - side) / 2, sy = (src.naturalHeight - side) / 2;
+    ctx.drawImage(src, sx, sy, side, side, 0, 0, 120, 120);
+    try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return ''; }
+  }
 
   /* ---------------- boot ---------------- */
   document.addEventListener('click', function (e) {
@@ -1317,6 +1951,15 @@ tailwind.config = {
   load();
   renderAll();
   AUTO.bind('autosaveBadge');
+
+  window.__fridge = {
+    state: st,
+    estimateAngle: estimateAngle,
+    buildScanCanvas: buildScanCanvas,
+    detectDates: detectDates,
+    runScan: runScan,
+    suggestName: suggestName
+  };
 
   window.LemonFridge = {
     state: st,

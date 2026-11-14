@@ -117,7 +117,7 @@ tailwind.config = {
           </p>
           <div class="flex flex-wrap gap-2.5">
             <button class="primary-btn btn-shimmer" data-goto="tools">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></path><circle cx="12" cy="12" r="4"></circle></svg>
               비밀번호 진단
             </button>
             <button class="ghost-btn" data-goto="vault">암호화 금고</button>
@@ -391,6 +391,42 @@ tailwind.config = {
           <span class="badge-soft text-[9px] font-bold px-2 py-0.5 rounded-full">AES-256-GCM</span>
           <span class="badge-soft text-[9px] font-bold px-2 py-0.5 rounded-full">5분 자동 잠금</span>
           <span id="savedAt" class="text-[9px] font-mono text-neutral-400 ml-auto"></span>
+        </div>
+      </div>
+
+      <div id="secDash" class="panel p-4 sm:p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full brand-grad"></span>
+            <h3 class="text-[12px] font-black tracking-tight">금고 보안 대시보드</h3>
+          </div>
+          <span id="secScore" class="text-[11px] font-mono font-black text-neutral-400">-</span>
+        </div>
+        <div class="grid grid-cols-4 gap-2 text-center">
+          <div class="rounded-xl border border-neutral-200 dark:border-neutral-800 p-2">
+            <p class="text-[9px] font-bold text-neutral-400">전체</p>
+            <p id="secTotal" class="text-[16px] font-black tabular">0</p>
+          </div>
+          <div class="rounded-xl border border-emerald-200 dark:border-emerald-900/60 p-2">
+            <p class="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">안전</p>
+            <p id="secSafe" class="text-[16px] font-black tabular text-emerald-600 dark:text-emerald-400">0</p>
+          </div>
+          <div class="rounded-xl border border-amber-200 dark:border-amber-900/60 p-2">
+            <p class="text-[9px] font-bold text-amber-600 dark:text-amber-400">보통</p>
+            <p id="secMid" class="text-[16px] font-black tabular text-amber-600 dark:text-amber-400">0</p>
+          </div>
+          <div class="rounded-xl border border-rose-200 dark:border-rose-900/60 p-2">
+            <p class="text-[9px] font-bold text-rose-500">취약</p>
+            <p id="secWeak" class="text-[16px] font-black tabular text-rose-500">0</p>
+          </div>
+        </div>
+        <div class="meter-track"><div id="secBar" class="meter-fill" style="width:0%"></div></div>
+        <div id="dupBox" class="hidden rounded-xl border border-amber-300/70 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 p-2.5 space-y-1">
+          <p class="text-[11px] font-black text-amber-700 dark:text-amber-400">
+            같은 비밀번호를 여러 사이트에서 쓰고 있어요 · <span id="dupCount">0</span>건
+          </p>
+          <p class="text-[10px] text-neutral-600 dark:text-neutral-400 leading-relaxed">하나만 유출돼도 연결된 계정이 함께 위험해집니다. 각 항목의 수정 버튼으로 새 비밀번호를 만들어 주세요.</p>
+          <button id="btnDupFilter" class="ghost-btn !px-2.5 !py-1.5 !text-[10px]">중복 항목만 보기</button>
         </div>
       </div>
 
@@ -920,9 +956,75 @@ tailwind.config = {
   /* ---------------- items ---------------- */
   var editing = null;
 
+  var dupFilter = false;
+
+  function passwordMap() {
+    var map = {};
+    vault.items.forEach(function (it) {
+      var k = it.pass || '';
+      if (!k) return;
+      map[k] = map[k] || [];
+      map[k].push(it.id);
+    });
+    return map;
+  }
+
+  function paintSecurity() {
+    var map = passwordMap();
+    var total = vault.items.length;
+    var safe = 0, mid = 0, weak = 0;
+    var dupItems = 0;
+    var bitsSum = 0;
+    vault.items.forEach(function (it) {
+      var a = analyze(it.pass || '');
+      bitsSum += Math.min(120, a.bits || 0);
+      if (a.score >= 3) safe++;
+      else if (a.score === 2) mid++;
+      else weak++;
+      if ((map[it.pass || ''] || []).length > 1) dupItems++;
+    });
+    if ($('secTotal')) $('secTotal').textContent = total;
+    if ($('secSafe')) $('secSafe').textContent = safe;
+    if ($('secMid')) $('secMid').textContent = mid;
+    if ($('secWeak')) $('secWeak').textContent = weak;
+
+    // 전체 보안 점수: 평균 엔트로피(70점 상한) + 안전 비중 + 중복 감점
+    var score = 0;
+    if (total) {
+      var avgBits = bitsSum / total;
+      score = Math.round(Math.min(70, (avgBits / 70) * 70) + (safe / total) * 25 + (mid / total) * 10);
+      var dupGroups = 0;
+      Object.keys(map).forEach(function (k) { if (map[k].length > 1) dupGroups++; });
+      score = Math.max(0, Math.min(100, score - dupGroups * 4));
+    }
+    var col = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#e11d48';
+    if ($('secScore')) {
+      $('secScore').textContent = total ? ('보안 점수 ' + score + '/100') : '항목 없음';
+      $('secScore').style.color = total ? col : '';
+    }
+    if ($('secBar')) { $('secBar').style.width = score + '%'; $('secBar').style.background = col; }
+
+    var dupBox = $('dupBox');
+    if (dupBox) {
+      dupBox.classList.toggle('hidden', dupItems === 0);
+      if ($('dupCount')) $('dupCount').textContent = dupItems;
+    }
+    var btn = $('btnDupFilter');
+    if (btn) {
+      btn.textContent = dupFilter ? '전체 항목 보기' : '중복 항목만 보기';
+      btn.classList.toggle('primary-btn', dupFilter);
+      btn.classList.toggle('ghost-btn', !dupFilter);
+    }
+  }
+
   function renderItems() {
     var q = ($('vaultSearch').value || '').trim().toLowerCase();
+    var dupMap = passwordMap();
     var list = vault.items.slice().sort(function (a, b) { return (b.upd || b.ts) - (a.upd || a.ts); });
+    if (dupFilter) {
+      list = list.filter(function (it) { return (dupMap[it.pass || ''] || []).length > 1; });
+    }
+    paintSecurity();
     if (q) {
       list = list.filter(function (it) {
         return (it.site || '').toLowerCase().indexOf(q) > -1 ||
@@ -945,6 +1047,8 @@ tailwind.config = {
         '<div class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center font-black text-[13px] shrink-0">' + Lemon.esc(initial) + '</div>' +
         '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center gap-1.5"><p class="text-[12px] font-bold truncate">' + Lemon.esc(it.site || '이름 없음') + '</p>' +
+        ((dupMap[it.pass || ''] || []).length > 1 ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0">중복</span>' : '') +
+        ((analyze(it.pass || '').score <= 1) ? '<span class="text-[8px] font-black px-1.5 py-0.5 rounded bg-rose-500 text-white shrink-0">취약</span>' : '') +
         (it.url ? '<a href="' + Lemon.esc(urlOf(it.url)) + '" target="_blank" rel="noopener noreferrer" class="text-[9px] text-brand-600 dark:text-brand-400 font-bold shrink-0">열기</a>' : '') +
         '</div>' +
         '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.user || '아이디 없음') + '</p>' +
@@ -1023,8 +1127,9 @@ tailwind.config = {
   $('vaultSearch').addEventListener('input', renderItems);
 
   $('vaultList').addEventListener('click', function (e) {
-    var b = e.target;
-    var id = b.getAttribute && (b.getAttribute('data-copy') || b.getAttribute('data-reveal') || b.getAttribute('data-edit') || b.getAttribute('data-remove'));
+    var b = e.target.closest ? e.target.closest('[data-copy],[data-reveal],[data-edit],[data-remove]') : null;
+    if (!b) return;
+    var id = b.getAttribute('data-copy') || b.getAttribute('data-reveal') || b.getAttribute('data-edit') || b.getAttribute('data-remove');
     if (!id) return;
     var item = vault.items.filter(function (x) { return x.id === id; })[0];
     if (!item) return;
@@ -1097,6 +1202,18 @@ tailwind.config = {
     vault.key = null; vault.items = []; vault.meta = null;
     initVaultView();
     Lemon.toast('금고를 초기화했어요', 'info');
+  });
+
+  /* ---------------- home shortcuts ---------------- */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-goto]'), function (btn) {
+    btn.addEventListener('click', function () { go(btn.getAttribute('data-goto')); });
+  });
+
+  var dupBtn = $('btnDupFilter');
+  if (dupBtn) dupBtn.addEventListener('click', function () {
+    dupFilter = !dupFilter;
+    renderItems();
+    Lemon.toast(dupFilter ? '중복 비밀번호 항목만 보고 있어요' : '전체 항목을 보여줍니다', 'info');
   });
 
   /* ---------------- boot ---------------- */
