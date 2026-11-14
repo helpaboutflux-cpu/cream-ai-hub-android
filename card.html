@@ -305,6 +305,18 @@ tailwind.config = {
     renderQr();
   }
 
+  function vcardEsc(s) { return String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n'); }
+  function qrVcard(full) {
+    var lines = ['BEGIN:VCARD', 'VERSION:3.0', 'N:;' + vcardEsc(data.name) + ';;;', 'FN:' + vcardEsc(data.name)];
+    if (data.phone) lines.push('TEL;TYPE=CELL:' + vcardEsc(data.phone));
+    if (data.email) lines.push('EMAIL;TYPE=INTERNET:' + vcardEsc(data.email));
+    if (full && data.org) lines.push('ORG:' + vcardEsc(data.org));
+    if (full && data.title) lines.push('TITLE:' + vcardEsc(data.title));
+    if (full && data.web) lines.push('URL:' + vcardEsc(data.web));
+    lines.push('END:VCARD');
+    return lines.join('\r\n') + '\r\n';
+  }
+
   function renderQr() {
     var slot = $('qrSlot');
     if (!slot) return;
@@ -312,20 +324,35 @@ tailwind.config = {
     if (!data.qr) { slot.style.display = 'none'; $('qrNote').textContent = 'QR 숨김'; return; }
     slot.style.display = 'inline-flex';
     if (typeof QRCode === 'undefined') {
-      $('qrNote').textContent = 'QR 라이브러리 로딩 실패 · 아래 vCard 복사 사용';
+      $('qrNote').textContent = 'QR 라이브러리 로딩 실패 · vCard 복사 사용';
       return;
     }
-    try {
-      new QRCode(slot, {
-        text: vcardOf(data),
-        width: 132, height: 132,
-        colorDark: '#0f172a', colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.M
-      });
+    var candidates = [qrVcard(true), qrVcard(false)];
+    var levels = [QRCode.CorrectLevel.M, QRCode.CorrectLevel.L];
+    var made = false, lastErr = null;
+    for (var c = 0; c < candidates.length && !made; c++) {
+      for (var l = 0; l < levels.length && !made; l++) {
+        try {
+          slot.innerHTML = '';
+          new QRCode(slot, {
+            text: candidates[c],
+            width: 132, height: 132,
+            colorDark: '#0f172a', colorLight: '#ffffff',
+            correctLevel: levels[l]
+          });
+          if (slot.querySelector('canvas') || slot.querySelector('img')) made = true;
+        } catch (e) {
+          lastErr = e;
+          slot.innerHTML = '';
+        }
+      }
+    }
+    if (made) {
       qrApi = slot;
       $('qrNote').textContent = '스캔하면 연락처로 저장됩니다';
-    } catch (e) {
+    } else {
       $('qrNote').textContent = 'QR 생성 실패 · vCard 복사로 대체';
+      if (window.console && lastErr) console.warn('[card] qr failed', lastErr.message);
     }
   }
 
