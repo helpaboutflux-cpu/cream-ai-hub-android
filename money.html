@@ -46,8 +46,8 @@
       }
     }
   </script>
-  <!-- Tesseract.js for In-Browser Zero-Server Receipt & Screenshot OCR -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+  <!-- Tesseract.js v5 for In-Browser Zero-Server Receipt & Screenshot OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -1822,40 +1822,139 @@
       }
     });
 
+    // ---- OCR v5 engine (preprocess -> recognize) ----
+    var ocrWorker = null;
+
+    function ocrStageLabel(status) {
+      var st = status || '';
+      if (st.indexOf('loading tesseract core') > -1) return 'OCR 코어 불러오는 중…';
+      if (st.indexOf('initializing tesseract') > -1) return 'OCR 엔진 초기화 중…';
+      if (st.indexOf('loading language traineddata') > -1) return '한글 인식 데이터 내려받는 중…';
+      if (st.indexOf('initializing api') > -1) return '인식기 준비 중…';
+      if (st.indexOf('recognizing text') > -1) return '영수증 텍스트 판독 중…';
+      return '처리 중…';
+    }
+
+    function preprocessReceiptImage(file) {
+      return new Promise(function (resolve) {
+        var img = new Image();
+        img.onload = function () {
+          var longSide = Math.max(img.naturalWidth, img.naturalHeight);
+          var scale = longSide < 1200 ? 2 : (longSide < 1800 ? 1.4 : 1);
+          var maxSide = 2400;
+          if (longSide * scale > maxSide) scale = maxSide / longSide;
+          var w = Math.max(1, Math.round(img.naturalWidth * scale));
+          var h = Math.max(1, Math.round(img.naturalHeight * scale));
+          var c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          var ctx = c.getContext('2d', { willReadFrequently: true });
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          var frame = ctx.getImageData(0, 0, w, h);
+          var px = frame.data;
+          // average luminance -> auto invert for dark screenshots
+          var sum = 0, step = 4 * Math.max(1, Math.floor(px.length / 4 / 4000));
+          var count = 0;
+          for (var s = 0; s < px.length; s += step) {
+            sum += 0.299 * px[s] + 0.587 * px[s + 1] + 0.114 * px[s + 2];
+            count++;
+          }
+          var invert = (sum / Math.max(1, count)) < 105;
+          var k = 1.7;
+          for (var i = 0; i < px.length; i += 4) {
+            var l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+            var v = (l - 128) * k + 128;
+            if (invert) v = 255 - v;
+            v = v < 0 ? 0 : (v > 255 ? 255 : v);
+            px[i] = px[i + 1] = px[i + 2] = v;
+          }
+          ctx.putImageData(frame, 0, 0);
+          resolve(c);
+        };
+        img.onerror = function () { resolve(null); };
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    async function getOcrWorker() {
+      if (ocrWorker) return ocrWorker;
+      var sets = [
+        { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0' },
+        { workerPath: 'https://unpkg.com/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://unpkg.com/tesseract.js-core@5.1.0' }
+      ];
+      var lastErr = null;
+      for (var i = 0; i < sets.length; i++) {
+        try {
+          var w = await Tesseract.createWorker('kor+eng', 1, {
+            workerPath: sets[i].workerPath,
+            corePath: sets[i].corePath,
+            langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+            cacheMethod: 'none',
+            logger: function (m) {
+              var statusEl = document.getElementById('ocrProgressStatus');
+              var percentEl = document.getElementById('ocrProgressPercent');
+              var barEl = document.getElementById('ocrProgressBar');
+              if (!statusEl) return;
+              statusEl.innerText = ocrStageLabel(m.status);
+              var p = typeof m.progress === 'number' ? m.progress : 0;
+              var pct = 20;
+              if ((m.status || '').indexOf('loading language traineddata') > -1) pct = 20 + 45 * p;
+              else if ((m.status || '').indexOf('initializing api') > -1) pct = 70;
+              else if ((m.status || '').indexOf('recognizing text') > -1) pct = 72 + 26 * p;
+              barEl.style.width = Math.round(pct) + '%';
+              percentEl.innerText = Math.round(pct) + '%';
+            },
+            errorHandler: function (e) { if (window.console) console.warn('[money-ocr]', e); }
+          });
+          try { await w.setParameters({ preserve_interword_spaces: '1' }); } catch (e2) { }
+          ocrWorker = w;
+          return w;
+        } catch (err) {
+          lastErr = err;
+          if (window.console) console.warn('[money-ocr] cdn failed', i, err && err.message);
+        }
+      }
+      throw lastErr || new Error('OCR worker init failed');
+    }
+
     async function processOcrImage(imageFile) {
       document.getElementById('ocrDropzone').classList.add('hidden');
       document.getElementById('ocrProgressBox').classList.remove('hidden');
       document.getElementById('ocrResultForm').classList.add('hidden');
 
-      const statusEl = document.getElementById('ocrProgressStatus');
-      const percentEl = document.getElementById('ocrProgressPercent');
-      const barEl = document.getElementById('ocrProgressBar');
+      var statusEl = document.getElementById('ocrProgressStatus');
+      var percentEl = document.getElementById('ocrProgressPercent');
+      var barEl = document.getElementById('ocrProgressBar');
 
       try {
-        statusEl.innerText = 'Tesseract OCR 엔진 준비 중...';
-        barEl.style.width = '15%';
-        percentEl.innerText = '15%';
+        statusEl.innerText = '영수증 이미지 전처리 중…';
+        barEl.style.width = '10%';
+        percentEl.innerText = '10%';
 
-        const worker = await Tesseract.createWorker('kor+eng');
-        
-        statusEl.innerText = '영수증/스크린샷 텍스트 판독 중...';
-        barEl.style.width = '50%';
-        percentEl.innerText = '50%';
+        var canvas = await preprocessReceiptImage(imageFile);
 
-        const ret = await worker.recognize(imageFile);
-        const text = ret.data.text;
+        statusEl.innerText = 'OCR 엔진 준비 중…';
+        var worker = await getOcrWorker();
+
+        statusEl.innerText = '영수증/스크린샷 텍스트 판독 중…';
+        barEl.style.width = '74%';
+        percentEl.innerText = '74%';
+
+        var ret = await worker.recognize(canvas || imageFile);
+        var text = (ret && ret.data && ret.data.text) ? ret.data.text : '';
 
         barEl.style.width = '100%';
         percentEl.innerText = '100%';
         statusEl.innerText = '인식 완료!';
 
-        await worker.terminate();
-
-        // Parse OCR Text
         parseOcrTextToForm(text);
       } catch (err) {
-        console.error('OCR Error', err);
+        if (window.console) console.error('OCR Error', err);
         statusEl.innerText = 'OCR 인식 실패. 수동 입력을 진행해주세요.';
+        percentEl.innerText = '0%';
+        barEl.style.width = '0%';
+        if (typeof showToast === 'function') showToast('OCR 인식에 실패했어요. 직접 입력으로 진행할게요.', 'err');
         parseOcrTextToForm('');
       }
     }

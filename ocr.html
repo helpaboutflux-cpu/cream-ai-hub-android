@@ -1,306 +1,1145 @@
 <!DOCTYPE html>
 <html lang="ko" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lemon OCR & Translate - 사진 텍스트 추출 & 실시간 번역기</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46' },
-            lemon: { 400: '#facc15', 500: '#eab308', 600: '#ca8a04' }
-          }
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon OCR & Translate — 사진 텍스트 추출·번역·낭독</title>
+<meta name="description" content="사진과 캡처에서 한글·영문·일본어·중국어 글자를 추출하고 바로 번역·낭독합니다. 이미지 전처리 엔진 내장, 서버 전송 없는 100% 브라우저 처리.">
+<meta name="theme-color" content="#0284c7">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+        brand: { DEFAULT: '#0284c7', light: '#06b6d4', deep: '#075985', 50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e', 950: '#082f49' }
       }
     }
-  </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .btn-tap { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .btn-tap:hover { transform: translateY(-1.5px) scale(1.02); }
-    .btn-tap:active { transform: scale(0.94); }
-  </style>
+  }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0284c7; --brand-2: #06b6d4; --brand-deep: #075985; }
+  .scan-card { position: relative; overflow: hidden; }
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--brand-2), transparent);
+    box-shadow: 0 0 18px 4px rgba(6, 182, 212, .55);
+    animation: scanDown 2.8s cubic-bezier(.45, 0, .55, 1) infinite;
+  }
+  @keyframes scanDown {
+    0% { top: 6%; opacity: 0; }
+    12% { opacity: 1; }
+    88% { opacity: 1; }
+    100% { top: 90%; opacity: 0; }
+  }
+  .scan-corners::before, .scan-corners::after {
+    content: ''; position: absolute; width: 26px; height: 26px;
+    border: 2px solid var(--brand-2); border-radius: 6px;
+  }
+  .scan-corners::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
+  .scan-corners::after { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
+  .dropzone-active {
+    border-color: var(--brand) !important;
+    background: color-mix(in srgb, var(--brand) 8%, transparent) !important;
+    transform: scale(1.008);
+  }
+  .lang-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
+  @media (min-width: 640px) { .lang-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .ocr-spin { animation: spin 1.3s linear infinite; }
+  .conf-badge { font-variant-numeric: tabular-nums; }
+  .result-area { min-height: 9rem; }
+  .sticky-actions { position: sticky; bottom: 0; }
+</style>
 </head>
-<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col justify-between antialiased selection:bg-lemon-500 selection:text-neutral-950">
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
 
-  <!-- Header -->
-  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <a href="index.html" class="flex items-center space-x-2.5 group">
-          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lemon-600 to-amber-400 p-[1px] shadow-md group-hover:scale-105 transition-transform">
-            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
-              <svg class="w-5 h-5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M4 7V4h16v3M9 20h6M12 4v16"></path>
-              </svg>
-            </div>
-          </div>
-          <div class="flex flex-col">
-            <div class="flex items-center space-x-1.5">
-              <span class="font-black text-lg tracking-tight">Lemon OCR</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lemon-100 dark:bg-lemon-950 text-lemon-700 dark:text-lemon-400 font-bold border border-lemon-300 dark:border-lemon-800">문자 추출·번역</span>
-            </div>
-            <span class="text-[10px] text-neutral-500 -mt-0.5">사진 텍스트 추출 & 실시간 다국어 번역기</span>
-          </div>
-        </a>
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-20 -left-20 opacity-25"></div>
+<div class="ambient-orb brand-grad w-80 h-80 top-1/3 -right-24 o2 opacity-20"></div>
+<div class="ambient-orb w-64 h-64 bottom-10 left-1/4 o3 opacity-15" style="background:#0ea5e9"></div>
+
+<!-- Header -->
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shadow-sky-500/20 shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7V5a1 1 0 0 1 1-1h3M4 17v2a1 1 0 0 0 1 1h3M20 7V5a1 1 0 0 0-1-1h-3M20 17v2a1 1 0 0 1-1 1h-3M7 12h10"></path>
+          </svg>
+        </div>
       </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon OCR</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">OCR v5</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">사진 텍스트 추출 · 번역 · 낭독</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="headerLang" class="hidden md:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><line x1="3" y1="12" x2="21" y2="12"></line><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"></path></svg>
+        <span id="headerLangText">kor+eng</span>
+      </span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
 
-      <div class="flex items-center space-x-2">
-        <button id="darkModeToggle" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap">
-          <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-          <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+<!-- Tabs -->
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs" role="tablist">
+      <button class="nav-tab" data-tab="home" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.1fr_.9fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            이미지 전처리 엔진 탑재 · 인식률 극대화
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            사진 속 글자를<br>
+            <span class="brand-text">3초 만에</span> 텍스트로.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            교재, 영수증, 회의 캡처, 외국어 메뉴까지. 작은 글자는 2배 확대, 흐린 글자는 대비 강화, 어두운 캡처는 자동 반전으로 판독하고 바로 번역·낭독합니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5 pt-1">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+              이미지로 시작하기
+            </button>
+            <button class="ghost-btn" data-goto="archive">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+              보관함 보기
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-x-5 gap-y-1.5 pt-2 text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+            <span class="flex items-center gap-1"><svg class="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="4 12 9 17 20 6"></polyline></svg>서버 전송 없음</span>
+            <span class="flex items-center gap-1"><svg class="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="4 12 9 17 20 6"></polyline></svg>회원가입 없음</span>
+            <span class="flex items-center gap-1"><svg class="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="4 12 9 17 20 6"></polyline></svg>완전 무료</span>
+          </div>
+        </div>
+
+        <div class="relative mx-auto w-full max-w-[320px]">
+          <div class="scan-card scan-corners rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-xl shadow-sky-900/5">
+            <div class="scan-line"></div>
+            <div class="space-y-2.5">
+              <div class="h-2.5 w-24 rounded bg-neutral-200 dark:bg-neutral-700"></div>
+              <div class="space-y-1.5 pt-1">
+                <div class="h-2 w-full rounded bg-neutral-100 dark:bg-neutral-800"></div>
+                <div class="h-2 w-[92%] rounded bg-neutral-100 dark:bg-neutral-800"></div>
+                <div class="h-2 w-[78%] rounded bg-neutral-100 dark:bg-neutral-800"></div>
+              </div>
+              <div class="mt-3 rounded-xl bg-brand-50 dark:bg-brand-950/50 border border-brand-100 dark:border-brand-900 p-2.5">
+                <p class="text-[10px] font-bold text-brand-700 dark:text-brand-300 leading-relaxed">오늘의 목표: 12시 전에 기획서 초안 완성하기</p>
+                <p class="text-[9px] text-brand-600/70 dark:text-brand-400/80 mt-1">Today's goal: finish the proposal draft before noon.</p>
+              </div>
+              <div class="flex items-center gap-1.5 pt-2">
+                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">신뢰도 96%</span>
+                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-400">한국어 → English</span>
+              </div>
+            </div>
+          </div>
+          <div class="absolute -bottom-3 -right-2 px-2.5 py-1.5 rounded-xl brand-grad text-white text-[10px] font-black shadow-lg shadow-sky-500/30">OCR · TRANSLATE</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3">
+          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">4개 언어 인식</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">한국어·영어·일본어·중국어 간체를 조합해 인식합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3">
+          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">전처리 엔진</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">확대·대비·반전·흑백을 조합해 흐린 사진도 읽어냅니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3">
+          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8h6M8 5v3c0 4-2 7-4 8"></path><path d="M11 19l4-11 4 11M12.6 15.6h4.8"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">문맥 자동 번역</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">언어를 자동 감지해 정확한 방향으로 번역합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3">
+          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">낭독 · 저장</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">결과를 음성으로 듣고 TXT·MD로 내려받아 보관합니다.</p>
+      </div>
+    </div>
+
+    <div class="panel p-5 sm:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-sm font-black">빠른 시작</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">상황에 맞는 설정을 한 번에 적용하고 스튜디오로 이동합니다.</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <button class="panel-soft card-lift p-3.5 text-left" data-preset="book">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">교재 · 필기</span>
+            <svg class="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"></path></svg>
+          </div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">고대비 + 확대 + 자동 반전</p>
+        </button>
+        <button class="panel-soft card-lift p-3.5 text-left" data-preset="receipt">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">영수증 · 명세서</span>
+            <svg class="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"></path><line x1="9" y1="7" x2="15" y2="7"></line><line x1="9" y1="11" x2="15" y2="11"></line></svg>
+          </div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">흑백 + 강한 대비 + 숫자 보존</p>
+        </button>
+        <button class="panel-soft card-lift p-3.5 text-left" data-preset="dark">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">다크 캡처</span>
+            <svg class="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>
+          </div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">어두운 화면 자동 반전</p>
+        </button>
+        <button class="panel-soft card-lift p-3.5 text-left" data-preset="sign">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">간판 · 메뉴</span>
+            <svg class="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="10" rx="2"></rect><line x1="12" y1="14" x2="12" y2="21"></line></svg>
+          </div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">원본 색 유지 + 번역 중심</p>
         </button>
       </div>
     </div>
-  </header>
 
-  <!-- Main Content -->
-  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
-
-    <!-- Upload & Image Dropzone -->
-    <div id="ocrDropzone" onclick="document.getElementById('inputOcrImg').click()" class="p-8 sm:p-12 rounded-3xl border-2 border-dashed border-neutral-300 dark:border-neutral-800 hover:border-lemon-500 bg-white dark:bg-neutral-900 text-center cursor-pointer transition space-y-3 shadow-sm">
-      <input type="file" id="inputOcrImg" accept="image/*" class="hidden" onchange="handleImageSelected(event)">
-      <div class="w-12 h-12 mx-auto rounded-2xl bg-lemon-100 dark:bg-lemon-950 flex items-center justify-center text-lemon-600 dark:text-lemon-400">
-        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+    <div class="panel p-5 sm:p-6">
+      <h2 class="text-sm font-black mb-4">이렇게 쓰면 가장 잘 읽혀요</h2>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div class="panel-soft p-4">
+          <span class="text-[10px] font-mono font-black text-brand-600 dark:text-brand-400">STEP 01</span>
+          <h3 class="text-[12px] font-bold mt-1.5">이미지 넣기</h3>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">파일 선택, 드래그 앤 드롭, Ctrl+V 붙여넣기 모두 지원합니다.</p>
+        </div>
+        <div class="panel-soft p-4">
+          <span class="text-[10px] font-mono font-black text-brand-600 dark:text-brand-400">STEP 02</span>
+          <h3 class="text-[12px] font-bold mt-1.5">전처리 확인</h3>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">전처리 미리보기로 글자가 선명해졌는지 먼저 확인하세요.</p>
+        </div>
+        <div class="panel-soft p-4">
+          <span class="text-[10px] font-mono font-black text-brand-600 dark:text-brand-400">STEP 03</span>
+          <h3 class="text-[12px] font-bold mt-1.5">추출 · 번역</h3>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">결과를 수정하고 번역·낭독·저장까지 한 화면에서 끝냅니다.</p>
+        </div>
       </div>
-      <div class="space-y-1">
-        <h3 class="font-bold text-sm sm:text-base text-neutral-800 dark:text-neutral-200">사진이나 캡처 이미지를 드래그하거나 클릭하여 업로드</h3>
-        <p class="text-xs text-neutral-500">교재, 영문 서류, 캡처 화면, 영수증, 간판 사진 지원 · 클립보드 붙여넣기(Ctrl+V) 가능</p>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-4">
+
+    <!-- Step 1: dropzone -->
+    <div class="panel p-4 sm:p-6">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-lg brand-grad text-white text-[11px] font-black flex items-center justify-center">1</span>
+          <h2 class="text-sm font-black">이미지 넣기</h2>
+        </div>
+        <button id="btnReset" class="ghost-btn !px-2.5 !py-1.5 text-[11px] hidden">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
+          처음부터
+        </button>
+      </div>
+
+      <div id="dropzone" tabindex="0" role="button" aria-label="이미지 업로드"
+        class="rounded-2xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 bg-white/60 dark:bg-neutral-900/40 px-5 py-9 text-center cursor-pointer transition-all duration-200 hover:border-brand-400 dark:hover:border-brand-600">
+        <input type="file" id="fileInput" accept="image/*" class="hidden">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">이미지를 드래그하거나 클릭해서 업로드</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">클립보드 붙여넣기(Ctrl+V)도 됩니다 · JPG · PNG · WEBP · 캡처</p>
+        <p class="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2">이미지는 기기 밖으로 전송되지 않습니다</p>
       </div>
     </div>
 
-    <!-- Progress Bar -->
-    <div id="ocrProgressCard" class="hidden p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-2">
-      <div class="flex items-center justify-between text-xs font-bold">
-        <span id="ocrStatusMsg" class="text-lemon-600 dark:text-lemon-400">텍스트 판독 엔진 준비 중...</span>
-        <span id="ocrPercent" class="font-mono text-neutral-500">0%</span>
+    <!-- Step 2: options + preview -->
+    <div id="optionCard" class="panel p-4 sm:p-6 hidden">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="w-6 h-6 rounded-lg brand-grad text-white text-[11px] font-black flex items-center justify-center">2</span>
+        <h2 class="text-sm font-black">전처리 · 언어 설정</h2>
+        <span id="autoInvertBadge" class="ml-auto hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-400">어두운 배경 감지됨</span>
       </div>
-      <div class="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden">
-        <div id="ocrBar" class="h-full bg-lemon-500 rounded-full transition-all duration-300" style="width: 0%;"></div>
+
+      <div class="grid lg:grid-cols-[300px_1fr] gap-4">
+        <!-- preview -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="lemon-label">미리보기</span>
+            <div class="flex items-center gap-1 text-[10px] font-bold">
+              <button id="btnViewPre" class="px-2 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">원본</button>
+              <button id="btnViewProc" class="px-2 py-1 rounded-md bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300">전처리</button>
+            </div>
+          </div>
+          <div class="rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-800 bg-[repeating-conic-gradient(#f4f4f5_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#1a1a1e_0%_25%,#121215_0%_50%)] bg-[length:16px_16px]">
+            <canvas id="previewCanvas" class="w-full h-auto block max-h-[280px] object-contain mx-auto"></canvas>
+          </div>
+          <div class="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400">
+            <span id="imgMeta">-</span>
+            <span id="procMeta" class="font-mono">-</span>
+          </div>
+        </div>
+
+        <!-- controls -->
+        <div class="space-y-4">
+          <div>
+            <span class="lemon-label">인식 언어</span>
+            <div class="lang-grid mt-1.5">
+              <button class="pill-btn on" data-lang="kor+eng">한국어+영어</button>
+              <button class="pill-btn" data-lang="kor">한국어</button>
+              <button class="pill-btn" data-lang="eng">English</button>
+              <button class="pill-btn" data-lang="jpn">日本語</button>
+              <button class="pill-btn" data-lang="chi_sim">简体中文</button>
+              <button class="pill-btn" data-lang="kor+eng+jpn">한+영+일</button>
+              <button class="pill-btn" data-lang="eng+chi_sim">영+중</button>
+              <button class="pill-btn" data-lang="kor+chi_sim">한+중</button>
+            </div>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-2.5">
+            <label class="panel-soft p-3 flex items-center justify-between gap-3 cursor-pointer">
+              <span>
+                <span class="block text-[12px] font-bold">자동 반전</span>
+                <span class="block text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">어두운 스크린샷을 밝게</span>
+              </span>
+              <span class="switch on" data-toggle="autoInvert" role="switch" aria-checked="true" tabindex="0"></span>
+            </label>
+            <label class="panel-soft p-3 flex items-center justify-between gap-3 cursor-pointer">
+              <span>
+                <span class="block text-[12px] font-bold">수동 반전</span>
+                <span class="block text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">흰 글자 → 검은 글자</span>
+              </span>
+              <span class="switch" data-toggle="invert" role="switch" aria-checked="false" tabindex="0"></span>
+            </label>
+            <label class="panel-soft p-3 flex items-center justify-between gap-3 cursor-pointer">
+              <span>
+                <span class="block text-[12px] font-bold">2배 확대</span>
+                <span class="block text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">작은 글씨 인식률 향상</span>
+              </span>
+              <span class="switch on" data-toggle="upscale" role="switch" aria-checked="true" tabindex="0"></span>
+            </label>
+            <label class="panel-soft p-3 flex items-center justify-between gap-3 cursor-pointer">
+              <span>
+                <span class="block text-[12px] font-bold">흑백 · 대비 강화</span>
+                <span class="block text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">회색 배경 제거</span>
+              </span>
+              <span class="switch on" data-toggle="gray" role="switch" aria-checked="true" tabindex="0"></span>
+            </label>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="lemon-label">대비 강도</span>
+              <span id="contrastVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">40</span>
+            </div>
+            <input type="range" id="contrastRange" class="lemon-range mt-1" min="0" max="100" value="40">
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btnRun" class="primary-btn btn-shimmer flex-1 sm:flex-none">
+              <svg id="runIcon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h3M4 17v2a1 1 0 0 0 1 1h3M20 7V5a1 1 0 0 0-1-1h-3M20 17v2a1 1 0 0 1-1 1h-3M7 12h10"></path></svg>
+              <span id="runLabel">텍스트 추출 시작</span>
+            </button>
+            <button id="btnReprocess" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
+              미리보기 갱신
+            </button>
+          </div>
+          <p class="text-[10px] text-neutral-400 dark:text-neutral-500 leading-relaxed">
+            첫 실행에는 인식 엔진(약 18MB)을 내려받아 10~25초 정도 걸릴 수 있습니다. 두 번째부터는 즉시 시작됩니다.
+          </p>
+        </div>
       </div>
     </div>
 
-    <!-- Dual Panel: Extracted Text & Translation Result -->
-    <div id="ocrPanels" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
-      
-      <!-- Panel 1: Extracted Text -->
-      <div class="p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
-        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
-          <div class="flex items-center space-x-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-lemon-500"></span>
-            <h4 class="font-bold text-sm text-neutral-900 dark:text-white">추출된 원문 텍스트</h4>
-          </div>
-          <div class="flex items-center space-x-2">
-            <button onclick="copyExtracted()" class="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800 btn-tap">
-              복사
-            </button>
-            <button onclick="speakText(document.getElementById('extractedText').value, 'ko-KR')" class="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 btn-tap" title="음성 낭독">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-            </button>
-          </div>
+    <!-- progress -->
+    <div id="progressCard" class="panel p-4 sm:p-5 hidden">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-brand-500 ocr-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>
+          <span id="progressStage" class="text-[12px] font-bold">엔진 준비 중…</span>
         </div>
-
-        <textarea id="extractedText" rows="10" class="w-full p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 text-xs sm:text-sm font-sans focus:outline-none focus:border-lemon-500 resize-none leading-relaxed" placeholder="추출된 글자가 여기에 표시됩니다..."></textarea>
-
-        <div class="flex items-center justify-between text-xs text-neutral-400 font-mono">
-          <span id="charCount">0자</span>
-          <button onclick="cleanLineBreaks()" class="hover:underline">불필요한 줄바꿈 정리</button>
-        </div>
+        <span id="progressPct" class="text-[11px] font-mono font-black text-brand-600 dark:text-brand-400 tabular">0%</span>
       </div>
-
-      <!-- Panel 2: Live Translation Result -->
-      <div class="p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
-        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
-          <div class="flex items-center space-x-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <h4 class="font-bold text-sm text-neutral-900 dark:text-white">실시간 번역 결과</h4>
-          </div>
-          <div class="flex items-center space-x-2 text-xs">
-            <select id="targetLangSelect" onchange="translateExtracted()" class="px-2 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 font-semibold">
-              <option value="ko">한국어로 번역</option>
-              <option value="en" selected>영어로 번역 (English)</option>
-              <option value="ja">일본어로 번역 (日本語)</option>
-              <option value="zh">중국어로 번역 (中文)</option>
-            </select>
-            <button onclick="copyTranslated()" class="px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-800 font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800 btn-tap">
-              복사
-            </button>
-            <button onclick="speakTranslated()" class="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 btn-tap" title="발음 듣기">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-            </button>
-          </div>
-        </div>
-
-        <textarea id="translatedText" rows="10" readonly class="w-full p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 text-xs sm:text-sm font-sans focus:outline-none resize-none leading-relaxed text-neutral-700 dark:text-neutral-300" placeholder="번역 중..."></textarea>
-
-        <div class="flex items-center justify-between text-xs text-neutral-400">
-          <span id="transStatus">무설치 즉시 번역</span>
-          <button onclick="translateExtracted()" class="px-3 py-1 rounded-xl bg-lemon-500 text-neutral-950 font-bold btn-tap">다시 번역</button>
-        </div>
-      </div>
-
+      <div class="progress-track"><div id="progressBar" class="progress-fill" style="width:0%"></div></div>
+      <p class="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2" id="progressHint">한국어 학습 데이터를 불러오는 중입니다.</p>
     </div>
 
-  </main>
+    <!-- Step 3: results -->
+    <div id="resultCard" class="hidden space-y-4">
+      <div class="panel p-4 sm:p-6">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-lg brand-grad text-white text-[11px] font-black flex items-center justify-center">3</span>
+            <h2 class="text-sm font-black">추출 결과</h2>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span id="confBadge" class="conf-badge text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400">신뢰도 -</span>
+            <span id="statBadge" class="text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 tabular">0자 · 0줄</span>
+          </div>
+        </div>
 
-  <!-- Global Footer -->
-  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
-      <div class="flex items-center space-x-2">
-        <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon OCR</span>
-        <span>·</span>
-        <span>Lemon soft 17대 독립 웹 프로덕트</span>
+        <div class="grid lg:grid-cols-2 gap-4">
+          <!-- original -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5 text-[11px] font-black"><span class="w-2 h-2 rounded-full bg-brand-500"></span>추출 원문</span>
+              <div class="flex items-center gap-1">
+                <button class="icon-btn !w-8 !h-8" data-act="copy-src" title="복사">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
+                </button>
+                <button class="icon-btn !w-8 !h-8" data-act="speak-src" title="낭독">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path></svg>
+                </button>
+                <button class="icon-btn !w-8 !h-8" data-act="clean" title="줄바꿈 정리">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h10a3 3 0 0 1 0 6H4"></path><polyline points="7 15 4 18 7 21"></polyline></svg>
+                </button>
+              </div>
+            </div>
+            <textarea id="srcText" class="lemon-textarea result-area text-[13px] font-medium" placeholder="추출된 텍스트가 여기에 표시됩니다"></textarea>
+            <div class="flex items-center justify-between text-[10px] text-neutral-400 dark:text-neutral-500">
+              <span>직접 수정하면 번역에도 반영됩니다</span>
+              <span id="srcCount" class="font-mono">0자</span>
+            </div>
+          </div>
+
+          <!-- translation -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5 text-[11px] font-black"><span class="w-2 h-2 rounded-full bg-cyan-500"></span>번역</span>
+              <div class="flex items-center gap-1">
+                <select id="targetLang" class="lemon-select !w-auto !py-1 !px-2 text-[11px] font-bold">
+                  <option value="ko">한국어</option>
+                  <option value="en" selected>English</option>
+                  <option value="ja">日本語</option>
+                  <option value="zh-CN">中文</option>
+                </select>
+                <button class="icon-btn !w-8 !h-8" data-act="copy-trans" title="복사">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
+                </button>
+                <button class="icon-btn !w-8 !h-8" data-act="speak-trans" title="낭독">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path></svg>
+                </button>
+              </div>
+            </div>
+            <div class="relative">
+              <textarea id="transText" readonly class="lemon-textarea result-area text-[13px] font-medium text-neutral-700 dark:text-neutral-300" placeholder="번역 결과가 여기에 표시됩니다"></textarea>
+              <div id="transOverlay" class="absolute inset-0 rounded-xl bg-white/70 dark:bg-neutral-900/70 backdrop-blur-[2px] hidden items-center justify-center">
+                <span class="text-[11px] font-bold text-brand-600 dark:text-brand-400">번역 중…</span>
+              </div>
+            </div>
+            <div class="flex items-center justify-between text-[10px] text-neutral-400 dark:text-neutral-500">
+              <span id="transInfo">자동 언어 감지 · MyMemory</span>
+              <button class="font-bold text-brand-600 dark:text-brand-400" data-act="retranslate">다시 번역</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="hr my-4"></div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="primary-btn !py-2.5 !text-[12px]" data-act="save">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            보관함에 저장
+          </button>
+          <button class="ghost-btn !py-2.5 !text-[12px]" data-act="dl-txt">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            TXT
+          </button>
+          <button class="ghost-btn !py-2.5 !text-[12px]" data-act="dl-md">MD</button>
+          <button class="ghost-btn !py-2.5 !text-[12px]" data-act="new">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            새 이미지
+          </button>
+        </div>
       </div>
-      <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px]">
-        <a href="index.html" class="hover:underline">Developer Hub</a>
-        <span>·</span>
-        <a href="ocr.html" class="hover:underline text-lemon-500 font-bold">Lemon OCR</a>
-        <span>·</span>
-        <a href="wallpaper.html" class="hover:underline">Lemon Wallpaper</a>
-        <span>·</span>
-        <a href="money.html" class="hover:underline">Lemon Money</a>
-        <span>·</span>
-        <a href="news.html" class="hover:underline">FLUX News</a>
-        <span>·</span>
-        <a href="habit.html" class="hover:underline">Lemon Habit</a>
-        <span>·</span>
-        <a href="bio.html" class="hover:underline">Lemon Bio</a>
-      </div>
-      <div><span>2026 Lemon soft. All rights reserved.</span></div>
     </div>
-  </footer>
+  </section>
 
-  <script>
-    function handleImageSelected(e) {
-      const file = e.target.files[0];
-      if (file) runOcr(file);
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">추출·번역한 기록은 이 브라우저에만 저장됩니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
+        전체 삭제
+      </button>
+    </div>
+    <div id="archiveList" class="space-y-2.5"></div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2">
+      <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon OCR</span>
+      <span class="opacity-40">·</span>
+      <span>Lemon soft 독립 웹 프로덕트</span>
+    </div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="wallpaper.html" class="hover:text-brand-600 dark:hover:text-brand-400">Wallpaper</a>
+      <a href="spell.html" class="hover:text-brand-600 dark:hover:text-brand-400">Spell</a>
+      <a href="table.html" class="hover:text-brand-600 dark:hover:text-brand-400">Table</a>
+      <a href="speed.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speed</a>
+      <a href="speech.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speech</a>
+      <a href="blur.html" class="hover:text-brand-600 dark:hover:text-brand-400">Blur</a>
+      <a href="money.html" class="hover:text-brand-600 dark:hover:text-brand-400">Money</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var ARCHIVE = Lemon.archive('lemon_ocr_archive', 20);
+
+  var state = {
+    file: null,
+    img: null,
+    worker: null,
+    workerLang: '',
+    dark: false,
+    opts: { autoInvert: true, invert: false, upscale: true, gray: true, contrast: 40 },
+    lang: 'kor+eng',
+    running: false,
+    lastText: '',
+    lastTrans: ''
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var dropzone = $('dropzone'), fileInput = $('fileInput');
+  var previewCanvas = $('previewCanvas');
+  var procCanvas = document.createElement('canvas');
+  document.body.appendChild(procCanvas);
+  procCanvas.style.display = 'none';
+
+  /* ------------- language ------------- */
+  var LANG_LABEL = { 'kor+eng': '한국어+영어', kor: '한국어', eng: 'English', jpn: '日本語', chi_sim: '简体中文', 'kor+eng+jpn': '한+영+일', 'eng+chi_sim': '영+중', 'kor+chi_sim': '한+중' };
+  var LANG_SPEECH = { kor: 'ko-KR', eng: 'en-US', jpn: 'ja-JP', chi_sim: 'zh-CN' };
+
+  function setLang(lang) {
+    state.lang = lang;
+    var btns = document.querySelectorAll('[data-lang]');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].getAttribute('data-lang') === lang);
+    $('headerLangText').textContent = lang;
+    Lemon.hap(8);
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-lang]');
+    if (b) setLang(b.getAttribute('data-lang'));
+  });
+
+  /* ------------- toggles ------------- */
+  function bindSwitch(el) {
+    function flip() {
+      var key = el.getAttribute('data-toggle');
+      var on = !el.classList.contains('on');
+      el.classList.toggle('on', on);
+      el.setAttribute('aria-checked', on ? 'true' : 'false');
+      state.opts[key] = on;
+      Lemon.hap(8);
+      if (state.img) renderPreview();
     }
+    el.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); flip(); });
+    el.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
+  }
+  var switches = document.querySelectorAll('.switch[data-toggle]');
+  for (var s = 0; s < switches.length; s++) bindSwitch(switches[s]);
 
-    document.addEventListener('paste', e => {
-      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          runOcr(items[i].getAsFile());
-          break;
-        }
-      }
-    });
+  $('contrastRange').addEventListener('input', function (e) {
+    state.opts.contrast = parseInt(e.target.value, 10);
+    $('contrastVal').textContent = e.target.value;
+    if (state.img) renderPreview();
+  });
 
-    async function runOcr(file) {
-      document.getElementById('ocrProgressCard').classList.remove('hidden');
-      document.getElementById('ocrPanels').classList.add('hidden');
+  /* ------------- image intake ------------- */
+  function loadFile(file) {
+    if (!file || file.type.indexOf('image') !== 0) { Lemon.toast('이미지 파일을 선택해 주세요', 'err'); return; }
+    state.file = file;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        state.img = img;
+        $('optionCard').classList.remove('hidden');
+        $('dropzone').classList.add('hidden');
+        $('btnReset').classList.remove('hidden');
+        $('imgMeta').textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' px';
+        detectDark(img);
+        renderPreview();
+        $('optionCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        Lemon.toast('이미지를 불러왔어요', 'ok');
+      };
+      img.onerror = function () { Lemon.toast('이미지를 읽을 수 없어요', 'err'); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
 
-      const msg = document.getElementById('ocrStatusMsg');
-      const bar = document.getElementById('ocrBar');
-      const pct = document.getElementById('ocrPercent');
+  function detectDark(img) {
+    var c = document.createElement('canvas');
+    var side = 40;
+    c.width = side; c.height = side;
+    var cx = c.getContext('2d');
+    cx.drawImage(img, 0, 0, side, side);
+    var d = cx.getImageData(0, 0, side, side).data;
+    var sum = 0;
+    for (var i = 0; i < d.length; i += 4) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    var avg = sum / (d.length / 4);
+    state.dark = avg < 105;
+    $('autoInvertBadge').classList.toggle('hidden', !state.dark);
+  }
 
-      try {
-        msg.innerText = 'Tesseract 엔진 로드 중...';
-        bar.style.width = '20%';
-        pct.innerText = '20%';
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  dropzone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('dropzone-active'); });
+  dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('dropzone-active'); });
+  dropzone.addEventListener('drop', function (e) {
+    e.preventDefault(); dropzone.classList.remove('dropzone-active');
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+  fileInput.addEventListener('change', function (e) { if (e.target.files[0]) loadFile(e.target.files[0]); });
 
-        const worker = await Tesseract.createWorker('kor+eng');
-        
-        msg.innerText = '이미지에서 텍스트 판독 중...';
-        bar.style.width = '60%';
-        pct.innerText = '60%';
-
-        const ret = await worker.recognize(file);
-        const text = ret.data.text.trim();
-
-        bar.style.width = '100%';
-        pct.innerText = '100%';
-        msg.innerText = '판독 완료!';
-        await worker.terminate();
-
-        document.getElementById('ocrProgressCard').classList.add('hidden');
-        document.getElementById('ocrPanels').classList.remove('hidden');
-        document.getElementById('extractedText').value = text;
-        document.getElementById('charCount').innerText = `${text.length}자`;
-
-        translateExtracted();
-      } catch (err) {
-        msg.innerText = '텍스트 판독 실패';
-        console.error(err);
-      }
-    }
-
-    async function translateExtracted() {
-      const text = document.getElementById('extractedText').value.trim();
-      const targetLang = document.getElementById('targetLangSelect').value;
-      const transArea = document.getElementById('translatedText');
-      const statusEl = document.getElementById('transStatus');
-
-      if (!text) {
-        transArea.value = '';
+  document.addEventListener('paste', function (e) {
+    var view = document.querySelector('[data-view="studio"]');
+    if (view.classList.contains('hidden')) return;
+    var items = (e.clipboardData || window.clipboardData).items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) {
+        loadFile(items[i].getAsFile());
+        e.preventDefault();
         return;
       }
+    }
+  });
 
-      transArea.value = '번역 중...';
-      statusEl.innerText = '번역 처리 중...';
+  /* ------------- preprocessing ------------- */
+  function buildProcessed() {
+    var img = state.img, o = state.opts;
+    var maxSide = 2400;
+    var scale = 1;
+    var longSide = Math.max(img.naturalWidth, img.naturalHeight);
+    if (o.upscale && longSide < 1400) scale = 2;
+    else if (o.upscale && longSide < 2000) scale = 1.4;
+    if (longSide * scale > maxSide) scale = maxSide / longSide;
 
+    var w = Math.max(1, Math.round(img.naturalWidth * scale));
+    var h = Math.max(1, Math.round(img.naturalHeight * scale));
+    procCanvas.width = w; procCanvas.height = h;
+    var ctx = procCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+
+    var invert = o.invert || (o.autoInvert && state.dark);
+    if (!o.gray && !invert && !o.contrast) return procCanvas;
+
+    var frame = ctx.getImageData(0, 0, w, h);
+    var px = frame.data;
+    var k = 1 + (o.contrast / 100) * 1.6;
+    for (var i = 0; i < px.length; i += 4) {
+      var r = px[i], g = px[i + 1], b = px[i + 2];
+      if (o.gray) {
+        var l = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = g = b = l;
+      }
+      if (o.contrast) {
+        r = (r - 128) * k + 128;
+        g = (g - 128) * k + 128;
+        b = (b - 128) * k + 128;
+      }
+      if (invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+      px[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+      px[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+      px[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    }
+    ctx.putImageData(frame, 0, 0);
+    return procCanvas;
+  }
+
+  var viewMode = 'proc';
+  function renderPreview() {
+    if (!state.img) return;
+    var src = viewMode === 'pre' ? state.img : buildProcessed();
+    var sw = src.naturalWidth || src.width;
+    var sh = src.naturalHeight || src.height;
+    var maxW = 520, maxH = 300;
+    var ratio = Math.min(maxW / sw, maxH / sh, 1);
+    var w = Math.max(1, Math.round(sw * ratio));
+    var h = Math.max(1, Math.round(sh * ratio));
+    previewCanvas.width = w; previewCanvas.height = h;
+    var pctx = previewCanvas.getContext('2d');
+    pctx.fillStyle = '#ffffff';
+    pctx.fillRect(0, 0, w, h);
+    pctx.imageSmoothingQuality = 'high';
+    pctx.drawImage(src, 0, 0, w, h);
+    $('procMeta').textContent = viewMode === 'pre' ? '원본 보기' : (procCanvas.width + '×' + procCanvas.height + ' 전처리');
+  }
+
+  $('btnViewPre').addEventListener('click', function () {
+    viewMode = 'pre';
+    this.className = 'px-2 py-1 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-100 font-bold';
+    $('btnViewProc').className = 'px-2 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400';
+    renderPreview();
+  });
+  $('btnViewProc').addEventListener('click', function () {
+    viewMode = 'proc';
+    this.className = 'px-2 py-1 rounded-md bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold';
+    $('btnViewPre').className = 'px-2 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400';
+    renderPreview();
+  });
+  $('btnReprocess').addEventListener('click', function () { renderPreview(); Lemon.toast('전처리 미리보기를 갱신했어요', 'info'); });
+
+  $('btnReset').addEventListener('click', function () {
+    state.file = null; state.img = null;
+    fileInput.value = '';
+    $('optionCard').classList.add('hidden');
+    $('resultCard').classList.add('hidden');
+    $('progressCard').classList.add('hidden');
+    $('dropzone').classList.remove('hidden');
+    $('btnReset').classList.add('hidden');
+    Lemon.hap(12);
+  });
+
+  /* ------------- Tesseract v5 ------------- */
+  var CDN = [
+    { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0' },
+    { workerPath: 'https://unpkg.com/tesseract.js@5.1.1/dist/worker.min.js', corePath: 'https://unpkg.com/tesseract.js-core@5.1.0' }
+  ];
+
+  function stageFor(m) {
+    var st = m.status || '';
+    if (st.indexOf('loading tesseract core') > -1) return ['인식 엔진 불러오는 중…', 6, 'WASM 코어를 준비합니다.'];
+    if (st.indexOf('initializing tesseract') > -1) return ['엔진 초기화 중…', 16, '잠시만 기다려 주세요.'];
+    if (st.indexOf('loading language traineddata') > -1) return ['언어 데이터 내려받는 중…', 22, '첫 실행에만 필요한 단계입니다.'];
+    if (st.indexOf('initializing api') > -1) return ['인식기 초기화 중…', 54, '곧 글자를 읽기 시작합니다.'];
+    if (st.indexOf('recognizing text') > -1) return ['글자 판독 중…', 62, '이미지에서 문자를 추출하고 있습니다.'];
+    return ['처리 중…', 40, ''];
+  }
+
+  function setProgress(pct, stage, hint) {
+    $('progressBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+    $('progressPct').textContent = Math.round(pct) + '%';
+    if (stage) $('progressStage').textContent = stage;
+    if (hint !== undefined) $('progressHint').textContent = hint;
+  }
+
+  function onLog(m) {
+    if (!m || !state.running) return;
+    var info = stageFor(m);
+    var p = typeof m.progress === 'number' ? m.progress : 0;
+    var base = info[1];
+    var span = 0;
+    if ((m.status || '').indexOf('loading language traineddata') > -1) span = 30;
+    else if ((m.status || '').indexOf('recognizing text') > -1) span = 36;
+    var pct = base + span * p;
+    setProgress(pct, info[0], info[2]);
+  }
+
+  async function getWorker(lang) {
+    if (state.worker && state.workerLang === lang) return state.worker;
+    if (state.worker) {
+      try { await state.worker.terminate(); } catch (e) { }
+      state.worker = null; state.workerLang = '';
+    }
+    var lastErr = null;
+    for (var i = 0; i < CDN.length; i++) {
       try {
-        // Fallback Client-side MyMemory Translation API
-        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.substring(0, 500))}&langpair=autodetect|${targetLang}`);
-        const data = await res.json();
-        if (data && data.responseData && data.responseData.translatedText) {
-          transArea.value = data.responseData.translatedText;
-          statusEl.innerText = '번역 완료';
-        } else {
-          transArea.value = text; // fallback
-          statusEl.innerText = '번역 API 응답 없음';
-        }
-      } catch (e) {
-        transArea.value = text;
-        statusEl.innerText = '번역 실패 (원문 표시)';
-      }
-    }
-
-    function cleanLineBreaks() {
-      const area = document.getElementById('extractedText');
-      area.value = area.value.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-      document.getElementById('charCount').innerText = `${area.value.length}자`;
-      translateExtracted();
-    }
-
-    function copyExtracted() {
-      navigator.clipboard.writeText(document.getElementById('extractedText').value);
-      alert('원문 텍스트가 복사되었습니다.');
-    }
-
-    function copyTranslated() {
-      navigator.clipboard.writeText(document.getElementById('translatedText').value);
-      alert('번역 결과가 복사되었습니다.');
-    }
-
-    function speakText(txt, lang = 'ko-KR') {
-      if (!txt || !window.speechSynthesis) return;
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(txt);
-      utter.lang = lang;
-      window.speechSynthesis.speak(utter);
-    }
-
-    function speakTranslated() {
-      const txt = document.getElementById('translatedText').value;
-      const tLang = document.getElementById('targetLangSelect').value;
-      const langMap = { en: 'en-US', ko: 'ko-KR', ja: 'ja-JP', zh: 'zh-CN' };
-      speakText(txt, langMap[tLang] || 'en-US');
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      const darkToggle = document.getElementById('darkModeToggle');
-      if (darkToggle) {
-        darkToggle.addEventListener('click', () => {
-          document.documentElement.classList.toggle('dark');
+        var w = await Tesseract.createWorker(lang, 1, {
+          workerPath: CDN[i].workerPath,
+          corePath: CDN[i].corePath,
+          langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+          logger: onLog,
+          cacheMethod: 'none',
+          errorHandler: function (e) { if (window.console) console.warn('[ocr]', e); }
         });
+        try { await w.setParameters({ preserve_interword_spaces: '1' }); } catch (e2) { }
+        state.worker = w;
+        state.workerLang = lang;
+        return w;
+      } catch (err) {
+        lastErr = err;
+        if (window.console) console.warn('[ocr] cdn failed', i, err && err.message);
       }
+    }
+    throw lastErr || new Error('worker init failed');
+  }
+
+  async function runOcr() {
+    if (!state.img || state.running) return;
+    if (typeof Tesseract === 'undefined') {
+      Lemon.toast('인식 엔진을 불러오지 못했어요. 네트워크를 확인해 주세요.', 'err');
+      return;
+    }
+    state.running = true;
+    $('btnRun').disabled = true;
+    $('runLabel').textContent = '판독 중…';
+    $('runIcon').classList.add('ocr-spin');
+    $('resultCard').classList.add('hidden');
+    $('progressCard').classList.remove('hidden');
+    setProgress(2, '인식 준비 중…', '이미지를 전처리하고 있습니다.');
+    Lemon.hap(15);
+
+    try {
+      var canvas = buildProcessed();
+      var worker = await getWorker(state.lang);
+      setProgress(60, '글자 판독 중…', '이미지에서 문자를 추출하고 있습니다.');
+      var ret = await worker.recognize(canvas);
+      var text = (ret && ret.data && ret.data.text ? ret.data.text : '').replace(/[ \t]+\n/g, '\n').trim();
+      var conf = Math.round(ret && ret.data && ret.data.confidence ? ret.data.confidence : 0);
+
+      setProgress(100, '판독 완료', '결과를 정리했습니다.');
+      setTimeout(function () { $('progressCard').classList.add('hidden'); }, 420);
+
+      if (!text) {
+        Lemon.toast('글자를 찾지 못했어요. 전처리 옵션을 바꿔 다시 시도해 보세요.', 'err');
+        $('resultCard').classList.remove('hidden');
+      } else {
+        Lemon.toast('텍스트를 추출했어요', 'ok');
+        Lemon.confetti(18);
+      }
+      showResult(text, conf);
+    } catch (err) {
+      if (window.console) console.error('[ocr] failed', err);
+      $('progressCard').classList.add('hidden');
+      Lemon.toast('인식에 실패했어요: ' + (err && err.message ? err.message : '알 수 없는 오류'), 'err');
+      setProgress(0, '실패', '');
+    } finally {
+      state.running = false;
+      $('btnRun').disabled = false;
+      $('runLabel').textContent = '텍스트 추출 시작';
+      $('runIcon').classList.remove('ocr-spin');
+    }
+  }
+
+  $('btnRun').addEventListener('click', runOcr);
+
+  /* ------------- results ------------- */
+  function showResult(text, conf) {
+    state.lastText = text;
+    $('resultCard').classList.remove('hidden');
+    $('srcText').value = text;
+    updateSrcCount();
+    var b = $('confBadge');
+    b.textContent = '신뢰도 ' + conf + '%';
+    b.className = 'conf-badge text-[10px] font-bold px-2 py-1 rounded-lg ' + (conf >= 85 ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400' : conf >= 65 ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-400' : 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-400');
+    var lang = detectLang(text);
+    var target = $('targetLang').value;
+    if (lang === target || (lang === 'zh-CN' && target === 'zh-CN')) {
+      $('transText').value = '';
+      $('transInfo').textContent = '원문과 같은 언어입니다';
+      return;
+    }
+    translate(text, target);
+  }
+
+  function updateSrcCount() {
+    var t = $('srcText').value;
+    var lines = t ? t.split(/\n/).length : 0;
+    $('srcCount').textContent = t.length.toLocaleString() + '자';
+    $('statBadge').textContent = t.length.toLocaleString() + '자 · ' + lines + '줄';
+    state.lastText = t;
+  }
+  $('srcText').addEventListener('input', updateSrcCount);
+
+  /* ------------- translation ------------- */
+  function detectLang(t) {
+    var s = (t || '').slice(0, 600);
+    if (/[\uac00-\ud7af]/.test(s)) return 'ko';
+    if (/[\u3040-\u30ff]/.test(s)) return 'ja';
+    if (/[\u4e00-\u9fff]/.test(s)) return 'zh-CN';
+    if (/[\u0400-\u04ff]/.test(s)) return 'ru';
+    return 'en';
+  }
+
+  function chunkText(text, size) {
+    var parts = text.split(/(?<=[.!?。！？\n])/);
+    var out = [], buf = '';
+    parts.forEach(function (p) {
+      if ((buf + p).length > size) {
+        if (buf.trim()) out.push(buf.trim());
+        buf = p;
+        while (buf.length > size) { out.push(buf.slice(0, size)); buf = buf.slice(size); }
+      } else buf += p;
     });
-  </script>
+    if (buf.trim()) out.push(buf.trim());
+    return out.length ? out : [text];
+  }
+
+  function translate(text, target) {
+    var src = detectLang(text);
+    var overlay = $('transOverlay');
+    overlay.classList.remove('hidden'); overlay.classList.add('flex');
+    $('transInfo').textContent = '번역 중 · ' + (LANG_LABEL[state.lang] || src);
+    var chunks = chunkText(text, 450);
+    var results = [];
+    var idx = 0;
+
+    function step() {
+      if (idx >= chunks.length) {
+        state.lastTrans = results.join('\n');
+        $('transText').value = state.lastTrans;
+        overlay.classList.add('hidden'); overlay.classList.remove('flex');
+        $('transInfo').textContent = (src + ' → ' + target) + ' · MyMemory';
+        return;
+      }
+      var q = chunks[idx++];
+      if (src === target) { results.push(q); setTimeout(step, 10); return; }
+      var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(q) + '&langpair=' + encodeURIComponent(src + '|' + target);
+      fetch(url).then(function (r) { return r.json(); }).then(function (data) {
+        var txt = data && data.responseData && data.responseData.translatedText ? data.responseData.translatedText : '';
+        if (!txt || /MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(txt)) txt = q;
+        results.push(txt);
+        $('transText').value = results.join('\n');
+        setTimeout(step, 60);
+      }).catch(function () {
+        results.push(q);
+        setTimeout(step, 60);
+      });
+    }
+    step();
+  }
+
+  $('targetLang').addEventListener('change', function () {
+    if ($('srcText').value.trim()) translate($('srcText').value, this.value);
+  });
+
+  /* ------------- actions ------------- */
+  function speak(text, langCode) {
+    if (!text || !window.speechSynthesis) { Lemon.toast('이 브라우저는 낭독을 지원하지 않아요', 'err'); return; }
+    window.speechSynthesis.cancel();
+    var parts = text.match(/[^.!?\n]{1,180}[.!?]?/g) || [text];
+    parts.slice(0, 12).forEach(function (p) {
+      if (!p.trim()) return;
+      var u = new SpeechSynthesisUtterance(p.trim());
+      u.lang = langCode; u.rate = 1;
+      window.speechSynthesis.speak(u);
+    });
+    Lemon.toast('낭독을 시작했어요', 'info');
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var act = btn.getAttribute('data-act');
+    var src = $('srcText').value, trans = $('transText').value;
+
+    if (act === 'copy-src') Lemon.copy(src, '원문을 복사했어요');
+    if (act === 'copy-trans') Lemon.copy(trans, '번역문을 복사했어요');
+    if (act === 'speak-src') speak(src, LANG_SPEECH[state.lang.split('+')[0]] || 'ko-KR');
+    if (act === 'speak-trans') speak(trans, LANG_SPEECH[$('targetLang').value] || 'en-US');
+    if (act === 'clean') {
+      var MARK = '\u0000';
+      var cleaned = src
+        .replace(/[ \t]+$/gm, '')
+        .replace(/\n{2,}/g, MARK)
+        .replace(/([^\n])\n([^\n])/g, function (m, a, b) {
+          return /[.!?。！？:：)\]}]/.test(a) ? a + '\n' + b : a + ' ' + b;
+        })
+        .replace(new RegExp(MARK, 'g'), '\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+      $('srcText').value = cleaned;
+      updateSrcCount();
+      translate(cleaned, $('targetLang').value);
+      Lemon.toast('줄바꿈을 정리했어요', 'ok');
+    }
+    if (act === 'retranslate') translate(src, $('targetLang').value);
+    if (act === 'new') {
+      $('btnReset').click();
+      document.querySelector('[data-view="studio"]').scrollIntoView({ behavior: 'smooth' });
+    }
+    if (act === 'save') {
+      if (!src.trim()) { Lemon.toast('저장할 텍스트가 없어요', 'err'); return; }
+      var rec = ARCHIVE.add({
+        title: src.trim().slice(0, 46).replace(/\s+/g, ' '),
+        text: src, trans: trans, lang: state.lang,
+        target: $('targetLang').value, conf: $('confBadge').textContent
+      });
+      if (rec) { Lemon.toast('보관함에 저장했어요', 'ok'); renderArchive(); }
+      else Lemon.toast('저장에 실패했어요', 'err');
+    }
+    if (act === 'dl-txt') {
+      var body = src + (trans ? '\n\n--- 번역 ---\n' + trans : '');
+      Lemon.download('lemon-ocr-' + Date.now() + '.txt', body, 'text/plain;charset=utf-8');
+      Lemon.toast('TXT로 내려받았어요', 'ok');
+    }
+    if (act === 'dl-md') {
+      var md = '# Lemon OCR 결과\n\n- 언어: ' + LANG_LABEL[state.lang] + '\n- 신뢰도: ' + $('confBadge').textContent.replace('신뢰도 ', '') + '\n- 날짜: ' + Lemon.fmtDateTime(Date.now()) + '\n\n## 원문\n\n' + src + (trans ? '\n\n## 번역\n\n' + trans : '') + '\n';
+      Lemon.download('lemon-ocr-' + Date.now() + '.md', md, 'text/markdown;charset=utf-8');
+      Lemon.toast('MD로 내려받았어요', 'ok');
+    }
+  });
+
+  /* ------------- archive ------------- */
+  function renderArchive() {
+    var list = ARCHIVE.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center">' +
+        '<div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3">' +
+        '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg></div>' +
+        '<p class="text-[12px] font-bold">아직 저장한 기록이 없어요</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">추출 결과에서 ‘보관함에 저장’을 누르면 여기에 쌓입니다.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-4 card-lift">' +
+        '<div class="flex items-start justify-between gap-3">' +
+        '<div class="min-w-0 flex-1">' +
+        '<div class="flex items-center gap-1.5 mb-1">' +
+        '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-400">' + Lemon.esc(LANG_LABEL[it.lang] || it.lang) + '</span>' +
+        '<span class="text-[9px] text-neutral-400">' + Lemon.timeAgo(it.ts) + '</span>' +
+        '<span class="text-[9px] text-neutral-400">' + Lemon.esc(it.conf || '') + '</span>' +
+        '</div>' +
+        '<p class="text-[12px] font-bold leading-snug line-clamp-2">' + Lemon.esc(it.title) + '</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2 leading-relaxed">' + Lemon.esc((it.text || '').slice(0, 120)) + '</p>' +
+        '</div>' +
+        '<div class="flex flex-col gap-1 shrink-0">' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px]" data-load="' + it.id + '">불러오기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button>' +
+        '</div></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var load = e.target.closest('[data-load]');
+    if (load) {
+      var id = load.getAttribute('data-load');
+      var item = ARCHIVE.all().filter(function (x) { return x.id === id; })[0];
+      if (!item) return;
+      go('studio');
+      $('resultCard').classList.remove('hidden');
+      $('srcText').value = item.text || '';
+      $('transText').value = item.trans || '';
+      updateSrcCount();
+      setLang(item.lang || 'kor+eng');
+      if (item.target) $('targetLang').value = item.target;
+      $('confBadge').textContent = item.conf || '신뢰도 -';
+      Lemon.toast('불러왔어요', 'ok');
+      $('resultCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    var del = e.target.closest('[data-del]');
+    if (del) {
+      ARCHIVE.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('삭제했어요', 'info');
+    }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!ARCHIVE.count()) { Lemon.toast('비울 기록이 없어요', 'info'); return; }
+    if (window.confirm('보관함을 모두 비울까요? 되돌릴 수 없습니다.')) {
+      ARCHIVE.clear(); renderArchive(); Lemon.toast('보관함을 비웠어요', 'info');
+    }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  /* ------------- presets ------------- */
+  var PRESETS = {
+    book: { lang: 'kor+eng', opts: { autoInvert: true, invert: false, upscale: true, gray: true, contrast: 55 } },
+    receipt: { lang: 'kor+eng', opts: { autoInvert: true, invert: false, upscale: true, gray: true, contrast: 70 }, target: 'ko' },
+    dark: { lang: 'kor+eng', opts: { autoInvert: true, invert: true, upscale: true, gray: true, contrast: 35 } },
+    sign: { lang: 'kor+eng', opts: { autoInvert: false, invert: false, upscale: true, gray: false, contrast: 15 }, target: 'en' }
+  };
+
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var p = PRESETS[b.getAttribute('data-preset')];
+      if (!p) return;
+      setLang(p.lang);
+      Object.keys(p.opts).forEach(function (k) {
+        var el = document.querySelector('.switch[data-toggle="' + k + '"]');
+        var on = !!p.opts[k];
+        state.opts[k] = on;
+        if (el) { el.classList.toggle('on', on); el.setAttribute('aria-checked', on ? 'true' : 'false'); }
+      });
+      $('contrastRange').value = p.opts.contrast;
+      $('contrastVal').textContent = p.opts.contrast;
+      Lemon.refreshRange($('contrastRange'));
+      if (p.target) $('targetLang').value = p.target;
+      if (state.img) renderPreview();
+      go('studio');
+      Lemon.toast('프리셋을 적용했어요', 'ok');
+    });
+    b.classList.add('btn-tap');
+  });
+
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail.view === 'archive') renderArchive();
+  });
+
+  renderArchive();
+  go('home', true);
+})();
+</script>
 </body>
 </html>
