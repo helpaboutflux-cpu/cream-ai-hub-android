@@ -1187,7 +1187,7 @@ tailwind.config = {
           }
         }
       }
-    } else {
+    } else if (mode === 'invert') {
       for (i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
       var lo = 255, hi = 0;
       for (i = 0; i < d.length; i += 4) {
@@ -1245,6 +1245,46 @@ tailwind.config = {
     return { subject: subject, room: room, prof: prof };
   }
 
+  function parseCellData(data) {
+    var lines = (data && data.lines) || [];
+    var cands = [];
+    for (var i = 0; i < lines.length; i++) {
+      var t = cleanCellLine(lines[i].text);
+      if (!t) continue;
+      if (/^[+\-·•|~_=.]+$/.test(t)) continue;
+      if (/교시/.test(t) && t.replace(/[^0-9]/g, '').length <= 2) continue;
+      if (!/[가-힣A-Za-z0-9]/.test(t)) continue;
+      var bb = lines[i].bbox || {};
+      var h = bb.y1 !== undefined && bb.y0 !== undefined ? bb.y1 - bb.y0 : 20;
+      cands.push({ text: t, h: h, order: i });
+    }
+    if (!cands.length) return parseCellText((data && data.text) || '');
+    cands.sort(function (a, b) { return (b.h - a.h) || (a.order - b.order); });
+    var subject = '', room = '', prof = '';
+    for (var k = 0; k < cands.length; k++) {
+      if (/[가-힣A-Za-z]{2,}/.test(cands[k].text)) { subject = cands[k].text; cands.splice(k, 1); break; }
+    }
+    if (!subject) subject = cands.shift().text;
+    var both = subject.match(/^([가-힣A-Za-z·]{2,10})\s*(\d\s*-\s*\d.*)$/);
+    if (both) { subject = both[1]; room = both[2]; }
+    for (var j = 0; j < cands.length; j++) {
+      var t2 = cands[j].text;
+      if ((/(\d\s*-\s*\d)|(실|관|층|동|호|룸)|room/i.test(t2)) && !room) room = t2;
+      else if (!prof) prof = t2;
+    }
+    subject = subject.replace(/[^가-힣A-Za-z0-9]/g, '').slice(0, 14);
+    room = room.replace(/\s+/g, '').replace(/[^가-힣A-Za-z0-9\-]/g, '').slice(0, 14);
+    prof = prof.replace(/\s+/g, ' ').replace(/[^가-힣A-Za-z0-9 ]/g, '').trim().slice(0, 10);
+    if (!subject) return null;
+    return { subject: subject, room: room, prof: prof };
+  }
+
+  function contentScore(c) {
+    if (!c || !c.subject) return -10;
+    var hangul = (c.subject.match(/[가-힣]/g) || []).length;
+    return hangul * 4 + (c.room ? 3 : 0) + (c.prof ? 1 : 0);
+  }
+
   function cellScore(text) {
     if (!text) return -100;
     var hangul = (text.match(/[가-힣]/g) || []).length;
@@ -1256,20 +1296,20 @@ tailwind.config = {
   var OCR_TMP = [];
   async function readCell(worker, work, box, scale) {
     var best = null, bestScore = -100;
-    var modes = ['mask', 'invert'];
+    var modes = ['raw', 'mask', 'invert'];
     for (var pass = 0; pass < modes.length; pass++) {
       var crop = cellCrop(work, box, scale, modes[pass]);
       if (!crop) continue;
       if (OCR_DEBUG) OCR_TMP.push({ box: box, pass: modes[pass], canvas: crop });
       var ret = await worker.recognize(crop);
-      var text = (ret && ret.data && ret.data.text) || '';
-      var score = cellScore(text);
-      if (OCR_DEBUG) OCR_TMP[OCR_TMP.length - 1].text = text.replace(/\s+/g, ' ').slice(0, 60);
+      var content = parseCellData(ret && ret.data);
+      var score = contentScore(content);
+      if (OCR_DEBUG) OCR_TMP[OCR_TMP.length - 1].text = (((ret && ret.data && ret.data.text) || '').replace(/\s+/g, ' ')).slice(0, 60);
       if (score > bestScore) {
         bestScore = score;
-        best = parseCellText(text);
+        best = content;
       }
-      if (best && /[가-힣]{2,}/.test(best.subject) && bestScore >= 8) break;
+      if (best && /[가-힣]{2,}/.test(best.subject) && bestScore >= 8 && (best.room || pass >= 1)) break;
     }
     return best;
   }
