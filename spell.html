@@ -1,163 +1,764 @@
 <!DOCTYPE html>
 <html lang="ko" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lemon Spell - 한국어 맞춤법 & 띄어쓰기 교정기</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46' },
-            lemon: { 400: '#facc15', 500: '#eab308', 600: '#ca8a04' }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .btn-tap { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .btn-tap:hover { transform: translateY(-1.5px) scale(1.02); }
-    .btn-tap:active { transform: scale(0.94); }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Spell — 한국어 맞춤법·띄어쓰기 교정 & 자소서 글자수</title>
+<meta name="description" content="50가지 넘는 한국어 빈출 맞춤법·띄어쓰기 규칙으로 실시간 교정하고, 자소서 글자수·바이트·읽기 시간을 정밀 측정합니다.">
+<meta name="theme-color" content="#059669">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#059669', light: '#14b8a6', deep: '#065f46', 50: '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0', 300: '#6ee7b7', 400: '#34d399', 500: '#10b981', 600: '#059669', 700: '#047857', 800: '#065f46', 900: '#064e3b', 950: '#022c22' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #059669; --brand-2: #14b8a6; --brand-deep: #047857; }
+  .hl-fix {
+    background: rgba(16, 185, 129, .18);
+    border-bottom: 2px solid #10b981;
+    border-radius: 3px;
+    padding: 0 1px;
+    color: inherit;
+  }
+  .hl-warn {
+    background: rgba(245, 158, 11, .18);
+    border-bottom: 2px dashed #f59e0b;
+    border-radius: 3px;
+    color: inherit;
+  }
+  .dark .hl-fix { background: rgba(16, 185, 129, .26); }
+  .dark .hl-warn { background: rgba(245, 158, 11, .24); }
+  .editor-wrap { position: relative; }
+  #editor {
+    min-height: 300px;
+    line-height: 1.85;
+    font-size: 14px;
+    resize: vertical;
+  }
+  .issue-item {
+    border-left: 3px solid #10b981;
+    transition: background .15s, transform .15s;
+  }
+  .issue-item.warn { border-left-color: #f59e0b; }
+  .issue-item:hover { background: rgba(0,0,0,.02); }
+  .dark .issue-item:hover { background: rgba(255,255,255,.03); }
+  .issue-item .raw { text-decoration: line-through; text-decoration-color: rgba(225,29,72,.65); }
+  .issue-item .fix { color: #047857; font-weight: 800; }
+  .dark .issue-item .fix { color: #34d399; }
+  .preview-body { line-height: 1.95; white-space: pre-wrap; font-size: 13.5px; }
+  .mini-stat { font-variant-numeric: tabular-nums; }
+  .typing-demo span { display: inline-block; }
+  .caret-blink { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
 </head>
-<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col justify-between antialiased selection:bg-lemon-500 selection:text-neutral-950">
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
 
-  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <a href="index.html" class="flex items-center space-x-2.5 group">
-          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lemon-600 to-amber-400 p-[1px] shadow-md group-hover:scale-105 transition-transform">
-            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
-              <svg class="w-5 h-5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-          </div>
-          <div class="flex flex-col">
-            <div class="flex items-center space-x-1.5">
-              <span class="font-black text-lg tracking-tight">Lemon Spell</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lemon-100 dark:bg-lemon-950 text-lemon-700 dark:text-lemon-400 font-bold border border-lemon-300 dark:border-lemon-800">맞춤법 검사</span>
-            </div>
-            <span class="text-[10px] text-neutral-500 -mt-0.5">한국어 맞춤법 & 띄어쓰기 교정기</span>
-          </div>
-        </a>
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 o2 opacity-20" style="background:#14b8a6"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg>
+        </div>
       </div>
-      <button id="darkModeToggle" class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition btn-tap">
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Spell</span>
+          <span id="ruleBadge" class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">RULES</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">맞춤법 · 띄어쓰기 · 자소서 글자수</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="headerCount" class="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12" y2="16"></line></svg>
+        <span id="headerCountText">0건</span>
+      </span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
         <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
       </button>
     </div>
-  </header>
+  </div>
+</header>
 
-  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      
-      <!-- Input Panel -->
-      <div class="p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-3">
-        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
-          <h4 class="font-bold text-sm text-neutral-900 dark:text-white">원문 텍스트</h4>
-          <button onclick="document.getElementById('spellInput').value = ''; checkSpell();" class="text-xs text-neutral-400 hover:underline">비우기</button>
-        </div>
-        <textarea id="spellInput" rows="12" oninput="checkSpell()" placeholder="맞춤법과 띄어쓰기를 검사할 글을 여기에 입력하거나 붙여넣으세요..." class="w-full p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 text-xs sm:text-sm resize-none focus:outline-none focus:border-lemon-500 leading-relaxed"></textarea>
-        <div class="flex items-center justify-between text-xs text-neutral-400 font-mono">
-          <span id="charCountSpan">공백 포함 0자 · 공백 제외 0자</span>
-          <span id="errorCountBadge" class="font-bold text-rose-500">교정 필요 0건</span>
-        </div>
-      </div>
-
-      <!-- Result Panel -->
-      <div class="p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-3">
-        <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
-          <h4 class="font-bold text-sm text-neutral-900 dark:text-white">교정 결과</h4>
-          <button onclick="copyCorrected()" class="px-3 py-1 rounded-xl bg-lemon-500 text-neutral-950 font-bold text-xs btn-tap">전체 복사</button>
-        </div>
-        <div id="spellResultBox" class="w-full p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 text-xs sm:text-sm min-h-[280px] max-h-[340px] overflow-y-auto leading-relaxed">
-          <p class="text-neutral-400">왼쪽에 글을 입력하면 맞춤법과 띄어쓰기가 자동으로 분석됩니다.</p>
-        </div>
-        <div class="pt-2 text-[11px] text-neutral-500 leading-relaxed">
-          자주 틀리는 맞춤법(되/돼, 봬요/뵈요, 며칠/몇일, 어떻게/어떡해 등)과 표준 띄어쓰기 규칙을 정밀 교정합니다.
-        </div>
-      </div>
-
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
     </div>
-  </main>
+  </div>
+</div>
 
-  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
-      <div class="flex items-center space-x-2">
-        <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Spell</span>
-        <span>·</span>
-        <span>Lemon soft 18대 독립 웹 프로덕트</span>
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            실시간 교정 · <span id="ruleChipCount">58</span>가지 규칙
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            쓰는 순간,<br><span class="brand-text">맞춤법이</span> 바로잡힙니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            되/돼, 안/않, 띄어쓰기까지. 붙여넣으면 틀린 곳을 짚어 주고 한 번에 고칩니다. 자소서 글자수와 바이트도 함께 셉니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+              교정 시작하기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text" id="ruleStat">58</p><p class="text-[10px] text-neutral-500">검사 규칙</p></div>
+            <div><p class="text-lg font-black brand-text">실시간</p><p class="text-[10px] text-neutral-500">자동 검사</p></div>
+            <div><p class="text-lg font-black brand-text">바이트</p><p class="text-[10px] text-neutral-500">정밀 측정</p></div>
+          </div>
+        </div>
+
+        <div class="panel p-5 space-y-3">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-rose-400"></span><span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span class="ml-auto text-[9px] font-mono text-neutral-400">lemon spell · live</span>
+          </div>
+          <p class="text-[13px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+            저는 <span class="hl-fix">몇일</span> 동안 고민했지만, 결국 <span class="hl-fix">할수</span> 있는 일을 찾기로 했습니다.
+          </p>
+          <div class="rounded-xl bg-brand-50 dark:bg-brand-950/40 border border-brand-100 dark:border-brand-900 p-3 space-y-1.5">
+            <div class="flex items-center gap-2 text-[11px]"><span class="font-mono text-neutral-400">몇일</span><svg class="w-3 h-3 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg><span class="font-black text-brand-700 dark:text-brand-300">며칠</span></div>
+            <div class="flex items-center gap-2 text-[11px]"><span class="font-mono text-neutral-400">할수</span><svg class="w-3 h-3 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg><span class="font-black text-brand-700 dark:text-brand-300">할 수</span></div>
+          </div>
+          <div class="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400">
+            <span>2건 교정 제안</span>
+            <span>자소서 1,000자 중 842자</span>
+          </div>
+        </div>
       </div>
-      <div><span>2026 Lemon soft. All rights reserved.</span></div>
     </div>
-  </footer>
 
-  <script>
-    const SPELL_RULES = [
-      { pattern: /몇일/g, replace: '며칠', desc: '몇일은 틀린 표현이며 며칠이 표준어입니다.' },
-      { pattern: /어의없/g, replace: '어이없', desc: '어의가 아니라 어이가 맞습니다.' },
-      { pattern: /봬요/g, replace: '봬요', desc: '뵈어요의 준말은 봬요입니다.' },
-      { pattern: /뵈요/g, replace: '봬요', desc: '뵈요는 틀린 표현이며 봬요가 맞습니다.' },
-      { pattern: /바램/g, replace: '바람', desc: '바라다의 명사형은 바람입니다.' },
-      { pattern: /금새/g, replace: '금세', desc: '금시에의 준말은 금세입니다.' },
-      { pattern: /안되/g, replace: '안 돼', desc: '되 뒤에 어미가 붙지 않을 때는 돼가 맞습니다.' },
-      { pattern: /어떡해/g, replace: '어떡해', desc: '어떻게 해의 준말입니다.' },
-      { pattern: /어떻해/g, replace: '어떡해', desc: '어떻해는 없는 말이며 어떡해가 맞습니다.' },
-      { pattern: /낳아라/g, replace: '나아라', desc: '병이 회복되는 것은 낫다(나아라)입니다.' },
-      { pattern: /들어나다/g, replace: '드러나다', desc: '겉으로 나타나는 것은 드러나다입니다.' },
-      { pattern: /문안한/g, replace: '무난한', desc: '이상이 없거나 수월한 것은 무난한입니다.' },
-      { pattern: /오랫만에/g, replace: '오랜만에', desc: '오랜만이 맞습니다.' },
-      { pattern: /연애인/g, replace: '연예인', desc: '연예인이 맞습니다.' },
-      { pattern: /희안한/g, replace: '희한한', desc: '희한한이 맞습니다.' }
-    ];
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 12 9 17 20 6"></polyline></svg></div>
+        <h3 class="text-[13px] font-bold">빈출 오류 <span id="ruleStat2">58</span>종</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">되/돼, 안/않, 낳/낫, 띄어쓰기까지 폭넓게 검사합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"></path><path d="M5 8l7-5 7 5"></path></svg></div>
+        <h3 class="text-[13px] font-bold">한 번에 교정</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">제안을 개별 적용하거나 전체 교정을 한 번에 실행합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"></rect><line x1="8" y1="8" x2="16" y2="8"></line><line x1="8" y1="12" x2="16" y2="12"></line><line x1="8" y1="16" x2="12" y2="16"></line></svg></div>
+        <h3 class="text-[13px] font-bold">글자수 · 바이트</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">공백 포함/제외, 바이트, 단어, 읽기 시간을 동시에 봅니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline></svg></div>
+        <h3 class="text-[13px] font-bold">원고 보관</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">자소서·보고서 원고를 저장해 언제든 다시 불러옵니다.</p>
+      </div>
+    </div>
 
-    function checkSpell() {
-      const text = document.getElementById('spellInput').value;
-      const countSpan = document.getElementById('charCountSpan');
-      const errBadge = document.getElementById('errorCountBadge');
-      const resultBox = document.getElementById('spellResultBox');
+    <div class="panel p-5 sm:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-sm font-black">바로 써보기</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">예시 원고를 불러와 교정 과정을 확인해 보세요.</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <button class="panel-soft card-lift p-3.5 text-left" data-sample="resume">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">자소서</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">지원 동기 문단 · 1,000자 기준</p>
+        </button>
+        <button class="panel-soft card-lift p-3.5 text-left" data-sample="report">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">업무 보고서</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">진행 상황·요청 사항 정리</p>
+        </button>
+        <button class="panel-soft card-lift p-3.5 text-left" data-sample="essay">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">과제 · 레포트</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">서론·본론 문장 점검</p>
+        </button>
+        <button class="panel-soft card-lift p-3.5 text-left" data-sample="message">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">메신저 · 안내문</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">짧은 문장 빠른 교정</p>
+        </button>
+      </div>
+    </div>
 
-      const totalChars = text.length;
-      const nonSpaceChars = text.replace(/\s/g, '').length;
-      countSpan.innerText = `공백 포함 ${totalChars}자 · 공백 제외 ${nonSpaceChars}자`;
+    <div class="panel p-5 sm:p-6">
+      <h2 class="text-sm font-black mb-3">이런 규칙을 봅니다</h2>
+      <div class="flex flex-wrap gap-1.5" id="ruleChips"></div>
+    </div>
+  </section>
 
-      if (!text.trim()) {
-        errBadge.innerText = '교정 필요 0건';
-        resultBox.innerHTML = '<p class="text-neutral-400">왼쪽에 글을 입력하면 맞춤법과 띄어쓰기가 자동으로 분석됩니다.</p>';
-        return;
-      }
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-4">
+    <div class="grid lg:grid-cols-[1.15fr_.85fr] gap-4 lg:items-start">
 
-      let corrected = text;
-      let errorCount = 0;
+      <div class="panel p-4 sm:p-5 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-[13px] font-black">원고</h2>
+          <div class="flex items-center gap-1.5">
+            <button id="btnSample" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">예시</button>
+            <button id="btnCopy" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">복사</button>
+            <button id="btnClear" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">지우기</button>
+          </div>
+        </div>
+        <textarea id="editor" class="lemon-textarea" placeholder="여기에 글을 붙여넣으면 실시간으로 검사합니다. (Ctrl+V)"></textarea>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+            <span class="mini-stat" id="inlineCount">0자</span>
+            <span class="opacity-40">·</span>
+            <span class="mini-stat" id="inlineIssues">문제 0건</span>
+            <span id="scanIndicator" class="hidden text-brand-600 dark:text-brand-400 font-bold">검사 중…</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button id="btnFixAll" class="primary-btn !py-2 !px-3 !text-[11px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="4 12 9 17 20 6"></polyline></svg>
+              전체 교정
+            </button>
+            <button id="btnSave" class="ghost-btn !py-2 !px-3 !text-[11px]">보관함 저장</button>
+          </div>
+        </div>
+      </div>
 
-      SPELL_RULES.forEach(r => {
-        if (r.pattern.test(corrected)) {
-          errorCount++;
-          corrected = corrected.replace(r.pattern, `<span class="bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-bold px-1 rounded underline" title="${r.desc}">${r.replace}</span>`);
+      <div class="space-y-4">
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-[13px] font-black">검사 결과</h2>
+            <div class="flex items-center gap-1">
+              <button class="px-2 py-1 rounded-md text-[10px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300" data-filter="all">전체</button>
+              <button class="px-2 py-1 rounded-md text-[10px] font-bold text-neutral-500" data-filter="fix">교정</button>
+              <button class="px-2 py-1 rounded-md text-[10px] font-bold text-neutral-500" data-filter="warn">확인</button>
+            </div>
+          </div>
+          <div id="issueList" class="space-y-1.5 max-h-[420px] overflow-y-auto pr-1"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-1">
+            <h2 class="text-[13px] font-black">글자수</h2>
+            <div class="flex items-center gap-1 text-[10px] font-bold">
+              <button class="px-2 py-1 rounded-md bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300" data-count="space">공백 포함</button>
+              <button class="px-2 py-1 rounded-md text-neutral-500" data-count="nospace">공백 제외</button>
+            </div>
+          </div>
+          <p class="text-[32px] font-black leading-none tabular mt-1"><span id="charBig">0</span><span class="text-[13px] font-bold text-neutral-400 ml-1">자</span></p>
+          <div class="grid grid-cols-2 gap-2 mt-3 text-[11px]">
+            <div class="panel-soft px-2.5 py-2"><span class="text-neutral-500 dark:text-neutral-400">바이트(UTF-8)</span><p class="font-black tabular" id="byteUtf">0</p></div>
+            <div class="panel-soft px-2.5 py-2"><span class="text-neutral-500 dark:text-neutral-400">바이트(EUC-KR)</span><p class="font-black tabular" id="byteEuc">0</p></div>
+            <div class="panel-soft px-2.5 py-2"><span class="text-neutral-500 dark:text-neutral-400">단어</span><p class="font-black tabular" id="wordCount">0</p></div>
+            <div class="panel-soft px-2.5 py-2"><span class="text-neutral-500 dark:text-neutral-400">문장</span><p class="font-black tabular" id="sentCount">0</p></div>
+          </div>
+          <div class="mt-3">
+            <div class="flex items-center justify-between text-[10px] mb-1">
+              <span class="text-neutral-500 dark:text-neutral-400">목표 글자수</span>
+              <span class="font-mono font-bold" id="goalText">1,000자</span>
+            </div>
+            <div class="progress-track"><div id="goalBar" class="progress-fill" style="width:0%"></div></div>
+            <input type="range" id="goalRange" class="lemon-range mt-2" min="200" max="3000" step="100" value="1000">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-[13px] font-black">교정 미리보기</h2>
+        <span class="text-[10px] text-neutral-400">초록 = 교정 · 주황 = 확인 필요</span>
+      </div>
+      <div id="preview" class="preview-body text-neutral-700 dark:text-neutral-300 min-h-[80px]"></div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">저장한 원고를 다시 열어 교정을 이어갈 수 있어요.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="space-y-2.5"></div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Spell</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="ocr.html" class="hover:text-brand-600 dark:hover:text-brand-400">OCR</a>
+      <a href="wallpaper.html" class="hover:text-brand-600 dark:hover:text-brand-400">Wallpaper</a>
+      <a href="table.html" class="hover:text-brand-600 dark:hover:text-brand-400">Table</a>
+      <a href="speed.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speed</a>
+      <a href="speech.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speech</a>
+      <a href="blur.html" class="hover:text-brand-600 dark:hover:text-brand-400">Blur</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var ARCHIVE = Lemon.archive('lemon_spell_archive', 20);
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ================= RULES ================= */
+  var RULES = [
+    /* --- 맞춤법 (교정) --- */
+    { id: 'myeochil', kind: 'fix', cat: '맞춤법', re: /몇일/g, to: '며칠', note: '‘몇일’은 틀린 표기입니다. 언제나 ‘며칠’입니다.' },
+    { id: 'oraenman', kind: 'fix', cat: '맞춤법', re: /오랫만|오래간만/g, to: '오랜만', note: '‘오랜만’이 표준어입니다.' },
+    { id: 'geumse', kind: 'fix', cat: '맞춤법', re: /금새/g, to: '금세', note: '‘금시에’가 줄어 ‘금세’가 되었습니다.' },
+    { id: 'waenji', kind: 'fix', cat: '맞춤법', re: /웬지/g, to: '왠지', note: '‘왜인지’의 줄임말은 ‘왠지’입니다.' },
+    { id: 'waenil', kind: 'fix', cat: '맞춤법', re: /왠일/g, to: '웬일', note: '‘웬일’이 맞습니다. (‘웬’은 ‘어찌된’의 뜻)' },
+    { id: 'waenman', kind: 'fix', cat: '맞춤법', re: /왠만/g, to: '웬만', note: '‘웬만하다’가 표준어입니다.' },
+    { id: 'doeyo', kind: 'fix', cat: '맞춤법', re: /되요/g, to: '돼요', note: '‘되어요’의 준말이라 ‘돼요’가 맞습니다.' },
+    { id: 'doet', kind: 'fix', cat: '맞춤법', re: /됬/g, to: '됐', note: '‘되었’의 준말은 ‘됐’입니다.' },
+    { id: 'doeso', kind: 'fix', cat: '맞춤법', re: /되서/g, to: '돼서', note: '‘되어서’의 준말이라 ‘돼서’입니다.' },
+    { id: 'doedo', kind: 'fix', cat: '맞춤법', re: /되도/g, to: '돼도', note: '‘되어도’의 준말이라 ‘돼도’입니다.' },
+    { id: 'andoe', kind: 'fix', cat: '맞춤법', re: /안되/g, to: '안 돼', note: '‘안 되어’의 준말이므로 ‘안 돼’로 띄어 씁니다.' },
+    { id: 'andoetha', kind: 'fix', cat: '맞춤법', re: /않되/g, to: '안 되', note: '‘않-’이 아니라 ‘안’과 ‘되다’입니다.' },
+    { id: 'anhha', kind: 'fix', cat: '맞춤법', re: /않하/g, to: '안 하', note: '‘아니 하다’의 준말은 ‘안 하-’입니다.' },
+    { id: 'anhae', kind: 'fix', cat: '맞춤법', re: /않해/g, to: '안 해', note: '‘아니 해’가 아니라 ‘안 해’입니다.' },
+    { id: 'anhat', kind: 'fix', cat: '맞춤법', re: /않았/g, to: '안 했', note: '‘아니 했다’의 준말은 ‘안 했다’입니다.' },
+    { id: 'anhida', kind: 'fix', cat: '맞춤법', re: /않이/g, to: '아니', note: '‘않이’가 아니라 ‘아니’입니다.' },
+    { id: 'kke', kind: 'fix', cat: '맞춤법', re: /(할|갈|올|볼|줄|쓸|살|낼|먹을|드릴|그럴|알려줄)께/g, to: '$1게', note: '‘-ㄹ게’는 ‘께’가 아니라 ‘게’로 적습니다.' },
+    { id: 'bweoyo', kind: 'fix', cat: '맞춤법', re: /뵈요/g, to: '봬요', note: '‘뵈어요’의 준말이므로 ‘봬요’입니다.' },
+    { id: 'bwerreo', kind: 'fix', cat: '맞춤법', re: /봬러/g, to: '뵈러', note: '‘뵈러’가 기본형 ‘뵈다’에 맞습니다.' },
+    { id: 'eotteokhae', kind: 'fix', cat: '맞춤법', re: /어떻해/g, to: '어떡해', note: '‘어떻게 해’의 줄임은 ‘어떡해’입니다.' },
+    { id: 'eotteoke', kind: 'fix', cat: '맞춤법', re: /어뜨케|어떠케/g, to: '어떻게', note: '‘어떻게’가 표준 표기입니다.' },
+    { id: 'ottoke', kind: 'fix', cat: '맞춤법', re: /오또케|오또캐/g, to: '어떡해', note: '구어 표현은 ‘어떡해’로 적습니다.' },
+    { id: 'yeokhal', kind: 'fix', cat: '맞춤법', re: /역활/g, to: '역할', note: '‘역할(役割)’이 맞습니다. ‘역활’은 잘못된 표기입니다.' },
+    { id: 'huihan', kind: 'fix', cat: '맞춤법', re: /희안하/g, to: '희한하', note: '‘희한하다’가 표준어입니다.' },
+    { id: 'tongjjaero', kind: 'fix', cat: '맞춤법', re: /통채로/g, to: '통째로', note: '‘통째로’가 맞습니다.' },
+    { id: 'seolgeoji', kind: 'fix', cat: '맞춤법', re: /설겆이/g, to: '설거지', note: '‘설거지’가 표준어입니다.' },
+    { id: 'daetga', kind: 'fix', cat: '맞춤법', re: /댓가/g, to: '대가', note: '‘대가(代價)’가 맞습니다.' },
+    { id: 'gaetsu', kind: 'fix', cat: '맞춤법', re: /갯수/g, to: '개수', note: '‘개수’가 표준어입니다.' },
+    { id: 'hallyeogo', kind: 'fix', cat: '맞춤법', re: /할려고/g, to: '하려고', note: '‘하다’에는 ‘-려고’가 아니라 ‘-려고’가 붙지 않습니다. ‘하려고’가 맞습니다.' },
+    { id: 'gallyeogo', kind: 'fix', cat: '맞춤법', re: /갈려고/g, to: '가려고', note: '‘가려고’가 맞습니다.' },
+    { id: 'eoieop', kind: 'fix', cat: '맞춤법', re: /어의없/g, to: '어이없', note: '‘어이없다’가 표준어입니다.' },
+    { id: 'geureonde', kind: 'fix', cat: '맞춤법', re: /그런대/g, to: '그런데', note: '‘그런데’가 맞습니다.' },
+    { id: 'contents', kind: 'fix', cat: '외래어', re: /컨텐츠/g, to: '콘텐츠', note: '표준 표기는 ‘콘텐츠’입니다.' },
+    { id: 'message', kind: 'fix', cat: '외래어', re: /메세지/g, to: '메시지', note: '표준 표기는 ‘메시지’입니다.' },
+    { id: 'leadership', kind: 'fix', cat: '외래어', re: /리더쉽/g, to: '리더십', note: '표준 표기는 ‘리더십’입니다.' },
+    { id: 'accessory', kind: 'fix', cat: '외래어', re: /악세사리|악세서리/g, to: '액세서리', note: '표준 표기는 ‘액세서리’입니다.' },
+    { id: 'baram', kind: 'fix', cat: '맞춤법', re: /바램(?=입니다|이에요|이었다|이었다|을|이)/g, to: '바람', note: '소망의 뜻은 ‘바람’입니다. (‘바램’은 색이 바래다의 활용)' },
+    { id: 'doeit', kind: 'fix', cat: '맞춤법', re: /되있/g, to: '되어 있', note: '‘되어 있다’의 준말은 ‘돼 있다’입니다.' },
+
+    /* --- 띄어쓰기 (교정) --- */
+    { id: 'sp_su1', kind: 'fix', cat: '띄어쓰기', prio: 5, re: /(할|될|볼|갈|올|줄|쓸|알|낼|먹을|받을|만들|찾을|들을|이룰|웃을|쉴|살|없을|있을)\s*수\s*(있|없)/g, to: '$1 수 $2', note: '‘-ㄹ 수 있다/없다’는 ‘수’를 띄어 씁니다.' },
+    { id: 'sp_su2', kind: 'fix', cat: '띄어쓰기', re: /(할|될|볼|갈|올|줄|쓸|알|낼|먹을|받을|만들|찾을|들을|이룰|웃을|쉴|살|없을|있을)수(?![가-힣])/g, to: '$1 수', note: '‘-ㄹ 수’는 ‘수’를 띄어 씁니다.' },
+    { id: 'sp_myeot', kind: 'fix', cat: '띄어쓰기', re: /몇(년|개|명|시|살|번|권|층|일|달|주)/g, to: '몇 $1', note: '‘몇’ 뒤의 단위는 띄어 씁니다.' },
+    { id: 'sp_ju', kind: 'fix', cat: '띄어쓰기', re: /(이번|지난|다음)(주|달)/g, to: '$1 $2', note: '‘이번 주/지난 달’처럼 띄어 씁니다.' },
+    { id: 'sp_ttae', kind: 'fix', cat: '띄어쓰기', re: /(할|했을|그럴|이럴|없을|있을|됐을|올|갈)때/g, to: '$1 때', note: '‘-ㄹ 때’는 ‘때’를 띄어 씁니다.' },
+    { id: 'sp_jom', kind: 'fix', cat: '띄어쓰기', re: /좀더/g, to: '좀 더', note: '‘좀 더’로 띄어 씁니다.' },
+    { id: 'sp_deoisang', kind: 'fix', cat: '띄어쓰기', re: /더이상/g, to: '더 이상', note: '‘더 이상’으로 띄어 씁니다.' },
+    { id: 'sp_geot', kind: 'fix', cat: '띄어쓰기', re: /(할|될|볼|갈|올|줄|쓸|먹을|없을|있을)것/g, to: '$1 것', note: '‘-ㄹ 것’은 ‘것’을 띄어 씁니다.' },
+    { id: 'sp_geotgat', kind: 'fix', cat: '띄어쓰기', re: /것같/g, to: '것 같', note: '‘것 같다’로 띄어 씁니다.' },
+    { id: 'sp_halgeo', kind: 'fix', cat: '띄어쓰기', re: /(할|갈|볼|먹을|줄)거(야|예요|에요|임)/g, to: '$1 거$2', note: '‘-ㄹ 거야’는 ‘거’를 띄어 씁니다.' },
+
+    /* --- 확인 필요 (자동 교정 안 함) --- */
+    { id: 'warn_natda', kind: 'warn', cat: '맞춤법', re: /낳(았|아|을|는|은)|낳다/g, note: '병이 ‘낫다’, 아이를 ‘낳다’입니다. 뜻에 따라 다르게 적습니다.' },
+    { id: 'warn_machu', kind: 'warn', cat: '맞춤법', re: /맞추(었|어|고|면|다)|맞춰/g, note: '‘맞히다’(정답을)와 ‘맞추다’(약속을)를 구분하세요.' },
+    { id: 'warn_roseo', kind: 'warn', cat: '맞춤법', re: /로써|로서/g, note: '수단은 ‘-로써’, 자격은 ‘-로서’입니다.' },
+    { id: 'warn_dae', kind: 'warn', cat: '맞춤법', re: /데요|대요/g, note: '화자가 직접 본 일은 ‘-데요’, 남에게 들은 일은 ‘-대요’입니다.' },
+    { id: 'warn_anh', kind: 'warn', cat: '맞춤법', re: /않(?![가-힣])/g, note: '‘않-’은 ‘아니하-’의 줄임이라 뒤에 동사가 필요합니다. ‘안’과 구분하세요.' },
+    { id: 'warn_dun', kind: 'warn', cat: '맞춤법', re: /-(던지|든지)/g, note: '과거 회상은 ‘-던지’, 선택은 ‘-든지’입니다.' },
+    { id: 'warn_hanbeon', kind: 'warn', cat: '띄어쓰기', re: /한번/g, note: '횟수는 ‘한 번’, 강조의 ‘한번’은 붙여 씁니다.' },
+    { id: 'warn_teullida', kind: 'warn', cat: '맞춤법', re: /틀리다/g, note: '‘다르다’와 ‘틀리다’는 다릅니다. 비교할 때는 ‘다르다’입니다.' },
+    { id: 'warn_bandeusi', kind: 'warn', cat: '맞춤법', re: /반듯이/g, note: '꼭 그렇게는 ‘반드시’, 똑바로는 ‘반듯이’입니다.' }
+  ];
+
+  RULES.forEach(function (r) { r.prio = r.prio || 1; });
+  if ($('ruleBadge')) $('ruleBadge').textContent = RULES.length + ' RULES';
+  if ($('ruleStat')) $('ruleStat').textContent = RULES.length;
+  if ($('ruleStat2')) $('ruleStat2').textContent = RULES.length;
+  if ($('ruleChipCount')) $('ruleChipCount').textContent = RULES.length;
+
+  var ruleChips = $('ruleChips');
+  if (ruleChips) {
+    var cats = {};
+    RULES.forEach(function (r) { cats[r.cat] = (cats[r.cat] || 0) + 1; });
+    ruleChips.innerHTML = Object.keys(cats).map(function (c) {
+      return '<span class="chip">' + c + ' · ' + cats[c] + '</span>';
+    }).join('');
+  }
+
+  /* ================= SCAN ================= */
+  function scan(text) {
+    var found = [];
+    RULES.forEach(function (rule) {
+      var re = new RegExp(rule.re.source, 'g');
+      var m;
+      while ((m = re.exec(text)) !== null) {
+        if (!m[0]) { re.lastIndex++; continue; }
+        var fix = m[0];
+        if (rule.to) {
+          try { fix = m[0].replace(new RegExp(rule.re.source), rule.to); } catch (e) { fix = rule.to; }
         }
-      });
-
-      errBadge.innerText = `교정 발견 ${errorCount}건`;
-      resultBox.innerHTML = corrected.replace(/\n/g, '<br>');
-    }
-
-    function copyCorrected() {
-      const box = document.getElementById('spellResultBox');
-      navigator.clipboard.writeText(box.innerText);
-      alert('교정된 텍스트가 복사되었습니다.');
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('darkModeToggle').addEventListener('click', () => {
-        document.documentElement.classList.toggle('dark');
-      });
+        found.push({ start: m.index, end: m.index + m[0].length, raw: m[0], fix: fix, rule: rule });
+      }
     });
-  </script>
+    found.sort(function (a, b) {
+      return a.start - b.start || (b.end - b.start) - (a.end - a.start) || b.rule.prio - a.rule.prio;
+    });
+    var kept = [], lastEnd = -1;
+    found.forEach(function (f) {
+      if (f.start >= lastEnd) { kept.push(f); lastEnd = f.end; }
+    });
+    return kept;
+  }
+
+  /* ================= STATE ================= */
+  var state = { issues: [], ignored: {}, filter: 'all', countMode: 'space', goal: 1000, lastText: '' };
+  var editor = $('editor');
+
+  function issueKey(it) { return it.rule.id + '|' + it.raw + '|' + it.start; }
+
+  function rescan() {
+    var text = editor.value;
+    state.lastText = text;
+    var all = scan(text);
+    state.issues = all;
+    render();
+  }
+
+  var scanTimer = null;
+  editor.addEventListener('input', function () {
+    $('scanIndicator').classList.remove('hidden');
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(function () {
+      $('scanIndicator').classList.add('hidden');
+      rescan();
+    }, 220);
+    updateCounts();
+  });
+
+  /* ================= RENDER ================= */
+  function escHtml(s) { return Lemon.esc(s); }
+
+  function render() {
+    var text = editor.value;
+    var visible = state.issues.filter(function (it) { return !state.ignored[issueKey(it)]; });
+
+    /* issues list */
+    var list = visible.filter(function (it) { return state.filter === 'all' || it.rule.kind === state.filter; });
+    var box = $('issueList');
+    if (!list.length) {
+      box.innerHTML = '<div class="py-8 text-center">' +
+        '<div class="w-10 h-10 mx-auto rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-500 flex items-center justify-center mb-2">' +
+        '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="4 12 9 17 20 6"></polyline></svg></div>' +
+        '<p class="text-[12px] font-bold">' + (text.trim() ? '문제를 찾지 못했어요' : '검사할 글이 없어요') + '</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">' + (text.trim() ? '잘 쓰셨습니다.' : '원고를 입력하면 바로 검사합니다.') + '</p></div>';
+    } else {
+      box.innerHTML = list.map(function (it, i) {
+        var warn = it.rule.kind === 'warn';
+        return '<div class="issue-item ' + (warn ? 'warn' : '') + ' panel-soft px-2.5 py-2">' +
+          '<div class="flex items-start gap-2">' +
+          '<div class="min-w-0 flex-1">' +
+          '<div class="flex items-center gap-1.5 flex-wrap">' +
+          '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded ' + (warn ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-400' : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400') + '">' + it.rule.cat + '</span>' +
+          '<span class="text-[13px] font-semibold raw">' + escHtml(it.raw) + '</span>' +
+          (warn ? '' : '<svg class="w-3 h-3 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg><span class="text-[13px] fix">' + escHtml(it.fix) + '</span>') +
+          '</div>' +
+          '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">' + escHtml(it.rule.note) + '</p>' +
+          '</div>' +
+          '<div class="flex flex-col gap-1 shrink-0">' +
+          (warn ? '' : '<button class="ghost-btn !px-2 !py-1 !text-[10px]" data-apply="' + i + '">적용</button>') +
+          '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-neutral-400" data-ignore="' + i + '">무시</button>' +
+          '</div></div></div>';
+      }).join('');
+    }
+
+    /* preview */
+    var preview = $('preview');
+    if (!text.trim()) {
+      preview.innerHTML = '<span class="text-neutral-400">원고를 입력하면 교정 결과가 여기에 표시됩니다.</span>';
+    } else {
+      var out = '', cursor = 0;
+      visible.forEach(function (it) {
+        if (it.start < cursor) return;
+        out += escHtml(text.slice(cursor, it.start));
+        var cls = it.rule.kind === 'warn' ? 'hl-warn' : 'hl-fix';
+        out += '<mark class="' + cls + '" title="' + escHtml(it.rule.note) + '">' + escHtml(it.raw) + '</mark>';
+        cursor = it.end;
+      });
+      out += escHtml(text.slice(cursor));
+      preview.innerHTML = out;
+    }
+
+    /* counts */
+    var fixable = visible.filter(function (it) { return it.rule.kind === 'fix'; }).length;
+    var warns = visible.length - fixable;
+    $('inlineIssues').textContent = '문제 ' + visible.length + '건';
+    $('headerCountText').textContent = visible.length + '건';
+    $('headerCount').classList.toggle('hidden', visible.length === 0);
+    $('btnFixAll').disabled = fixable === 0;
+    $('btnFixAll').style.opacity = fixable === 0 ? '.5' : '1';
+    updateCounts();
+  }
+
+  /* ================= COUNTS ================= */
+  function utf8Bytes(s) {
+    if (window.TextEncoder) return new TextEncoder().encode(s).length;
+    return unescape(encodeURIComponent(s)).length;
+  }
+  function euckrBytes(s) {
+    var n = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c === 10 || c === 13) n += 1;
+      else if (c < 128) n += 1;
+      else if (c >= 0xAC00 && c <= 0xD7A3) n += 2;
+      else if (c >= 0x3131 && c <= 0x318E) n += 2;
+      else n += 2;
+    }
+    return n;
+  }
+
+  function updateCounts() {
+    var text = editor.value;
+    var withSpace = text.length;
+    var noSpace = text.replace(/\s/g, '').length;
+    var shown = state.countMode === 'space' ? withSpace : noSpace;
+    $('charBig').textContent = shown.toLocaleString();
+    $('inlineCount').textContent = shown.toLocaleString() + '자';
+    $('byteUtf').textContent = utf8Bytes(text).toLocaleString();
+    $('byteEuc').textContent = euckrBytes(text).toLocaleString();
+    var words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    $('wordCount').textContent = words.toLocaleString();
+    var sentences = text.trim() ? (text.match(/[^.!?。\n]+[.!?。]?/g) || []).filter(function (s) { return s.trim().length; }).length : 0;
+    $('sentCount').textContent = sentences.toLocaleString();
+    var pct = Math.min(100, Math.round((shown / state.goal) * 100));
+    $('goalBar').style.width = pct + '%';
+    $('goalText').textContent = shown.toLocaleString() + ' / ' + state.goal.toLocaleString() + '자';
+  }
+
+  /* ================= ACTIONS ================= */
+  function applyIssues(items) {
+    var text = editor.value;
+    var sorted = items.slice().sort(function (a, b) { return b.start - a.start; });
+    sorted.forEach(function (it) {
+      text = text.slice(0, it.start) + it.fix + text.slice(it.end);
+    });
+    editor.value = text;
+    return sorted.length;
+  }
+
+  $('btnFixAll').addEventListener('click', function () {
+    var visible = state.issues.filter(function (it) { return !state.ignored[issueKey(it)] && it.rule.kind === 'fix'; });
+    if (!visible.length) { Lemon.toast('교정할 항목이 없어요', 'info'); return; }
+    applyIssues(visible);
+    Lemon.toast(visible.length + '건을 교정했어요', 'ok');
+    Lemon.hap(14);
+    Lemon.confetti(10);
+    state.ignored = {};
+    rescan();
+  });
+
+  document.addEventListener('click', function (e) {
+    var apply = e.target.closest('[data-apply]');
+    if (apply) {
+      var vis = state.issues.filter(function (it) { return !state.ignored[issueKey(it)] && (state.filter === 'all' || it.rule.kind === state.filter); });
+      var idx = parseInt(apply.getAttribute('data-apply'), 10);
+      var item = vis[idx];
+      if (!item) return;
+      applyIssues([item]);
+      Lemon.toast('‘' + item.raw + '’ → ‘' + item.fix + '’', 'ok');
+      rescan();
+      return;
+    }
+    var ign = e.target.closest('[data-ignore]');
+    if (ign) {
+      var vis2 = state.issues.filter(function (it) { return !state.ignored[issueKey(it)] && (state.filter === 'all' || it.rule.kind === state.filter); });
+      var it2 = vis2[parseInt(ign.getAttribute('data-ignore'), 10)];
+      if (!it2) return;
+      state.ignored[issueKey(it2)] = true;
+      render();
+      return;
+    }
+    var f = e.target.closest('[data-filter]');
+    if (f) {
+      state.filter = f.getAttribute('data-filter');
+      document.querySelectorAll('[data-filter]').forEach(function (b) {
+        var on = b.getAttribute('data-filter') === state.filter;
+        b.className = 'px-2 py-1 rounded-md text-[10px] font-bold ' + (on ? 'bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300' : 'text-neutral-500');
+      });
+      render();
+      return;
+    }
+    var c = e.target.closest('[data-count]');
+    if (c) {
+      state.countMode = c.getAttribute('data-count');
+      document.querySelectorAll('[data-count]').forEach(function (b) {
+        var on = b.getAttribute('data-count') === state.countMode;
+        b.className = 'px-2 py-1 rounded-md text-[10px] font-bold ' + (on ? 'bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300' : 'text-neutral-500');
+      });
+      updateCounts();
+    }
+  });
+
+  $('goalRange').addEventListener('input', function () {
+    state.goal = parseInt(this.value, 10);
+    updateCounts();
+  });
+
+  $('btnCopy').addEventListener('click', function () {
+    if (!editor.value.trim()) return Lemon.toast('복사할 내용이 없어요', 'err');
+    Lemon.copy(editor.value, '원고를 복사했어요');
+  });
+
+  $('btnClear').addEventListener('click', function () {
+    editor.value = '';
+    state.ignored = {};
+    rescan();
+    Lemon.toast('지웠어요', 'info');
+  });
+
+  $('btnSave').addEventListener('click', function () {
+    var text = editor.value;
+    if (!text.trim()) return Lemon.toast('저장할 원고가 없어요', 'err');
+    var rec = ARCHIVE.add({
+      title: text.trim().slice(0, 44).replace(/\s+/g, ' '),
+      text: text,
+      chars: text.length,
+      issues: state.issues.length
+    });
+    if (rec) { Lemon.toast('보관함에 저장했어요', 'ok'); renderArchive(); }
+  });
+
+  /* ================= SAMPLES ================= */
+  var SAMPLES = {
+    resume: '저는 오랫만에 지원서를 쓰게 되었습니다. 팀에서 제 역활은 새로운 고객을 만나는 일이었고, 그런대 처음에는 어떻게 말해야 할지 몰라 많이 떨었습니다. 몇일 동안 고민한 끝에 할수 있는 일부터 하기로 했고, 그 결과 지금은 웬지 모르게 자신감이 생겼습니다. 앞으로도 되요? 라고 묻기보다 먼저 시도하는 사람이 되겠습니다. 저의 바램은 팀과 함께 성장하는 것입니다.',
+    report: '이번주 진행 상황을 보고드립니다. 신규 화면 개발은 80% 완료되었고, 남은 작업은 알림 기능입니다. 테스트는 다음주 화요일에 시작할수 있습니다. 그런대 디자인 확인이 늦어지면 일정이 밀릴수 있으니 금요일까지 검토 부탁드립니다. 메세지 발송 기능은 악세사리 같은 부가 기능이라 후순위로 두었습니다.',
+    essay: '현대 사회에서 리더쉽의 역활은 갈수록 중요해지고 있다. 과거에는 지시하는 사람이 리더였다면, 지금은 함께 방향을 찾는 사람이 리더이다. 이 글에서는 그 변화를 세 가지로 정리하고자 한다. 첫째, 의사결정 과정에서 구성원의 의견을 얼마나 반영하는지 살펴볼 필요가 있다. 둘째, 실패를 어떻게 다루는지가 조직 문화를 결정한다.',
+    message: '안녕하세요, 내일 회의 시간이 몇시인가요? 제가 착각해서 몇일 전에 말씀드린 시간과 다를수 있을것 같습니다. 확인 되면 답장 부탁드려요. 좋은 하루 되세요!'
+  };
+
+  var sampleOrder = ['resume', 'report', 'essay', 'message'];
+  var sampleIdx = 0;
+
+  function loadSample(key) {
+    editor.value = SAMPLES[key] || SAMPLES.resume;
+    state.ignored = {};
+    rescan();
+    go('studio');
+    Lemon.toast('예시 원고를 불러왔어요', 'ok');
+  }
+
+  document.querySelectorAll('[data-sample]').forEach(function (b) {
+    b.addEventListener('click', function () { loadSample(b.getAttribute('data-sample')); });
+  });
+  $('btnSample').addEventListener('click', function () {
+    sampleIdx = (sampleIdx + 1) % sampleOrder.length;
+    loadSample(sampleOrder[sampleIdx]);
+  });
+
+  /* ================= ARCHIVE ================= */
+  function renderArchive() {
+    var list = ARCHIVE.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center"><div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3">' +
+        '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path></svg></div>' +
+        '<p class="text-[12px] font-bold">저장한 원고가 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">스튜디오에서 원고를 쓰고 저장해 보세요.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-4 card-lift"><div class="flex items-start justify-between gap-3">' +
+        '<div class="min-w-0 flex-1">' +
+        '<p class="text-[12px] font-bold leading-snug truncate">' + Lemon.esc(it.title) + '</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2 leading-relaxed">' + Lemon.esc((it.text || '').slice(0, 140)) + '</p>' +
+        '<p class="text-[10px] text-neutral-400 mt-1">' + (it.chars || 0).toLocaleString() + '자 · 문제 ' + (it.issues || 0) + '건 · ' + Lemon.timeAgo(it.ts) + '</p>' +
+        '</div><div class="flex flex-col gap-1 shrink-0">' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px]" data-load="' + it.id + '">열기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button>' +
+        '</div></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var load = e.target.closest('[data-load]');
+    if (load) {
+      var item = ARCHIVE.all().filter(function (x) { return x.id === load.getAttribute('data-load'); })[0];
+      if (!item) return;
+      editor.value = item.text || '';
+      state.ignored = {};
+      rescan();
+      go('studio');
+      Lemon.toast('원고를 열었어요', 'ok');
+    }
+    var del = e.target.closest('[data-del]');
+    if (del) { ARCHIVE.remove(del.getAttribute('data-del')); renderArchive(); Lemon.toast('삭제했어요', 'info'); }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!ARCHIVE.count()) return Lemon.toast('비울 기록이 없어요', 'info');
+    if (window.confirm('보관함을 모두 비울까요?')) { ARCHIVE.clear(); renderArchive(); Lemon.toast('비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail.view === 'archive') renderArchive();
+    if (e.detail.view === 'studio') { rescan(); }
+  });
+
+  /* init */
+  editor.value = SAMPLES.resume;
+  rescan();
+  renderArchive();
+})();
+</script>
 </body>
 </html>
