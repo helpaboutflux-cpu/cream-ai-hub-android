@@ -1203,14 +1203,37 @@ tailwind.config = {
       }
     }
     ictx.putImageData(frame, 0, 0);
-    var m = Math.round(iw * 0.05) + 12;
+    // tighten around the ink so chip corners and edges never reach OCR
+    var bx0 = Math.round(iw * 0.08), by0 = Math.round(ih * 0.08);
+    var bx1 = Math.round(iw * 0.92), by1 = Math.round(ih * 0.92);
+    var minX = bx1, minY = by1, maxX = bx0, maxY = by0;
+    for (var yy2 = by0; yy2 < by1; yy2++) {
+      for (var xx2 = bx0; xx2 < bx1; xx2++) {
+        var qq = (yy2 * iw + xx2) * 4;
+        if (d[qq] < 110) {
+          if (xx2 < minX) minX = xx2;
+          if (xx2 > maxX) maxX = xx2;
+          if (yy2 < minY) minY = yy2;
+          if (yy2 > maxY) maxY = yy2;
+        }
+      }
+    }
+    var tx0 = 0, ty0 = 0, tw = iw, th = ih;
+    if (maxX > minX && maxY > minY && (maxX - minX) > 12 && (maxY - minY) > 10) {
+      var pad2 = Math.round(Math.max(maxX - minX, maxY - minY) * 0.16) + 6;
+      tx0 = Math.max(0, minX - pad2);
+      ty0 = Math.max(0, minY - pad2);
+      tw = Math.min(iw - tx0, maxX - minX + pad2 * 2);
+      th = Math.min(ih - ty0, maxY - minY + pad2 * 2);
+    }
+    var m = Math.round(tw * 0.08) + 14;
     var out = document.createElement('canvas');
-    out.width = iw + m * 2;
-    out.height = ih + m * 2;
+    out.width = tw + m * 2;
+    out.height = th + m * 2;
     var octx = out.getContext('2d');
     octx.fillStyle = '#ffffff';
     octx.fillRect(0, 0, out.width, out.height);
-    octx.drawImage(inner, m, m);
+    octx.drawImage(inner, tx0, ty0, tw, th, m, m, tw, th);
     return out;
   }
 
