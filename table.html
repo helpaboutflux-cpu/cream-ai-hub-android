@@ -1158,17 +1158,15 @@ tailwind.config = {
     var sh = Math.min(work.height - sy, Math.round((box.h + padY * 2) * scale));
     if (sw < 8 || sh < 8) return null;
     var up = Math.max(2, Math.min(5, Math.round(640 / sw)));
-    var margin = 18;
-    var c = document.createElement('canvas');
-    c.width = sw * up + margin * 2;
-    c.height = sh * up + margin * 2;
-    var ctx = c.getContext('2d', { willReadFrequently: true });
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(work, sx, sy, sw, sh, margin, margin, sw * up, sh * up);
-    var frame = ctx.getImageData(0, 0, c.width, c.height);
+    var iw = sw * up, ih = sh * up;
+    var inner = document.createElement('canvas');
+    inner.width = iw;
+    inner.height = ih;
+    var ictx = inner.getContext('2d', { willReadFrequently: true });
+    ictx.imageSmoothingEnabled = true;
+    ictx.imageSmoothingQuality = 'high';
+    ictx.drawImage(work, sx, sy, sw, sh, 0, 0, iw, ih);
+    var frame = ictx.getImageData(0, 0, iw, ih);
     var d = frame.data, i;
     if (invert) {
       for (i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
@@ -1185,8 +1183,16 @@ tailwind.config = {
       v = v < 0 ? 0 : v > 255 ? 255 : v;
       d[i] = d[i + 1] = d[i + 2] = v;
     }
-    ctx.putImageData(frame, 0, 0);
-    return c;
+    ictx.putImageData(frame, 0, 0);
+    var m = Math.round(iw * 0.06) + 10;
+    var out = document.createElement('canvas');
+    out.width = iw + m * 2;
+    out.height = ih + m * 2;
+    var octx = out.getContext('2d');
+    octx.fillStyle = '#ffffff';
+    octx.fillRect(0, 0, out.width, out.height);
+    octx.drawImage(inner, m, m);
+    return out;
   }
 
   function cleanCellLine(s) {
@@ -1293,7 +1299,8 @@ tailwind.config = {
       for (var bi = 0; bi < rowGroups[ri].items.length; bi++) {
         var box = rowGroups[ri].items[bi];
         var ci = nearestGroup(colGroups, box.cx);
-        var content = await readCell(worker, work, box, scale);
+        var content = null;
+        try { content = await readCell(worker, work, box, scale); } catch (eR) { content = null; if (OCR_DEBUG) OCR_TMP.push({ box: box, pass: -1, text: 'ERR ' + eR.message }); }
         if (!content) continue;
         cells[ci + '-' + (ri + 1)] = content;
         total++;
@@ -1356,7 +1363,10 @@ tailwind.config = {
       var w = await getOcrWorker();
       ocrProgress(56, '시간표 칸을 찾는 중…');
       var parsed = null;
-      try { parsed = await ocrByCells(w); } catch (errCell) { if (window.console) console.warn('[table] cell ocr failed', errCell); }
+      try { parsed = await ocrByCells(w); } catch (errCell) {
+        window.__ocrFail = String(errCell && errCell.message ? errCell.message : errCell);
+        if (window.console) console.warn('[table] cell ocr failed', errCell);
+      }
       if (!parsed || !Object.keys(parsed.cells).length) {
         ocrProgress(64, '표 전체를 읽는 중…');
         var cv = buildOcrCanvas();
