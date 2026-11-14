@@ -207,7 +207,7 @@ tailwind.config = {
   </div>
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="lemon-ui.js"></script>
 <script>
 (function () {
@@ -323,28 +323,43 @@ tailwind.config = {
     slot.innerHTML = '';
     if (!data.qr) { slot.style.display = 'none'; $('qrNote').textContent = 'QR 숨김'; return; }
     slot.style.display = 'inline-flex';
-    if (typeof QRCode === 'undefined') {
+    if (typeof qrcode === 'undefined') {
       $('qrNote').textContent = 'QR 라이브러리 로딩 실패 · vCard 복사 사용';
       return;
     }
-    var candidates = [qrVcard(true), qrVcard(false)];
-    var levels = [QRCode.CorrectLevel.M, QRCode.CorrectLevel.L];
+    try {
+      if (qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+    } catch (eU) { }
+    var payloads = [qrVcard(true), qrVcard(false), 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:' + vcardEsc(data.name) + '\r\nTEL:' + vcardEsc(data.phone) + '\r\nEMAIL:' + vcardEsc(data.email) + '\r\nEND:VCARD\r\n'];
     var made = false, lastErr = null;
-    for (var c = 0; c < candidates.length && !made; c++) {
-      for (var l = 0; l < levels.length && !made; l++) {
-        try {
-          slot.innerHTML = '';
-          new QRCode(slot, {
-            text: candidates[c],
-            width: 132, height: 132,
-            colorDark: '#0f172a', colorLight: '#ffffff',
-            correctLevel: levels[l]
-          });
-          if (slot.querySelector('canvas') || slot.querySelector('img')) made = true;
-        } catch (e) {
-          lastErr = e;
-          slot.innerHTML = '';
+    for (var i = 0; i < payloads.length && !made; i++) {
+      try {
+        var qr = qrcode(0, 'M');
+        qr.addData(payloads[i]);
+        qr.make();
+        var count = qr.getModuleCount();
+        var cell = 8, margin = 4;
+        var size = (count + margin * 2) * cell;
+        var c = document.createElement('canvas');
+        c.width = size;
+        c.height = size;
+        var g = c.getContext('2d');
+        g.fillStyle = '#ffffff';
+        g.fillRect(0, 0, size, size);
+        g.fillStyle = '#0f172a';
+        for (var r = 0; r < count; r++) {
+          for (var col = 0; col < count; col++) {
+            if (qr.isDark(r, col)) g.fillRect((col + margin) * cell, (r + margin) * cell, cell, cell);
+          }
         }
+        slot.innerHTML = '';
+        c.style.width = '100%';
+        c.style.height = 'auto';
+        c.style.display = 'block';
+        slot.appendChild(c);
+        made = true;
+      } catch (e) {
+        lastErr = e;
       }
     }
     if (made) {
