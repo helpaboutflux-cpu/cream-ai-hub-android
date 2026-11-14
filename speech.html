@@ -1,96 +1,743 @@
 <!DOCTYPE html>
 <html lang="ko" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lemon Speech - 발표 프롬프터 & 대본 타이머</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46' },
-            lemon: { 400: '#facc15', 500: '#eab308', 600: '#ca8a04' }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .btn-tap { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .btn-tap:hover { transform: translateY(-1.5px) scale(1.02); }
-    .btn-tap:active { transform: scale(0.94); }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Speech — 발표 대본 타이머 & 풀스크린 프롬프터</title>
+<meta name="description" content="대본의 단어 수로 발표 시간을 계산하고, 글자 크기·속도·미러 모드를 갖춘 풀스크린 프롬프터로 발표를 진행합니다.">
+<meta name="theme-color" content="#e11d48">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#e11d48', light: '#f43f5e', deep: '#9f1239', 50: '#fff1f2', 100: '#ffe4e6', 200: '#fecdd3', 300: '#fda4af', 400: '#fb7185', 500: '#f43f5e', 600: '#e11d48', 700: '#be123c', 800: '#9f1239', 900: '#881337', 950: '#4c0519' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #e11d48; --brand-2: #f43f5e; --brand-deep: #9f1239; }
+  #scriptInput { min-height: 300px; line-height: 1.85; font-size: 14px; }
+  .prompter { position: fixed; inset: 0; z-index: 80; background: #050507; display: none; }
+  .prompter.on { display: block; }
+  .pr-viewport { position: absolute; inset: 0; overflow: hidden; cursor: pointer; }
+  .pr-text {
+    position: absolute; left: 0; right: 0; top: 0;
+    padding: 0 6vw;
+    color: #f4f4f5;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    white-space: pre-wrap;
+    will-change: transform;
+  }
+  .pr-text.mirror { transform-origin: center; }
+  .pr-guide {
+    position: absolute; left: 8%; right: 8%; top: 38%; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(244,63,94,.7), transparent);
+    pointer-events: none;
+  }
+  .pr-bar { position: absolute; top: 0; left: 0; height: 3px; background-image: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .2s linear; }
+  .pr-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; padding: .6rem .8rem; color: rgba(255,255,255,.62); font-size: 11px; font-weight: 700; z-index: 3; }
+  .pr-btn { width: 2.2rem; height: 2.2rem; border-radius: .7rem; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.08); color: #fff; }
+  .pr-btn:active { transform: scale(.92); }
+  .pr-count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22vw; font-weight: 900; z-index: 5; background: rgba(5,5,7,.92); }
+  .wpm-badge { font-variant-numeric: tabular-nums; }
+  .paragraph-chip { transition: background .15s; }
+</style>
 </head>
-<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col justify-between antialiased selection:bg-lemon-500 selection:text-neutral-950">
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
 
-  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <a href="index.html" class="flex items-center space-x-2.5 group">
-          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lemon-600 to-amber-400 p-[1px] shadow-md group-hover:scale-105 transition-transform">
-            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
-              <svg class="w-5 h-5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-              </svg>
-            </div>
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 o2 opacity-20" style="background:#f43f5e"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Speech</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">PROMPTER</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">발표 대본 · 프롬프터</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            대본 → 시간 계산 → 프롬프터
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            발표 시간,<br><span class="brand-text">정확히</span> 맞춰 연습합니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            대본을 붙여넣으면 말하기 속도로 소요 시간을 계산합니다. 대형 글씨 프롬프터가 자동으로 흘러가 발표를 도와줍니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+              대본 작성하기
+            </button>
+            <button id="btnQuickPrompter" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+              바로 프롬프터
+            </button>
           </div>
-          <div class="flex flex-col">
-            <div class="flex items-center space-x-1.5">
-              <span class="font-black text-lg tracking-tight">Lemon Speech</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lemon-100 dark:bg-lemon-950 text-lemon-700 dark:text-lemon-400 font-bold border border-lemon-300 dark:border-lemon-800">프롬프터</span>
-            </div>
-            <span class="text-[10px] text-neutral-500 -mt-0.5">발표·스피치 프롬프터 & 대본 타이머</span>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text">1분</p><p class="text-[10px] text-neutral-500">단위 계산</p></div>
+            <div><p class="text-lg font-black brand-text">미러</p><p class="text-[10px] text-neutral-500">좌우반전</p></div>
+            <div><p class="text-lg font-black brand-text">자동</p><p class="text-[10px] text-neutral-500">스크롤</p></div>
           </div>
-        </a>
+        </div>
+
+        <div class="panel p-5">
+          <div class="flex items-center justify-between text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-2">
+            <span>발표 모드 미리보기</span>
+            <span class="font-mono">01:24 / 03:00</span>
+          </div>
+          <div class="rounded-2xl bg-neutral-950 p-5 relative overflow-hidden">
+            <div class="absolute left-[8%] right-[8%] top-[38%] h-px" style="background:linear-gradient(90deg,transparent,rgba(244,63,94,.85),transparent)"></div>
+            <p class="text-white/30 text-[15px] leading-relaxed font-bold">안녕하십니까. 오늘 발표에서는 저희 팀의 문제 정의부터</p>
+            <p class="text-white text-[17px] leading-relaxed font-extrabold mt-2">먼저, 사용자가 겪는 세 가지 불편을 정리했습니다. 첫째는 시간, 둘째는 비용, 셋째는 신뢰입니다.</p>
+            <p class="text-white/30 text-[15px] leading-relaxed font-bold mt-2">이 세 가지를 기준으로 저희는 새로운 구조를 제안합니다.</p>
+          </div>
+          <div class="flex items-center justify-between mt-3 text-[10px] text-neutral-500 dark:text-neutral-400">
+            <span>속도 140 WPM</span><span>글자 44px</span><span>미러 OFF</span>
+          </div>
+        </div>
       </div>
     </div>
-  </header>
 
-  <main class="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
-    <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm space-y-4">
-      <div class="flex items-center justify-between">
-        <h3 class="font-bold text-sm text-neutral-900 dark:text-white">대본 입력 & 소요 시간 분석</h3>
-        <span id="estimatedTime" class="text-xs font-mono font-bold text-lemon-600 dark:text-lemon-400">예상 발표 시간: 약 0분 0초</span>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 16 14"></polyline></svg></div>
+        <h3 class="text-[13px] font-bold">소요 시간 계산</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">어절 수와 말하기 속도로 분·초를 계산합니다.</p>
       </div>
-      <textarea id="scriptInput" rows="8" oninput="analyzeScript()" placeholder="발표할 대본을 여기에 붙여넣으세요..." class="w-full p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-850 text-sm focus:outline-none focus:border-lemon-500 resize-none leading-relaxed"></textarea>
-      <div class="flex items-center justify-between pt-2">
-        <button onclick="startPrompter()" class="px-6 py-2.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-black text-xs btn-tap">
-          프롬프터 전체화면 시작
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M7 9h10M7 13h6"></path></svg></div>
+        <h3 class="text-[13px] font-bold">풀스크린 프롬프터</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">큰 글씨가 자동으로 흘러가 시선을 붙잡습니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"></path><path d="M7 8l5-5 5 5"></path></svg></div>
+        <h3 class="text-[13px] font-bold">속도 · 크기 조절</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">발표 중에도 실시간으로 조정합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"></path></svg></div>
+        <h3 class="text-[13px] font-bold">미러 모드</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">빔프로젝터 반사판에도 맞춰 좌우를 뒤집습니다.</p>
+      </div>
+    </div>
+
+    <div class="panel p-5 sm:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-sm font-black">대본 예시로 시작</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">발표 시간대에 맞는 대본을 불러옵니다.</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <button class="panel-soft card-lift p-4 text-left" data-sample="m3">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">3분 발표</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">약 420어절 · 수업 발표</p>
+        </button>
+        <button class="panel-soft card-lift p-4 text-left" data-sample="m5">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">5분 발표</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">약 700어절 · 프로젝트 공유</p>
+        </button>
+        <button class="panel-soft card-lift p-4 text-left" data-sample="m1">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">1분 스피치</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">약 140어절 · 자기소개</p>
         </button>
       </div>
     </div>
-  </main>
+  </section>
 
-  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
-      <div class="flex items-center space-x-2">
-        <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Speech</span>
-        <span>·</span>
-        <span>Lemon soft 21대 독립 웹 프로덕트</span>
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-4">
+    <div class="grid lg:grid-cols-[1.2fr_.8fr] gap-4 lg:items-start">
+
+      <div class="panel p-4 sm:p-5 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-[13px] font-black">발표 대본</h2>
+          <div class="flex items-center gap-1.5">
+            <button id="btnSampleCycle" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">예시</button>
+            <button id="btnCopyScript" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">복사</button>
+            <button id="btnSaveScript" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">저장</button>
+          </div>
+        </div>
+        <textarea id="scriptInput" class="lemon-textarea" placeholder="발표 대본을 입력하거나 붙여넣으세요. 문단은 빈 줄로 구분합니다."></textarea>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <span id="statWords">0어절</span><span class="opacity-40">·</span>
+          <span id="statChars">0자</span><span class="opacity-40">·</span>
+          <span id="statParas">0문단</span>
+        </div>
+        <button id="btnPrompter" class="primary-btn btn-shimmer w-full !py-3">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+          프롬프터 시작
+        </button>
       </div>
-      <div><span>2026 Lemon soft. All rights reserved.</span></div>
+
+      <div class="space-y-4">
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-[13px] font-black">예상 발표 시간</h2>
+            <span class="text-[10px] font-mono wpm-badge text-neutral-500" id="wpmLabel">140 WPM</span>
+          </div>
+          <p class="text-[34px] font-black leading-none tabular" id="durationBig">0:00</p>
+          <div class="flex items-center justify-between text-[10px] mt-2 text-neutral-500 dark:text-neutral-400">
+            <span id="durationHint">대본을 입력해 주세요</span>
+            <span id="totalChars">0자</span>
+          </div>
+          <div class="mt-3">
+            <div class="flex items-center justify-between text-[10px] mb-1">
+              <span class="lemon-label">말하기 속도</span>
+              <span class="font-mono font-bold" id="wpmVal">140</span>
+            </div>
+            <input type="range" id="wpmRange" class="lemon-range" min="80" max="220" step="5" value="140">
+            <div class="flex justify-between text-[9px] text-neutral-400 mt-0.5"><span>느리게 80</span><span>보통 140</span><span>빠르게 220</span></div>
+          </div>
+          <div class="mt-3">
+            <div class="flex items-center justify-between text-[10px] mb-1">
+              <span class="lemon-label">목표 시간</span>
+              <span id="goalLabel" class="font-mono font-bold">3분</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button class="pill-btn !py-1 !px-2 !text-[10px]" data-goal="60">1분</button>
+              <button class="pill-btn !py-1 !px-2 !text-[10px]" data-goal="180">3분</button>
+              <button class="pill-btn !py-1 !px-2 !text-[10px]" data-goal="300">5분</button>
+              <button class="pill-btn !py-1 !px-2 !text-[10px]" data-goal="600">10분</button>
+            </div>
+            <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-2" id="goalHint">목표에 맞는 속도를 알려드립니다.</p>
+          </div>
+        </div>
+
+        <div class="panel p-4 sm:p-5">
+          <h2 class="text-[13px] font-black mb-2">프롬프터 설정</h2>
+          <div class="space-y-3">
+            <div>
+              <div class="flex items-center justify-between"><span class="lemon-label">글자 크기</span><span id="fontVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">44</span></div>
+              <input type="range" id="fontRange" class="lemon-range" min="24" max="96" step="2" value="44">
+            </div>
+            <div>
+              <div class="flex items-center justify-between"><span class="lemon-label">줄 간격</span><span id="lineVal" class="text-[11px] font-mono font-bold text-brand-600 dark:text-brand-400">1.6</span></div>
+              <input type="range" id="lineRange" class="lemon-range" min="12" max="24" step="1" value="16">
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span class="text-[12px] font-semibold">좌우 반전 (미러)</span>
+              <span class="switch" data-toggle="mirror" role="switch" aria-checked="false" tabindex="0"></span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </footer>
 
-  <script>
-    function analyzeScript() {
-      const text = document.getElementById('scriptInput').value.trim();
-      const words = text ? text.split(/\s+/).length : 0;
-      // Average Korean speaking rate: 300 syllables / 100 words per minute
-      const totalSec = Math.round((words / 80) * 60);
-      const min = Math.floor(totalSec / 60);
-      const sec = totalSec % 60;
-      document.getElementById('estimatedTime').innerText = `예상 발표 시간: 약 ${min}분 ${sec}초 (${words}단어)`;
+    <div class="panel p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-[13px] font-black">문단별 예상 시간</h2>
+        <span class="text-[10px] text-neutral-400">빈 줄로 문단을 나눕니다</span>
+      </div>
+      <div id="paraList" class="space-y-1.5"></div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">저장한 대본을 다시 열어 연습을 이어가세요.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="space-y-2.5"></div>
+  </section>
+
+</main>
+
+<!-- Prompter -->
+<div id="prompter" class="prompter">
+  <div class="pr-bar" id="prBar" style="width:0%"></div>
+  <div class="pr-top">
+    <div class="flex items-center gap-2">
+      <button class="pr-btn" id="prExit" title="나가기 (Esc)">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+      <span class="font-mono" id="prTime">00:00 / 00:00</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button class="pr-btn" id="prSlower" title="느리게 (↓)">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </button>
+      <span class="font-mono w-10 text-center" id="prSpeed">1.0x</span>
+      <button class="pr-btn" id="prFaster" title="빠르게 (↑)">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 15 12 9 18 15"></polyline></svg>
+      </button>
+      <button class="pr-btn" id="prMirror" title="미러">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"></path><path d="M8 7L3 12l5 5z"></path><path d="M16 7l5 5-5 5z"></path></svg>
+      </button>
+      <button class="pr-btn" id="prRestart" title="처음부터">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 4 3 10 9 10"></polyline></svg>
+      </button>
+      <button class="pr-btn" id="prPlay" title="재생/일시정지 (Space)">
+        <svg class="w-4 h-4" id="prPlayIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+      </button>
+    </div>
+  </div>
+  <div class="pr-viewport" id="prViewport">
+    <div class="pr-text" id="prText"></div>
+  </div>
+  <div class="pr-guide"></div>
+  <div class="pr-count hidden" id="prCount">3</div>
+</div>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Speech</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="ocr.html" class="hover:text-brand-600 dark:hover:text-brand-400">OCR</a>
+      <a href="spell.html" class="hover:text-brand-600 dark:hover:text-brand-400">Spell</a>
+      <a href="wallpaper.html" class="hover:text-brand-600 dark:hover:text-brand-400">Wallpaper</a>
+      <a href="table.html" class="hover:text-brand-600 dark:hover:text-brand-400">Table</a>
+      <a href="speed.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speed</a>
+      <a href="blur.html" class="hover:text-brand-600 dark:hover:text-brand-400">Blur</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var ARCHIVE = Lemon.archive('lemon_speech_archive', 20);
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = {
+    wpm: 140,
+    goal: 180,
+    font: 44,
+    line: 1.6,
+    mirror: false,
+    playing: false,
+    offset: 0,
+    elapsed: 0,
+    speed: 1,
+    lastTs: 0,
+    maxOffset: 0
+  };
+
+  var input = $('scriptInput');
+
+  /* ---------------- samples ---------------- */
+  var SAMPLES = {
+    m1: '안녕하십니까, 저는 이번 프로젝트에서 프론트엔드 개발을 맡은 김민중입니다.\n\n처음 합류했을 때 가장 어려웠던 점은 화면이 너무 느리다는 사용자 불만이었습니다. 그래서 저는 렌더링 구조를 먼저 뜯어보았고, 불필요한 재렌더링을 정리해 첫 화면 표시 시간을 절반으로 줄였습니다.\n\n앞으로도 속도와 신뢰를 함께 챙기는 개발자가 되겠습니다. 감사합니다.',
+    m3: '안녕하십니까. 저희 팀은 이번 학기 동안 온라인 학습 도구를 주제로 프로젝트를 진행했습니다.\n\n먼저 문제 정의부터 말씀드리겠습니다. 사용자 인터뷰 열두 명 중 아홉 명이 학습 자료를 찾는 데 가장 많은 시간을 쓴다고 답했습니다. 자료는 많지만 한곳에 모여 있지 않다는 점이 핵심 문제였습니다.\n\n다음으로 접근 방법입니다. 저희는 검색을 단순화하고, 사용자가 많이 찾는 자료를 먼저 보여주는 구조를 설계했습니다. 특히 수업 자료와 개인 필기를 한 화면에서 오갈 수 있게 만든 것이 차별점입니다.\n\n마지막으로 결과입니다. 시험 기간 사용자 테스트에서 평균 자료 탐색 시간이 사 분에서 일 분 이십 초로 줄었습니다. 만족도 역시 다섯 점 만점에 사 점 삼 점을 기록했습니다.\n\n앞으로는 과목별 추천 기능을 붙여 학습 흐름을 더 이어지게 만들 계획입니다. 이상으로 발표를 마치겠습니다. 감사합니다.',
+    m5: '안녕하십니까. 오늘은 저희가 지난 여섯 달 동안 준비한 도서관 좌석 관리 시스템을 소개드리겠습니다.\n\n먼저 왜 이 시스템이 필요한지부터 말씀드리겠습니다. 도서관 좌석은 늘 부족하지만, 실제로 비어 있는 좌석도 많습니다. 자리를 잡아두고 오래 비우는 경우가 반복되면서 이용자 불만이 커졌습니다.\n\n저희는 이 문제를 세 단계로 나누어 해결했습니다. 첫째, 좌석 상태를 실시간으로 보여주는 지도 화면입니다. 둘째, 일정 시간 자리를 비우면 자동으로 반납 안내를 보내는 알림입니다. 셋째, 좌석 이용 패턴을 분석해 시간대별 추천을 제공하는 기능입니다.\n\n개발 과정에서 어려움도 있었습니다. 센서 없이 좌석 상태를 파악해야 했기 때문에, 이용자가 직접 체크하는 방식과 와이파이 신호를 결합했습니다. 정확도를 높이기 위해 세 차례 현장 테스트를 진행했습니다.\n\n결과적으로 시범 운영 기간 동안 좌석 회전율이 약 삼십 퍼센트 향상되었고, 이용자 만족도 조사에서는 긍정 응답이 팔십 퍼센트를 넘었습니다.\n\n앞으로는 모바일 알림과 예약 기능을 추가해 더 편하게 사용할 수 있도록 개선하겠습니다. 경청해 주셔서 감사합니다.'
+  };
+  var sampleOrder = ['m3', 'm5', 'm1'];
+  var sampleIdx = 0;
+
+  /* ---------------- metrics ---------------- */
+  function words(text) {
+    var t = (text || '').trim();
+    if (!t) return 0;
+    return t.split(/\s+/).filter(Boolean).length;
+  }
+  function fmtTime(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    return m + ':' + Lemon.pad(s);
+  }
+  function fmtTimePadded(sec) {
+    sec = Math.max(0, Math.round(sec));
+    return Lemon.pad(Math.floor(sec / 60)) + ':' + Lemon.pad(sec % 60);
+  }
+
+  function updateStats() {
+    var text = input.value;
+    var w = words(text);
+    var sec = (w / state.wpm) * 60;
+    $('statWords').textContent = w.toLocaleString() + '어절';
+    $('statChars').textContent = text.replace(/\s/g, '').length.toLocaleString() + '자';
+    var paras = text.split(/\n\s*\n/).filter(function (p) { return p.trim(); });
+    $('statParas').textContent = paras.length + '문단';
+    $('durationBig').textContent = fmtTime(sec);
+    $('totalChars').textContent = w.toLocaleString() + '어절';
+    $('wpmLabel').textContent = state.wpm + ' WPM';
+    $('wpmVal').textContent = state.wpm;
+
+    if (!w) {
+      $('durationHint').textContent = '대본을 입력해 주세요';
+    } else {
+      var diff = sec - state.goal;
+      var msg;
+      if (Math.abs(diff) <= state.goal * 0.08) msg = '목표 시간에 잘 맞습니다';
+      else if (diff > 0) msg = '목표보다 ' + fmtTime(diff) + ' 깁니다';
+      else msg = '목표보다 ' + fmtTime(-diff) + ' 짧습니다';
+      $('durationHint').textContent = msg;
+
+      var needWpm = Math.round(w / (state.goal / 60));
+      $('goalHint').textContent = '목표 ' + Math.round(state.goal / 60) + '분에 맞추려면 약 ' + needWpm + ' WPM으로 말하세요.';
     }
 
-    function startPrompter() {
-      alert('프롬프터 모드를 시작합니다.');
+    var list = $('paraList');
+    if (!paras.length) {
+      list.innerHTML = '<p class="text-[11px] text-neutral-400 py-3">대본을 입력하면 문단별 시간이 계산됩니다.</p>';
+    } else {
+      var acc = 0;
+      list.innerHTML = paras.map(function (p, i) {
+        var pw = words(p);
+        var ps = (pw / state.wpm) * 60;
+        var start = acc;
+        acc += ps;
+        return '<div class="paragraph-chip panel-soft px-3 py-2 flex items-start gap-2">' +
+          '<span class="text-[10px] font-mono font-bold text-brand-600 dark:text-brand-400 shrink-0 mt-0.5">' + Lemon.pad(Math.floor(start / 60)) + ':' + Lemon.pad(Math.round(start % 60)) + '</span>' +
+          '<p class="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed line-clamp-2 flex-1">' + Lemon.esc(p.trim().slice(0, 80)) + '</p>' +
+          '<span class="text-[9.5px] font-mono text-neutral-400 shrink-0 mt-0.5">' + pw + '어절 · ' + fmtTime(ps) + '</span></div>';
+      }).join('');
     }
-  </script>
+  }
+
+  input.addEventListener('input', updateStats);
+
+  $('wpmRange').addEventListener('input', function () {
+    state.wpm = parseInt(this.value, 10);
+    updateStats();
+  });
+
+  document.querySelectorAll('[data-goal]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.goal = parseInt(b.getAttribute('data-goal'), 10);
+      document.querySelectorAll('[data-goal]').forEach(function (x) { x.classList.toggle('on', x === b); });
+      $('goalLabel').textContent = Math.round(state.goal / 60) + '분';
+      updateStats();
+      Lemon.hap(8);
+    });
+  });
+
+  $('fontRange').addEventListener('input', function () {
+    state.font = parseInt(this.value, 10);
+    $('fontVal').textContent = state.font;
+    applyPrompterStyle();
+  });
+  $('lineRange').addEventListener('input', function () {
+    state.line = parseInt(this.value, 10) / 10;
+    $('lineVal').textContent = state.line.toFixed(1);
+    applyPrompterStyle();
+  });
+
+  document.querySelectorAll('.switch[data-toggle]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var on = !el.classList.contains('on');
+      el.classList.toggle('on', on);
+      el.setAttribute('aria-checked', on ? 'true' : 'false');
+      state.mirror = on;
+      applyPrompterStyle();
+      Lemon.hap(8);
+    });
+  });
+
+  function applyPrompterStyle() {
+    var t = $('prText');
+    t.style.fontSize = state.font + 'px';
+    t.style.lineHeight = state.line;
+    t.style.transform = state.mirror ? 'scaleX(-1)' : '';
+  }
+
+  /* ---------------- prompter ---------------- */
+  var pr = {
+    open: false,
+    raf: null
+  };
+
+  function openPrompter() {
+    var text = input.value.trim();
+    if (!text) { Lemon.toast('먼저 대본을 입력해 주세요', 'err'); return; }
+    document.querySelectorAll('[data-goal]').forEach(function (x) { x.classList.toggle('on', parseInt(x.getAttribute('data-goal'), 10) === state.goal); });
+    $('prText').textContent = text;
+    $('prompter').classList.add('on');
+    state.offset = 0;
+    state.elapsed = 0;
+    state.playing = false;
+    state.speed = 1;
+    applyPrompterStyle();
+    $('prSpeed').textContent = '1.0x';
+    $('prBar').style.width = '0%';
+    $('prTime').textContent = '00:00 / ' + fmtTimePadded((words(text) / state.wpm) * 60);
+    pr.open = true;
+    setTimeout(measure, 60);
+    startCountdown(function () {
+      state.playing = true;
+      setPlayIcon(true);
+      loop(performance.now());
+    });
+  }
+
+  function startCountdown(done) {
+    var el = $('prCount');
+    var n = 3;
+    el.classList.remove('hidden');
+    el.textContent = n;
+    var iv = setInterval(function () {
+      n--;
+      if (n <= 0) {
+        clearInterval(iv);
+        el.textContent = 'START';
+        setTimeout(function () { el.classList.add('hidden'); done(); }, 420);
+        return;
+      }
+      el.textContent = n;
+      Lemon.hap(10);
+    }, 700);
+  }
+
+  function closePrompter() {
+    state.playing = false;
+    pr.open = false;
+    $('prompter').classList.remove('on');
+    if (pr.raf) cancelAnimationFrame(pr.raf);
+  }
+
+  function setPlayIcon(playing) {
+    $('prPlayIcon').innerHTML = playing
+      ? '<rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect>'
+      : '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
+  }
+
+  function measure() {
+    var t = $('prText');
+    state.maxOffset = Math.max(0, t.scrollHeight - window.innerHeight * 0.62);
+  }
+
+  function loop(ts) {
+    if (!pr.open) return;
+    if (!state.lastTs) state.lastTs = ts;
+    var dt = (ts - state.lastTs) / 1000;
+    state.lastTs = ts;
+
+    if (state.playing) {
+      var speedPx = 46 * state.speed * (state.font / 44);
+      state.offset += speedPx * dt;
+      if (state.offset >= state.maxOffset) {
+        state.offset = state.maxOffset;
+        state.playing = false;
+        setPlayIcon(false);
+        Lemon.toast('대본 끝까지 왔어요', 'ok');
+      }
+      state.elapsed += dt;
+      var pct = state.maxOffset ? (state.offset / state.maxOffset) * 100 : 0;
+      $('prBar').style.width = pct.toFixed(1) + '%';
+      var total = (words(input.value) / state.wpm) * 60;
+      $('prTime').textContent = fmtTimePadded(state.elapsed) + ' / ' + fmtTimePadded(total);
+    }
+    $('prText').style.top = (-state.offset) + 'px';
+    pr.raf = requestAnimationFrame(loop);
+  }
+
+  $('btnPrompter').addEventListener('click', openPrompter);
+  $('btnQuickPrompter').addEventListener('click', function () {
+    if (!input.value.trim()) input.value = SAMPLES.m1;
+    updateStats();
+    go('studio');
+    setTimeout(openPrompter, 260);
+  });
+
+  $('prExit').addEventListener('click', closePrompter);
+  $('prPlay').addEventListener('click', function () {
+    if (state.playing) { state.playing = false; setPlayIcon(false); }
+    else {
+      state.playing = true; setPlayIcon(true); state.lastTs = 0;
+      if (!pr.raf) loop(performance.now());
+    }
+    Lemon.hap(10);
+  });
+  $('prFaster').addEventListener('click', function () {
+    state.speed = Math.min(3, Math.round((state.speed + 0.2) * 10) / 10);
+    $('prSpeed').textContent = state.speed.toFixed(1) + 'x';
+  });
+  $('prSlower').addEventListener('click', function () {
+    state.speed = Math.max(0.2, Math.round((state.speed - 0.2) * 10) / 10);
+    $('prSpeed').textContent = state.speed.toFixed(1) + 'x';
+  });
+  $('prMirror').addEventListener('click', function () {
+    state.mirror = !state.mirror;
+    applyPrompterStyle();
+    Lemon.toast(state.mirror ? '미러 모드 켜짐' : '미러 모드 꺼짐', 'info');
+  });
+  $('prRestart').addEventListener('click', function () {
+    state.offset = 0; state.elapsed = 0;
+    $('prBar').style.width = '0%';
+    state.playing = true; setPlayIcon(true); state.lastTs = 0;
+  });
+  $('prViewport').addEventListener('click', function () {
+    $('prPlay').click();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (!pr.open) return;
+    if (e.key === 'Escape') { closePrompter(); }
+    else if (e.key === ' ') { e.preventDefault(); $('prPlay').click(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); $('prFaster').click(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); $('prSlower').click(); }
+    else if (e.key === 'ArrowRight') { state.offset = Math.min(state.maxOffset, state.offset + 80); }
+    else if (e.key === 'ArrowLeft') { state.offset = Math.max(0, state.offset - 80); }
+  });
+
+  window.addEventListener('resize', function () { if (pr.open) measure(); });
+
+  /* ---------------- samples / archive ---------------- */
+  function loadSample(key) {
+    input.value = SAMPLES[key] || SAMPLES.m3;
+    updateStats();
+    measure();
+    go('studio');
+    Lemon.toast('예시 대본을 불러왔어요', 'ok');
+  }
+  document.querySelectorAll('[data-sample]').forEach(function (b) {
+    b.addEventListener('click', function () { loadSample(b.getAttribute('data-sample')); });
+  });
+  $('btnSampleCycle').addEventListener('click', function () {
+    sampleIdx = (sampleIdx + 1) % sampleOrder.length;
+    loadSample(sampleOrder[sampleIdx]);
+  });
+
+  $('btnCopyScript').addEventListener('click', function () {
+    if (!input.value.trim()) return Lemon.toast('복사할 대본이 없어요', 'err');
+    Lemon.copy(input.value, '대본을 복사했어요');
+  });
+
+  $('btnSaveScript').addEventListener('click', function () {
+    var text = input.value;
+    if (!text.trim()) return Lemon.toast('저장할 대본이 없어요', 'err');
+    var w = words(text);
+    var rec = ARCHIVE.add({
+      title: text.trim().split('\n')[0].slice(0, 40) || '발표 대본',
+      text: text,
+      words: w,
+      wpm: state.wpm,
+      dur: Math.round((w / state.wpm) * 60)
+    });
+    if (rec) { Lemon.toast('보관함에 저장했어요', 'ok'); renderArchive(); }
+  });
+
+  function renderArchive() {
+    var list = ARCHIVE.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center"><div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3"><svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path></svg></div><p class="text-[12px] font-bold">저장한 대본이 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">스튜디오에서 대본을 쓰고 저장해 보세요.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-4 card-lift"><div class="flex items-start justify-between gap-3">' +
+        '<div class="min-w-0 flex-1">' +
+        '<p class="text-[12px] font-bold truncate">' + Lemon.esc(it.title) + '</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2 leading-relaxed">' + Lemon.esc((it.text || '').slice(0, 130)) + '</p>' +
+        '<p class="text-[10px] text-neutral-400 mt-1">' + (it.words || 0) + '어절 · 약 ' + fmtTime(it.dur || 0) + ' · ' + Lemon.timeAgo(it.ts) + '</p>' +
+        '</div><div class="flex flex-col gap-1 shrink-0">' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px]" data-load="' + it.id + '">열기</button>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button>' +
+        '</div></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var load = e.target.closest('[data-load]');
+    if (load) {
+      var item = ARCHIVE.all().filter(function (x) { return x.id === load.getAttribute('data-load'); })[0];
+      if (!item) return;
+      input.value = item.text || '';
+      if (item.wpm) { state.wpm = item.wpm; $('wpmRange').value = item.wpm; }
+      updateStats();
+      go('studio');
+      Lemon.toast('대본을 열었어요', 'ok');
+    }
+    var del = e.target.closest('[data-del]');
+    if (del) { ARCHIVE.remove(del.getAttribute('data-del')); renderArchive(); Lemon.toast('삭제했어요', 'info'); }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!ARCHIVE.count()) return Lemon.toast('비울 기록이 없어요', 'info');
+    if (window.confirm('보관함을 모두 비울까요?')) { ARCHIVE.clear(); renderArchive(); Lemon.toast('비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail.view === 'archive') renderArchive();
+    if (e.detail.view === 'studio') { measure(); updateStats(); }
+  });
+
+  /* init */
+  input.value = SAMPLES.m3;
+  updateStats();
+  renderArchive();
+  applyPrompterStyle();
+  document.querySelectorAll('[data-goal]').forEach(function (x) { x.classList.toggle('on', parseInt(x.getAttribute('data-goal'), 10) === state.goal); });
+  setTimeout(measure, 300);
+})();
+</script>
 </body>
 </html>

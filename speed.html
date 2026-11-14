@@ -1,147 +1,644 @@
 <!DOCTYPE html>
 <html lang="ko" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lemon Speed - 원터치 인터넷 속도 & 핑 측정기</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46' },
-            lemon: { 400: '#facc15', 500: '#eab308', 600: '#ca8a04' }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .btn-tap { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .btn-tap:hover { transform: translateY(-1.5px) scale(1.02); }
-    .btn-tap:active { transform: scale(0.94); }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Speed — 인터넷 속도·핑·지터 정밀 측정</title>
+<meta name="description" content="실제 페이로드로 다운로드 속도를 측정하고 핑·지터를 재어 4K 스트리밍, 게임, 화상회의 등급을 판정합니다. 측정 기록과 추이도 저장됩니다.">
+<meta name="theme-color" content="#ea580c">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#ea580c', light: '#f59e0b', deep: '#c2410c', 50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 300: '#fdba74', 400: '#fb923c', 500: '#f97316', 600: '#ea580c', 700: '#c2410c', 800: '#9a3412', 900: '#7c2d12', 950: '#431407' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #ea580c; --brand-2: #f59e0b; --brand-deep: #c2410c; }
+  .gauge-wrap { position: relative; width: 100%; max-width: 320px; margin: 0 auto; }
+  .gauge-num { font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+  .needle { transform-origin: 100px 100px; transition: transform .55s cubic-bezier(.22,1,.36,1); }
+  .pulse-ring { animation: pulseRing 1.6s ease-out infinite; transform-origin: center; }
+  @keyframes pulseRing { 0% { transform: scale(.85); opacity: .55; } 100% { transform: scale(1.25); opacity: 0; } }
+  .soft-pulse { animation: softPulse 1.2s ease-in-out infinite; }
+  @keyframes softPulse { 0%, 100% { opacity: .25; } 50% { opacity: .7; } }
+  .dial-ticks line { stroke: rgba(120,120,140,.25); }
+  .dark .dial-ticks line { stroke: rgba(255,255,255,.16); }
+  .grade-card { transition: transform .2s, border-color .2s, background-color .2s; }
+  .grade-card.pass { border-color: rgba(16,185,129,.45); background: rgba(16,185,129,.07); }
+  .grade-card.fail { border-color: rgba(244,63,94,.35); background: rgba(244,63,94,.05); }
+</style>
 </head>
-<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col justify-between antialiased selection:bg-lemon-500 selection:text-neutral-950">
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
 
-  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <a href="index.html" class="flex items-center space-x-2.5 group">
-          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lemon-600 to-amber-400 p-[1px] shadow-md group-hover:scale-105 transition-transform">
-            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
-              <svg class="w-5 h-5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
-              </svg>
-            </div>
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 o2 opacity-20" style="background:#f59e0b"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"></path><line x1="12" y1="16" x2="16" y2="10"></line></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Speed</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">NET LAB</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">인터넷 속도 · 핑 · 지터</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 1 1 16 0"></path><line x1="12" y1="16" x2="16" y2="10"></line></svg>
+        <span>측정</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 3-4 6 6"></path><path d="M3 21h18"></path></svg>
+        <span>기록</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1fr_.85fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            실제 페이로드 측정 · 서버 전송 최소
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            우리 집 인터넷,<br><span class="brand-text">진짜 속도</span>를 봅니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            다운로드·업로드를 실제 데이터로 재고, 핑과 지터까지 확인합니다. 4K 스트리밍·게임·화상회의에 충분한지 바로 판정합니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+              지금 측정하기
+            </button>
+            <button class="ghost-btn" data-goto="archive">측정 기록</button>
           </div>
-          <div class="flex flex-col">
-            <div class="flex items-center space-x-1.5">
-              <span class="font-black text-lg tracking-tight">Lemon Speed</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lemon-100 dark:bg-lemon-950 text-lemon-700 dark:text-lemon-400 font-bold border border-lemon-300 dark:border-lemon-800">속도 측정</span>
-            </div>
-            <span class="text-[10px] text-neutral-500 -mt-0.5">인터넷 다운로드 & 핑(Ping) 측정기</span>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text" id="homeBest">-</p><p class="text-[10px] text-neutral-500">최고 기록</p></div>
+            <div><p class="text-lg font-black brand-text" id="homeLast">-</p><p class="text-[10px] text-neutral-500">최근 측정</p></div>
+            <div><p class="text-lg font-black brand-text" id="homeCount">0</p><p class="text-[10px] text-neutral-500">측정 횟수</p></div>
           </div>
-        </a>
-      </div>
-    </div>
-  </header>
-
-  <main class="max-w-4xl mx-auto px-4 sm:px-6 py-12 flex-1 w-full flex flex-col items-center justify-center space-y-8 text-center">
-    
-    <!-- Speedometer Gauge -->
-    <div class="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full border-4 border-dashed border-lemon-500/40 flex flex-col items-center justify-center p-6 space-y-2">
-      <div id="speedDisplay" class="text-5xl sm:text-6xl font-black font-mono tracking-tight text-neutral-900 dark:text-white">0.0</div>
-      <div class="text-xs font-bold text-neutral-400 tracking-wider uppercase">Mbps (다운로드)</div>
-    </div>
-
-    <!-- Start Button -->
-    <button onclick="startSpeedTest()" id="btnStartSpeed" class="px-8 py-3.5 rounded-2xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-black text-sm shadow-xl shadow-lemon-500/25 btn-tap">
-      측정 시작하기
-    </button>
-
-    <!-- Metrics Cards (Ping, Jitter, Upload) -->
-    <div class="grid grid-cols-3 gap-4 w-full max-w-lg text-center text-xs">
-      <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-        <div class="text-neutral-400 font-bold">지연시간(Ping)</div>
-        <div id="pingValue" class="text-base font-black font-mono mt-1 text-emerald-500">- ms</div>
-      </div>
-      <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-        <div class="text-neutral-400 font-bold">지터(Jitter)</div>
-        <div id="jitterValue" class="text-base font-black font-mono mt-1 text-blue-500">- ms</div>
-      </div>
-      <div class="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-        <div class="text-neutral-400 font-bold">네트워크</div>
-        <div id="netStatus" class="text-base font-black font-mono mt-1 text-lemon-500">대기 중</div>
+        </div>
+        <div class="gauge-wrap">
+          <svg viewBox="0 0 200 200" class="w-full">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ea580c"></stop>
+                <stop offset="100%" stop-color="#f59e0b"></stop>
+              </linearGradient>
+            </defs>
+            <g class="dial-ticks">
+              <line x1="30" y1="160" x2="22" y2="168"></line><line x1="60" y1="55" x2="55" y2="46"></line>
+              <line x1="100" y1="28" x2="100" y2="18"></line><line x1="140" y1="55" x2="145" y2="46"></line>
+              <line x1="170" y1="160" x2="178" y2="168"></line>
+            </g>
+            <circle cx="100" cy="100" r="72" fill="none" stroke="rgba(120,120,140,.18)" stroke-width="12" stroke-linecap="round" stroke-dasharray="226 226" transform="rotate(135 100 100)"></circle>
+            <circle id="homeArc" cx="100" cy="100" r="72" fill="none" stroke="url(#gaugeGrad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="0 452" transform="rotate(135 100 100)" style="transition:stroke-dasharray 1.2s cubic-bezier(.22,1,.36,1)"></circle>
+            <text x="100" y="104" text-anchor="middle" class="gauge-num" style="font-size:26px;font-weight:900;fill:currentColor">124</text>
+            <text x="100" y="122" text-anchor="middle" style="font-size:9px;font-weight:700;fill:#9ca3af">Mbps</text>
+          </svg>
+        </div>
       </div>
     </div>
 
-  </main>
-
-  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
-      <div class="flex items-center space-x-2">
-        <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Speed</span>
-        <span>·</span>
-        <span>Lemon soft 20대 독립 웹 프로덕트</span>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"></path><polyline points="7 10 12 15 17 10"></polyline><path d="M4 21h16"></path></svg></div>
+        <h3 class="text-[13px] font-bold">실측 다운로드</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">수 MB 데이터를 실제로 받아 시간당 속도를 계산합니다.</p>
       </div>
-      <div><span>2026 Lemon soft. All rights reserved.</span></div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 16 14"></polyline></svg></div>
+        <h3 class="text-[13px] font-bold">핑 · 지터</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">여러 번 왕복 지연을 재어 평균과 흔들림을 봅니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l5-6 4 4 3-4 6 6"></path></svg></div>
+        <h3 class="text-[13px] font-bold">실시간 그래프</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">측정 중 속도 변화를 그래프로 그려 보여줍니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 12 9 17 20 6"></polyline></svg></div>
+        <h3 class="text-[13px] font-bold">용도 판정</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">4K·게임·화상회의에 충분한지 한눈에 표시합니다.</p>
+      </div>
     </div>
-  </footer>
 
-  <script>
-    async function startSpeedTest() {
-      const btn = document.getElementById('btnStartSpeed');
-      const speedEl = document.getElementById('speedDisplay');
-      const pingEl = document.getElementById('pingValue');
-      const jitterEl = document.getElementById('jitterValue');
-      const netEl = document.getElementById('netStatus');
+    <div class="panel p-5 sm:p-6">
+      <h2 class="text-sm font-black mb-3">속도가 이 정도면</h2>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div class="panel-soft p-4"><p class="text-[11px] font-black text-brand-600 dark:text-brand-400">웹 서핑 · SNS</p><p class="text-[13px] font-black mt-1">5 Mbps 이상</p><p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">사진과 영상이 끊기지 않는 최소선</p></div>
+        <div class="panel-soft p-4"><p class="text-[11px] font-black text-brand-600 dark:text-brand-400">4K 스트리밍</p><p class="text-[13px] font-black mt-1">25 Mbps 이상</p><p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">넷플릭스 4K 권장 속도</p></div>
+        <div class="panel-soft p-4"><p class="text-[11px] font-black text-brand-600 dark:text-brand-400">온라인 게임</p><p class="text-[13px] font-black mt-1">핑 50ms 이하</p><p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">지터가 낮아야 랙이 줄어듭니다</p></div>
+      </div>
+    </div>
+  </section>
 
-      btn.disabled = true;
-      btn.innerText = '측정 중...';
-      netEl.innerText = '측정 중';
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-4">
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-4 lg:items-start">
 
-      // 1. Measure Ping
-      const startPing = performance.now();
-      try {
-        await fetch('https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/package.json?t=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
-        const pingTime = Math.round(performance.now() - startPing);
-        pingEl.innerText = `${pingTime} ms`;
-        jitterEl.innerText = `${Math.round(pingTime * 0.15)} ms`;
-      } catch (e) {
-        pingEl.innerText = '14 ms';
-        jitterEl.innerText = '2 ms';
-      }
+      <div class="panel p-5 sm:p-7 text-center">
+        <div class="gauge-wrap">
+          <svg viewBox="0 0 200 200" class="w-full">
+            <defs>
+              <linearGradient id="gaugeGrad2" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ea580c"></stop>
+                <stop offset="100%" stop-color="#f59e0b"></stop>
+              </linearGradient>
+            </defs>
+            <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(120,120,140,.14)" stroke-width="1"></circle>
+            <circle cx="100" cy="100" r="72" fill="none" stroke="rgba(120,120,140,.18)" stroke-width="13" stroke-linecap="round" stroke-dasharray="226 226" transform="rotate(135 100 100)"></circle>
+            <circle id="dialArc" cx="100" cy="100" r="72" fill="none" stroke="url(#gaugeGrad2)" stroke-width="13" stroke-linecap="round" stroke-dasharray="0 452" transform="rotate(135 100 100)" style="transition:stroke-dasharray .3s linear"></circle>
+            <g id="needle" class="needle">
+              <line x1="100" y1="100" x2="100" y2="42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="opacity:.55"></line>
+            </g>
+            <circle cx="100" cy="100" r="5" fill="#ea580c"></circle>
+            <text id="gaugeNum" x="100" y="112" text-anchor="middle" class="gauge-num" style="font-size:30px;font-weight:900;fill:currentColor">0</text>
+            <text x="100" y="130" text-anchor="middle" style="font-size:9px;font-weight:800;fill:#9ca3af">Mbps</text>
+          </svg>
+        </div>
 
-      // 2. Measure Download Speed
-      const fileUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js?t=' + Date.now();
-      const startTime = performance.now();
-      try {
-        const resp = await fetch(fileUrl, { cache: 'no-store' });
-        const reader = resp.body.getReader();
-        let receivedBytes = 0;
+        <div class="flex items-center justify-center gap-2 mt-1">
+          <button id="btnStart" class="primary-btn btn-shimmer !px-6">
+            <svg id="startIcon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+            <span id="startLabel">측정 시작</span>
+          </button>
+          <button id="btnReset" class="ghost-btn">초기화</button>
+        </div>
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          receivedBytes += value.length;
-          const elapsedSec = (performance.now() - startTime) / 1000;
-          if (elapsedSec > 0) {
-            const mbps = ((receivedBytes * 8) / (elapsedSec * 1024 * 1024)).toFixed(1);
-            speedEl.innerText = mbps;
-          }
-        }
-      } catch (err) {
-        speedEl.innerText = '285.4';
-      }
+        <div class="mt-4">
+          <div class="flex items-center justify-between text-[10px] mb-1">
+            <span id="phaseText" class="font-bold text-brand-600 dark:text-brand-400">대기 중</span>
+            <span id="phasePct" class="font-mono text-neutral-500">0%</span>
+          </div>
+          <div class="progress-track"><div id="phaseBar" class="progress-fill" style="width:0%"></div></div>
+        </div>
 
-      btn.disabled = false;
-      btn.innerText = '다시 측정하기';
-      netEl.innerText = '완료';
+        <div class="mt-4">
+          <div class="flex items-center justify-between mb-1">
+            <span class="lemon-label">실시간 속도</span>
+            <span class="text-[10px] font-mono text-neutral-500" id="chartPeak">peak 0</span>
+          </div>
+          <canvas id="chart" class="w-full rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/50" style="height:120px"></canvas>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div class="panel p-4 sm:p-5">
+          <h2 class="text-[13px] font-black mb-3">측정 결과</h2>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="panel-soft p-3"><span class="text-[10px] text-neutral-500 dark:text-neutral-400">다운로드</span><p class="text-[18px] font-black tabular" id="resDown">-<span class="text-[10px] font-bold text-neutral-400 ml-1">Mbps</span></p></div>
+            <div class="panel-soft p-3"><span class="text-[10px] text-neutral-500 dark:text-neutral-400">업로드</span><p class="text-[18px] font-black tabular" id="resUp">-<span class="text-[10px] font-bold text-neutral-400 ml-1">Mbps</span></p></div>
+            <div class="panel-soft p-3"><span class="text-[10px] text-neutral-500 dark:text-neutral-400">핑</span><p class="text-[18px] font-black tabular" id="resPing">-<span class="text-[10px] font-bold text-neutral-400 ml-1">ms</span></p></div>
+            <div class="panel-soft p-3"><span class="text-[10px] text-neutral-500 dark:text-neutral-400">지터</span><p class="text-[18px] font-black tabular" id="resJitter">-<span class="text-[10px] font-bold text-neutral-400 ml-1">ms</span></p></div>
+          </div>
+        </div>
+
+        <div class="panel p-4 sm:p-5">
+          <h2 class="text-[13px] font-black mb-3">용도별 판정</h2>
+          <div class="space-y-2" id="grades"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5">
+          <h2 class="text-[13px] font-black mb-2">저장</h2>
+          <button id="btnSaveResult" class="ghost-btn w-full !py-2.5 !text-[12px]" disabled>측정 기록에 저장</button>
+          <p class="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2 leading-relaxed">측정은 CDN(Cloudflare)에 소량의 데이터를 요청합니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">측정 기록</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">속도 추이를 그래프로 확인하세요.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div class="panel p-4 sm:p-5">
+      <h3 class="text-[12px] font-black mb-2">다운로드 추이</h3>
+      <div id="trendWrap" class="w-full"></div>
+    </div>
+    <div id="archiveList" class="space-y-2.5"></div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Speed</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="ocr.html" class="hover:text-brand-600 dark:hover:text-brand-400">OCR</a>
+      <a href="spell.html" class="hover:text-brand-600 dark:hover:text-brand-400">Spell</a>
+      <a href="wallpaper.html" class="hover:text-brand-600 dark:hover:text-brand-400">Wallpaper</a>
+      <a href="table.html" class="hover:text-brand-600 dark:hover:text-brand-400">Table</a>
+      <a href="speech.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speech</a>
+      <a href="blur.html" class="hover:text-brand-600 dark:hover:text-brand-400">Blur</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var ARCHIVE = Lemon.archive('lemon_speed_archive', 30);
+  var $ = function (id) { return document.getElementById(id); };
+
+  var BASE = 'https://speed.cloudflare.com';
+  var state = {
+    running: false,
+    down: 0, up: 0, ping: 0, jitter: 0,
+    samples: [],
+    peak: 0,
+    last: null
+  };
+
+  /* ---------------- chart ---------------- */
+  var chart = $('chart');
+  function drawChart() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = chart.clientWidth || 300;
+    var h = 120;
+    chart.width = Math.round(w * dpr);
+    chart.height = Math.round(h * dpr);
+    var ctx = chart.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(120,120,140,.16)';
+    ctx.lineWidth = 1;
+    for (var i = 1; i <= 3; i++) {
+      var y = (h / 4) * i;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
     }
-  </script>
+
+    if (state.samples.length < 2) return;
+    var max = Math.max.apply(null, state.samples) * 1.15 || 1;
+    var stepX = w / Math.max(1, state.samples.length - 1);
+    var grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(234,88,12,.35)');
+    grad.addColorStop(1, 'rgba(234,88,12,0)');
+
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    state.samples.forEach(function (v, i) {
+      var x = i * stepX;
+      var yy = h - (v / max) * (h - 8) - 4;
+      ctx.lineTo(x, yy);
+    });
+    ctx.lineTo((state.samples.length - 1) * stepX, h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    state.samples.forEach(function (v, i) {
+      var x = i * stepX;
+      var yy = h - (v / max) * (h - 8) - 4;
+      if (i === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+    });
+    ctx.strokeStyle = '#ea580c';
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+  window.addEventListener('resize', drawChart);
+
+  /* ---------------- gauge ---------------- */
+  var GAUGE_MAX = 300;
+  function setGauge(mbps) {
+    var frac = Math.max(0, Math.min(1, mbps / GAUGE_MAX));
+    var arc = 226 * frac;
+    var dial = $('dialArc');
+    if (dial) dial.setAttribute('stroke-dasharray', arc + ' 452');
+    var needle = $('needle');
+    if (needle) needle.style.transform = 'rotate(' + (-135 + frac * 270) + 'deg)';
+    var num = $('gaugeNum');
+    if (num) num.textContent = mbps < 10 ? mbps.toFixed(1) : Math.round(mbps);
+  }
+
+  function setPhase(text, pct) {
+    $('phaseText').textContent = text;
+    $('phasePct').textContent = Math.round(pct) + '%';
+    $('phaseBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+  }
+
+  /* ---------------- measurement ---------------- */
+  function now() { return performance.now(); }
+
+  async function pingTest() {
+    var times = [];
+    for (var i = 0; i < 5; i++) {
+      var t0 = now();
+      try {
+        await fetch(BASE + '/__down?bytes=0&r=' + Math.random(), { cache: 'no-store', mode: 'cors' });
+        times.push(now() - t0);
+      } catch (e) {
+        times.push(0);
+      }
+      await sleep(60);
+    }
+    times = times.filter(function (t) { return t > 0; });
+    if (!times.length) return { ping: 0, jitter: 0 };
+    var avg = times.reduce(function (a, b) { return a + b; }, 0) / times.length;
+    var diffs = [];
+    for (var j = 1; j < times.length; j++) diffs.push(Math.abs(times[j] - times[j - 1]));
+    var jitter = diffs.length ? diffs.reduce(function (a, b) { return a + b; }, 0) / diffs.length : 0;
+    return { ping: Math.max(1, Math.round(avg)), jitter: Math.round(jitter) };
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  async function downloadTest(streams, bytesEach) {
+    var totalBytes = 0;
+    var t0 = now();
+    state.samples = [];
+    state.peak = 0;
+
+    var sampler = setInterval(function () {
+      var sec = (now() - t0) / 1000;
+      if (sec <= 0.05) return;
+      var mbps = (totalBytes * 8) / sec / 1e6;
+      state.samples.push(mbps);
+      state.peak = Math.max(state.peak, mbps);
+      $('chartPeak').textContent = 'peak ' + Math.round(state.peak);
+      setGauge(mbps);
+      drawChart();
+    }, 180);
+
+    var jobs = [];
+    for (var i = 0; i < streams; i++) {
+      jobs.push((async function () {
+        var res = await fetch(BASE + '/__down?bytes=' + bytesEach + '&r=' + Math.random(), { cache: 'no-store', mode: 'cors' });
+        if (!res.body || !res.body.getReader) {
+          var buf = await res.arrayBuffer();
+          totalBytes += buf.byteLength;
+          return;
+        }
+        var reader = res.body.getReader();
+        while (true) {
+          var chunk = await reader.read();
+          if (chunk.done) break;
+          totalBytes += chunk.value.length;
+        }
+      })().catch(function () { }));
+    }
+    await Promise.all(jobs);
+    clearInterval(sampler);
+    var sec = (now() - t0) / 1000;
+    var mbps = (totalBytes * 8) / Math.max(0.1, sec) / 1e6;
+    state.samples.push(mbps);
+    setGauge(mbps);
+    drawChart();
+    return { mbps: Math.round(mbps * 10) / 10, bytes: totalBytes, sec: sec };
+  }
+
+  async function uploadTest(bytes) {
+    try {
+      var payload = new Uint8Array(bytes);
+      var t0 = now();
+      await fetch(BASE + '/__up', { method: 'POST', body: payload, cache: 'no-store', mode: 'cors' });
+      var sec = (now() - t0) / 1000;
+      return Math.round(((bytes * 8) / Math.max(0.05, sec) / 1e6) * 10) / 10;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  async function runAll() {
+    if (state.running) return;
+    state.running = true;
+    $('btnStart').disabled = true;
+    $('startLabel').textContent = '측정 중…';
+    $('startIcon').classList.add('soft-pulse');
+    $('btnSaveResult').disabled = true;
+    state.samples = []; state.peak = 0;
+    drawChart();
+    Lemon.hap(16);
+
+    try {
+      /* ping */
+      setPhase('핑·지터 측정 중', 6);
+      var p = await pingTest();
+      state.ping = p.ping; state.jitter = p.jitter;
+      $('resPing').innerHTML = p.ping + '<span class="text-[10px] font-bold text-neutral-400 ml-1">ms</span>';
+      $('resJitter').innerHTML = p.jitter + '<span class="text-[10px] font-bold text-neutral-400 ml-1">ms</span>';
+      setPhase('다운로드 속도 측정 중', 20);
+
+      /* download */
+      
+      var dl = await downloadTest(4, 4000000);
+      state.down = dl.mbps;
+      $('resDown').innerHTML = dl.mbps + '<span class="text-[10px] font-bold text-neutral-400 ml-1">Mbps</span>';
+      setPhase('업로드 속도 측정 중', 72);
+
+      /* upload */
+      var up = await uploadTest(1500000);
+      state.up = up;
+      $('resUp').innerHTML = (up || 0) + '<span class="text-[10px] font-bold text-neutral-400 ml-1">Mbps</span>';
+
+      setPhase('완료', 100);
+      renderGrades();
+      state.last = { down: state.down, up: state.up, ping: state.ping, jitter: state.jitter, ts: Date.now() };
+      $('btnSaveResult').disabled = false;
+      Lemon.toast('측정을 마쳤어요', 'ok');
+      Lemon.confetti(14);
+      growHomeArc();
+    } catch (err) {
+      if (window.console) console.warn('[speed] failed', err);
+      setPhase('측정 실패', 0);
+      Lemon.toast('측정에 실패했어요. 네트워크를 확인해 주세요.', 'err');
+    } finally {
+      state.running = false;
+      $('btnStart').disabled = false;
+      $('startLabel').textContent = '다시 측정';
+      $('startIcon').classList.remove('soft-pulse');
+    }
+  }
+
+  $('btnStart').addEventListener('click', runAll);
+  $('btnReset').addEventListener('click', function () {
+    state.down = state.up = state.ping = state.jitter = 0;
+    state.samples = []; state.peak = 0;
+    ['resDown', 'resUp', 'resPing', 'resJitter'].forEach(function (id) { $(id).innerHTML = '-<span class="text-[10px] font-bold text-neutral-400 ml-1">' + (id === 'resDown' || id === 'resUp' ? 'Mbps' : 'ms') + '</span>'; });
+    setGauge(0); setPhase('대기 중', 0); drawChart();
+    $('chartPeak').textContent = 'peak 0';
+    renderGrades();
+    $('btnSaveResult').disabled = true;
+    Lemon.toast('초기화했어요', 'info');
+  });
+
+  /* ---------------- grades ---------------- */
+  var GRADES = [
+    { id: 'browse', label: '웹 서핑 · SNS', need: '5 Mbps 이상', test: function (r) { return r.down >= 5; } },
+    { id: 'fhd', label: 'FHD 스트리밍', need: '10 Mbps 이상', test: function (r) { return r.down >= 10; } },
+    { id: 'uhd', label: '4K 스트리밍', need: '25 Mbps 이상', test: function (r) { return r.down >= 25; } },
+    { id: 'game', label: '온라인 게임', need: '핑 50ms 이하 · 지터 20ms 이하', test: function (r) { return r.ping > 0 && r.ping <= 50 && r.jitter <= 20; } },
+    { id: 'meet', label: '화상회의', need: '다운 3 · 업 3 Mbps 이상', test: function (r) { return r.down >= 3 && r.up >= 3; } }
+  ];
+
+  function renderGrades() {
+    var r = { down: state.down, up: state.up, ping: state.ping, jitter: state.jitter };
+    var done = r.down > 0;
+    $('grades').innerHTML = GRADES.map(function (g) {
+      var pass = done ? g.test(r) : null;
+      return '<div class="grade-card panel-soft px-3 py-2.5 flex items-center justify-between gap-2 ' + (pass === true ? 'pass' : pass === false ? 'fail' : '') + '">' +
+        '<div class="min-w-0"><p class="text-[12px] font-bold">' + g.label + '</p><p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">' + g.need + '</p></div>' +
+        '<span class="text-[10px] font-black shrink-0 ' + (pass === true ? 'text-emerald-600 dark:text-emerald-400' : pass === false ? 'text-rose-500' : 'text-neutral-400') + '">' +
+        (pass === true ? '충분' : pass === false ? '부족' : '대기') + '</span></div>';
+    }).join('');
+  }
+  renderGrades();
+
+  /* ---------------- save ---------------- */
+  $('btnSaveResult').addEventListener('click', function () {
+    if (!state.last) return;
+    var r = state.last;
+    var rec = ARCHIVE.add({
+      title: r.down + ' Mbps',
+      sub: '핑 ' + r.ping + 'ms · 지터 ' + r.jitter + 'ms · 업 ' + r.up + ' Mbps',
+      down: r.down, up: r.up, ping: r.ping, jitter: r.jitter
+    });
+    if (rec) { Lemon.toast('기록에 저장했어요', 'ok'); renderArchive(); }
+  });
+
+  /* ---------------- archive ---------------- */
+  function renderArchive() {
+    var list = ARCHIVE.all();
+    $('arcCount').textContent = list.length;
+    updateHomeStats(list);
+
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center"><div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3"><svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l5-6 4 4 3-4 6 6"></path><path d="M3 21h18"></path></svg></div><p class="text-[12px] font-bold">측정 기록이 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">측정 후 ‘측정 기록에 저장’을 눌러 보세요.</p></div>';
+      $('trendWrap').innerHTML = '<p class="text-[11px] text-neutral-400 py-6 text-center">기록이 쌓이면 추이 그래프가 표시됩니다.</p>';
+      return;
+    }
+
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-4 card-lift"><div class="flex items-center justify-between gap-3">' +
+        '<div class="min-w-0">' +
+        '<p class="text-[15px] font-black tabular">' + it.down + ' <span class="text-[10px] font-bold text-neutral-400">Mbps</span></p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">' + Lemon.esc(it.sub) + '</p>' +
+        '<p class="text-[10px] text-neutral-400 mt-0.5">' + Lemon.fmtDateTime(it.ts) + ' · ' + Lemon.timeAgo(it.ts) + '</p>' +
+        '</div>' +
+        '<button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500 shrink-0" data-del="' + it.id + '">삭제</button>' +
+        '</div></div>';
+    }).join('');
+
+    /* trend svg */
+    var pts = list.slice(0, 12).reverse();
+    var w = 600, h = 160, pad = 26;
+    var max = Math.max.apply(null, pts.map(function (p) { return p.down; })) * 1.2 || 1;
+    var stepX = (w - pad * 2) / Math.max(1, pts.length - 1);
+    var path = pts.map(function (p, i) {
+      var x = pad + i * stepX;
+      var y = h - pad - (p.down / max) * (h - pad * 2);
+      return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+    }).join(' ');
+    var dots = pts.map(function (p, i) {
+      var x = pad + i * stepX;
+      var y = h - pad - (p.down / max) * (h - pad * 2);
+      return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.5" fill="#ea580c"></circle>' +
+        '<text x="' + x.toFixed(1) + '" y="' + (y - 9).toFixed(1) + '" text-anchor="middle" font-size="9" font-weight="800" fill="#ea580c">' + Math.round(p.down) + '</text>';
+    }).join('');
+    $('trendWrap').innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" class="w-full" style="max-height:170px">' +
+      '<line x1="' + pad + '" y1="' + (h - pad) + '" x2="' + (w - pad) + '" y2="' + (h - pad) + '" stroke="rgba(120,120,140,.2)"></line>' +
+      '<path d="' + path + '" fill="none" stroke="#ea580c" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"></path>' +
+      dots + '</svg>';
+  }
+
+  function updateHomeStats(list) {
+    if (!list.length) { $('homeCount').textContent = '0'; return; }
+    var best = Math.max.apply(null, list.map(function (x) { return x.down; }));
+    $('homeBest').textContent = Math.round(best) + ' Mbps';
+    $('homeLast').textContent = Math.round(list[0].down) + ' Mbps';
+    $('homeCount').textContent = list.length;
+  }
+
+  function growHomeArc() {
+    var arc = $('homeArc');
+    if (!arc) return;
+    var frac = Math.min(1, state.down / GAUGE_MAX);
+    arc.setAttribute('stroke-dasharray', (226 * frac) + ' 452');
+  }
+
+  document.addEventListener('click', function (e) {
+    var del = e.target.closest('[data-del]');
+    if (del) { ARCHIVE.remove(del.getAttribute('data-del')); renderArchive(); Lemon.toast('삭제했어요', 'info'); }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!ARCHIVE.count()) return Lemon.toast('비울 기록이 없어요', 'info');
+    if (window.confirm('측정 기록을 모두 비울까요?')) { ARCHIVE.clear(); renderArchive(); Lemon.toast('비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  document.addEventListener('lemon:view', function (e) {
+    if (e.detail.view === 'archive') renderArchive();
+    if (e.detail.view === 'studio') setTimeout(drawChart, 60);
+  });
+
+  renderArchive();
+  setTimeout(drawChart, 120);
+})();
+</script>
 </body>
 </html>

@@ -1,102 +1,827 @@
 <!DOCTYPE html>
 <html lang="ko" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lemon Table - 수업 시간표 & 잠금화면 생성기</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46' },
-            lemon: { 400: '#facc15', 500: '#eab308', 600: '#ca8a04' }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .btn-tap { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .btn-tap:hover { transform: translateY(-1.5px) scale(1.02); }
-    .btn-tap:active { transform: scale(0.94); }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Table — 수업 시간표 빌더 & 잠금화면 내보내기</title>
+<meta name="description" content="월~토 1~10교시 시간표를 셀 단위로 편집하고, 과목·강의실·교수님·색 태그를 넣어 1080x2400 잠금화면 이미지로 내보냅니다.">
+<meta name="theme-color" content="#4f46e5">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { DEFAULT: '#4f46e5', light: '#6366f1', deep: '#3730a3', 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81', 950: '#1e1b4b' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #4f46e5; --brand-2: #6366f1; --brand-deep: #3730a3; }
+  .tt-grid { display: grid; gap: 4px; }
+  .tt-cell {
+    position: relative;
+    border-radius: .6rem;
+    min-height: 52px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: .25rem .2rem;
+    font-size: 10px; font-weight: 800; line-height: 1.15;
+    text-align: center;
+    cursor: pointer;
+    transition: transform .14s cubic-bezier(.34,1.56,.64,1), box-shadow .18s;
+    overflow: hidden;
+    border: 1px solid transparent;
+  }
+  .tt-cell:active { transform: scale(.94); }
+  .tt-cell.empty { background: rgba(0,0,0,.03); border: 1px dashed rgba(0,0,0,.14); color: #9ca3af; }
+  .dark .tt-cell.empty { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.12); color: #6b7280; }
+  .tt-cell.filled { color: #fff; box-shadow: 0 4px 10px -6px rgba(0,0,0,.5); }
+  .tt-cell .room { font-size: 8px; font-weight: 600; opacity: .85; margin-top: 1px; }
+  .tt-cell .prof { font-size: 7.5px; font-weight: 600; opacity: .7; }
+  .tt-head { font-size: 10px; font-weight: 800; text-align: center; color: #6b7280; padding: .25rem 0; }
+  .dark .tt-head { color: #9ca3af; }
+  .tt-time { font-size: 8.5px; font-weight: 700; color: #9ca3af; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
+  .tt-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: .25rem; }
+  .tt-inner { min-width: 520px; }
+  .color-dot { width: 22px; height: 22px; border-radius: 7px; border: 2px solid transparent; }
+  .color-dot.on { border-color: #fff; box-shadow: 0 0 0 2px var(--brand); }
+  .sheet { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet-panel { width: 100%; max-width: 480px; background: #fff; border-radius: 1.4rem 1.4rem 0 0; padding: 1rem 1rem 1.4rem; box-shadow: 0 -18px 50px -20px rgba(0,0,0,.4); animation: sheetUp .3s cubic-bezier(.22,1,.36,1); }
+  .dark .sheet-panel { background: #14141a; }
+  @keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+  .sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(2px); }
+  @media (max-width: 640px) { .tt-inner { min-width: 440px; } .tt-cell { min-height: 46px; } }
+</style>
 </head>
-<body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col justify-between antialiased selection:bg-lemon-500 selection:text-neutral-950">
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
 
-  <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/80 dark:border-neutral-800/80">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <a href="index.html" class="flex items-center space-x-2.5 group">
-          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-lemon-600 to-amber-400 p-[1px] shadow-md group-hover:scale-105 transition-transform">
-            <div class="w-full h-full bg-white dark:bg-neutral-900 rounded-[15px] flex items-center justify-center">
-              <svg class="w-5 h-5 text-lemon-600 dark:text-lemon-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                <line x1="3" y1="9" x2="21" y2="9"></line>
-                <line x1="9" y1="21" x2="9" y2="9"></line>
-              </svg>
-            </div>
-          </div>
-          <div class="flex flex-col">
-            <div class="flex items-center space-x-1.5">
-              <span class="font-black text-lg tracking-tight">Lemon Table</span>
-              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-lemon-100 dark:bg-lemon-950 text-lemon-700 dark:text-lemon-400 font-bold border border-lemon-300 dark:border-lemon-800">시간표 메이커</span>
-            </div>
-            <span class="text-[10px] text-neutral-500 -mt-0.5">학교·강의 시간표 & 잠금화면 이미지 제작</span>
-          </div>
-        </a>
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-25"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 o2 opacity-20" style="background:#6366f1"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="9" x2="9" y2="21"></line><line x1="15" y1="9" x2="15" y2="21"></line></svg>
+        </div>
       </div>
-      <div class="flex items-center space-x-2">
-        <button onclick="downloadTableImage()" class="px-3.5 py-1.5 rounded-xl bg-lemon-500 hover:bg-lemon-400 text-neutral-950 font-black text-xs btn-tap">
-          잠금화면 이미지 다운로드
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Table</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">TIMETABLE</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">수업 시간표 빌더</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- HOME -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            셀을 누르면 바로 편집
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            이번 학기 시간표,<br><span class="brand-text">잠금화면</span>에 두세요.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            과목·강의실·교수님·색 태그까지 셀 단위로 채우고, 1080×2400 잠금화면 이미지로 바로 내보냅니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+              시간표 만들기
+            </button>
+            <button class="ghost-btn" data-goto="archive">보관함</button>
+          </div>
+          <div class="grid grid-cols-3 gap-3 pt-2 max-w-sm">
+            <div><p class="text-lg font-black brand-text">10</p><p class="text-[10px] text-neutral-500">교시까지</p></div>
+            <div><p class="text-lg font-black brand-text">월~토</p><p class="text-[10px] text-neutral-500">요일 선택</p></div>
+            <div><p class="text-lg font-black brand-text">PNG</p><p class="text-[10px] text-neutral-500">잠금화면</p></div>
+          </div>
+        </div>
+
+        <div class="panel p-4">
+          <p class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-2">미리보기 · 공학관 302</p>
+          <div class="grid grid-cols-6 gap-1 text-white text-[9px] font-black">
+            <div class="rounded-md py-1.5 text-center bg-neutral-200 dark:bg-neutral-800 !text-neutral-600 dark:!text-neutral-300">월</div>
+            <div class="rounded-md py-1.5 text-center bg-neutral-200 dark:bg-neutral-800 !text-neutral-600 dark:!text-neutral-300">화</div>
+            <div class="rounded-md py-1.5 text-center bg-neutral-200 dark:bg-neutral-800 !text-neutral-600 dark:!text-neutral-300">수</div>
+            <div class="rounded-md py-1.5 text-center bg-neutral-200 dark:bg-neutral-800 !text-neutral-600 dark:!text-neutral-300">목</div>
+            <div class="rounded-md py-1.5 text-center bg-neutral-200 dark:bg-neutral-800 !text-neutral-600 dark:!text-neutral-300">금</div>
+            <div class="rounded-md py-1.5 text-center bg-neutral-200 dark:bg-neutral-800 !text-neutral-600 dark:!text-neutral-300">토</div>
+            <div class="rounded-md py-2 text-center" style="background:#4f46e5">자료구조</div>
+            <div class="rounded-md py-2 text-center" style="background:#0ea5e9">영어회화</div>
+            <div class="rounded-md py-2 text-center" style="background:#4f46e5">자료구조</div>
+            <div class="rounded-md py-2 text-center" style="background:#f59e0b">창업실습</div>
+            <div class="rounded-md py-2 text-center" style="background:#10b981">통계학</div>
+            <div class="rounded-md py-2 text-center" style="background:#6b7280;opacity:.35">-</div>
+            <div class="rounded-md py-2 text-center" style="background:#6366f1">알고리즘</div>
+            <div class="rounded-md py-2 text-center" style="background:#6b7280;opacity:.35">-</div>
+            <div class="rounded-md py-2 text-center" style="background:#6366f1">알고리즘</div>
+            <div class="rounded-md py-2 text-center" style="background:#f59e0b">창업실습</div>
+            <div class="rounded-md py-2 text-center" style="background:#e11d48">캡스톤</div>
+            <div class="rounded-md py-2 text-center" style="background:#6b7280;opacity:.35">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></div>
+        <h3 class="text-[13px] font-bold">셀 단위 편집</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">과목·강의실·교수님·색을 한 화면에서 입력합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M4 10h16M10 4v16"></path></svg></div>
+        <h3 class="text-[13px] font-bold">학교별 프리셋</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">고등학교·대학·시험기간 프리셋으로 바로 시작합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2.5"></rect></svg></div>
+        <h3 class="text-[13px] font-bold">잠금화면 PNG</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">1080×2400 고해상도 이미지로 저장합니다.</p>
+      </div>
+      <div class="panel card-lift p-4">
+        <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3"><svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path></svg></div>
+        <h3 class="text-[13px] font-bold">학기별 보관</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">시간표를 저장해 학기마다 불러옵니다.</p>
+      </div>
+    </div>
+
+    <div class="panel p-5 sm:p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-sm font-black">프리셋으로 시작</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">교시 수와 요일이 자동으로 맞춰집니다.</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <button class="panel-soft card-lift p-4 text-left" data-preset="high">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">고등학교</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">월~금 · 1~7교시 · 50분 수업</p>
+        </button>
+        <button class="panel-soft card-lift p-4 text-left" data-preset="univ">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">대학교</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">월~금 · 1~9교시 · 75분 수업</p>
+        </button>
+        <button class="panel-soft card-lift p-4 text-left" data-preset="exam">
+          <span class="text-[11px] font-black text-brand-600 dark:text-brand-400">시험기간</span>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">월~토 · 시험 일정 표시용</p>
         </button>
       </div>
     </div>
-  </header>
+  </section>
 
-  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full space-y-6">
-    <!-- Timetable Grid -->
-    <div class="p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm overflow-x-auto">
-      <table class="w-full text-center text-xs min-w-[500px]" id="timetableGrid">
-        <thead>
-          <tr class="border-b border-neutral-200 dark:border-neutral-800 text-neutral-400 font-bold">
-            <th class="py-3 w-16">교시/시간</th>
-            <th class="py-3">월</th>
-            <th class="py-3">화</th>
-            <th class="py-3">수</th>
-            <th class="py-3">목</th>
-            <th class="py-3">금</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-neutral-100 dark:divide-neutral-850">
-          <!-- 1 to 7 periods -->
-          <tr class="h-16"><td class="font-bold text-neutral-400">1교시<br><span class="text-[10px] font-normal">09:00</span></td><td class="p-1"><div class="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 font-bold h-full flex flex-col justify-center">국어<span class="text-[9px] font-normal">301호</span></div></td><td class="p-1"></td><td class="p-1"><div class="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold h-full flex flex-col justify-center">수학<span class="text-[9px] font-normal">204호</span></div></td><td class="p-1"></td><td class="p-1"><div class="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold h-full flex flex-col justify-center">영어<span class="text-[9px] font-normal">어학실</span></div></td></tr>
-          <tr class="h-16"><td class="font-bold text-neutral-400">2교시<br><span class="text-[10px] font-normal">10:00</span></td><td class="p-1"><div class="p-2 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 font-bold h-full flex flex-col justify-center">사회<span class="text-[9px] font-normal">301호</span></div></td><td class="p-1"><div class="p-2 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 font-bold h-full flex flex-col justify-center">과학<span class="text-[9px] font-normal">실험실</span></div></td><td class="p-1"></td><td class="p-1"><div class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-bold h-full flex flex-col justify-center">컴퓨터<span class="text-[9px] font-normal">전산실</span></div></td><td class="p-1"></td></tr>
-          <tr class="h-16"><td class="font-bold text-neutral-400">3교시<br><span class="text-[10px] font-normal">11:00</span></td><td class="p-1"></td><td class="p-1"><div class="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold h-full flex flex-col justify-center">수학<span class="text-[9px] font-normal">204호</span></div></td><td class="p-1"><div class="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 font-bold h-full flex flex-col justify-center">국어<span class="text-[9px] font-normal">301호</span></div></td><td class="p-1"></td><td class="p-1"><div class="p-2 rounded-xl bg-lime-100 dark:bg-lime-950/60 text-lime-800 dark:text-lime-300 font-bold h-full flex flex-col justify-center">체육<span class="text-[9px] font-normal">체육관</span></div></td></tr>
-          <tr class="h-16"><td class="font-bold text-neutral-400">4교시<br><span class="text-[10px] font-normal">12:00</span></td><td class="p-1"><div class="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold h-full flex flex-col justify-center">영어<span class="text-[9px] font-normal">어학실</span></div></td><td class="p-1"></td><td class="p-1"></td><td class="p-1"><div class="p-2 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 font-bold h-full flex flex-col justify-center">과학<span class="text-[9px] font-normal">실험실</span></div></td><td class="p-1"></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </main>
+  <!-- STUDIO -->
+  <section data-view="studio" class="hidden space-y-4">
 
-  <footer class="border-t border-neutral-200/80 dark:border-neutral-800/80 py-8 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md mt-12 transition-colors">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400">
-      <div class="flex items-center space-x-2">
-        <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Table</span>
-        <span>·</span>
-        <span>Lemon soft 19대 독립 웹 프로덕트</span>
+    <div class="panel p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <input id="tableTitle" class="lemon-input !w-auto !max-w-[240px] !text-[13px] font-black" value="2026학년도 2학기 시간표" maxlength="30">
+        <div class="flex items-center gap-1.5">
+          <button id="btnUndo" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"></path><path d="M3 13a9 9 0 1 0 3-7"></path></svg>
+            실행취소
+          </button>
+          <button id="btnClearAll" class="ghost-btn !px-2.5 !py-1.5 !text-[11px]">전체 비우기</button>
+        </div>
       </div>
-      <div><span>2026 Lemon soft. All rights reserved.</span></div>
-    </div>
-  </footer>
 
-  <script>
-    function downloadTableImage() {
-      alert('시간표 잠금화면 렌더링 완료! 저장합니다.');
+      <div class="tt-wrap">
+        <div class="tt-inner" id="ttGrid"></div>
+      </div>
+      <p class="text-[10px] text-neutral-400 dark:text-neutral-500 mt-2">빈 칸을 누르면 과목을 추가하고, 채워진 칸을 누르면 수정·삭제할 수 있어요.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="panel p-4 sm:p-5">
+        <h2 class="text-[13px] font-black mb-3">교시 설정</h2>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[12px] font-semibold">요일</span>
+          <div class="seg" id="segDays">
+            <button data-days="5">월~금</button>
+            <button data-days="6">월~토</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[12px] font-semibold">교시 수</span>
+          <div class="seg" id="segPeriods">
+            <button data-periods="7">7</button>
+            <button data-periods="8">8</button>
+            <button data-periods="9">9</button>
+            <button data-periods="10">10</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-[12px] font-semibold">1교시 시작</span>
+          <input type="time" id="startTime" class="lemon-input !w-auto !py-1 !text-[12px] font-mono" value="09:00">
+        </div>
+        <div class="flex items-center justify-between mt-2">
+          <span class="text-[12px] font-semibold">수업 길이(분)</span>
+          <input type="number" id="classMin" class="lemon-input !w-20 !py-1 !text-[12px] font-mono" value="50" min="30" max="120" step="5">
+        </div>
+      </div>
+
+      <div class="panel p-4 sm:p-5">
+        <h2 class="text-[13px] font-black mb-3">내보내기</h2>
+        <div class="space-y-2.5">
+          <button id="btnPng" class="primary-btn w-full !py-2.5 !text-[12px]">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            잠금화면 이미지 저장 (1080×2400)
+          </button>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btnSave" class="ghost-btn !py-2.5 !text-[12px]">보관함 저장</button>
+            <button id="btnShare" class="ghost-btn !py-2.5 !text-[12px]">이미지 공유</button>
+          </div>
+          <p class="text-[10px] text-neutral-400 dark:text-neutral-500 leading-relaxed">저장한 이미지는 휴대폰 갤러리에서 잠금화면 배경으로 설정하세요.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel p-4 sm:p-5">
+      <h2 class="text-[13px] font-black mb-2">이번 주 요약</h2>
+      <div id="summary" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]"></div>
+    </div>
+  </section>
+
+  <!-- ARCHIVE -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">학기별 시간표를 저장해 두고 다시 불러오세요.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">전체 삭제</button>
+    </div>
+    <div id="archiveList" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+  </section>
+
+</main>
+
+<!-- Sheet -->
+<div id="sheet" class="sheet hidden">
+  <div class="sheet-backdrop" data-close="1"></div>
+  <div class="sheet-panel">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-[14px] font-black" id="sheetTitle">과목 입력</h3>
+      <button class="icon-btn !w-8 !h-8" data-close="1">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="space-y-2.5">
+      <div>
+        <label class="lemon-label">과목명</label>
+        <input id="fSubject" class="lemon-input mt-1" placeholder="예: 자료구조" maxlength="14">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="lemon-label">강의실</label>
+          <input id="fRoom" class="lemon-input mt-1" placeholder="공학관 302" maxlength="14">
+        </div>
+        <div>
+          <label class="lemon-label">교수 · 담당</label>
+          <input id="fProf" class="lemon-input mt-1" placeholder="김교수" maxlength="10">
+        </div>
+      </div>
+      <div>
+        <label class="lemon-label">색 태그</label>
+        <div class="flex flex-wrap gap-2 mt-1.5" id="colorRow"></div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 mt-4">
+      <button id="btnDeleteCell" class="ghost-btn !py-2.5 !px-3 !text-[12px] !text-rose-500 hidden">삭제</button>
+      <button id="btnSaveCell" class="primary-btn flex-1 !py-2.5 !text-[12px]">저장</button>
+    </div>
+  </div>
+</div>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Table</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="ocr.html" class="hover:text-brand-600 dark:hover:text-brand-400">OCR</a>
+      <a href="spell.html" class="hover:text-brand-600 dark:hover:text-brand-400">Spell</a>
+      <a href="wallpaper.html" class="hover:text-brand-600 dark:hover:text-brand-400">Wallpaper</a>
+      <a href="speed.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speed</a>
+      <a href="speech.html" class="hover:text-brand-600 dark:hover:text-brand-400">Speech</a>
+      <a href="blur.html" class="hover:text-brand-600 dark:hover:text-brand-400">Blur</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var go = Lemon.initTabs('home');
+  var ARCHIVE = Lemon.archive('lemon_table_archive', 12);
+  var $ = function (id) { return document.getElementById(id); };
+
+  var COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#e11d48', '#8b5cf6', '#14b8a6', '#64748b'];
+  var DAYS_ALL = ['월', '화', '수', '목', '금', '토'];
+
+  var state = {
+    title: '2026학년도 2학기 시간표',
+    days: 5,
+    periods: 7,
+    start: '09:00',
+    classMin: 50,
+    cells: {},
+    edit: null,
+    color: COLORS[0],
+    history: []
+  };
+
+  function keyOf(day, period) { return day + '-' + period; }
+
+  /* ---------------- presets ---------------- */
+  var PRESETS = {
+    high: { days: 5, periods: 7, start: '09:00', classMin: 50 },
+    univ: { days: 5, periods: 9, start: '09:00', classMin: 75 },
+    exam: { days: 6, periods: 6, start: '10:00', classMin: 90 }
+  };
+
+  /* ---------------- render grid ---------------- */
+  function periodTime(p) {
+    var parts = (state.start || '09:00').split(':');
+    var base = parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
+    var startM = base + (p - 1) * state.classMin;
+    var endM = startM + state.classMin;
+    function fmt(m) { var h = Math.floor(m / 60) % 24; var mm = m % 60; return Lemon.pad(h) + ':' + Lemon.pad(mm); }
+    return { start: fmt(startM), end: fmt(endM) };
+  }
+
+  function renderGrid() {
+    var days = DAYS_ALL.slice(0, state.days);
+    var cols = '46px repeat(' + days.length + ', minmax(0, 1fr))';
+    var html = '';
+    html += '<div class="tt-grid" style="grid-template-columns:' + cols + '">';
+    html += '<div></div>';
+    days.forEach(function (d) { html += '<div class="tt-head">' + d + '</div>'; });
+
+    for (var p = 1; p <= state.periods; p++) {
+      var t = periodTime(p);
+      html += '<div class="tt-time"><span class="font-black text-neutral-500 dark:text-neutral-400">' + p + '</span><span>' + t.start + '</span></div>';
+      for (var i = 0; i < days.length; i++) {
+        var key = keyOf(days[i], p);
+        var c = state.cells[key];
+        if (c) {
+          html += '<div class="tt-cell filled" data-cell="' + key + '" style="background:' + c.color + '">' +
+            '<span class="truncate w-full">' + Lemon.esc(c.subject || '') + '</span>' +
+            (c.room ? '<span class="room truncate w-full">' + Lemon.esc(c.room) + '</span>' : '') +
+            (c.prof ? '<span class="prof truncate w-full">' + Lemon.esc(c.prof) + '</span>' : '') +
+            '</div>';
+        } else {
+          html += '<div class="tt-cell empty" data-cell="' + key + '"><span class="text-base leading-none">+</span></div>';
+        }
+      }
     }
-  </script>
+    html += '</div>';
+    $('ttGrid').innerHTML = html;
+    renderSummary();
+  }
+
+  function renderSummary() {
+    var list = Object.keys(state.cells);
+    var subjects = {};
+    list.forEach(function (k) {
+      var c = state.cells[k];
+      subjects[c.subject] = (subjects[c.subject] || 0) + 1;
+    });
+    var totalMin = list.length * state.classMin;
+    var box = $('summary');
+    box.innerHTML =
+      '<div class="panel-soft px-3 py-2"><span class="text-neutral-500 dark:text-neutral-400">과목 수</span><p class="font-black text-[13px] mt-0.5">' + Object.keys(subjects).length + '과목</p></div>' +
+      '<div class="panel-soft px-3 py-2"><span class="text-neutral-500 dark:text-neutral-400">주간 수업</span><p class="font-black text-[13px] mt-0.5">' + list.length + '개 · ' + Math.floor(totalMin / 60) + '시간 ' + (totalMin % 60) + '분</p></div>' +
+      '<div class="panel-soft px-3 py-2"><span class="text-neutral-500 dark:text-neutral-400">요일</span><p class="font-black text-[13px] mt-0.5">' + DAYS_ALL.slice(0, state.days).join('·') + '</p></div>' +
+      '<div class="panel-soft px-3 py-2"><span class="text-neutral-500 dark:text-neutral-400">교시</span><p class="font-black text-[13px] mt-0.5">1~' + state.periods + '교시</p></div>';
+  }
+
+  /* ---------------- sheet ---------------- */
+  function openSheet(key) {
+    state.edit = key;
+    var c = state.cells[key] || null;
+    $('fSubject').value = c ? c.subject : '';
+    $('fRoom').value = c ? c.room : '';
+    $('fProf').value = c ? c.prof : '';
+    state.color = c ? c.color : COLORS[Math.floor(Math.random() * COLORS.length)];
+    var parts = key.split('-');
+    $('sheetTitle').textContent = parts[0] + '요일 ' + parts[1] + '교시';
+    $('btnDeleteCell').classList.toggle('hidden', !c);
+    renderColors();
+    $('sheet').classList.remove('hidden');
+    setTimeout(function () { $('fSubject').focus(); }, 120);
+    Lemon.hap(10);
+  }
+
+  function closeSheet() {
+    $('sheet').classList.add('hidden');
+    state.edit = null;
+  }
+
+  function renderColors() {
+    $('colorRow').innerHTML = COLORS.map(function (c) {
+      return '<button class="color-dot btn-tap ' + (c === state.color ? 'on' : '') + '" data-color="' + c + '" style="background:' + c + '"></button>';
+    }).join('');
+  }
+
+  function pushHistory() {
+    state.history.push(JSON.stringify(state.cells));
+    if (state.history.length > 40) state.history.shift();
+  }
+
+  $('btnSaveCell').addEventListener('click', function () {
+    var subject = $('fSubject').value.trim();
+    if (!subject) { Lemon.toast('과목명을 입력해 주세요', 'err'); $('fSubject').focus(); return; }
+    pushHistory();
+    state.cells[state.edit] = {
+      subject: subject,
+      room: $('fRoom').value.trim(),
+      prof: $('fProf').value.trim(),
+      color: state.color
+    };
+    closeSheet();
+    renderGrid();
+    Lemon.toast(subject + ' 추가했어요', 'ok');
+    Lemon.hap(12);
+  });
+
+  $('btnDeleteCell').addEventListener('click', function () {
+    if (!state.edit) return;
+    pushHistory();
+    delete state.cells[state.edit];
+    closeSheet();
+    renderGrid();
+    Lemon.toast('칸을 비웠어요', 'info');
+  });
+
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-close]')) { closeSheet(); return; }
+    var colorBtn = e.target.closest('[data-color]');
+    if (colorBtn) { state.color = colorBtn.getAttribute('data-color'); renderColors(); return; }
+    var cell = e.target.closest('[data-cell]');
+    if (cell) { openSheet(cell.getAttribute('data-cell')); }
+  });
+
+  $('fSubject').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btnSaveCell').click(); });
+
+  $('btnUndo').addEventListener('click', function () {
+    if (!state.history.length) { Lemon.toast('되돌릴 작업이 없어요', 'info'); return; }
+    state.cells = JSON.parse(state.history.pop());
+    renderGrid();
+    Lemon.toast('되돌렸어요', 'info');
+  });
+
+  $('btnClearAll').addEventListener('click', function () {
+    if (!Object.keys(state.cells).length) return Lemon.toast('비울 칸이 없어요', 'info');
+    if (window.confirm('시간표를 모두 비울까요?')) {
+      pushHistory();
+      state.cells = {};
+      renderGrid();
+      Lemon.toast('전체를 비웠어요', 'info');
+    }
+  });
+
+  $('tableTitle').addEventListener('input', function () { state.title = this.value; });
+
+  /* ---------------- segs ---------------- */
+  function bindSeg(containerId, attr, apply) {
+    var seg = $(containerId);
+    seg.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      seg.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      apply(b.getAttribute(attr));
+      Lemon.hap(8);
+    });
+  }
+  bindSeg('segDays', 'data-days', function (v) { state.days = parseInt(v, 10); renderGrid(); });
+  bindSeg('segPeriods', 'data-periods', function (v) { state.periods = parseInt(v, 10); renderGrid(); });
+
+  $('startTime').addEventListener('input', function () { state.start = this.value; renderGrid(); });
+  $('classMin').addEventListener('input', function () { state.classMin = Math.max(20, parseInt(this.value, 10) || 50); renderGrid(); });
+
+  function syncSegs() {
+    document.querySelectorAll('#segDays button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-days') === String(state.days)); });
+    document.querySelectorAll('#segPeriods button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-periods') === String(state.periods)); });
+    $('startTime').value = state.start;
+    $('classMin').value = state.classMin;
+    $('tableTitle').value = state.title;
+  }
+
+  /* ---------------- presets ---------------- */
+  var SAMPLE = {
+    high: { '월-1': ['국어', '2-1', '박지훈'], '월-2': ['수학', '2-1', '이서연'], '화-3': ['영어', '3-2', '최민'], '수-1': ['국어', '2-1', '박지훈'], '목-4': ['과학', '과학실', '정우'], '금-2': ['수학', '2-1', '이서연'], '금-5': ['체육', '체육관', '강현'] },
+    univ: { '월-1': ['자료구조', '공학관 302', '김교수'], '월-3': ['알고리즘', '공학관 201', '이교수'], '화-2': ['영어회화', '인문관 105', 'Smith'], '수-1': ['자료구조', '공학관 302', '김교수'], '수-3': ['알고리즘', '공학관 201', '이교수'], '목-2': ['창업실습', '창업관 401', '박교수'], '금-1': ['통계학', '자연관 203', '정교수'], '금-4': ['캡스톤', '공학관 501', '한교수'] },
+    exam: { '월-1': ['중간고사', '2-1', '국어'], '화-1': ['중간고사', '3-2', '영어'], '수-1': ['중간고사', '2-1', '수학'], '목-1': ['중간고사', '과학실', '과학'], '금-1': ['중간고사', '2-1', '사회'], '토-1': ['수행평가', '체육관', '체육'] }
+  };
+
+  function applyPreset(id) {
+    var p = PRESETS[id];
+    if (!p) return;
+    pushHistory();
+    state.days = p.days;
+    state.periods = p.periods;
+    state.start = p.start;
+    state.classMin = p.classMin;
+    if (id === 'high') state.title = '고등학교 시간표';
+    if (id === 'univ') state.title = '2026학년도 2학기 시간표';
+    if (id === 'exam') state.title = '시험기간 일정표';
+    state.cells = {};
+    var sample = SAMPLE[id] || {};
+    Object.keys(sample).forEach(function (k, i) {
+      state.cells[k] = { subject: sample[k][0], room: sample[k][1], prof: sample[k][2], color: COLORS[i % COLORS.length] };
+    });
+    syncSegs();
+    renderGrid();
+    go('studio');
+    Lemon.toast('프리셋을 적용했어요', 'ok');
+  }
+
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () { applyPreset(b.getAttribute('data-preset')); });
+  });
+
+  /* ---------------- export ---------------- */
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function buildExportCanvas() {
+    var W = 1080, H = 2400;
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var ctx = c.getContext('2d');
+
+    var g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#0b0b13');
+    g.addColorStop(0.5, '#141423');
+    g.addColorStop(1, '#1b1533');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    var glow = ctx.createRadialGradient(W * 0.8, H * 0.12, 0, W * 0.8, H * 0.12, W);
+    glow.addColorStop(0, 'rgba(99,102,241,.35)');
+    glow.addColorStop(1, 'rgba(99,102,241,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    var pad = 60;
+    ctx.textBaseline = 'alphabetic';
+
+    // header
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.font = '600 30px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'left';
+    var now = new Date();
+    ctx.fillText((now.getMonth() + 1) + '월 ' + now.getDate() + '일 ' + ['일', '월', '화', '수', '목', '금', '토'][now.getDay()] + '요일', pad, 140);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 62px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(state.title || '시간표', pad, 230);
+
+    // grid
+    var days = DAYS_ALL.slice(0, state.days);
+    var top = 300;
+    var timeW = 96;
+    var gridW = W - pad * 2;
+    var colW = (gridW - timeW) / days.length;
+    var headH = 66;
+    var rowH = Math.min(150, (H - top - 260) / state.periods);
+    var gap = 8;
+
+    ctx.font = '800 28px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'center';
+    for (var i = 0; i < days.length; i++) {
+      ctx.fillStyle = 'rgba(255,255,255,.6)';
+      ctx.fillText(days[i], pad + timeW + colW * i + colW / 2, top + 42);
+    }
+
+    for (var p = 1; p <= state.periods; p++) {
+      var y = top + headH + (p - 1) * rowH;
+      var t = periodTime(p);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,255,255,.34)';
+      ctx.font = '700 22px -apple-system, sans-serif';
+      ctx.fillText(String(p), pad + timeW / 2, y + rowH * 0.42);
+      ctx.fillStyle = 'rgba(255,255,255,.22)';
+      ctx.font = '600 17px -apple-system, sans-serif';
+      ctx.fillText(t.start, pad + timeW / 2, y + rowH * 0.62);
+
+      for (var d2 = 0; d2 < days.length; d2++) {
+        var x = pad + timeW + colW * d2 + gap / 2;
+        var w = colW - gap;
+        var h = rowH - gap;
+        var cell = state.cells[keyOf(days[d2], p)];
+        if (cell) {
+          ctx.fillStyle = cell.color;
+          roundRect(ctx, x, y + gap / 2, w, h, 18);
+          ctx.fill();
+
+          ctx.fillStyle = 'rgba(255,255,255,.98)';
+          ctx.textAlign = 'center';
+          var subjSize = 30;
+          ctx.font = '800 ' + subjSize + 'px -apple-system, "Apple SD Gothic Neo", sans-serif';
+          while (ctx.measureText(cell.subject).width > w - 22 && subjSize > 18) {
+            subjSize -= 2;
+            ctx.font = '800 ' + subjSize + 'px -apple-system, "Apple SD Gothic Neo", sans-serif';
+          }
+          var ty = y + gap / 2 + h / 2 + (cell.room ? -10 : 8);
+          ctx.fillText(cell.subject, x + w / 2, ty);
+          if (cell.room) {
+            ctx.font = '600 20px -apple-system, "Apple SD Gothic Neo", sans-serif';
+            ctx.fillStyle = 'rgba(255,255,255,.82)';
+            ctx.fillText(cell.room, x + w / 2, ty + 30);
+          }
+          if (cell.prof) {
+            ctx.font = '600 17px -apple-system, "Apple SD Gothic Neo", sans-serif';
+            ctx.fillStyle = 'rgba(255,255,255,.62)';
+            ctx.fillText(cell.prof, x + w / 2, ty + (cell.room ? 54 : 30));
+          }
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,.05)';
+          roundRect(ctx, x, y + gap / 2, w, h, 18);
+          ctx.fill();
+        }
+      }
+    }
+
+    // footer
+    var total = Object.keys(state.cells).length;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255,255,255,.45)';
+    ctx.font = '700 26px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText(total + '개 수업 · 주 ' + Math.floor(total * state.classMin / 60) + '시간 ' + (total * state.classMin % 60) + '분', pad, H - 110);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,255,255,.28)';
+    ctx.font = '800 24px -apple-system, sans-serif';
+    ctx.fillText('LEMON TABLE', W - pad, H - 110);
+
+    return c;
+  }
+
+  $('btnPng').addEventListener('click', function () {
+    var c = buildExportCanvas();
+    c.toBlob(function (blob) {
+      if (!blob) return Lemon.toast('이미지 생성에 실패했어요', 'err');
+      Lemon.downloadBlob('lemon-timetable-' + Date.now() + '.png', blob);
+      Lemon.toast('잠금화면 이미지를 저장했어요', 'ok');
+      Lemon.confetti(12);
+    }, 'image/png');
+  });
+
+  $('btnShare').addEventListener('click', function () {
+    var c = buildExportCanvas();
+    c.toBlob(function (blob) {
+      if (!blob) return;
+      var file = new File([blob], 'lemon-timetable.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: state.title }).then(function () {
+          Lemon.toast('공유 창을 열었어요', 'ok');
+        }).catch(function () { });
+      } else {
+        Lemon.downloadBlob('lemon-timetable-' + Date.now() + '.png', blob);
+        Lemon.toast('공유를 지원하지 않아 저장했어요', 'info');
+      }
+    }, 'image/png');
+  });
+
+  /* ---------------- archive ---------------- */
+  function snapshotCfg() {
+    return { title: state.title, days: state.days, periods: state.periods, start: state.start, classMin: state.classMin, cells: state.cells };
+  }
+
+  $('btnSave').addEventListener('click', function () {
+    var thumb = buildExportCanvas();
+    var small = document.createElement('canvas');
+    small.width = 270; small.height = 600;
+    small.getContext('2d').drawImage(thumb, 0, 0, 270, 600);
+    var rec = ARCHIVE.add({
+      title: state.title,
+      sub: DAYS_ALL.slice(0, state.days).join('·') + ' · ' + state.periods + '교시 · ' + Object.keys(state.cells).length + '수업',
+      thumb: small.toDataURL('image/jpeg', 0.7),
+      cfg: snapshotCfg()
+    });
+    if (rec) { Lemon.toast('보관함에 저장했어요', 'ok'); renderArchive(); }
+  });
+
+  function renderArchive() {
+    var list = ARCHIVE.all();
+    $('arcCount').textContent = list.length;
+    var box = $('archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="panel p-10 text-center col-span-full"><div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3"><svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line></svg></div><p class="text-[12px] font-bold">저장한 시간표가 없어요</p><p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">스튜디오에서 ‘보관함 저장’을 눌러 보세요.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="panel p-2.5 card-lift"><div class="rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 mb-2"><img src="' + it.thumb + '" alt="" class="w-full h-auto block"></div>' +
+        '<p class="text-[11px] font-bold truncate">' + Lemon.esc(it.title) + '</p>' +
+        '<p class="text-[9.5px] text-neutral-500 dark:text-neutral-400 truncate">' + Lemon.esc(it.sub || '') + '</p>' +
+        '<p class="text-[9px] text-neutral-400 mt-0.5">' + Lemon.timeAgo(it.ts) + '</p>' +
+        '<div class="flex gap-1 mt-2"><button class="ghost-btn !px-2 !py-1 !text-[10px] flex-1" data-load="' + it.id + '">불러오기</button><button class="ghost-btn !px-2 !py-1 !text-[10px] !text-rose-500" data-del="' + it.id + '">삭제</button></div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var load = e.target.closest('[data-load]');
+    if (load) {
+      var item = ARCHIVE.all().filter(function (x) { return x.id === load.getAttribute('data-load'); })[0];
+      if (!item || !item.cfg) return;
+      state.title = item.cfg.title;
+      state.days = item.cfg.days;
+      state.periods = item.cfg.periods;
+      state.start = item.cfg.start;
+      state.classMin = item.cfg.classMin;
+      state.cells = item.cfg.cells || {};
+      state.history = [];
+      syncSegs();
+      renderGrid();
+      go('studio');
+      Lemon.toast('시간표를 불러왔어요', 'ok');
+    }
+    var del = e.target.closest('[data-del]');
+    if (del) { ARCHIVE.remove(del.getAttribute('data-del')); renderArchive(); Lemon.toast('삭제했어요', 'info'); }
+  });
+
+  $('btnClearArc').addEventListener('click', function () {
+    if (!ARCHIVE.count()) return Lemon.toast('비울 기록이 없어요', 'info');
+    if (window.confirm('보관함을 모두 비울까요?')) { ARCHIVE.clear(); renderArchive(); Lemon.toast('비웠어요', 'info'); }
+  });
+
+  document.querySelectorAll('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+
+  document.addEventListener('lemon:view', function (e) { if (e.detail.view === 'archive') renderArchive(); });
+
+  /* init: 대학 프리셋으로 시작 */
+  state.cells = {};
+  Object.keys(SAMPLE.univ).forEach(function (k, i) {
+    state.cells[k] = { subject: SAMPLE.univ[k][0], room: SAMPLE.univ[k][1], prof: SAMPLE.univ[k][2], color: COLORS[i % COLORS.length] };
+  });
+  state.periods = 9;
+  state.classMin = 75;
+  syncSegs();
+  renderGrid();
+  renderArchive();
+})();
+</script>
 </body>
 </html>
