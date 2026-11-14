@@ -1319,14 +1319,37 @@
     clearTimeout(el.__hide);
     el.__hide = setTimeout(function () { el.style.opacity = '0'; }, 1800);
   }
+
+  function fieldState() {
+    var out = {};
+    try {
+      var els = document.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var k = el.id || el.getAttribute('name');
+        if (!k) continue;
+        if (el.type === 'password' || el.type === 'file') continue;
+        if (el.type === 'checkbox' || el.type === 'radio') { out[k] = el.checked ? '1' : '0'; continue; }
+        var v = el.value !== undefined ? el.value : (el.textContent || '');
+        if (v === undefined || v === null) continue;
+        if (String(v).length > 20000) continue;
+        out[k] = String(v);
+      }
+    } catch (e) { }
+    return out;
+  }
+
   var timer = null;
   function flush() {
     try {
       var data = ownKeys();
       var count = 0;
       for (var k in data) if (data.hasOwnProperty(k)) count++;
-      if (!count) return;
-      localStorage.setItem(SK, JSON.stringify({ ts: Date.now(), svc: SVC, data: data }));
+      var fields = fieldState();
+      var filled = 0;
+      for (var fk in fields) if (fields.hasOwnProperty(fk) && String(fields[fk]).length) filled++;
+      if (!count && !filled) return;
+      localStorage.setItem(SK, JSON.stringify({ ts: Date.now(), svc: SVC, data: data, fields: fieldState() }));
       pill('자동 저장됨 ' + stamp());
     } catch (e) { pill('저장 공간 부족', 'err'); }
   }
@@ -1347,7 +1370,23 @@
       var snap = JSON.parse(raw);
       if (snap && snap.data) {
         Object.keys(snap.data).forEach(function (k) { try { localStorage.setItem(k, snap.data[k]); } catch (e) { } });
-        pill('이전 작업을 복구했어요');
+        Object.keys(snap.data || {}).forEach(function (k) { try { localStorage.setItem(k, snap.data[k]); } catch (e) { } });
+        setTimeout(function () {
+          var restored = 0;
+          Object.keys(snap.fields || {}).forEach(function (k) {
+            try {
+              var el = document.getElementById(k) || document.querySelector('[name="' + k + '"]');
+              if (!el || el.type === 'password') return;
+              var cur = el.value !== undefined ? el.value : el.textContent;
+              if (cur && cur.length) return;    // 사용자가 이미 입력한 칸은 건드리지 않는다
+              if (el.type === 'checkbox' || el.type === 'radio') el.checked = snap.fields[k] === '1';
+              else if (el.value !== undefined) el.value = snap.fields[k];
+              else el.textContent = snap.fields[k];
+              restored++;
+            } catch (e) { }
+          });
+          if (restored) pill('이전 작업을 복구했어요');
+        }, 400);
         setTimeout(function () { location.reload(); }, 600);
       }
     }
