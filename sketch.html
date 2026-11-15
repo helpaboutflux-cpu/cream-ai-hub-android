@@ -1,0 +1,3074 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Sketch — 무설치 웹 화이트보드 & 손그림 다이어그램</title>
+<meta name="description" content="무한 캔버스에 손으로 그리는 무설치 화이트보드. 필압 펜·형광펜·도형·화살표·텍스트, 손그림(Rough) 스타일, 스냅 격자, 무제한 실행취소, IndexedDB 자동 저장과 고해상도 PNG·SVG 내보내기까지 서버 없이 브라우저에서.">
+<meta name="theme-color" content="#0b0e13">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232b4ad6'/%3E%3Cpath d='M8 23.5 12 12l4 7 3-9 5 13.5' fill='none' stroke='%23f7f2e6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    ink: { 50: '#f4f6fb', 100: '#e6eaf4', 200: '#c8d2e6', 300: '#9dabc9', 400: '#6b7ea6', 500: '#4a5f88', 600: '#374970', 700: '#28385b', 800: '#1c2740', 900: '#131b2d', 950: '#0b0e13' },
+    cobalt: { 50: '#eef1ff', 100: '#dbe1ff', 200: '#bcc7ff', 300: '#94a5ff', 400: '#6b81f7', 500: '#4a63e8', 600: '#2b4ad6', 700: '#2339ac', 800: '#1f318a', 900: '#1b2f8a', 950: '#121c52' },
+    teal: { 50: '#eafaf6', 100: '#cbf3ea', 200: '#9ce7da', 300: '#5fd4c3', 400: '#2ebba9', 500: '#14a090', 600: '#0c7c74', 700: '#0b655f', 800: '#0b514d', 900: '#0a4340' },
+    ochre: { 50: '#fdf7e9', 100: '#faedc8', 200: '#f3d98e', 300: '#e9bf52', 400: '#dba52c', 500: '#b8842b', 600: '#94671f', 700: '#714e19', 800: '#553c17', 900: '#423114' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #2b4ad6;
+    --brand-2: #0c7c74;
+    --brand-deep: #1b2f8a;
+    --paper: #f7f2e6;
+    --paper-2: #fffdf6;
+    --paper-3: #f1ebdc;
+    --ink: #182338;
+    --ink-soft: #5a6579;
+    --ink-faint: #8b93a3;
+    --line: #ded4bf;
+    --line-2: #cfc2a6;
+    --ochre: #b8842b;
+    --stage: #f4eedf;
+    --stage-dot: rgba(24, 35, 56, .22);
+    --stage-line: rgba(24, 35, 56, .10);
+    --sel: #2b4ad6;
+  }
+  .dark {
+    --paper: #0b0e13;
+    --paper-2: #11151c;
+    --paper-3: #151a23;
+    --ink: #e9e6dd;
+    --ink-soft: #9aa6b8;
+    --ink-faint: #6f7a8c;
+    --line: #232a34;
+    --line-2: #333c48;
+    --ochre: #d6a24a;
+    --stage: #0d1118;
+    --stage-dot: rgba(180, 197, 226, .28);
+    --stage-line: rgba(180, 197, 226, .10);
+    --sel: #7d97ff;
+  }
+
+  html, body { max-width: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Malgun Gothic", "Helvetica Neue", sans-serif;
+    letter-spacing: -0.015em;
+    background-color: var(--paper);
+    color: var(--ink);
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", monospace; }
+  .mono-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 700;
+  }
+  .paper-field {
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(to right, var(--stage-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--stage-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: -1px -1px;
+  }
+  .sheet {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: .6rem;
+  }
+  .sheet-hard { box-shadow: 4px 4px 0 -1px var(--line); }
+  .rule { height: 1px; background: var(--line); }
+  .ink-strong { color: var(--ink); }
+  .ink-soft { color: var(--ink-soft); }
+  .ink-faint { color: var(--ink-faint); }
+
+  /* ---------- brand ---------- */
+  .mark-box {
+    width: 2.35rem; height: 2.35rem; border-radius: .55rem;
+    background: var(--brand); color: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 2.5px 2.5px 0 0 color-mix(in srgb, var(--ink) 82%, transparent);
+    flex-shrink: 0;
+  }
+  .dark .mark-box { background: #3358ea; box-shadow: 2.5px 2.5px 0 0 #2c3644; }
+
+  .ink-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .42rem;
+    padding: .55rem .85rem; border-radius: .5rem;
+    font-size: .8rem; font-weight: 800; line-height: 1.1;
+    color: var(--paper); background: var(--brand);
+    border: 1px solid color-mix(in srgb, var(--ink) 78%, transparent);
+    box-shadow: 2.5px 2.5px 0 0 color-mix(in srgb, var(--ink) 78%, transparent);
+    transition: transform .13s cubic-bezier(.34,1.56,.64,1), box-shadow .13s ease, filter .18s ease;
+    white-space: nowrap;
+  }
+  .dark .ink-btn { color: #0b0e13; background: #8ba1ff; border-color: #2c3644; box-shadow: 2.5px 2.5px 0 0 #2c3644; }
+  .ink-btn:hover { filter: brightness(1.06); transform: translate(-1px, -1px); box-shadow: 3.5px 3.5px 0 0 color-mix(in srgb, var(--ink) 78%, transparent); }
+  .ink-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 0 transparent; }
+  .ink-btn:disabled { opacity: .42; filter: grayscale(.5); transform: none; box-shadow: none; cursor: not-allowed; }
+
+  .line-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .38rem;
+    padding: .5rem .7rem; border-radius: .5rem;
+    font-size: .76rem; font-weight: 700;
+    color: var(--ink); background: var(--paper-2);
+    border: 1px solid var(--line-2);
+    transition: transform .13s ease, border-color .18s ease, background-color .18s ease, color .18s ease;
+    white-space: nowrap;
+  }
+  .line-btn:hover { border-color: var(--brand); color: var(--brand); }
+  .dark .line-btn:hover { border-color: #8ba1ff; color: #8ba1ff; }
+  .line-btn:active { transform: scale(.96); }
+  .line-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .line-btn.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .dark .line-btn.on { background: #8ba1ff; color: #0b0e13; border-color: #8ba1ff; }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    padding: .22rem .45rem; border-radius: .3rem;
+    border: 1px solid var(--line-2); color: var(--ink-soft);
+    background: color-mix(in srgb, var(--ochre) 8%, transparent);
+  }
+
+  /* ---------- header / nav ---------- */
+  .lemon-header { background: color-mix(in srgb, var(--paper) 84%, transparent); }
+  .dark .lemon-header { background: rgba(11, 14, 19, .84); }
+  .nav-tab.nav-on, .nav-tab.nav-on:hover {
+    background-image: none !important;
+    background-color: var(--brand) !important;
+    color: #fff !important;
+    border-radius: .5rem;
+    box-shadow: 2px 2px 0 0 color-mix(in srgb, var(--ink) 45%, transparent);
+  }
+  .dark .nav-tab.nav-on, .dark .nav-tab.nav-on:hover { background-color: #8ba1ff !important; color: #0b0e13 !important; }
+  .nav-tab { border-radius: .5rem; }
+
+  /* ---------- hero ---------- */
+  .hero-sheet {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--line-2);
+    border-radius: .7rem;
+    background:
+      radial-gradient(120% 90% at 8% 0%, color-mix(in srgb, var(--brand) 7%, var(--paper-2)) 0%, var(--paper-2) 46%, var(--paper-2) 100%);
+    box-shadow: 6px 6px 0 -1px var(--line);
+  }
+  .dark .hero-sheet {
+    background: radial-gradient(120% 90% at 8% 0%, #17203a 0%, #11151c 46%, #0f131a 100%);
+  }
+  .hero-sheet::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(95% 80% at 20% 0%, #000 0%, transparent 82%);
+    -webkit-mask-image: radial-gradient(95% 80% at 20% 0%, #000 0%, transparent 82%);
+  }
+  .corner-tick { position: absolute; width: 14px; height: 14px; border: 1.5px solid color-mix(in srgb, var(--ink) 30%, transparent); pointer-events: none; }
+  .corner-tick.tl { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
+  .corner-tick.tr { top: 10px; right: 10px; border-left: 0; border-bottom: 0; }
+  .corner-tick.bl { bottom: 10px; left: 10px; border-right: 0; border-top: 0; }
+  .corner-tick.br { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
+
+  .hero-dash { stroke-dasharray: 5 7; opacity: .5; }
+  .draw-anim { stroke-dasharray: 900; stroke-dashoffset: 900; animation: drawLine 2.4s cubic-bezier(.5,0,.2,1) forwards; }
+  @keyframes drawLine { to { stroke-dashoffset: 0; } }
+
+  .title-block {
+    border: 1px solid var(--line-2);
+    border-radius: .25rem;
+    background: color-mix(in srgb, var(--paper) 70%, transparent);
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9px; letter-spacing: .08em; color: var(--ink-soft);
+  }
+  .title-block div { border-bottom: 1px solid var(--line); padding: .22rem .45rem; display: flex; justify-content: space-between; gap: .8rem; }
+  .title-block div:last-child { border-bottom: 0; }
+  .title-block b { color: var(--ink); font-weight: 700; }
+
+  .feat {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: .6rem;
+    padding: 1rem 1.05rem;
+    transition: transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s ease, border-color .2s ease;
+  }
+  .feat:hover { transform: translateY(-3px); border-color: var(--line-2); box-shadow: 5px 5px 0 -1px var(--line); }
+  .feat-ico {
+    width: 2.1rem; height: 2.1rem; border-radius: .45rem;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--brand) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand) 24%, transparent);
+    color: var(--brand);
+  }
+  .dark .feat-ico { background: rgba(139, 161, 255, .12); border-color: rgba(139, 161, 255, .3); color: #9db1ff; }
+
+  .tpl-card {
+    position: relative; text-align: left; overflow: hidden;
+    background: var(--paper-2); border: 1px solid var(--line); border-radius: .6rem;
+    padding: .8rem; transition: transform .24s cubic-bezier(.2,.8,.2,1), box-shadow .24s ease, border-color .2s ease;
+  }
+  .tpl-card:hover { transform: translateY(-3px); border-color: var(--brand); box-shadow: 5px 5px 0 -1px var(--line); }
+  .tpl-thumb { border: 1px solid var(--line); border-radius: .4rem; background: var(--paper); overflow: hidden; }
+
+  /* ---------- studio ---------- */
+  .studio-wrap { display: flex; flex-direction: column; min-height: 0; }
+  .studio-bar {
+    display: flex; align-items: center; gap: .4rem;
+    padding: .4rem .55rem;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--paper-2) 92%, transparent);
+    overflow-x: auto; scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  .studio-bar::-webkit-scrollbar { display: none; }
+  .studio-body { display: flex; flex: 1 1 auto; min-height: 0; }
+  .tool-rail {
+    display: flex; flex-direction: column; align-items: center; gap: .2rem;
+    padding: .4rem .3rem; width: 3.25rem; flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    background: var(--paper-2);
+    overflow-y: auto; scrollbar-width: none;
+  }
+  .tool-rail::-webkit-scrollbar { display: none; }
+  .tool-btn {
+    width: 2.4rem; height: 2.4rem; border-radius: .45rem;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-soft); border: 1px solid transparent;
+    transition: all .16s ease; flex-shrink: 0; position: relative;
+  }
+  .tool-btn:hover { background: color-mix(in srgb, var(--brand) 8%, transparent); color: var(--brand); }
+  .tool-btn.on {
+    background: var(--brand); color: #fff; border-color: color-mix(in srgb, var(--ink) 55%, transparent);
+    box-shadow: 1.5px 1.5px 0 0 color-mix(in srgb, var(--ink) 40%, transparent);
+  }
+  .dark .tool-btn.on { background: #8ba1ff; color: #0b0e13; box-shadow: 1.5px 1.5px 0 0 #333c48; }
+  .tool-btn:active { transform: scale(.93); }
+  .tool-sep { width: 60%; height: 1px; background: var(--line); margin: .25rem 0; flex-shrink: 0; }
+
+  .stage-wrap { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; background: var(--stage); overflow: hidden; }
+  #cv { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  #cv.cursor-select { cursor: default; }
+  #cv.cursor-hand { cursor: grab; }
+  #cv.panning { cursor: grabbing; }
+  #cv.cursor-text { cursor: text; }
+  #cv.cursor-erase { cursor: cell; }
+
+  .stage-hint {
+    position: absolute; left: 50%; bottom: .8rem; transform: translateX(-50%);
+    display: flex; align-items: center; gap: .4rem;
+    padding: .34rem .7rem; border-radius: 9999px;
+    background: color-mix(in srgb, var(--paper-2) 92%, transparent);
+    border: 1px solid var(--line-2);
+    font-size: 10.5px; color: var(--ink-soft); font-weight: 600;
+    pointer-events: none; box-shadow: 0 6px 18px -12px rgba(0,0,0,.5);
+    max-width: calc(100% - 1.6rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    z-index: 3;
+  }
+  .stage-hint.hide { opacity: 0; transition: opacity .4s ease; }
+
+  #textEdit {
+    position: absolute; display: none; z-index: 8;
+    margin: 0; padding: 2px 3px; resize: none; overflow: hidden;
+    border: 1px dashed var(--sel); border-radius: 3px;
+    background: color-mix(in srgb, var(--paper-2) 72%, transparent);
+    color: var(--ink); outline: none; line-height: 1.35;
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+    font-weight: 500; letter-spacing: -.01em;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sel) 14%, transparent);
+  }
+  #btnTextDone {
+    position: absolute; z-index: 9; display: none;
+    padding: .3rem .6rem; border-radius: .4rem; font-size: 11px; font-weight: 800;
+    background: var(--brand); color: #fff; border: 1px solid var(--line-2);
+    box-shadow: 1.5px 1.5px 0 0 rgba(0,0,0,.3);
+  }
+
+  .inspector {
+    width: 16.5rem; flex-shrink: 0; border-left: 1px solid var(--line);
+    background: var(--paper-2); overflow-y: auto; padding: .7rem;
+    display: flex; flex-direction: column; gap: .7rem; scrollbar-width: thin;
+  }
+  .ins-block { border: 1px solid var(--line); border-radius: .5rem; padding: .55rem .6rem; background: color-mix(in srgb, var(--paper) 45%, var(--paper-2)); }
+  .swatch { width: 1.45rem; height: 1.45rem; border-radius: .3rem; border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); transition: transform .14s ease, box-shadow .16s ease; }
+  .swatch:hover { transform: scale(1.1); }
+  .swatch.on { box-shadow: 0 0 0 2px var(--paper-2), 0 0 0 3.5px var(--sel); transform: scale(1.06); }
+
+  .zoom-chip {
+    display: inline-flex; align-items: center; gap: .25rem;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700;
+    padding: .3rem .45rem; border-radius: .35rem; border: 1px solid var(--line-2);
+    color: var(--ink); background: var(--paper-2); min-width: 3.4rem; justify-content: center;
+  }
+
+  .status-bar {
+    display: flex; align-items: center; gap: .8rem;
+    padding: .26rem .6rem; border-top: 1px solid var(--line);
+    background: var(--paper-2); font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px; color: var(--ink-faint); flex-shrink: 0;
+    overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+  }
+  .status-bar::-webkit-scrollbar { display: none; }
+
+  .seg-bg { display: inline-flex; padding: 2px; border: 1px solid var(--line-2); border-radius: .4rem; background: color-mix(in srgb, var(--paper) 60%, transparent); }
+  .seg-bg button { padding: .25rem .45rem; border-radius: .28rem; font-size: 10.5px; font-weight: 700; color: var(--ink-soft); }
+  .seg-bg button.on { background: var(--brand); color: #fff; }
+
+  #btnInspector { display: none; }
+
+  /* ---------- archive ---------- */
+  .arch-card { background: var(--paper-2); border: 1px solid var(--line); border-radius: .6rem; overflow: hidden; transition: transform .24s cubic-bezier(.2,.8,.2,1), box-shadow .24s ease, border-color .2s; }
+  .arch-card:hover { transform: translateY(-3px); border-color: var(--line-2); box-shadow: 5px 5px 0 -1px var(--line); }
+  .arch-thumb { width: 100%; height: 9.5rem; object-fit: contain; display: block; background: var(--paper-3); border-bottom: 1px solid var(--line); }
+
+  /* ---------- misc ---------- */
+  .kbd { border-radius: .28rem; }
+  .focus-ring:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+  .lm-card { background: var(--paper-2) !important; border-color: var(--line) !important; border-radius: .7rem !important; }
+  .lemon-toast { border-radius: .5rem; }
+  body.studio-mode footer { display: none; }
+  body.studio-mode { overflow: hidden; }
+  .fade-in { animation: fadeIn .3s ease both; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 899px) {
+    .studio-body { flex-direction: column; }
+    .tool-rail {
+      flex-direction: row; width: 100%; height: 2.9rem; border-right: 0; border-top: 1px solid var(--line);
+      overflow-x: auto; overflow-y: hidden; padding: .22rem .2rem; gap: 0;
+      order: 2; justify-content: space-between;
+    }
+    .tool-btn { width: 2.16rem; height: 2.16rem; }
+    .tool-sep { width: 1px; height: 55%; margin: 0 .1rem; }
+    #segBg, #btnSnap, #btnRough, #btnZoomOut, #btnZoomIn, #btnFit, #btnNewSheet { display: none; }
+    #docName { flex: 1 1 auto !important; width: auto !important; min-width: 0; }
+    .studio-bar { padding: .35rem .4rem; gap: .3rem; }
+    .stage-wrap { order: 1; }
+    .inspector {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+      width: 100%; max-height: 62vh; border-left: 0; border-top: 1px solid var(--line-2);
+      border-radius: .9rem .9rem 0 0; transform: translateY(102%);
+      transition: transform .3s cubic-bezier(.22,1,.36,1);
+      box-shadow: 0 -18px 40px -24px rgba(0,0,0,.55);
+      padding-bottom: calc(.8rem + env(safe-area-inset-bottom));
+    }
+    .inspector.open { transform: none; }
+    #btnInspector { display: inline-flex; }
+    .stage-hint { bottom: 3.6rem; font-size: 10px; }
+    .status-bar { font-size: 9.5px; gap: .5rem; }
+  }
+  @media (min-width: 900px) {
+    #btnInspector { display: none !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen antialiased flex flex-col">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l3.2-.7L19 7.5a2 2 0 0 0-2.8-2.8L4.4 16.5z"></path><path d="M14.5 6.5l3 3"></path></symbol>
+    <symbol id="i-marker" viewBox="0 0 24 24"><path d="M4 20h4l11-11a2 2 0 0 0-3-3L5 17z"></path><path d="M4 20l1-4"></path><path d="M15 6l3 3"></path></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M8 20H5l-2.2-2.2a1.6 1.6 0 0 1 0-2.3l9.4-9.4a1.6 1.6 0 0 1 2.3 0l4.2 4.2a1.6 1.6 0 0 1 0 2.3L13 20z"></path><path d="M8.5 8.5l7 7"></path><path d="M8 20h12"></path></symbol>
+    <symbol id="i-cursor" viewBox="0 0 24 24"><path d="M5 3l6.5 17 2.2-6.4 6.3-2.2z"></path></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12"></path><path d="M11 12V4.5a1.5 1.5 0 0 1 3 0V12"></path><path d="M14 12V6.5a1.5 1.5 0 0 1 3 0V15"></path><path d="M17 12.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-2.7L5 14.5a1.6 1.6 0 0 1 2.6-1.8L9 14.5"></path></symbol>
+    <symbol id="i-line" viewBox="0 0 24 24"><path d="M4 20L20 4"></path></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 20L20 4"></path><path d="M20 4h-6M20 4v6"></path></symbol>
+    <symbol id="i-rect" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"></rect></symbol>
+    <symbol id="i-circle" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8.5" ry="7"></ellipse></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 5h14M12 5v14M8.5 19h7"></path></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M4 9h10a5 5 0 0 1 0 10H8"></path><path d="M4 9l4-4M4 9l4 4"></path></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M20 9H10a5 5 0 0 0 0 10h6"></path><path d="M20 9l-4-4M20 9l-4 4"></path></symbol>
+    <symbol id="i-zoomin" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5L21 21"></path><path d="M10.5 7.8v5.4M7.8 10.5h5.4"></path></symbol>
+    <symbol id="i-zoomout" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5L21 21"></path><path d="M7.8 10.5h5.4"></path></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"></path><rect x="8.5" y="8.5" width="7" height="7" rx="1"></rect></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path d="M9 3.5v17M15 3.5v17M3.5 9h17M3.5 15h17"></path></symbol>
+    <symbol id="i-snap" viewBox="0 0 24 24"><path d="M4 20L20 4"></path><circle cx="8" cy="16" r="2.2"></circle><circle cx="16" cy="8" r="2.2"></circle></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="M4 20L15 9"></path><path d="M14 4l1 2.4 2.4 1L15 8.4 14 11l-1-2.6L10.6 7.4 13 6.4z"></path><path d="M19 13l.8 1.9 1.9.8-1.9.8L19 18.5l-.8-1.9-1.9-.8 1.9-.8z"></path></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="M7.5 10.5L12 15l4.5-4.5"></path><path d="M4 19h16"></path></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4"></path><path d="M7.5 8.5L12 4l4.5 4.5"></path><path d="M4 19h16"></path></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="1.8"></rect><circle cx="8.5" cy="9.5" r="1.6"></circle><path d="M4 17l5-5 4 4 3-2.6 4 3.6"></path></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 8L4.5 12l4 4M15.5 8l4 4-4 4M13.5 5l-3 14"></path></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h7l5 5v12H6z"></path><path d="M13 3.5v5h5"></path></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"></path><path d="M8.5 4v5h7V4"></path><rect x="8.5" y="13" width="7" height="7" rx="1"></rect></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="1.6"></rect><path d="M15.5 8.5V5.5a1.5 1.5 0 0 0-1.5-1.5H5.5A1.5 1.5 0 0 0 4 5.5V14a1.5 1.5 0 0 0 1.5 1.5h3"></path></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"></path></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l5 5 10-11"></path></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10L12 3l8.5 7v9.5a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"></path></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3.5l8 4.2-8 4.3-8-4.3z"></path><path d="M4 12.5l8 4.3 8-4.3"></path><path d="M4 16.8l8 4.3 8-4.3"></path></symbol>
+    <symbol id="i-front" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="11" height="11" rx="1.4"></rect><path d="M9.5 20.5h11v-11"></path><path d="M9.5 20.5l11-11"></path></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><rect x="9.5" y="9.5" width="11" height="11" rx="1.4"></rect><path d="M14.5 3.5h-11v11"></path><path d="M3.5 14.5l11-11"></path></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4"></circle><path d="M12 1.8v2M12 20.2v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1.8 12h2M20.2 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"></path></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h6M14 6h6M4 12h10M18 12h2M4 18h3M11 18h9"></path><circle cx="12" cy="6" r="1.8"></circle><circle cx="16" cy="12" r="1.8"></circle><circle cx="9" cy="18" r="1.8"></circle></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.5 4.5"></path></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.5-1.2 1-1.2 1.9"></path><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"></path></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></symbol>
+  </defs>
+</svg>
+
+<header id="appHeader" class="lemon-header sticky top-0 z-40 border-b" style="border-color:var(--line)">
+  <div class="max-w-[92rem] mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-2">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="mark-box">
+        <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 9.5 6l3.2 8 2.6-9.5L20 20"></path></svg>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Sketch</span>
+          <span class="hidden sm:inline mono-label" style="font-size:9px">SHEET 55</span>
+        </div>
+        <p class="text-[10px] ink-faint truncate -mt-0.5">무설치 화이트보드 &amp; 손그림 다이어그램</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-1.5">
+      <span id="saveBadge" class="as-badge hidden sm:inline-flex" data-state="idle">대기</span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-moon"></use></svg>
+        <svg class="w-4 h-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#d6a24a"><use href="#i-sun"></use></svg>
+      </button>
+      <button id="btnExportTop" class="ink-btn">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+        <span class="hidden sm:inline">내보내기</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header border-b" style="border-color:var(--line)">
+  <div class="max-w-[92rem] mx-auto px-2 sm:px-5">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"></use></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"></use></svg>
+        <span>스케치 스튜디오</span>
+        <span id="tabObjCount" class="mono" style="font-size:10px;opacity:.75">0</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-layers"></use></svg>
+        <span>보관함</span>
+        <span id="tabArchiveCount" class="mono" style="font-size:10px;opacity:.75">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<main data-view="home" class="hidden flex-1 w-full max-w-[92rem] mx-auto px-3 sm:px-5 py-5 sm:py-8 space-y-6">
+
+  <section class="hero-sheet p-5 sm:p-9">
+    <span class="corner-tick tl"></span><span class="corner-tick tr"></span><span class="corner-tick bl"></span><span class="corner-tick br"></span>
+    <div class="relative grid lg:grid-cols-[1.02fr_.98fr] gap-7 lg:gap-10 items-center">
+      <div class="space-y-4">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="tag">DWG NO. 55</span>
+          <span class="mono-label">WHITEBOARD / DIAGRAM</span>
+        </div>
+        <h1 class="text-[30px] sm:text-[44px] font-black leading-[1.08] tracking-tight" style="color:var(--ink)">
+          생각은 손으로,<br><span class="brand-text">정리는 캔버스에.</span>
+        </h1>
+        <p class="text-sm sm:text-[15px] ink-soft leading-relaxed max-w-lg">
+          무한 캔버스에 펜으로 쓱 그리고, 도형·화살표·텍스트로 도면을 만드세요.
+          손그림(Rough) 스타일 토글 하나로 깔끔한 도표가 연필 스케치가 됩니다.
+          서버도 계정도 없이, 브라우저 안에서만.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <button data-goto="studio" class="ink-btn">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"></use></svg>
+            빈 캔버스 열기
+          </button>
+          <button data-goto="archive" class="line-btn">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-layers"></use></svg>
+            보관함 보기
+          </button>
+        </div>
+        <div class="flex items-center gap-3 pt-1 flex-wrap">
+          <div class="flex items-center gap-1.5 text-[11px] ink-faint">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"></use></svg>
+            서버 0 · 계정 0 · 평생 무료
+          </div>
+          <span class="ink-faint" style="opacity:.4">·</span>
+          <div class="text-[11px] ink-faint">IndexedDB 자동 저장</div>
+          <span class="ink-faint" style="opacity:.4">·</span>
+          <div class="text-[11px] ink-faint">PNG · SVG · JSON</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="sheet sheet-hard p-2 sm:p-3">
+          <svg viewBox="0 0 420 300" class="w-full h-auto" role="img" aria-label="손그림 다이어그램 예시">
+            <defs>
+              <pattern id="heroDots" width="14" height="14" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r="1" fill="currentColor" opacity=".16"></circle>
+              </pattern>
+            </defs>
+            <rect x="0" y="0" width="420" height="300" fill="url(#heroDots)" style="color:var(--ink)"></rect>
+            <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="40" y="52" width="104" height="52" rx="8" stroke="currentColor" stroke-width="2.4" style="color:var(--ink);opacity:.9"></rect>
+              <path d="M46 56c30-2 68-1 94 1" stroke="currentColor" stroke-width="1.4" style="color:var(--ink);opacity:.35"></path>
+              <text x="60" y="84" font-size="14" font-family="ui-monospace,Menlo,monospace" fill="currentColor" style="color:var(--ink)">IDEA</text>
+              <path class="draw-anim" d="M148 78c22-1 30 6 34 20" stroke="currentColor" stroke-width="2.2" style="color:var(--brand)"></path>
+              <path d="M176 94l8 7-9 4" stroke="currentColor" stroke-width="2.2" style="color:var(--brand)"></path>
+              <ellipse cx="248" cy="128" rx="60" ry="33" stroke="currentColor" stroke-width="2.4" style="color:var(--brand);opacity:.95"></ellipse>
+              <ellipse cx="249" cy="129" rx="59" ry="32" stroke="currentColor" stroke-width="1.3" style="color:var(--brand);opacity:.35"></ellipse>
+              <text x="214" y="133" font-size="13" font-family="ui-monospace,Menlo,monospace" fill="currentColor" style="color:var(--brand)">SKETCH</text>
+              <path d="M232 161c-6 16-14 22-28 30" stroke="currentColor" stroke-width="2.2" style="color:var(--ink);opacity:.8"></path>
+              <path d="M262 161c8 14 20 22 34 26" stroke="currentColor" stroke-width="2.2" style="color:var(--ink);opacity:.8"></path>
+              <path d="M198 196l-4 9 10 1" stroke="currentColor" stroke-width="2.2" style="color:var(--ink);opacity:.8"></path>
+              <path d="M292 194l9 5-6 8" stroke="currentColor" stroke-width="2.2" style="color:var(--ink);opacity:.8"></path>
+              <rect x="112" y="212" width="72" height="40" rx="6" stroke="currentColor" stroke-width="2.2" style="color:var(--ink);opacity:.8"></rect>
+              <text x="124" y="237" font-size="11" font-family="ui-monospace,Menlo,monospace" fill="currentColor" style="color:var(--ink);opacity:.75">NOTE</text>
+              <rect x="296" y="212" width="84" height="40" rx="6" stroke="currentColor" stroke-width="2.2" style="color:var(--ink);opacity:.8"></rect>
+              <text x="308" y="237" font-size="11" font-family="ui-monospace,Menlo,monospace" fill="currentColor" style="color:var(--ink);opacity:.75">TOOL</text>
+              <path d="M40 126c14 8 10 24 26 30s20-10 34-4" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="color:var(--ochre);opacity:.9"></path>
+              <path d="M120 250h40" stroke="currentColor" stroke-width="1" stroke-dasharray="4 5" style="color:var(--ink);opacity:.4"></path>
+              <text x="122" y="266" font-size="9" font-family="ui-monospace,Menlo,monospace" fill="currentColor" style="color:var(--ink);opacity:.5">40 pt</text>
+              <path d="M330 60l16-16 16 16-16 16z" stroke="currentColor" stroke-width="2" style="color:var(--teal,#0c7c74);opacity:.8"></path>
+              <path d="M56 148c6 6 12 6 18 0" stroke="currentColor" stroke-width="2.6" style="color:var(--teal,#0c7c74)"></path>
+            </g>
+          </svg>
+          <div class="title-block mt-2 grid grid-cols-2 gap-0">
+            <div><span>PROJECT</span><b>IDEA BOARD</b></div>
+            <div><span>SCALE</span><b>1 : 1</b></div>
+            <div><span>DRAWN BY</span><b>YOU</b></div>
+            <div><span>REV</span><b>01</b></div>
+          </div>
+        </div>
+        <div class="absolute -bottom-3 -right-2 hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md" style="background:var(--paper);border:1px solid var(--line-2)">
+          <span class="w-1.5 h-1.5 rounded-full pulse-soft" style="background:var(--brand-2)"></span>
+          <span class="mono-label" style="font-size:9px">LIVE CANVAS</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-end justify-between gap-3">
+      <div>
+        <div class="mono-label">CAPABILITIES</div>
+        <h2 class="text-lg sm:text-xl font-black tracking-tight mt-0.5">종이 대신 캔버스, 연필 대신 손끝</h2>
+      </div>
+      <span class="text-[11px] ink-faint hidden sm:block">모든 그리기는 브라우저 안에서</span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div class="feat">
+        <div class="feat-ico"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"></use></svg></div>
+        <h3 class="font-bold text-[15px] mt-2.5">필압·속도 펜</h3>
+        <p class="text-xs ink-soft leading-relaxed mt-1">펜을 세게 누르면 굵게, 빠르게 그으면 가늘게. 손끝의 속도를 폭으로 바꿔 종이에 쓴 느낌을 냅니다. 스타일러스 필압도 그대로.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-ico" style="color:var(--ochre);background:color-mix(in srgb,var(--ochre) 12%,transparent);border-color:color-mix(in srgb,var(--ochre) 30%,transparent)"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-marker"></use></svg></div>
+        <h3 class="font-bold text-[15px] mt-2.5">형광펜 &amp; 지우개</h3>
+        <p class="text-xs ink-soft leading-relaxed mt-1">네온 형광펜으로 중요한 곳만 덧칠하고, 지우개로 문지른 객체만 정확히 지웁니다. 실수는 실행취소로 되돌리면 그만.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-ico" style="color:var(--brand-2);background:color-mix(in srgb,var(--brand-2) 12%,transparent);border-color:color-mix(in srgb,var(--brand-2) 30%,transparent)"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow"></use></svg></div>
+        <h3 class="font-bold text-[15px] mt-2.5">도형·화살표·텍스트</h3>
+        <p class="text-xs ink-soft leading-relaxed mt-1">직선·화살표·사각형·원·텍스트 박스를 끌어서 만들고, 선택해 옮기고 늘리고 복제합니다. 도표 만드는 데 필요한 최소한.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-ico"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"></use></svg></div>
+        <h3 class="font-bold text-[15px] mt-2.5">손그림(Rough) 토글</h3>
+        <p class="text-xs ink-soft leading-relaxed mt-1">한 번 누르면 모든 도형이 두 번 그은 듯 삐뚤빼뚤한 연필 선으로. 회의 화이트보드처럼 편하게 보이고 싶을 때.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-ico"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-grid"></use></svg></div>
+        <h3 class="font-bold text-[15px] mt-2.5">무한 캔버스 &amp; 스냅 격자</h3>
+        <p class="text-xs ink-soft leading-relaxed mt-1">마우스 휠·두 손가락으로 어디든 이동하고 확대합니다. 도트·모눈·무지 배경과 24px 스냅으로 선이 반듯하게.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-ico" style="color:var(--brand-2);background:color-mix(in srgb,var(--brand-2) 12%,transparent);border-color:color-mix(in srgb,var(--brand-2) 30%,transparent)"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg></div>
+        <h3 class="font-bold text-[15px] mt-2.5">IndexedDB &amp; 내보내기</h3>
+        <p class="text-xs ink-soft leading-relaxed mt-1">작업은 자동 저장되어 새로고침해도 그대로. 3배 고해상도 PNG(투명 배경), 벡터 SVG, JSON 백업으로 어디든 가져갑니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-3">
+    <div class="flex items-end justify-between gap-3">
+      <div>
+        <div class="mono-label">START FROM A SHEET</div>
+        <h2 class="text-lg sm:text-xl font-black tracking-tight mt-0.5">템플릿에서 바로 시작</h2>
+      </div>
+      <button id="btnBlankHero" class="line-btn">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
+        빈 캔버스
+      </button>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <button class="tpl-card" data-tpl="flow">
+        <div class="tpl-thumb" style="height:7.5rem">
+          <svg viewBox="0 0 240 120" class="w-full h-full" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="color:var(--ink);opacity:.75">
+            <rect x="14" y="16" width="58" height="26" rx="4"></rect><rect x="94" y="16" width="58" height="26" rx="4"></rect><rect x="174" y="16" width="52" height="26" rx="4"></rect>
+            <rect x="54" y="76" width="58" height="26" rx="4"></rect><rect x="134" y="76" width="58" height="26" rx="4"></rect>
+            <path d="M72 29h20M152 29h20M123 42v20" style="color:var(--brand);stroke:var(--brand)"></path>
+            <path d="M112 60l11 10 11-10" style="color:var(--brand);stroke:var(--brand)"></path>
+          </svg>
+        </div>
+        <div class="mt-2 flex items-center justify-between">
+          <span class="font-bold text-[13px]">플로우차트</span>
+          <span class="tag">4 BOX</span>
+        </div>
+        <p class="text-[11px] ink-faint mt-0.5">시작 · 처리 · 판단 · 종료</p>
+      </button>
+      <button class="tpl-card" data-tpl="mind">
+        <div class="tpl-thumb" style="height:7.5rem">
+          <svg viewBox="0 0 240 120" class="w-full h-full" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="color:var(--ink);opacity:.75">
+            <ellipse cx="120" cy="60" rx="34" ry="17" style="color:var(--brand);stroke:var(--brand)"></ellipse>
+            <path d="M86 56C70 50 62 44 52 40M86 66c-16 8-24 14-34 20M154 56c16-6 24-12 34-16M154 66c16 8 24 14 34 20M120 43V24M120 77v16"></path>
+            <rect x="18" y="30" width="34" height="16" rx="4"></rect><rect x="18" y="80" width="34" height="16" rx="4"></rect>
+            <rect x="188" y="30" width="34" height="16" rx="4"></rect><rect x="188" y="80" width="34" height="16" rx="4"></rect>
+            <rect x="102" y="8" width="36" height="16" rx="4"></rect><rect x="102" y="92" width="36" height="16" rx="4"></rect>
+          </svg>
+        </div>
+        <div class="mt-2 flex items-center justify-between">
+          <span class="font-bold text-[13px]">마인드맵</span>
+          <span class="tag">6 NODE</span>
+        </div>
+        <p class="text-[11px] ink-faint mt-0.5">중심 주제에서 여섯 갈래</p>
+      </button>
+      <button class="tpl-card" data-tpl="wire">
+        <div class="tpl-thumb" style="height:7.5rem">
+          <svg viewBox="0 0 240 120" class="w-full h-full" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="color:var(--ink);opacity:.75">
+            <rect x="20" y="12" width="76" height="96" rx="6"></rect>
+            <path d="M28 26h60M28 38h44M28 52h60M28 64h60M28 76h36"></path>
+            <rect x="112" y="12" width="108" height="40" rx="6" style="color:var(--brand);stroke:var(--brand)"></rect>
+            <rect x="112" y="62" width="50" height="46" rx="6"></rect>
+            <rect x="170" y="62" width="50" height="46" rx="6"></rect>
+            <path d="M120 24h52M120 34h30"></path>
+          </svg>
+        </div>
+        <div class="mt-2 flex items-center justify-between">
+          <span class="font-bold text-[13px]">와이어프레임</span>
+          <span class="tag">UI BLOCK</span>
+        </div>
+        <p class="text-[11px] ink-faint mt-0.5">화면 구조를 네모로 먼저</p>
+      </button>
+    </div>
+  </section>
+
+  <section class="grid lg:grid-cols-[1.15fr_.85fr] gap-3">
+    <div class="sheet p-4 sm:p-5">
+      <div class="mono-label">GESTURES &amp; KEYS</div>
+      <h2 class="text-lg font-black tracking-tight mt-0.5">손가락과 키보드로</h2>
+      <div class="grid sm:grid-cols-2 gap-x-6 gap-y-2 mt-3 text-xs ink-soft">
+        <div class="flex items-center justify-between gap-2 py-1" style="border-bottom:1px solid var(--line)"><span>그리기</span><span class="mono text-[10px] ink-faint">한 손가락 드래그</span></div>
+        <div class="flex items-center justify-between gap-2 py-1" style="border-bottom:1px solid var(--line)"><span>이동 · 확대</span><span class="mono text-[10px] ink-faint">두 손가락 · 휠</span></div>
+        <div class="flex items-center justify-between gap-2 py-1" style="border-bottom:1px solid var(--line)"><span>되돌리기</span><span class="flex gap-1"><span class="kbd">⌘/Ctrl</span><span class="kbd">Z</span></span></div>
+        <div class="flex items-center justify-between gap-2 py-1" style="border-bottom:1px solid var(--line)"><span>다시 실행</span><span class="flex gap-1"><span class="kbd">⇧</span><span class="kbd">⌘/Ctrl</span><span class="kbd">Z</span></span></div>
+        <div class="flex items-center justify-between gap-2 py-1" style="border-bottom:1px solid var(--line)"><span>선택 도구</span><span class="kbd">V</span></div>
+        <div class="flex items-center justify-between gap-2 py-1" style="border-bottom:1px solid var(--line)"><span>펜 · 형광펜</span><span class="flex gap-1"><span class="kbd">P</span><span class="kbd">M</span></span></div>
+        <div class="flex items-center justify-between gap-2 py-1" style="border-bottom:1px solid var(--line)"><span>복제 · 삭제</span><span class="flex gap-1"><span class="kbd">⌘/Ctrl D</span><span class="kbd">Del</span></span></div>
+        <div class="flex items-center justify-between gap-2 py-1"><span>공간 이동</span><span class="mono text-[10px] ink-faint">Space 드래그</span></div>
+      </div>
+    </div>
+    <div class="sheet p-4 sm:p-5 flex flex-col justify-between gap-4" style="background:color-mix(in srgb,var(--brand) 5%,var(--paper-2))">
+      <div>
+        <div class="mono-label">NO SERVER</div>
+        <h2 class="text-lg font-black tracking-tight mt-0.5">그림은 이 브라우저에만</h2>
+        <p class="text-xs ink-soft leading-relaxed mt-2">
+          그린 내용은 <span class="mono text-[11px]" style="color:var(--brand)">lemon_sketch_v1</span> IndexedDB에 저장됩니다.
+          계정도 업로드도 없으니 남에게 보이지 않고, JSON으로 직접 백업하면 기기를 바꿔도 이어서 그릴 수 있습니다.
+        </p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="btnStudioHero" class="ink-btn">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"></use></svg>
+          지금 그리기
+        </button>
+        <button id="btnHelp" class="line-btn">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-help"></use></svg>
+          사용법
+        </button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- STUDIO -->
+<main data-view="studio" class="hidden flex-1 w-full max-w-[92rem] mx-auto px-0 sm:px-4 sm:py-3">
+  <div id="studioWrap" class="studio-wrap sheet sm:sheet-hard" style="overflow:hidden">
+    <div class="studio-bar">
+      <input id="docName" class="lemon-input mono" style="width:11rem;flex-shrink:0;padding:.34rem .5rem;font-size:12px;font-weight:700;border-radius:.4rem" maxlength="60" value="제목 없는 스케치" aria-label="스케치 이름">
+      <div class="flex items-center gap-1" style="flex-shrink:0">
+        <button id="btnUndo" class="line-btn" style="padding:.34rem .5rem" title="되돌리기 (Ctrl+Z)" aria-label="되돌리기">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-undo"></use></svg>
+        </button>
+        <button id="btnRedo" class="line-btn" style="padding:.34rem .5rem" title="다시 실행 (Ctrl+Shift+Z)" aria-label="다시 실행">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-redo"></use></svg>
+        </button>
+      </div>
+      <div class="flex items-center gap-1" style="flex-shrink:0">
+        <button id="btnZoomOut" class="line-btn" style="padding:.34rem .45rem" aria-label="축소">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-zoomout"></use></svg>
+        </button>
+        <span id="zoomLabel" class="zoom-chip">100%</span>
+        <button id="btnZoomIn" class="line-btn" style="padding:.34rem .45rem" aria-label="확대">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-zoomin"></use></svg>
+        </button>
+        <button id="btnFit" class="line-btn" style="padding:.34rem .45rem" title="화면에 맞추기" aria-label="화면에 맞추기">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-fit"></use></svg>
+        </button>
+      </div>
+      <div class="seg-bg" id="segBg" style="flex-shrink:0">
+        <button data-bg="dot" class="on">도트</button>
+        <button data-bg="grid">모눈</button>
+        <button data-bg="none">무지</button>
+      </div>
+      <button id="btnSnap" class="line-btn on" style="flex-shrink:0" title="격자 스냅">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-snap"></use></svg>
+        <span class="hidden md:inline">스냅</span>
+      </button>
+      <button id="btnRough" class="line-btn on" style="flex-shrink:0" title="손그림 스타일">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wand"></use></svg>
+        <span class="hidden md:inline">손그림</span>
+      </button>
+      <div class="flex-1"></div>
+      <button id="btnInspector" class="line-btn" style="flex-shrink:0">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sliders"></use></svg>
+        <span>스타일</span>
+      </button>
+      <button id="btnNewSheet" class="line-btn" style="flex-shrink:0" title="새 스케치">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
+        <span class="hidden md:inline">새 스케치</span>
+      </button>
+      <button id="btnExport" class="ink-btn" style="flex-shrink:0;padding:.36rem .6rem;font-size:11px">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+        <span>내보내기</span>
+      </button>
+    </div>
+
+    <div class="studio-body">
+      <div class="tool-rail" id="toolRail" role="toolbar" aria-label="그리기 도구">
+        <button class="tool-btn on" data-tool="select" title="선택 / 이동 (V)" aria-label="선택">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cursor"></use></svg>
+        </button>
+        <button class="tool-btn" data-tool="hand" title="화면 이동 (H)" aria-label="화면 이동">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-hand"></use></svg>
+        </button>
+        <div class="tool-sep"></div>
+        <button class="tool-btn" data-tool="pen" title="펜 (P)" aria-label="펜">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"></use></svg>
+        </button>
+        <button class="tool-btn" data-tool="marker" title="형광펜 (M)" aria-label="형광펜">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-marker"></use></svg>
+        </button>
+        <button class="tool-btn" data-tool="eraser" title="지우개 (E)" aria-label="지우개">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-eraser"></use></svg>
+        </button>
+        <div class="tool-sep"></div>
+        <button class="tool-btn" data-tool="line" title="직선 (L)" aria-label="직선">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-line"></use></svg>
+        </button>
+        <button class="tool-btn" data-tool="arrow" title="화살표 (A)" aria-label="화살표">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow"></use></svg>
+        </button>
+        <button class="tool-btn" data-tool="rect" title="사각형 (R)" aria-label="사각형">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-rect"></use></svg>
+        </button>
+        <button class="tool-btn" data-tool="ellipse" title="원 (O)" aria-label="원">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-circle"></use></svg>
+        </button>
+        <button class="tool-btn" data-tool="text" title="텍스트 (T)" aria-label="텍스트">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-text"></use></svg>
+        </button>
+      </div>
+
+      <div class="stage-wrap" id="stageWrap">
+        <canvas id="cv"></canvas>
+        <textarea id="textEdit" spellcheck="false" aria-label="텍스트 입력"></textarea>
+        <button id="btnTextDone">완료</button>
+        <div id="stageHint" class="stage-hint">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"></use></svg>
+          <span id="stageHintText">펜으로 그려 보세요 · 두 손가락으로 이동</span>
+        </div>
+      </div>
+
+      <aside class="inspector" id="inspector">
+        <div class="flex items-center justify-between">
+          <span class="mono-label">STYLE</span>
+          <button id="btnInsClose" class="line-btn" style="padding:.2rem .4rem" aria-label="스타일 패널 닫기">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-close"></use></svg>
+          </button>
+        </div>
+        <div class="ins-block">
+          <div class="mono-label mb-1.5">INK</div>
+          <div id="palette" class="grid grid-cols-7 gap-1.5"></div>
+        </div>
+        <div class="ins-block">
+          <div class="flex items-center justify-between">
+            <span class="mono-label">STROKE</span>
+            <span id="widthVal" class="mono text-[10px] ink-faint">2.4</span>
+          </div>
+          <input id="widthRange" type="range" class="lemon-range" min="0.8" max="14" step="0.2" value="2.4">
+          <div class="flex items-center justify-between mt-1">
+            <span class="mono-label" style="font-size:9px">TEXT SIZE</span>
+            <span id="sizeVal" class="mono text-[10px] ink-faint">20</span>
+          </div>
+          <input id="sizeRange" type="range" class="lemon-range" min="10" max="64" step="2" value="20">
+        </div>
+        <div class="ins-block space-y-1.5">
+          <div class="mono-label">SHAPE</div>
+          <label class="flex items-center justify-between gap-2 cursor-pointer">
+            <span class="text-xs ink-soft">면 채우기</span>
+            <button id="swFill" class="switch" role="switch" aria-checked="false" aria-label="면 채우기"></button>
+          </label>
+          <label class="flex items-center justify-between gap-2 cursor-pointer">
+            <span class="text-xs ink-soft">점선</span>
+            <button id="swDash" class="switch" role="switch" aria-checked="false" aria-label="점선"></button>
+          </label>
+          <label class="flex items-center justify-between gap-2 cursor-pointer">
+            <span class="text-xs ink-soft">손그림 선</span>
+            <button id="swRough" class="switch on" role="switch" aria-checked="true" aria-label="손그림 선"></button>
+          </label>
+        </div>
+        <div class="ins-block">
+          <div class="mono-label mb-1.5">OBJECT</div>
+          <div id="selInfo" class="text-[11px] ink-faint mb-1.5">선택된 객체 없음</div>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button id="btnDup" class="line-btn" style="padding:.36rem .3rem;font-size:11px">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-copy"></use></svg>복제
+            </button>
+            <button id="btnDel" class="line-btn" style="padding:.36rem .3rem;font-size:11px">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>삭제
+            </button>
+            <button id="btnFront" class="line-btn" style="padding:.36rem .3rem;font-size:11px">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-front"></use></svg>앞으로
+            </button>
+            <button id="btnBack" class="line-btn" style="padding:.36rem .3rem;font-size:11px">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-back"></use></svg>뒤로
+            </button>
+          </div>
+        </div>
+        <div class="ins-block">
+          <div class="mono-label mb-1.5">SHEET VIEW</div>
+          <div class="seg-bg w-full" id="segBg2" style="display:flex">
+            <button data-bg="dot" class="on" style="flex:1">도트</button>
+            <button data-bg="grid" style="flex:1">모눈</button>
+            <button data-bg="none" style="flex:1">무지</button>
+          </div>
+          <label class="flex items-center justify-between gap-2 mt-2.5 cursor-pointer">
+            <span class="text-xs ink-soft">격자 스냅</span>
+            <button id="swSnap" class="switch on" role="switch" aria-checked="true" aria-label="격자 스냅"></button>
+          </label>
+        </div>
+        <div class="ins-block">
+          <div class="mono-label mb-1.5">SHEET</div>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button id="btnClear" class="line-btn" style="padding:.36rem .3rem;font-size:11px">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>전체 지우기
+            </button>
+            <button id="btnFit2" class="line-btn" style="padding:.36rem .3rem;font-size:11px">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-fit"></use></svg>화면 맞춤
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="status-bar">
+      <span id="stObjects">객체 0</span>
+      <span style="opacity:.4">·</span>
+      <span id="stZoom">줌 100%</span>
+      <span style="opacity:.4">·</span>
+      <span id="stBg">도트 격자</span>
+      <span style="opacity:.4">·</span>
+      <span id="stTool">선택</span>
+      <span style="opacity:.4">·</span>
+      <span id="stHist">0/0</span>
+      <span style="flex:1"></span>
+      <span id="stSave">저장 대기</span>
+    </div>
+  </div>
+</main>
+
+<!-- ARCHIVE -->
+<main data-view="archive" class="hidden flex-1 w-full max-w-[92rem] mx-auto px-3 sm:px-5 py-5 sm:py-8 space-y-4">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <div class="mono-label">SHEET ARCHIVE</div>
+      <h1 class="text-xl sm:text-2xl font-black tracking-tight mt-0.5">내가 그린 도면들</h1>
+      <p class="text-xs ink-faint mt-1">이 브라우저의 IndexedDB에만 남습니다 · <span id="archCount" class="mono">0</span>장</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="btnImport" class="line-btn">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+        JSON 불러오기
+      </button>
+      <button id="btnNewArch" class="ink-btn">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
+        새 스케치
+      </button>
+      <input id="fileImport" type="file" accept="application/json,.json" class="hidden">
+    </div>
+  </div>
+  <div class="relative">
+    <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ink-faint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-search"></use></svg>
+    <input id="archSearch" class="lemon-input" style="padding-left:2.3rem;border-radius:.5rem" placeholder="이름으로 찾기">
+  </div>
+  <div id="archGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+  <div id="archEmpty" class="sheet p-10 text-center hidden">
+    <div class="mx-auto w-14 h-14 rounded-lg flex items-center justify-center float-y" style="border:1px dashed var(--line-2);color:var(--ink-faint)">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"></use></svg>
+    </div>
+    <p class="font-bold mt-3">아직 그린 도면이 없어요</p>
+    <p class="text-xs ink-faint mt-1">빈 캔버스를 열고 첫 선을 그어 보세요.</p>
+    <button id="btnEmptyStart" class="ink-btn mt-4">첫 스케치 시작</button>
+  </div>
+</main>
+
+<footer class="mt-auto border-t" style="border-color:var(--line)">
+  <div class="max-w-[92rem] mx-auto px-3 sm:px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+    <div class="flex items-center gap-2">
+      <span class="mono-label">LEMON SOFT · SHEET 55</span>
+    </div>
+    <div class="flex items-center gap-2 text-[11px] ink-faint flex-wrap">
+      <a href="index.html" class="hover:underline" style="color:var(--brand)">Lemon soft 홈</a>
+      <span>·</span>
+      <span>서버 없는 도면 도구</span>
+    </div>
+  </div>
+</footer>
+
+<!-- modals -->
+<div id="dlgExport" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="dlgExportTitle">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full">
+    <div class="p-4 sm:p-5">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="mono-label">EXPORT SHEET</div>
+          <h3 id="dlgExportTitle" class="font-black text-lg mt-0.5">내보내기</h3>
+        </div>
+        <button class="line-btn" data-close style="padding:.3rem .45rem" aria-label="닫기">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-close"></use></svg>
+        </button>
+      </div>
+      <div class="mt-3 space-y-3">
+        <div>
+          <div class="mono-label mb-1">FORMAT</div>
+          <div class="seg-bg w-full" id="segFmt" style="display:flex">
+            <button data-fmt="png" class="on" style="flex:1">PNG</button>
+            <button data-fmt="svg" style="flex:1">SVG</button>
+            <button data-fmt="json" style="flex:1">JSON</button>
+          </div>
+        </div>
+        <div id="pngOpts" class="space-y-2">
+          <div>
+            <div class="mono-label mb-1">RESOLUTION</div>
+            <div class="seg-bg w-full" id="segScale" style="display:flex">
+              <button data-scale="1" style="flex:1">1x</button>
+              <button data-scale="2" class="on" style="flex:1">2x</button>
+              <button data-scale="3" style="flex:1">3x</button>
+            </div>
+          </div>
+          <label class="flex items-center justify-between gap-2 sheet px-3 py-2 cursor-pointer">
+            <span class="text-xs">배경 포함 (종이 + 격자)</span>
+            <button id="swExportBg" class="switch on" role="switch" aria-checked="true"></button>
+          </label>
+          <label class="flex items-center justify-between gap-2 sheet px-3 py-2 cursor-pointer">
+            <span class="text-xs">투명 배경</span>
+            <button id="swExportAlpha" class="switch" role="switch" aria-checked="false"></button>
+          </label>
+        </div>
+        <div class="sheet px-3 py-2 flex items-center justify-between">
+          <span class="text-[11px] ink-faint">내보낼 영역</span>
+          <span id="exportSize" class="mono text-[11px]">-</span>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 mt-4">
+        <button class="line-btn" data-close>취소</button>
+        <button id="btnDoExport" class="ink-btn">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+          내려받기
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dlgRename" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="dlgRenameTitle">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full">
+    <div class="p-4 sm:p-5">
+      <div class="mono-label">SHEET NAME</div>
+      <h3 id="dlgRenameTitle" class="font-black text-lg mt-0.5">이름 바꾸기</h3>
+      <input id="renameInput" class="lemon-input mt-3" maxlength="60" placeholder="스케치 이름">
+      <div class="flex items-center justify-end gap-2 mt-4">
+        <button class="line-btn" data-close>취소</button>
+        <button id="btnDoRename" class="ink-btn">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dlgConfirm" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="dlgConfirmTitle">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full">
+    <div class="p-4 sm:p-5">
+      <div class="mono-label">CONFIRM</div>
+      <h3 id="dlgConfirmTitle" class="font-black text-lg mt-0.5">정말 지울까요?</h3>
+      <p id="dlgConfirmBody" class="text-xs ink-soft mt-2 leading-relaxed">이 작업은 되돌릴 수 없습니다.</p>
+      <div class="flex items-center justify-end gap-2 mt-4">
+        <button class="line-btn" data-close>취소</button>
+        <button id="btnDoConfirm" class="ink-btn" style="background:#b3412f;border-color:#7d2b1d">삭제</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dlgHelp" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="dlgHelpTitle">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full">
+    <div class="p-4 sm:p-5">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="mono-label">HOW TO DRAW</div>
+          <h3 id="dlgHelpTitle" class="font-black text-lg mt-0.5">사용법</h3>
+        </div>
+        <button class="line-btn" data-close style="padding:.3rem .45rem" aria-label="닫기">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-close"></use></svg>
+        </button>
+      </div>
+      <div class="mt-3 space-y-2 text-xs ink-soft leading-relaxed">
+        <p><b class="ink-strong">그리기</b> — 펜·형광펜을 고르고 캔버스를 끌면 선이 그려집니다. 펜은 빠를수록 가늘고 느릴수록 굵게 나옵니다.</p>
+        <p><b class="ink-strong">도형</b> — 직선·화살표·사각형·원은 끌어서 크기를 정합니다. 스냅이 켜져 있으면 24px 격자에 맞춰집니다.</p>
+        <p><b class="ink-strong">텍스트</b> — 텍스트 도구로 빈 곳을 누르고 바로 입력, 바깥을 누르면 확정됩니다.</p>
+        <p><b class="ink-strong">선택</b> — 선택 도구로 객체를 누르면 파란 상자가 생깁니다. 안쪽을 끌면 이동, 모서리를 끌면 크기 조절, Del로 삭제.</p>
+        <p><b class="ink-strong">이동·확대</b> — 두 손가락으로 밀고 벌리거나, 빈 곳을 끌면 화면이 움직입니다. 마우스는 휠(이동)과 Ctrl+휠(확대).</p>
+        <p><b class="ink-strong">저장</b> — 그리는 즉시 IndexedDB에 자동 저장됩니다. 상단 배지에 시각이 뜨면 저장 완료.</p>
+      </div>
+      <div class="flex justify-end mt-4"><button class="ink-btn" data-close>알겠어요</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('cv'), ctx = cv.getContext('2d');
+  var stage = $('stageWrap');
+  var GRID = 24;
+  var DPR = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+
+  var PALETTE = [
+    { id: 'ink', light: '#182338', dark: '#e9e6dd' },
+    { id: 'cobalt', light: '#2b4ad6', dark: '#8ba1ff' },
+    { id: 'teal', light: '#0c7c74', dark: '#4fd6c4' },
+    { id: 'ochre', light: '#b8842b', dark: '#e0b055' },
+    { id: 'brick', light: '#b3412f', dark: '#ff8f7a' },
+    { id: 'plum', light: '#5b4b8a', dark: '#b9a6ff' },
+    { id: 'slate', light: '#3b4252', dark: '#b9c2d4' },
+    { id: 'yellow', light: '#ffd24d', dark: '#ffe07a' },
+    { id: 'green', light: '#7ddc9a', dark: '#8cf0b0' },
+    { id: 'pink', light: '#ff9fc0', dark: '#ffb3d0' }
+  ];
+
+  var st = { tool: 'select', color: 'ink', width: 2.4, size: 20, fill: false, dash: false };
+  var view = { x: 0, y: 0, k: 1 };
+  var doc = null;
+  var sel = [];
+  var draft = null;
+  var hist = { stack: [], idx: 0 };
+
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function f(n) { return Math.round(n * 100) / 100; }
+  function uid() { return 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function isDark() { return document.documentElement.classList.contains('dark'); }
+  /* 내보낼 때 투명 배경이면 라이트 팔레트를 써야 흰 문서 위에서도 보인다 */
+  var paintLight = false;
+  function darkNow() { return paintLight ? false : isDark(); }
+  function resolveColor(c) {
+    for (var i = 0; i < PALETTE.length; i++) if (PALETTE[i].id === c) return darkNow() ? PALETTE[i].dark : PALETTE[i].light;
+    return c || (darkNow() ? '#e9e6dd' : '#182338');
+  }
+  function paperColor() { return isDark() ? '#0d1118' : '#f7f2e6'; }
+  function dotColor() { return isDark() ? 'rgba(180,197,226,.30)' : 'rgba(24,35,56,.26)'; }
+  function lineColor() { return isDark() ? 'rgba(180,197,226,.11)' : 'rgba(24,35,56,.09)'; }
+  function selColor() { return isDark() ? '#8ba1ff' : '#2b4ad6'; }
+
+  /* ---------------- deterministic noise ---------------- */
+  function hashStr(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function prng(seed) {
+    var s = (seed >>> 0) || 1;
+    return function () {
+      s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0;
+      return s / 4294967296;
+    };
+  }
+
+  /* ---------------- path strings ---------------- */
+  function circleD(cx, cy, r) {
+    r = Math.max(0.35, r);
+    return 'M' + f(cx - r) + ' ' + f(cy) + 'a' + f(r) + ' ' + f(r) + ' 0 1 0 ' + f(r * 2) + ' 0a' + f(r) + ' ' + f(r) + ' 0 1 0 ' + f(-r * 2) + ' 0Z';
+  }
+  function rectD(x, y, w, h) {
+    return 'M' + f(x) + ' ' + f(y) + 'h' + f(w || 0.01) + 'v' + f(h || 0.01) + 'h' + f(-(w || 0.01)) + 'Z';
+  }
+  function ellipseD(cx, cy, rx, ry) {
+    rx = Math.max(0.4, rx); ry = Math.max(0.4, ry);
+    return 'M' + f(cx - rx) + ' ' + f(cy) + 'a' + f(rx) + ' ' + f(ry) + ' 0 1 0 ' + f(rx * 2) + ' 0a' + f(rx) + ' ' + f(ry) + ' 0 1 0 ' + f(-rx * 2) + ' 0Z';
+  }
+  function polyD(pts, closed) {
+    if (!pts.length) return '';
+    var d = 'M' + f(pts[0][0]) + ' ' + f(pts[0][1]);
+    for (var i = 1; i < pts.length; i++) d += 'L' + f(pts[i][0]) + ' ' + f(pts[i][1]);
+    return closed ? d + 'Z' : d;
+  }
+
+  /* hand-drawn segment: two low-frequency wobbles plus slight overshoot */
+  function roughSegD(rng, x1, y1, x2, y2, amp, ov) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var L = Math.sqrt(dx * dx + dy * dy) || 0.001;
+    var ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    var n = Math.max(2, Math.min(26, Math.round(L / 14)));
+    var a = rng() * 6.283, b = rng() * 6.283;
+    var o1 = ov * (rng() * 0.9 + 0.2), o2 = ov * (rng() * 0.9 + 0.2);
+    var sx = x1 - ux * o1, sy = y1 - uy * o1;
+    var ex = x2 + ux * o2, ey = y2 + uy * o2;
+    var pts = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n;
+      var off = amp * (0.62 * Math.sin(t * 6.283 + a) + 0.38 * Math.sin(t * 12.566 + b));
+      var px = sx + (ex - sx) * t + nx * off;
+      var py = sy + (ey - sy) * t + ny * off;
+      pts.push([px, py]);
+    }
+    return polyD(pts, false);
+  }
+
+  function roughEllipseD(rng, cx, cy, rx, ry, amp) {
+    rx = Math.max(0.6, rx); ry = Math.max(0.6, ry);
+    var n = Math.max(22, Math.round((rx + ry) * 0.9));
+    if (n > 90) n = 90;
+    var a = rng() * 6.283, b = rng() * 6.283, start = rng() * 0.5;
+    var pts = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n, th = t * 6.283 + start;
+      var wob = 1 + (amp / Math.max(rx, ry, 1)) * (0.9 * Math.sin(th * 2 + a) + 0.55 * Math.sin(th * 3 + b));
+      pts.push([cx + Math.cos(th) * rx * wob, cy + Math.sin(th) * ry * wob]);
+    }
+    if (rng() > 0.45) pts.push([pts[1][0] + 1.5, pts[1][1] - 1]);
+    return polyD(pts, false);
+  }
+
+  /* ---------------- freehand ribbon ---------------- */
+  function resampleStroke(pts, step) {
+    if (!pts || !pts.length) return [];
+    if (pts.length === 1) return [[pts[0][0], pts[0][1], pts[0][2]]];
+    var out = [[pts[0][0], pts[0][1], pts[0][2]]];
+    for (var i = 1; i < pts.length; i++) {
+      var a = pts[i - 1], b = pts[i];
+      var dx = b[0] - a[0], dy = b[1] - a[1];
+      var L = Math.sqrt(dx * dx + dy * dy);
+      var n = Math.max(1, Math.min(40, Math.round(L / step)));
+      for (var j = 1; j <= n; j++) {
+        var t = j / n;
+        out.push([a[0] + dx * t, a[1] + dy * t, a[2] + (b[2] - a[2]) * t]);
+      }
+    }
+    return out;
+  }
+  function smoothArr(arr, passes) {
+    var n = passes || 1;
+    for (var p = 0; p < n; p++) {
+      if (arr.length < 3) return arr;
+      var out = [arr[0]];
+      for (var i = 1; i < arr.length - 1; i++) {
+        var a = arr[i - 1], b = arr[i], c = arr[i + 1];
+        out.push([(a[0] + 2 * b[0] + c[0]) / 4, (a[1] + 2 * b[1] + c[1]) / 4, (a[2] + 2 * b[2] + c[2]) / 4]);
+      }
+      out.push(arr[arr.length - 1]);
+      arr = out;
+    }
+    return arr;
+  }
+  function ribbonD(rs) {
+    if (rs.length < 2) return '';
+    var left = [], right = [];
+    for (var i = 0; i < rs.length; i++) {
+      var p = rs[i];
+      var q = rs[Math.min(rs.length - 1, i + 1)];
+      var p0 = rs[Math.max(0, i - 1)];
+      var dx = q[0] - p0[0], dy = q[1] - p0[1];
+      var L = Math.sqrt(dx * dx + dy * dy) || 1;
+      var nx = -dy / L, ny = dx / L, hw = Math.max(0.25, p[2] / 2);
+      left.push([p[0] + nx * hw, p[1] + ny * hw]);
+      right.push([p[0] - nx * hw, p[1] - ny * hw]);
+    }
+    var d = 'M' + f(left[0][0]) + ' ' + f(left[0][1]);
+    for (i = 1; i < left.length; i++) d += 'L' + f(left[i][0]) + ' ' + f(left[i][1]);
+    for (i = right.length - 1; i >= 0; i--) d += 'L' + f(right[i][0]) + ' ' + f(right[i][1]);
+    return d + 'Z';
+  }
+
+  function strokePaths(o) {
+    var out = [];
+    var rs = smoothArr(resampleStroke(o.pts, 2.4), 1);
+    if (!rs.length) return out;
+    if (rs.length === 1) {
+      out.push({ d: circleD(rs[0][0], rs[0][1], Math.max(0.5, rs[0][2] / 2)), fill: o.c });
+      return out;
+    }
+    out.push({ d: ribbonD(rs), fill: o.c });
+    var a = rs[0], b = rs[rs.length - 1];
+    out.push({ d: circleD(a[0], a[1], Math.max(0.4, a[2] / 2)), fill: o.c });
+    out.push({ d: circleD(b[0], b[1], Math.max(0.4, b[2] / 2)), fill: o.c });
+    return out;
+  }
+
+  /* ---------------- shape paths (canvas + svg share these) ---------------- */
+  function shapePaths(o) {
+    var out = [];
+    var rng = prng(hashStr(o.id));
+    var rough = doc.rough !== false;
+    var w = o.w || 2;
+    var amp = rough ? 1.5 + w * 0.26 : 0;
+    var ov = rough ? 1.9 + w * 0.4 : 0;
+    var x1 = o.x1, y1 = o.y1, x2 = o.x2, y2 = o.y2;
+    var stroke = { stroke: o.c, w: w, cap: 'round' };
+
+    if (o.kind === 'line' || o.kind === 'arrow') {
+      if (rough) {
+        out.push({ d: roughSegD(rng, x1, y1, x2, y2, amp, ov), stroke: o.c, w: w, cap: 'round', dash: o.dash });
+        out.push({ d: roughSegD(rng, x1, y1, x2, y2, amp * 0.85, ov * 1.3), stroke: o.c, w: w * 0.82, cap: 'round', dash: o.dash });
+      } else {
+        out.push({ d: 'M' + f(x1) + ' ' + f(y1) + 'L' + f(x2) + ' ' + f(y2), stroke: o.c, w: w, cap: 'round', dash: o.dash });
+      }
+      if (o.kind === 'arrow') {
+        var ang = Math.atan2(y2 - y1, x2 - x1);
+        var hl = 8 + w * 1.9;
+        var a1 = ang + Math.PI - 0.42, a2 = ang + Math.PI + 0.42;
+        var p1 = [x2 + Math.cos(a1) * hl, y2 + Math.sin(a1) * hl];
+        var p2 = [x2 + Math.cos(a2) * hl, y2 + Math.sin(a2) * hl];
+        if (rough) {
+          out.push({ d: roughSegD(rng, x2, y2, p1[0], p1[1], amp * 0.6, ov * 0.5), stroke: o.c, w: w, cap: 'round' });
+          out.push({ d: roughSegD(rng, x2, y2, p2[0], p2[1], amp * 0.6, ov * 0.5), stroke: o.c, w: w, cap: 'round' });
+        } else {
+          out.push({ d: 'M' + f(p1[0]) + ' ' + f(p1[1]) + 'L' + f(x2) + ' ' + f(y2) + 'L' + f(p2[0]) + ' ' + f(p2[1]), stroke: o.c, w: w, cap: 'round' });
+        }
+      }
+      return out;
+    }
+
+    var rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+    var rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
+
+    if (o.kind === 'rect') {
+      if (o.fill) out.push({ d: rectD(rx, ry, rw, rh), fill: o.c, fa: 0.14 });
+      if (rough) {
+        var c = [[rx, ry], [rx + rw, ry], [rx + rw, ry + rh], [rx, ry + rh], [rx, ry]];
+        for (var i = 0; i < 4; i++) out.push({ d: roughSegD(rng, c[i][0], c[i][1], c[i + 1][0], c[i + 1][1], amp, ov), stroke: o.c, w: w, cap: 'round', dash: o.dash });
+        out.push({ d: roughSegD(rng, rx + 2, ry, rx + rw * 0.94, ry, amp * 0.7, ov * 0.6), stroke: o.c, w: w * 0.72, cap: 'round' });
+      } else {
+        out.push({ d: rectD(rx, ry, rw, rh), stroke: o.c, w: w });
+      }
+      return out;
+    }
+
+    var cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, erx = rw / 2, ery = rh / 2;
+    if (o.fill) out.push({ d: ellipseD(cx, cy, erx, ery), fill: o.c, fa: 0.14 });
+    if (rough) {
+      out.push({ d: roughEllipseD(rng, cx, cy, erx, ery, amp * 1.4), stroke: o.c, w: w, cap: 'round', dash: o.dash });
+      out.push({ d: roughEllipseD(rng, cx, cy, erx, ery, amp * 1.9), stroke: o.c, w: w * 0.78, cap: 'round' });
+    } else {
+      out.push({ d: ellipseD(cx, cy, erx, ery), stroke: o.c, w: w });
+    }
+    return out;
+  }
+
+  /* ---------------- text ---------------- */
+  var measure = document.createElement('canvas').getContext('2d');
+  var textCache = {};
+  function textFont(size) { return '500 ' + size + 'px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", "Malgun Gothic", sans-serif'; }
+  function textLines(o) {
+    var key = o.id + '|' + o.text + '|' + o.size + '|' + o.w;
+    if (textCache[key]) return textCache[key];
+    measure.font = textFont(o.size);
+    var maxW = Math.max(o.size * 1.2, o.w);
+    var lines = [];
+    var paras = String(o.text === undefined ? '' : o.text).split('\n');
+    for (var pi = 0; pi < paras.length; pi++) {
+      var para = paras[pi];
+      if (!para) { lines.push(''); continue; }
+      var words = para.split(' ');
+      var cur = '';
+      for (var wi = 0; wi < words.length; wi++) {
+        var word = words[wi];
+        var test = cur ? cur + ' ' + word : word;
+        if (!cur || measure.measureText(test).width <= maxW) { cur = test; }
+        else { lines.push(cur); cur = word; }
+        while (cur.length > 1 && measure.measureText(cur).width > maxW) {
+          var lo = 1, hi = cur.length - 1, best = 1;
+          while (lo <= hi) {
+            var mid = (lo + hi) >> 1;
+            if (measure.measureText(cur.slice(0, mid)).width <= maxW) { best = mid; lo = mid + 1; }
+            else hi = mid - 1;
+          }
+          lines.push(cur.slice(0, best));
+          cur = cur.slice(best);
+        }
+      }
+      lines.push(cur);
+    }
+    if (!lines.length) lines = [''];
+    textCache[key] = lines;
+    return lines;
+  }
+  function textHeight(o) { return Math.max(1, textLines(o).length) * o.size * 1.35; }
+  function paintText(g, o) {
+    var lines = textLines(o);
+    g.font = textFont(o.size);
+    g.fillStyle = resolveColor(o.c);
+    g.textBaseline = 'alphabetic';
+    g.textAlign = 'left';
+    var lh = o.size * 1.35;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i]) g.fillText(lines[i], o.x, o.y + o.size * 0.82 + i * lh);
+    }
+  }
+
+  /* ---------------- object painting ---------------- */
+  function paintObject(g, o) {
+    if (o.t === 'text') { paintText(g, o); return; }
+    var paths = (o.t === 'shape') ? shapePaths(o) : strokePaths(o);
+    var alpha = o.t === 'marker' ? 0.34 : 1;
+    g.save();
+    g.globalAlpha = alpha;
+    if (o.t === 'marker') g.globalCompositeOperation = isDark() ? 'screen' : 'multiply';
+    for (var i = 0; i < paths.length; i++) {
+      var p = paths[i];
+      if (!p.d) continue;
+      if (p.fill) {
+        g.fillStyle = resolveColor(p.fill);
+        g.globalAlpha = alpha * (p.fa || 1);
+        g.fill(new Path2D(p.d));
+      }
+      if (p.stroke) {
+        g.globalAlpha = alpha;
+        g.strokeStyle = resolveColor(p.stroke);
+        g.lineWidth = p.w;
+        g.lineCap = p.cap || 'round';
+        g.lineJoin = 'round';
+        if (p.dash) g.setLineDash([p.w * 3 + 4, p.w * 2 + 4]); else g.setLineDash([]);
+        g.stroke(new Path2D(p.d));
+      }
+    }
+    g.restore();
+  }
+
+  /* ---------------- background grid ---------------- */
+  var tileCache = {};
+  function tileFor(kind, size, dark) {
+    var key = kind + ':' + size + ':' + (dark ? 'd' : 'l');
+    if (tileCache[key]) return tileCache[key];
+    var t = document.createElement('canvas');
+    var s = Math.max(6, Math.round(size));
+    t.width = s; t.height = s;
+    var g = t.getContext('2d');
+    if (kind === 'dot') {
+      g.fillStyle = dotColor();
+      var r = Math.max(0.9, s * 0.055 + 0.6);
+      g.beginPath(); g.arc(s / 2, s / 2, r, 0, 6.2832); g.fill();
+    } else {
+      g.fillStyle = lineColor();
+      g.fillRect(0, 0, s, 1);
+      g.fillRect(0, 0, 1, s);
+    }
+    tileCache[key] = t;
+    return t;
+  }
+
+  function drawBackground() {
+    var W = cv.width, H = cv.height;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = paperColor();
+    ctx.fillRect(0, 0, W, H);
+    if (!doc || doc.bg === 'none') return;
+    var k = view.k * DPR;
+    var step = GRID, s = step * k;
+    while (s < 9 * DPR && step < GRID * 64) { step *= 2; s = step * k; }
+    if (s < 4) return;
+    var tile = tileFor(doc.bg, Math.round(s), isDark());
+    var pat = ctx.createPattern(tile, 'repeat');
+    if (!pat) return;
+    var ox = ((view.x * DPR) % s + s) % s;
+    var oy = ((view.y * DPR) % s + s) % s;
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.fillStyle = pat;
+    ctx.fillRect(-s, -s, W + 2 * s, H + 2 * s);
+    ctx.restore();
+  }
+
+  /* ---------------- bounds ---------------- */
+  function objBounds(o) {
+    if (o.t === 'text') {
+      return { x: o.x, y: o.y, w: o.w, h: Math.max(o.size, textHeight(o)) };
+    }
+    if (o.t === 'pen' || o.t === 'marker') {
+      var pts = o.pts || [];
+      if (!pts.length) return null;
+      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (var i = 0; i < pts.length; i++) {
+        var hw = pts[i][2] / 2 + 1;
+        if (pts[i][0] - hw < x0) x0 = pts[i][0] - hw;
+        if (pts[i][1] - hw < y0) y0 = pts[i][1] - hw;
+        if (pts[i][0] + hw > x1) x1 = pts[i][0] + hw;
+        if (pts[i][1] + hw > y1) y1 = pts[i][1] + hw;
+      }
+      return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+    }
+    var pad = (o.w || 2) / 2 + (o.kind === 'arrow' ? 14 + (o.w || 2) * 2 : 0);
+    var ax = Math.min(o.x1, o.x2) - pad, ay = Math.min(o.y1, o.y2) - pad;
+    return { x: ax, y: ay, w: Math.abs(o.x2 - o.x1) + pad * 2, h: Math.abs(o.y2 - o.y1) + pad * 2 };
+  }
+  function unionBounds(list, pad) {
+    var n = list.length, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (var i = 0; i < n; i++) {
+      var b = objBounds(list[i]);
+      if (!b) continue;
+      if (b.x < x0) x0 = b.x;
+      if (b.y < y0) y0 = b.y;
+      if (b.x + b.w > x1) x1 = b.x + b.w;
+      if (b.y + b.h > y1) y1 = b.y + b.h;
+    }
+    if (x0 === Infinity) return null;
+    pad = pad || 0;
+    return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 };
+  }
+  function selBounds() { return unionBounds(sel, 0); }
+
+  /* ---------------- render ---------------- */
+  var renderQueued = false;
+  function render() {
+    if (!doc) return;
+    drawBackground();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.save();
+    ctx.translate(view.x, view.y);
+    ctx.scale(view.k, view.k);
+    for (var i = 0; i < doc.objects.length; i++) paintObject(ctx, doc.objects[i]);
+    if (draft) paintObject(ctx, draft);
+    ctx.restore();
+    drawSelection();
+  }
+  function queueRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(function () { renderQueued = false; render(); });
+  }
+  function drawSelection() {
+    if (!sel.length) return;
+    var b = selBounds();
+    if (!b) return;
+    var k = view.k;
+    var x = b.x * k + view.x, y = b.y * k + view.y, w = b.w * k, h = b.h * k;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.save();
+    ctx.strokeStyle = selColor();
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.setLineDash([]);
+    var hs = 9;
+    var cs = [[x - 2, y - 2], [x + w + 2, y - 2], [x + w + 2, y + h + 2], [x - 2, y + h + 2]];
+    for (var i = 0; i < 4; i++) {
+      ctx.fillStyle = paperColor();
+      ctx.fillRect(cs[i][0] - hs / 2, cs[i][1] - hs / 2, hs, hs);
+      ctx.strokeRect(cs[i][0] - hs / 2, cs[i][1] - hs / 2, hs, hs);
+    }
+    ctx.restore();
+  }
+
+  function resize() {
+    var r = stage.getBoundingClientRect();
+    var w = Math.max(80, Math.floor(r.width)), h = Math.max(80, Math.floor(r.height));
+    DPR = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    cv.width = Math.round(w * DPR);
+    cv.height = Math.round(h * DPR);
+    tileCache = {};
+    render();
+  }
+
+  /* ---------------- transforms ---------------- */
+  function evPoint(e) {
+    var r = cv.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function toWorld(p) { return { x: (p.x - view.x) / view.k, y: (p.y - view.y) / view.k }; }
+  function snapV(v) { return doc && doc.snap ? Math.round(v / GRID) * GRID : v; }
+
+  /* ---------------- hit testing ---------------- */
+  function distSeg(px, py, x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var L2 = dx * dx + dy * dy;
+    if (L2 < 0.0001) return Math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+    var t = clamp(((px - x1) * dx + (py - y1) * dy) / L2, 0, 1);
+    var qx = x1 + t * dx, qy = y1 + t * dy;
+    return Math.sqrt((px - qx) * (px - qx) + (py - qy) * (py - qy));
+  }
+  function hitTest(o, w, tol) {
+    var b = objBounds(o);
+    if (!b) return false;
+    if (w.x < b.x - tol || w.x > b.x + b.w + tol || w.y < b.y - tol || w.y > b.y + b.h + tol) return false;
+    if (o.t === 'text') return true;
+    if (o.t === 'pen' || o.t === 'marker') {
+      var pts = o.pts;
+      if (!pts || !pts.length) return false;
+      if (pts.length === 1) return distSeg(w.x, w.y, pts[0][0], pts[0][1], pts[0][0], pts[0][1]) < pts[0][2] / 2 + tol;
+      for (var i = 1; i < pts.length; i++) {
+        if (distSeg(w.x, w.y, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) < Math.max(pts[i][2], pts[i - 1][2]) / 2 + tol) return true;
+      }
+      return false;
+    }
+    var t2 = tol + (o.w || 2) / 2;
+    if (o.kind === 'line' || o.kind === 'arrow') return distSeg(w.x, w.y, o.x1, o.y1, o.x2, o.y2) < t2 + 1;
+    var x0 = Math.min(o.x1, o.x2), y0 = Math.min(o.y1, o.y2);
+    var x1 = Math.max(o.x1, o.x2), y1 = Math.max(o.y1, o.y2);
+    var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    var rx = Math.max(0.5, (x1 - x0) / 2), ry = Math.max(0.5, (y1 - y0) / 2);
+    var inside = false;
+    if (o.kind === 'rect') inside = (w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1);
+    else {
+      var nx = (w.x - cx) / rx, ny = (w.y - cy) / ry;
+      inside = (nx * nx + ny * ny) <= 1;
+    }
+    /* 도형 안쪽도 집을 수 있게 한다(테두리만 정확히 눌러야 하는 불편함 제거) */
+    if (inside) return true;
+    if (o.kind === 'rect') {
+      var nearV = Math.min(Math.abs(w.x - x0), Math.abs(w.x - x1)) < t2 && w.y > y0 - t2 && w.y < y1 + t2;
+      var nearH = Math.min(Math.abs(w.y - y0), Math.abs(w.y - y1)) < t2 && w.x > x0 - t2 && w.x < x1 + t2;
+      return nearV || nearH;
+    }
+    var d = Math.sqrt(Math.pow((w.x - cx) / rx, 2) + Math.pow((w.y - cy) / ry, 2));
+    return Math.abs(d - 1) < (t2 / Math.max(rx, ry)) + 0.05;
+  }
+  function pickAt(w) {
+    var tol = 5 / view.k;
+    for (var i = doc.objects.length - 1; i >= 0; i--) {
+      if (hitTest(doc.objects[i], w, tol)) return doc.objects[i];
+    }
+    return null;
+  }
+  function handleAt(p) {
+    var b = selBounds();
+    if (!b) return -1;
+    var k = view.k;
+    var x = b.x * k + view.x, y = b.y * k + view.y, w = b.w * k, h = b.h * k;
+    var cs = [[x - 2, y - 2], [x + w + 2, y - 2], [x + w + 2, y + h + 2], [x - 2, y + h + 2]];
+    for (var i = 0; i < 4; i++) {
+      if (Math.abs(p.x - cs[i][0]) <= 12 && Math.abs(p.y - cs[i][1]) <= 12) return i;
+    }
+    return -1;
+  }
+
+  /* ---------------- object transforms ---------------- */
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function translateObj(o, dx, dy) {
+    if (o.t === 'text') { o.x += dx; o.y += dy; return; }
+    if (o.pts) { for (var i = 0; i < o.pts.length; i++) { o.pts[i][0] += dx; o.pts[i][1] += dy; } return; }
+    o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy;
+  }
+  function scaleObj(o, sx, sy, ax, ay) {
+    var fx = function (x) { return ax + (x - ax) * sx; };
+    var fy = function (y) { return ay + (y - ay) * sy; };
+    if (o.t === 'text') {
+      o.x = fx(o.x); o.y = fy(o.y);
+      o.size = Math.max(8, o.size * ((Math.abs(sx) + Math.abs(sy)) / 2));
+      o.w = Math.max(40, o.w * Math.abs(sx));
+      return;
+    }
+    if (o.pts) {
+      var sc = Math.sqrt(Math.abs(sx * sy)) || 1;
+      for (var i = 0; i < o.pts.length; i++) {
+        o.pts[i][0] = fx(o.pts[i][0]);
+        o.pts[i][1] = fy(o.pts[i][1]);
+        o.pts[i][2] = Math.max(0.6, o.pts[i][2] * sc);
+      }
+      return;
+    }
+    o.x1 = fx(o.x1); o.y1 = fy(o.y1); o.x2 = fx(o.x2); o.y2 = fy(o.y2);
+  }
+
+  /* ---------------- history ---------------- */
+  function snapshot() { return JSON.stringify({ n: doc.name, b: doc.bg, r: doc.rough, o: doc.objects }); }
+  function applySnap(str) {
+    var d = JSON.parse(str);
+    doc.objects = d.o || [];
+    doc.name = d.n; doc.bg = d.b; doc.rough = d.r !== false;
+    if (docName.value !== doc.name) docName.value = doc.name;
+    syncBgUI(); syncRoughUI();
+    sel = []; selChange(); queueRender();
+  }
+  function commit() {
+    if (!doc) return;
+    var s = snapshot();
+    if (hist.stack[hist.idx] === s) { refreshHistUI(); return; }
+    hist.stack = hist.stack.slice(0, hist.idx + 1);
+    hist.stack.push(s);
+    while (hist.stack.length > 90) hist.stack.shift();
+    hist.idx = hist.stack.length - 1;
+    refreshHistUI(); markDirty(); updateStatus();
+  }
+  function undo() {
+    if (hist.idx <= 0) return;
+    hist.idx--;
+    applySnap(hist.stack[hist.idx]);
+    markDirty(); refreshHistUI();
+    if (window.Lemon) Lemon.toast('되돌렸어요', 'info');
+  }
+  function redo() {
+    if (hist.idx >= hist.stack.length - 1) return;
+    hist.idx++;
+    applySnap(hist.stack[hist.idx]);
+    markDirty(); refreshHistUI();
+  }
+  function resetHistory() {
+    hist.stack = [snapshot()];
+    hist.idx = 0;
+    refreshHistUI();
+  }
+
+  /* ---------------- text editor ---------------- */
+  var te = $('textEdit'), teDone = $('btnTextDone');
+  var editing = null;
+  function placeEditor(o) {
+    var k = view.k;
+    te.style.display = 'block';
+    te.style.left = Math.round(o.x * k + view.x) + 'px';
+    te.style.top = Math.round(o.y * k + view.y) + 'px';
+    te.style.width = Math.max(70, Math.round(o.w * k)) + 'px';
+    te.style.fontSize = Math.max(9, o.size * k) + 'px';
+    te.style.color = resolveColor(o.c);
+    te.style.height = 'auto';
+    te.style.height = Math.max(28, te.scrollHeight) + 'px';
+    teDone.style.display = 'block';
+    teDone.style.left = Math.round(o.x * k + view.x) + 'px';
+    teDone.style.top = Math.round(o.y * k + view.y + Math.max(o.size * 1.4, textHeight(o)) * k + 8) + 'px';
+  }
+  function openTextEditor(o) {
+    editing = o;
+    te.value = o.text || '';
+    placeEditor(o);
+    te.focus();
+    var len = te.value.length;
+    try { te.setSelectionRange(len, len); } catch (err) { }
+  }
+  function commitText() {
+    if (!editing) return;
+    var o = editing;
+    editing = null;
+    o.text = te.value;
+    te.style.display = 'none';
+    teDone.style.display = 'none';
+    if (!o.text.trim()) {
+      var i = doc.objects.indexOf(o);
+      if (i > -1) doc.objects.splice(i, 1);
+      if (sel.indexOf(o) > -1) sel = [];
+    } else {
+      textCache = {};
+      sel = [o];
+    }
+    selChange(); queueRender(); commit(); saveSoon();
+  }
+  te.addEventListener('input', function () {
+    if (!editing) return;
+    te.style.height = 'auto';
+    te.style.height = Math.max(28, te.scrollHeight) + 'px';
+  });
+  te.addEventListener('blur', function () {
+    setTimeout(function () {
+      if (document.activeElement === te) return;
+      commitText();
+    }, 90);
+  });
+  te.addEventListener('keydown', function (e) {
+    e.stopPropagation();
+    if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+      e.preventDefault();
+      commitText();
+    }
+  });
+  teDone.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  teDone.addEventListener('click', function (e) { e.preventDefault(); commitText(); });
+
+  function purgeEmptyText(except) {
+    var before = doc.objects.length;
+    doc.objects = doc.objects.filter(function (o) {
+      return !(o.t === 'text' && o !== except && !String(o.text || '').trim());
+    });
+    if (doc.objects.length !== before) { sel = []; queueRender(); }
+  }
+  function newTextAt(w) {
+    purgeEmptyText(editing);
+    var hit = pickAt(w);
+    if (hit && hit.t === 'text') {
+      sel = [hit]; selChange();
+      openTextEditor(hit);
+      return;
+    }
+    var o = { id: uid(), t: 'text', x: w.x, y: w.y, w: 240, text: '', c: st.color, size: st.size };
+    doc.objects.push(o);
+    queueRender();
+    /* 포인터 이벤트가 끝난 뒤 포커스를 줘야 캔버스 클릭 기본 동작에 빼앗기지 않는다 */
+    setTimeout(function () { if (doc.objects.indexOf(o) > -1) { openTextEditor(o); setHint('텍스트를 입력하고 바깥을 누르면 확정됩니다'); } }, 30);
+  }
+
+  /* ---------------- gestures & drawing ---------------- */
+  var pointers = {};
+  var pcount = 0;
+  var mode = null;
+  var pinch = null;
+  var spaceDown = false;
+
+  function pointerList() {
+    var out = [];
+    for (var id in pointers) if (pointers.hasOwnProperty(id)) out.push(pointers[id]);
+    return out;
+  }
+  function setHint(t) {
+    var el = $('stageHintText');
+    if (el) el.textContent = t;
+    var box = $('stageHint');
+    if (box) box.classList.remove('hide');
+  }
+  function cancelGesture() {
+    if (draft && mode && mode.kind === 'shape' && mode.committed) { }
+    draft = null;
+    mode = null;
+    queueRender();
+  }
+
+  function startPinch() {
+    draft = null;
+    var pl = pointerList();
+    if (pl.length < 2) return;
+    var a = pl[0], b = pl[1];
+    pinch = {
+      d: Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2)) || 1,
+      cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+      v: { x: view.x, y: view.y, k: view.k }
+    };
+    mode = { kind: 'pinch' };
+    setHint('두 손가락으로 이동 · 벌리면 확대');
+  }
+  function movePinch() {
+    if (!pinch) return;
+    var pl = pointerList();
+    if (pl.length < 2) return;
+    var a = pl[0], b = pl[1];
+    var d = Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2)) || 1;
+    var cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    var k = clamp(pinch.v.k * (d / pinch.d), 0.12, 6);
+    var wx = (pinch.cx - pinch.v.x) / pinch.v.k;
+    var wy = (pinch.cy - pinch.v.y) / pinch.v.k;
+    view.k = k;
+    view.x = cx - wx * k;
+    view.y = cy - wy * k;
+    queueRender(); updateStatus();
+  }
+
+  function baseWidth() {
+    var w = st.width;
+    if (st.tool === 'marker') w = st.width * 3.6 + 6;
+    if (st.tool === 'eraser') w = 12;
+    return w;
+  }
+  function widthFor(base, pressure, speed, type) {
+    var fac;
+    if (type === 'pen' && pressure > 0.03) fac = 0.34 + 1.0 * clamp(pressure, 0, 1);
+    else fac = clamp(1.02 - speed * 0.5, 0.42, 1.0);
+    return Math.max(0.55, base * fac);
+  }
+
+  function startStroke(w, e) {
+    var base = baseWidth();
+    var type = e.pointerType || 'mouse';
+    var pressure = (typeof e.pressure === 'number') ? e.pressure : 0;
+    var w0 = widthFor(base, pressure, 0, type);
+    draft = { id: uid(), t: st.tool, c: st.color, pts: [[w.x, w.y, w0]] };
+    mode = { kind: 'draw', base: base, last: w, lastW: w0, lastT: performance.now(), speed: 0, type: type };
+    queueRender();
+  }
+  function moveStroke(w, e) {
+    var now = performance.now();
+    var dt = Math.max(1, now - mode.lastT);
+    var dx = w.x - mode.last.x, dy = w.y - mode.last.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 0.5) return;
+    var speed = dist / dt;
+    mode.speed = mode.speed * 0.65 + speed * 0.35;
+    var base = mode.base;
+    var pressure = (typeof e.pressure === 'number') ? e.pressure : 0;
+    var wd = widthFor(base, pressure, mode.speed, mode.type);
+    draft.pts.push([w.x, w.y, wd]);
+    mode.last = w; mode.lastT = now; mode.lastW = wd;
+    queueRender();
+  }
+  function endStroke() {
+    if (!draft) { mode = null; return; }
+    var o = draft;
+    draft = null;
+    mode = null;
+    if (!o.pts.length) { queueRender(); return; }
+    var b = objBounds(o);
+    if (!b || (b.w < 1.2 && b.h < 1.2)) { queueRender(); return; }
+    doc.objects.push(o);
+    sel = [o];
+    selChange(); queueRender(); commit(); saveSoon();
+  }
+
+  function eraseAt(w) {
+    var tol = 9 / view.k;
+    var hit = null;
+    for (var i = doc.objects.length - 1; i >= 0; i--) {
+      if (hitTest(doc.objects[i], w, tol)) { hit = doc.objects[i]; break; }
+    }
+    if (!hit) return false;
+    var idx = doc.objects.indexOf(hit);
+    if (idx > -1) doc.objects.splice(idx, 1);
+    sel = sel.filter(function (o) { return o !== hit; });
+    queueRender();
+    return true;
+  }
+
+  function onDown(e) {
+    hideHint();
+    if (editing) {
+      var hadText = String(te.value || '').trim().length > 0;
+      commitText();
+      /* 글자를 쓰고 바깥을 누른 경우엔 확정만 하고 빈 텍스트 객체를 또 만들지 않는다 */
+      if (st.tool === 'text' && hadText) return;
+    }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { }
+    var p = evPoint(e);
+    pointers[e.pointerId] = p;
+    pcount++;
+    if (pcount === 2) { startPinch(); return; }
+    if (pcount > 2) return;
+
+    var tool = st.tool;
+    if (spaceDown || tool === 'hand') {
+      mode = { kind: 'pan', start: p, v: { x: view.x, y: view.y } };
+      cv.classList.add('panning');
+      return;
+    }
+    if (tool === 'select') {
+      var hi = handleAt(p);
+      if (sel.length && hi >= 0) {
+        var ob = unionBounds(sel, 0);
+        var corners = [[ob.x, ob.y], [ob.x + ob.w, ob.y], [ob.x + ob.w, ob.y + ob.h], [ob.x, ob.y + ob.h]];
+        mode = {
+          kind: 'resize', h: hi,
+          corner: corners[hi], ob: ob,
+          anchor: corners[(hi + 2) % 4],
+          orig: sel.map(function (o) { return { o: o, c: clone(o) }; })
+        };
+        return;
+      }
+      var w = toWorld(p);
+      var hit = pickAt(w);
+      if (hit) {
+        if (e.shiftKey) {
+          var at = sel.indexOf(hit);
+          if (at > -1) sel.splice(at, 1); else sel.push(hit);
+        } else if (sel.indexOf(hit) === -1) sel = [hit];
+        selChange();
+        mode = { kind: 'move', start: w, orig: sel.map(function (o) { return { o: o, c: clone(o) }; }), moved: false };
+        queueRender();
+        return;
+      }
+      sel = []; selChange(); queueRender();
+      mode = { kind: 'pan', start: p, v: { x: view.x, y: view.y } };
+      cv.classList.add('panning');
+      return;
+    }
+    if (tool === 'eraser') {
+      mode = { kind: 'erase', changed: false };
+      if (eraseAt(toWorld(p))) mode.changed = true;
+      return;
+    }
+    if (tool === 'text') {
+      e.preventDefault();
+      newTextAt(toWorld(p));
+      return;
+    }
+    if (tool === 'pen' || tool === 'marker') {
+      startStroke(toWorld(p), e);
+      return;
+    }
+    var ws = toWorld(p);
+    if (doc.snap) { ws = { x: snapV(ws.x), y: snapV(ws.y) }; }
+    draft = { id: uid(), t: 'shape', kind: tool, x1: ws.x, y1: ws.y, x2: ws.x, y2: ws.y, c: st.color, w: st.width, fill: st.fill, dash: st.dash };
+    mode = { kind: 'shape', start: ws };
+    queueRender();
+  }
+
+  function onMove(e) {
+    if (!pointers.hasOwnProperty(e.pointerId)) return;
+    var p = evPoint(e);
+    pointers[e.pointerId] = p;
+    if (mode && mode.kind === 'pinch') { if (pcount >= 2) movePinch(); return; }
+    if (!mode) return;
+    var w = toWorld(p);
+
+    if (mode.kind === 'pan') {
+      view.x = mode.v.x + (p.x - mode.start.x);
+      view.y = mode.v.y + (p.y - mode.start.y);
+      queueRender();
+      return;
+    }
+    if (mode.kind === 'draw' && draft) {
+      if (e.getCoalescedEvents) {
+        var list = e.getCoalescedEvents();
+        for (var ci = 0; ci < list.length; ci++) {
+          var cp = list[ci];
+          var r = cv.getBoundingClientRect();
+          var cw = toWorld({ x: cp.clientX - r.left, y: cp.clientY - r.top });
+          moveStroke(cw, cp);
+        }
+      } else {
+        moveStroke(w, e);
+      }
+      return;
+    }
+    if (mode.kind === 'shape' && draft) {
+      var x2 = w.x, y2 = w.y;
+      if (doc.snap) { x2 = snapV(x2); y2 = snapV(y2); }
+      if (e.shiftKey) {
+        if (draft.kind === 'rect' || draft.kind === 'ellipse') {
+          var s = Math.max(Math.abs(x2 - mode.start.x), Math.abs(y2 - mode.start.y));
+          x2 = mode.start.x + (x2 < mode.start.x ? -s : s);
+          y2 = mode.start.y + (y2 < mode.start.y ? -s : s);
+        }
+      }
+      draft.x2 = x2; draft.y2 = y2;
+      queueRender();
+      return;
+    }
+    if (mode.kind === 'move') {
+      var dx = w.x - mode.start.x, dy = w.y - mode.start.y;
+      if (doc.snap) { dx = Math.round(dx / GRID) * GRID; dy = Math.round(dy / GRID) * GRID; }
+      for (var i = 0; i < mode.orig.length; i++) {
+        var it = mode.orig[i];
+        var target = it.o;
+        var copy = clone(it.c);
+        translateObj(copy, dx, dy);
+        if (copy.t === 'text') { target.x = copy.x; target.y = copy.y; }
+        else if (copy.pts) { target.pts = copy.pts; }
+        else { target.x1 = copy.x1; target.y1 = copy.y1; target.x2 = copy.x2; target.y2 = copy.y2; }
+      }
+      mode.moved = mode.moved || Math.abs(dx) + Math.abs(dy) > 0.5;
+      queueRender();
+      return;
+    }
+    if (mode.kind === 'resize') {
+      var ax = mode.anchor[0], ay = mode.anchor[1];
+      var cxw = w.x, cyw = w.y;
+      var origX = mode.corner[0], origY = mode.corner[1];
+      if (doc.snap) { cxw = snapV(cxw); cyw = snapV(cyw); }
+      var sx = (Math.abs(origX - ax) < 0.5) ? 1 : (cxw - ax) / (origX - ax);
+      var sy = (Math.abs(origY - ay) < 0.5) ? 1 : (cyw - ay) / (origY - ay);
+      if (Math.abs(sx) < 0.04) sx = sx < 0 ? -0.04 : 0.04;
+      if (Math.abs(sy) < 0.04) sy = sy < 0 ? -0.04 : 0.04;
+      for (var ri = 0; ri < mode.orig.length; ri++) {
+        var ent = mode.orig[ri];
+        var c2 = clone(ent.c);
+        scaleObj(c2, sx, sy, ax, ay);
+        var tgt = ent.o;
+        if (c2.pts) { tgt.pts = c2.pts; }
+        else if (c2.t === 'text') { tgt.x = c2.x; tgt.y = c2.y; tgt.size = c2.size; tgt.w = c2.w; }
+        else { tgt.x1 = c2.x1; tgt.y1 = c2.y1; tgt.x2 = c2.x2; tgt.y2 = c2.y2; }
+      }
+      queueRender();
+      return;
+    }
+    if (mode.kind === 'erase') {
+      if (eraseAt(w)) mode.changed = true;
+      return;
+    }
+  }
+
+  function onUp(e) {
+    if (pointers.hasOwnProperty(e.pointerId)) { delete pointers[e.pointerId]; pcount = Math.max(0, pcount - 1); }
+    cv.classList.remove('panning');
+    if (mode && mode.kind === 'pinch') {
+      if (pcount < 2) { pinch = null; mode = null; }
+      return;
+    }
+    if (!mode) return;
+    var kind = mode.kind;
+    if (kind === 'draw') { endStroke(); }
+    else if (kind === 'shape') {
+      var o = draft; draft = null; mode = null;
+      if (o) {
+        var b = objBounds(o);
+        var len = Math.sqrt(Math.pow(o.x2 - o.x1, 2) + Math.pow(o.y2 - o.y1, 2));
+        if (len > 3 || (o.kind !== 'line' && o.kind !== 'arrow' && b && b.w > 2 && b.h > 2)) {
+          doc.objects.push(o);
+          sel = [o]; selChange(); commit(); saveSoon();
+        }
+        queueRender();
+      }
+    } else if (kind === 'move' || kind === 'resize') {
+      mode = null;
+      commit(); saveSoon(); selChange(); queueRender();
+    } else if (kind === 'erase') {
+      var ch = mode.changed; mode = null;
+      if (ch) { commit(); saveSoon(); }
+    } else if (kind === 'pan') {
+      mode = null;
+    } else {
+      mode = null;
+    }
+  }
+
+  cv.addEventListener('pointerdown', onDown);
+  cv.addEventListener('pointermove', onMove);
+  cv.addEventListener('pointerup', onUp);
+  cv.addEventListener('pointercancel', onUp);
+  cv.addEventListener('pointerleave', function (e) { if (pointers.hasOwnProperty(e.pointerId) && mode && mode.kind !== 'pinch') onUp(e); });
+  cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  cv.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var p = evPoint(e);
+    var unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? 100 : 1);
+    if (e.ctrlKey || e.metaKey) {
+      var f = Math.pow(0.9985, e.deltaY * unit);
+      zoomAt(p, clamp(f, 0.5, 2));
+    } else {
+      view.x -= e.deltaX * unit;
+      view.y -= e.deltaY * unit;
+      queueRender();
+    }
+  }, { passive: false });
+
+  /* ---------------- view helpers ---------------- */
+  function zoomAt(p, factor) {
+    var k2 = clamp(view.k * factor, 0.12, 6);
+    if (Math.abs(k2 - view.k) < 0.0005) return;
+    var wx = (p.x - view.x) / view.k, wy = (p.y - view.y) / view.k;
+    view.k = k2;
+    view.x = p.x - wx * k2;
+    view.y = p.y - wy * k2;
+    queueRender(); updateStatus();
+  }
+  function zoomCenter(factor) { zoomAt({ x: cv.clientWidth / 2, y: cv.clientHeight / 2 }, factor); }
+  function fitView() {
+    var b = unionBounds(doc.objects, 48);
+    var W = cv.clientWidth, H = cv.clientHeight;
+    if (!b) {
+      view = { x: Math.round(W / 2), y: Math.round(H / 2), k: 1 };
+    } else {
+      var k = clamp(Math.min(W / Math.max(b.w, 1), H / Math.max(b.h, 1)) * 0.92, 0.12, 3);
+      view.k = k;
+      view.x = W / 2 - (b.x + b.w / 2) * k;
+      view.y = H / 2 - (b.y + b.h / 2) * k;
+    }
+    queueRender(); updateStatus();
+  }
+
+  function hideHint() {
+    var box = $('stageHint');
+    if (box) box.classList.add('hide');
+  }
+
+  /* ---------------- selection helpers ---------------- */
+  function selChange() {
+    var info = $('selInfo');
+    if (info) info.textContent = sel.length ? (sel.length + '개 선택됨') : '선택된 객체 없음';
+    var has = sel.length > 0;
+    ['btnDup', 'btnDel', 'btnFront', 'btnBack'].forEach(function (id) {
+      var b = $(id);
+      if (b) b.disabled = !has;
+    });
+    queueRender();
+  }
+  function deleteSel() {
+    if (!sel.length) return;
+    doc.objects = doc.objects.filter(function (o) { return sel.indexOf(o) === -1; });
+    sel = []; selChange(); queueRender(); commit(); saveSoon();
+  }
+  function duplicateSel() {
+    if (!sel.length) return;
+    var copies = sel.map(function (o) {
+      var c = clone(o);
+      c.id = uid();
+      translateObj(c, 16, 16);
+      return c;
+    });
+    doc.objects = doc.objects.concat(copies);
+    sel = copies;
+    selChange(); queueRender(); commit(); saveSoon();
+  }
+  function layerMove(toFront) {
+    if (!sel.length) return;
+    var keep = doc.objects.filter(function (o) { return sel.indexOf(o) === -1; });
+    var moved = doc.objects.filter(function (o) { return sel.indexOf(o) > -1; });
+    doc.objects = toFront ? keep.concat(moved) : moved.concat(keep);
+    queueRender(); commit(); saveSoon();
+  }
+
+  /* ---------------- IndexedDB ---------------- */
+  var DB_NAME = 'lemon_sketch_v1';
+  var STORE = 'sketches';
+  var dbPromise = null;
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('no-indexeddb')); return; }
+      var rq;
+      try { rq = indexedDB.open(DB_NAME, 1); } catch (err) { rej(err); return; }
+      rq.onupgradeneeded = function () {
+        var db = rq.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+      };
+      rq.onsuccess = function () { res(rq.result); };
+      rq.onerror = function () { rej(rq.error || new Error('idb-open-failed')); };
+    });
+    dbPromise.then(null, function () { dbPromise = null; });
+    return dbPromise;
+  }
+  function dbPut(rec) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(rec);
+        tx.oncomplete = function () { res(rec); };
+        tx.onerror = function () { rej(tx.error || new Error('idb-put')); };
+        tx.onabort = function () { rej(tx.error || new Error('idb-abort')); };
+      });
+    });
+  }
+  function dbAll() {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(STORE, 'readonly');
+        var rq = tx.objectStore(STORE).getAll();
+        rq.onsuccess = function () { res(rq.result || []); };
+        rq.onerror = function () { rej(rq.error); };
+      });
+    });
+  }
+  function dbDel(id) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).delete(id);
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+
+  /* ---------------- save state ---------------- */
+  var saveTimer = null;
+  function hhmm() {
+    var d = new Date();
+    return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+  }
+  function setSaveBadge(text, state) {
+    var b = $('saveBadge');
+    if (b) { b.textContent = text; b.setAttribute('data-state', state || 'idle'); }
+    var s = $('stSave');
+    if (s) s.textContent = text;
+  }
+  function serializeDoc() {
+    return { v: 1, name: doc.name, bg: doc.bg, snap: doc.snap, rough: doc.rough, view: { x: view.x, y: view.y, k: view.k }, objects: doc.objects };
+  }
+  function makeThumb() {
+    try {
+      var W = 460, H = 288;
+      var c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      var g = c.getContext('2d');
+      g.fillStyle = paperColor();
+      g.fillRect(0, 0, W, H);
+      var b = unionBounds(doc.objects, 24);
+      if (b && doc.objects.length) {
+        var k = Math.min(W / Math.max(b.w, 1), H / Math.max(b.h, 1), 2.2);
+        g.translate(W / 2 - (b.x + b.w / 2) * k, H / 2 - (b.y + b.h / 2) * k);
+        g.scale(k, k);
+        for (var i = 0; i < doc.objects.length; i++) paintObject(g, doc.objects[i]);
+      }
+      return c.toDataURL('image/jpeg', 0.74);
+    } catch (err) { return ''; }
+  }
+  function markDirty() {
+    setSaveBadge('저장 중…', 'saving');
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { saveTimer = null; doSave(); }, 850);
+  }
+  function doSave() {
+    if (!doc) return Promise.resolve(false);
+    /* 아직 아무것도 그리지 않은 빈 종이는 보관함에 남기지 않는다 */
+    if (!doc.objects.length && (doc.name === '제목 없는 스케치' || !doc.name)) {
+      setSaveBadge('새 스케치', 'new');
+      return Promise.resolve(false);
+    }
+    var rec = { id: doc.id, name: doc.name || '제목 없는 스케치', ts: Date.now(), thumb: makeThumb(), doc: serializeDoc() };
+    return dbPut(rec).then(function () {
+      try { localStorage.setItem('lemon_sketch_last', doc.id); } catch (e) { }
+      setSaveBadge('자동 저장됨 ' + hhmm(), 'saved');
+      archiveDirty = true;
+      if (curView === 'archive') renderArchive();
+      return true;
+    }, function () {
+      setSaveBadge('저장 실패 — 메모리에만', 'off');
+      return false;
+    });
+  }
+  function flushSave() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    return doSave();
+  }
+
+  /* ---------------- render list / templates ---------------- */
+  function newDoc() {
+    return {
+      id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: '제목 없는 스케치', bg: 'dot', snap: true, rough: true, objects: []
+    };
+  }
+  function loadDocRecord(rec) {
+    var d = rec.doc || {};
+    doc = {
+      id: rec.id,
+      name: rec.name || d.name || '제목 없는 스케치',
+      bg: d.bg || 'dot',
+      snap: d.snap !== false,
+      rough: d.rough !== false,
+      objects: Array.isArray(d.objects) ? d.objects : []
+    };
+    if (d.view && typeof d.view.k === 'number') {
+      view = { x: d.view.x || 0, y: d.view.y || 0, k: clamp(d.view.k, 0.12, 6) };
+      viewSet = true;
+    } else { viewSet = false; }
+  }
+  var pendingFit = false;
+  function openDoc(d, noFlush) {
+    if (!noFlush) flushSave();
+    doc = d;
+    viewSet = false;
+    sel = []; draft = null; mode = null; pinch = null;
+    docName.value = doc.name;
+    syncAllUI();
+    resetHistory();
+    if (curView === 'studio') { layoutStudio(); if (!viewSet) { view = { x: Math.round(cv.clientWidth / 2), y: Math.round(cv.clientHeight / 2), k: 1 }; viewSet = true; } }
+    else go('studio');
+    queueRender(); markDirty();
+  }
+
+  function tplFlow() {
+    var c = 'cobalt', ink = 'ink';
+    var o = [];
+    o.push({ id: uid(), t: 'shape', kind: 'rect', x1: 40, y1: 40, x2: 168, y2: 96, c: ink, w: 2.2, fill: false, dash: false });
+    o.push({ id: uid(), t: 'text', x: 62, y: 54, w: 92, text: '시작', c: ink, size: 20 });
+    o.push({ id: uid(), t: 'shape', kind: 'arrow', x1: 170, y1: 68, x2: 250, y2: 68, c: c, w: 2.2 });
+    o.push({ id: uid(), t: 'shape', kind: 'rect', x1: 254, y1: 40, x2: 428, y2: 96, c: ink, w: 2.2, fill: false, dash: false });
+    o.push({ id: uid(), t: 'text', x: 268, y: 54, w: 146, text: '아이디어 구상', c: ink, size: 20 });
+    o.push({ id: uid(), t: 'shape', kind: 'arrow', x1: 430, y1: 68, x2: 480, y2: 68, c: c, w: 2.2 });
+    o.push({ id: uid(), t: 'shape', kind: 'ellipse', x1: 484, y1: 36, x2: 604, y2: 100, c: c, w: 2.2, fill: true, dash: false });
+    o.push({ id: uid(), t: 'text', x: 512, y: 52, w: 66, text: '검토', c: c, size: 20 });
+    o.push({ id: uid(), t: 'shape', kind: 'arrow', x1: 544, y1: 102, x2: 544, y2: 176, c: c, w: 2.2 });
+    o.push({ id: uid(), t: 'shape', kind: 'rect', x1: 452, y1: 180, x2: 636, y2: 236, c: ink, w: 2.2, fill: false, dash: true });
+    o.push({ id: uid(), t: 'text', x: 470, y: 194, w: 150, text: '수정할 점 메모', c: ink, size: 20 });
+    o.push({ id: uid(), t: 'shape', kind: 'arrow', x1: 452, y1: 208, x2: 330, y2: 208, c: ink, w: 2.2, dash: true });
+    o.push({ id: uid(), t: 'shape', kind: 'arrow', x1: 330, y1: 208, x2: 330, y2: 100, c: ink, w: 2.2, dash: true });
+    o.push({ id: uid(), t: 'text', x: 40, y: 270, w: 420, text: '1) 칸을 끌어 크기 조절\n2) 손그림 토글로 분위기 바꾸기', c: 'slate', size: 16 });
+    return o;
+  }
+  function tplMind() {
+    var o = [], ink = 'ink', c = 'teal';
+    var cx = 340, cy = 210;
+    o.push({ id: uid(), t: 'shape', kind: 'ellipse', x1: cx - 92, y1: cy - 48, x2: cx + 92, y2: cy + 48, c: c, w: 2.4, fill: true, dash: false });
+    o.push({ id: uid(), t: 'text', x: cx - 62, y: cy - 14, w: 124, text: '중심 주제', c: c, size: 22 });
+    var nodes = [[90, 70], [90, 210], [90, 350], [500, 70], [500, 210], [500, 350]];
+    for (var i = 0; i < nodes.length; i++) {
+      var nx = nodes[i][0], ny = nodes[i][1];
+      o.push({ id: uid(), t: 'shape', kind: 'line', x1: cx + (nx > cx ? 92 : -92), y1: cy + (ny < cy ? -18 : (ny > cy + 60 ? 18 : 0)), x2: nx + (nx > cx ? 0 : 130), y2: ny + 22, c: ink, w: 1.6, dash: false });
+      o.push({ id: uid(), t: 'shape', kind: 'rect', x1: nx, y1: ny, x2: nx + 130, y2: ny + 46, c: ink, w: 2, fill: false, dash: false });
+      o.push({ id: uid(), t: 'text', x: nx + 12, y: ny + 10, w: 108, text: '가지 ' + (i + 1), c: ink, size: 17 });
+    }
+    return o;
+  }
+  function tplWire() {
+    var o = [], ink = 'ink', c = 'cobalt';
+    o.push({ id: uid(), t: 'shape', kind: 'rect', x1: 30, y1: 30, x2: 190, y2: 380, c: ink, w: 2, fill: false, dash: false });
+    o.push({ id: uid(), t: 'shape', kind: 'line', x1: 44, y1: 76, x2: 176, y2: 76, c: ink, w: 1.4 });
+    o.push({ id: uid(), t: 'shape', kind: 'line', x1: 44, y1: 104, x2: 160, y2: 104, c: ink, w: 1.4 });
+    o.push({ id: uid(), t: 'shape', kind: 'line', x1: 44, y1: 132, x2: 168, y2: 132, c: ink, w: 1.4 });
+    o.push({ id: uid(), t: 'shape', kind: 'line', x1: 44, y1: 160, x2: 140, y2: 160, c: ink, w: 1.4 });
+    o.push({ id: uid(), t: 'text', x: 44, y: 40, w: 130, text: '사이드바', c: ink, size: 16 });
+    o.push({ id: uid(), t: 'shape', kind: 'rect', x1: 214, y1: 30, x2: 610, y2: 160, c: c, w: 2.2, fill: true, dash: false });
+    o.push({ id: uid(), t: 'text', x: 234, y: 54, w: 340, text: '히어로 영역 · 제목과 버튼', c: c, size: 20 });
+    o.push({ id: uid(), t: 'shape', kind: 'rect', x1: 214, y1: 180, x2: 396, y2: 380, c: ink, w: 2, fill: false, dash: false });
+    o.push({ id: uid(), t: 'shape', kind: 'rect', x1: 418, y1: 180, x2: 610, y2: 380, c: ink, w: 2, fill: false, dash: true });
+    o.push({ id: uid(), t: 'text', x: 232, y: 196, w: 150, text: '카드 A', c: ink, size: 17 });
+    o.push({ id: uid(), t: 'text', x: 436, y: 196, w: 150, text: '카드 B', c: ink, size: 17 });
+    return o;
+  }
+  function startTemplate(kind) {
+    flushSave();
+    var d = newDoc();
+    d.name = kind === 'flow' ? '플로우차트' : (kind === 'mind' ? '마인드맵' : '와이어프레임');
+    d.objects = kind === 'flow' ? tplFlow() : (kind === 'mind' ? tplMind() : tplWire());
+    openDoc(d);
+    pendingFit = true;
+    layoutStudio();
+    if (pendingFit) { pendingFit = false; fitView(); }
+    commit(); saveSoonForce();
+    if (window.Lemon) Lemon.toast(d.name + ' 템플릿을 열었어요', 'ok');
+  }
+  function saveSoonForce() { return flushSave(); }
+
+  /* ---------------- export ---------------- */
+  function exportBounds(pad) {
+    var b = unionBounds(doc.objects, pad === undefined ? 40 : pad);
+    if (!b) b = { x: -240, y: -180, w: 480, h: 360 };
+    return b;
+  }
+  function drawGridInto(g, b, k) {
+    var step = GRID;
+    while (step * k < 8) step *= 2;
+    var x0 = Math.floor(b.x / step) * step, x1 = b.x + b.w;
+    var y0 = Math.floor(b.y / step) * step, y1 = b.y + b.h;
+    g.save();
+    if (doc.bg === 'dot') {
+      g.fillStyle = dotColor();
+      var r = Math.max(0.5, 1.15);
+      g.beginPath();
+      for (var x = x0; x <= x1; x += step) {
+        for (var y = y0; y <= y1; y += step) {
+          g.moveTo(x + r, y);
+          g.arc(x, y, r, 0, 6.2832);
+        }
+      }
+      g.fill();
+    } else {
+      g.strokeStyle = lineColor();
+      g.lineWidth = Math.max(0.4, 1 / k);
+      g.beginPath();
+      for (var gx = x0; gx <= x1; gx += step) { g.moveTo(gx, b.y); g.lineTo(gx, b.y + b.h); }
+      for (var gy = y0; gy <= y1; gy += step) { g.moveTo(b.x, gy); g.lineTo(b.x + b.w, gy); }
+      g.stroke();
+    }
+    g.restore();
+  }
+  function renderPNGBlob(scale, transparent, withGrid) {
+    return new Promise(function (res, rej) {
+      try {
+        var b = exportBounds(40);
+        var W = Math.max(1, Math.round(b.w * scale));
+        var H = Math.max(1, Math.round(b.h * scale));
+        var cap = 6000;
+        if (W > cap || H > cap) {
+          var f2 = Math.min(cap / W, cap / H);
+          W = Math.round(W * f2); H = Math.round(H * f2);
+        }
+        var c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        var g = c.getContext('2d');
+        if (!transparent) {
+          g.fillStyle = paperColor();
+          g.fillRect(0, 0, W, H);
+        }
+        var k = W / b.w;
+        g.setTransform(k, 0, 0, k, -b.x * k, -b.y * k);
+        if (!transparent && withGrid && doc.bg !== 'none') drawGridInto(g, b, k);
+        paintLight = !!transparent;
+        for (var i = 0; i < doc.objects.length; i++) paintObject(g, doc.objects[i]);
+        paintLight = false;
+        if (c.toBlob) c.toBlob(function (blob) { blob ? res(blob) : rej(new Error('toBlob')); }, 'image/png');
+        else rej(new Error('no-toBlob'));
+      } catch (err) { rej(err); }
+    });
+  }
+  function svgEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function buildSVG(withBg) {
+    paintLight = !withBg;
+    var b = exportBounds(32);
+    var out = [];
+    out.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + Math.round(b.w) + '" height="' + Math.round(b.h) + '" viewBox="' + f(b.x) + ' ' + f(b.y) + ' ' + f(b.w) + ' ' + f(b.h) + '">');
+    out.push('<title>' + svgEsc(doc.name) + '</title>');
+    if (withBg) {
+      out.push('<rect x="' + f(b.x) + '" y="' + f(b.y) + '" width="' + f(b.w) + '" height="' + f(b.h) + '" fill="' + paperColor() + '"/>');
+      if (doc.bg !== 'none') {
+        var step = GRID;
+        while (step < 8) step *= 2;
+        var gx0 = Math.floor(b.x / step) * step, gy0 = Math.floor(b.y / step) * step;
+        var gp = [];
+        for (var gx = gx0; gx <= b.x + b.w; gx += step) gp.push('M' + f(gx) + ' ' + f(b.y) + 'V' + f(b.y + b.h));
+        for (var gy = gy0; gy <= b.y + b.h; gy += step) gp.push('M' + f(b.x) + ' ' + f(gy) + 'H' + f(b.x + b.w));
+        var dotR = doc.bg === 'dot' ? 1.15 : 0;
+        if (doc.bg === 'dot') {
+          for (var dx = gx0; dx <= b.x + b.w; dx += step) for (var dy = gy0; dy <= b.y + b.h; dy += step) gp.push('M' + f(dx + dotR) + ' ' + f(dy) + 'a' + dotR + ' ' + dotR + ' 0 1 0 0.01 0');
+        }
+        out.push('<path d="' + gp.join('') + '" fill="' + (doc.bg === 'dot' ? dotColor() : 'none') + '" stroke="' + (doc.bg === 'dot' ? 'none' : lineColor()) + '" stroke-width="1"/>');
+      }
+    }
+    for (var i = 0; i < doc.objects.length; i++) {
+      var o = doc.objects[i];
+      if (o.t === 'text') {
+        var lines = textLines(o);
+        var lh = o.size * 1.35;
+        var tps = [];
+        for (var li = 0; li < lines.length; li++) {
+          tps.push('<tspan x="' + f(o.x) + '" y="' + f(o.y + o.size * 0.82 + li * lh) + '">' + svgEsc(lines[li]) + '</tspan>');
+        }
+        out.push('<text font-family="-apple-system,BlinkMacSystemFont,Apple SD Gothic Neo,Segoe UI,sans-serif" font-size="' + o.size + '" font-weight="500" fill="' + resolveColor(o.c) + '" xml:space="preserve">' + tps.join('') + '</text>');
+        continue;
+      }
+      var paths = (o.t === 'shape') ? shapePaths(o) : strokePaths(o);
+      var op = o.t === 'marker' ? 0.34 : 1;
+      for (var pi = 0; pi < paths.length; pi++) {
+        var p = paths[pi];
+        if (!p.d) continue;
+        var attrs = 'd="' + p.d + '"';
+        if (p.fill) attrs += ' fill="' + resolveColor(p.fill) + '" fill-opacity="' + (p.fa || 1) + '" stroke="none"';
+        else attrs += ' fill="none" stroke="' + resolveColor(p.stroke) + '" stroke-width="' + p.w + '" stroke-linecap="' + (p.cap || 'round') + '" stroke-linejoin="round"';
+        if (p.dash) attrs += ' stroke-dasharray="' + (p.w * 3 + 4) + ' ' + (p.w * 2 + 4) + '"';
+        out.push('<path ' + attrs + (op < 1 ? ' opacity="' + op + '"' : '') + '/>');
+      }
+    }
+    out.push('</svg>');
+    paintLight = false;
+    return out.join('\n');
+  }
+
+  var expState = { fmt: 'png', scale: 2, bg: true, alpha: false };
+  function safeName() { return (doc && doc.name ? doc.name : 'lemon-sketch').replace(/[\\/:*?"<>|]/g, ' ').trim() || 'lemon-sketch'; }
+  function openExport() {
+    if (!doc) return;
+    var b = exportBounds(40);
+    var W = Math.round(b.w * expState.scale), H = Math.round(b.h * expState.scale);
+    $('exportSize').textContent = expState.fmt === 'png' ? (W + ' x ' + H + ' px') : (expState.fmt === 'svg' ? (Math.round(b.w) + ' x ' + Math.round(b.h) + ' units') : 'JSON 프로젝트');
+    togglePngOpts();
+    openModal('dlgExport');
+  }
+  function togglePngOpts() {
+    var p = $('pngOpts');
+    if (p) p.style.display = expState.fmt === 'png' ? 'block' : 'none';
+    var b = exportBounds(40);
+    if ($('exportSize')) $('exportSize').textContent = expState.fmt === 'png' ? (Math.round(b.w * expState.scale) + ' x ' + Math.round(b.h * expState.scale) + ' px') : (expState.fmt === 'svg' ? (Math.round(b.w) + ' x ' + Math.round(b.h) + ' units') : 'JSON 프로젝트');
+  }
+  function doExport() {
+    if (!doc) return;
+    var nm = safeName();
+    if (expState.fmt === 'json') {
+      var payload = { app: 'lemon-sketch', v: 1, name: doc.name, bg: doc.bg, snap: doc.snap, rough: doc.rough, objects: doc.objects };
+      Lemon.download(nm + '.lemon.json', JSON.stringify(payload, null, 2), 'application/json');
+      closeModal('dlgExport');
+      Lemon.toast('JSON 프로젝트를 내려받았어요', 'ok');
+      return;
+    }
+    if (expState.fmt === 'svg') {
+      var svg = buildSVG(expState.bg !== false && !expState.alpha);
+      Lemon.download(nm + '.svg', svg, 'image/svg+xml;charset=utf-8');
+      closeModal('dlgExport');
+      Lemon.toast('SVG 벡터로 내보냈어요', 'ok');
+      return;
+    }
+    var btn = $('btnDoExport');
+    if (btn) btn.disabled = true;
+    renderPNGBlob(expState.scale, expState.alpha, expState.bg).then(function (blob) {
+      Lemon.download(nm + '.png', blob, 'image/png');
+      closeModal('dlgExport');
+      Lemon.toast('PNG로 내보냈어요 (' + Math.round(blob.size / 1024) + 'KB)', 'ok');
+      if (btn) btn.disabled = false;
+    }, function () {
+      Lemon.toast('내보내기에 실패했어요', 'err');
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  /* ---------------- modals ---------------- */
+  var confirmCb = null;
+  function openModal(id) { var m = $(id); if (m) m.classList.add('open'); }
+  function closeModal(id) { var m = $(id); if (m) m.classList.remove('open'); }
+  function closeAllModals() {
+    ['dlgExport', 'dlgRename', 'dlgConfirm', 'dlgHelp'].forEach(function (id) { closeModal(id); });
+  }
+  function openConfirm(title, body, cb) {
+    $('dlgConfirmTitle').textContent = title;
+    $('dlgConfirmBody').textContent = body;
+    confirmCb = cb;
+    openModal('dlgConfirm');
+  }
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('[data-close]') : null;
+    if (c) { var m = c.closest('.lemon-modal'); if (m) m.classList.remove('open'); return; }
+  });
+  $('btnDoConfirm').addEventListener('click', function () {
+    var cb = confirmCb; confirmCb = null;
+    closeModal('dlgConfirm');
+    if (cb) cb();
+  });
+
+  /* ---------------- archive ---------------- */
+  var archiveCache = [];
+  var archiveDirty = true;
+  var archQuery = '';
+  function renderArchive() {
+    var grid = $('archGrid'), empty = $('archEmpty');
+    if (!grid) return;
+    dbAll().then(function (list) {
+      archiveCache = (list || []).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+      archiveDirty = false;
+      var q = archQuery.trim().toLowerCase();
+      var items = archiveCache.filter(function (r) { return !q || String(r.name || '').toLowerCase().indexOf(q) > -1; });
+      $('tabArchiveCount').textContent = archiveCache.length;
+      $('archCount').textContent = archiveCache.length;
+      grid.innerHTML = '';
+      items.forEach(function (r) {
+        var card = document.createElement('div');
+        card.className = 'arch-card';
+        var objCount = (r.doc && Array.isArray(r.doc.objects)) ? r.doc.objects.length : 0;
+        var thumb = r.thumb ? '<img class="arch-thumb" alt="" src="' + r.thumb + '">' : '<div class="arch-thumb"></div>';
+        card.innerHTML = thumb +
+          '<div class="p-3">' +
+          '<div class="flex items-start justify-between gap-2">' +
+          '<div class="min-w-0"><p class="font-bold text-[13px] truncate">' + svgEsc(r.name || '제목 없는 스케치') + '</p>' +
+          '<p class="mono text-[10px] ink-faint mt-0.5">' + (r.ts ? Lemon.fmtDateTime(r.ts) : '') + ' · ' + objCount + ' objects</p></div>' +
+          '<span class="tag" style="flex-shrink:0">SHEET</span></div>' +
+          '<div class="grid grid-cols-4 gap-1 mt-2">' +
+          '<button class="line-btn" data-act="open" style="padding:.3rem .2rem;font-size:10.5px">열기</button>' +
+          '<button class="line-btn" data-act="rename" style="padding:.3rem .2rem;font-size:10.5px">이름</button>' +
+          '<button class="line-btn" data-act="json" style="padding:.3rem .2rem;font-size:10.5px">JSON</button>' +
+          '<button class="line-btn" data-act="del" style="padding:.3rem .2rem;font-size:10.5px;color:#b3412f">삭제</button>' +
+          '</div></div>';
+        card.setAttribute('data-id', r.id);
+        grid.appendChild(card);
+      });
+      if (empty) empty.classList.toggle('hidden', items.length > 0);
+      grid.classList.toggle('hidden', items.length === 0);
+    }, function () {
+      if (empty) empty.classList.remove('hidden');
+      grid.classList.add('hidden');
+    });
+  }
+  function archiveCardAction(id, act) {
+    var rec = null;
+    for (var i = 0; i < archiveCache.length; i++) if (archiveCache[i].id === id) rec = archiveCache[i];
+    if (!rec) return;
+    if (act === 'open') {
+      flushSave().then(function () {
+        loadDocRecord(rec);
+        openDoc(doc, true);
+      });
+      if (window.Lemon) Lemon.toast('스케치를 열었어요', 'ok');
+    } else if (act === 'rename') {
+      $('renameInput').value = rec.name || '';
+      openModal('dlgRename');
+      $('btnDoRename').onclick = function () {
+        var v = $('renameInput').value.trim() || '제목 없는 스케치';
+        var r2 = { id: rec.id, name: v, ts: Date.now(), thumb: rec.thumb, doc: rec.doc };
+        if (r2.doc) r2.doc.name = v;
+        dbPut(r2).then(function () { renderArchive(); closeModal('dlgRename'); Lemon.toast('이름을 바꿨어요', 'ok'); });
+        if (doc && doc.id === rec.id) { doc.name = v; docName.value = v; }
+      };
+    } else if (act === 'json') {
+      var payload = { app: 'lemon-sketch', v: 1, name: rec.name, bg: rec.doc && rec.doc.bg, snap: rec.doc && rec.doc.snap, rough: rec.doc && rec.doc.rough, objects: (rec.doc && rec.doc.objects) || [] };
+      Lemon.download((rec.name || 'lemon-sketch').replace(/[\\/:*?"<>|]/g, ' ') + '.lemon.json', JSON.stringify(payload, null, 2), 'application/json');
+      Lemon.toast('JSON을 내려받았어요', 'ok');
+    } else if (act === 'del') {
+      openConfirm('이 도면을 지울까요?', '"' + (rec.name || '제목 없는 스케치') + '" 스케치가 브라우저에서 삭제됩니다. JSON으로 백업해 두었다면 다시 불러올 수 있습니다.', function () {
+        dbDel(rec.id).then(function () {
+          renderArchive();
+          Lemon.toast('삭제했어요', 'ok');
+        });
+      });
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!b) return;
+    var card = b.closest('.arch-card');
+    if (!card) return;
+    archiveCardAction(card.getAttribute('data-id'), b.getAttribute('data-act'));
+  });
+  function importJSON(text) {
+    var data;
+    try { data = JSON.parse(text); } catch (err) { Lemon.toast('JSON을 읽을 수 없어요', 'err'); return; }
+    var objs = data && (Array.isArray(data.objects) ? data.objects : (data.doc && Array.isArray(data.doc.objects) ? data.doc.objects : null));
+    if (!objs) { Lemon.toast('스케치 JSON이 아니에요', 'err'); return; }
+    var d = newDoc();
+    d.name = (data.name || (data.doc && data.doc.name) || '가져온 스케치') + ' (가져옴)';
+    d.bg = (data.bg || (data.doc && data.doc.bg) || 'dot');
+    d.snap = !(data.snap === false || (data.doc && data.doc.snap === false));
+    d.rough = !(data.rough === false || (data.doc && data.doc.rough === false));
+    d.objects = objs;
+    openDoc(d);
+    pendingFit = true;
+    layoutStudio();
+    if (pendingFit) { pendingFit = false; fitView(); }
+    commit(); saveSoonForce();
+    Lemon.toast(d.name + ' 불러왔어요', 'ok');
+  }
+
+  /* ---------------- templates for card thumbs (svg inline) ---------------- */
+  function buildPalette() {
+    var box = $('palette');
+    if (!box) return;
+    box.innerHTML = '';
+    PALETTE.forEach(function (p) {
+      var b = document.createElement('button');
+      b.className = 'swatch' + (st.color === p.id ? ' on' : '');
+      b.style.background = isDark() ? p.dark : p.light;
+      b.setAttribute('data-color', p.id);
+      b.setAttribute('aria-label', p.id);
+      b.title = p.id;
+      b.addEventListener('click', function () { setColor(p.id); });
+      box.appendChild(b);
+    });
+  }
+  function setColor(id) {
+    st.color = id;
+    var sw = document.querySelectorAll('.swatch');
+    for (var i = 0; i < sw.length; i++) sw[i].classList.toggle('on', sw[i].getAttribute('data-color') === id);
+    if (sel.length) {
+      sel.forEach(function (o) { o.c = id; });
+      queueRender(); commit(); saveSoon();
+    }
+  }
+
+  /* ---------------- UI sync ---------------- */
+  var TOOL_LABEL = { select: '선택', hand: '이동', pen: '펜', marker: '형광펜', eraser: '지우개', line: '직선', arrow: '화살표', rect: '사각형', ellipse: '원', text: '텍스트' };
+  var TOOL_HINT = {
+    select: '객체를 눌러 선택 · 빈 곳을 끌면 화면 이동',
+    hand: '끌어서 화면 이동',
+    pen: '펜으로 그려 보세요 · 두 손가락으로 이동',
+    marker: '형광펜으로 덧칠해 보세요',
+    eraser: '지우고 싶은 선을 문질러 보세요',
+    line: '끌어서 직선을 그어 보세요',
+    arrow: '끌어서 화살표를 그어 보세요',
+    rect: '끌어서 사각형을 그려 보세요',
+    ellipse: '끌어서 원을 그려 보세요',
+    text: '빈 곳을 눌러 글자를 입력하세요'
+  };
+  function updateStatus() {
+    if (!doc) return;
+    $('stObjects').textContent = '객체 ' + doc.objects.length;
+    $('stZoom').textContent = '줌 ' + Math.round(view.k * 100) + '%';
+    $('zoomLabel').textContent = Math.round(view.k * 100) + '%';
+    $('stBg').textContent = doc.bg === 'dot' ? '도트 격자' : (doc.bg === 'grid' ? '모눈 격자' : '무지');
+    $('stTool').textContent = TOOL_LABEL[st.tool] || st.tool;
+    $('tabObjCount').textContent = doc.objects.length;
+    refreshHistUI();
+  }
+  function refreshHistUI() {
+    var u = $('btnUndo'), r = $('btnRedo');
+    if (u) u.disabled = hist.idx <= 0;
+    if (r) r.disabled = hist.idx >= hist.stack.length - 1;
+    var s = $('stHist');
+    if (s) s.textContent = hist.idx + '/' + Math.max(0, hist.stack.length - 1);
+  }
+  function syncBgUI() {
+    var btns = document.querySelectorAll('[data-bg]');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].getAttribute('data-bg') === (doc ? doc.bg : 'dot'));
+  }
+  function toggleSnap() {
+    doc.snap = !doc.snap;
+    syncSnapUI(); markDirty(); commit();
+    var sw = $('swSnap'); if (sw) toggleSwitch(sw, doc.snap);
+    if (window.Lemon) Lemon.toast(doc.snap ? '격자 스냅을 켰어요' : '격자 스냅을 껐어요', 'info');
+  }
+  function syncRoughUI() {
+    var on = doc ? doc.rough !== false : true;
+    var b = $('btnRough'); if (b) b.classList.toggle('on', on);
+    var s = $('swRough'); if (s) { s.classList.toggle('on', on); s.setAttribute('aria-checked', on ? 'true' : 'false'); }
+  }
+  function syncSnapUI() {
+    var on = doc ? doc.snap : true;
+    var b = $('btnSnap'); if (b) b.classList.toggle('on', on);
+    var sw = $('swSnap'); if (sw) toggleSwitch(sw, on);
+  }
+  function syncAllUI() {
+    if (!doc) return;
+    docName.value = doc.name;
+    syncBgUI(); syncRoughUI(); syncSnapUI();
+    $('swFill').classList.toggle('on', !!st.fill);
+    $('swFill').setAttribute('aria-checked', st.fill ? 'true' : 'false');
+    $('swDash').classList.toggle('on', !!st.dash);
+    $('swDash').setAttribute('aria-checked', st.dash ? 'true' : 'false');
+    buildPalette();
+    updateStatus();
+    selChange();
+  }
+  function setTool(t) {
+    if (editing) commitText();
+    if (t !== 'text') purgeEmptyText(null);
+    st.tool = t;
+    var btns = document.querySelectorAll('.tool-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].getAttribute('data-tool') === t);
+    cv.classList.remove('cursor-select', 'cursor-hand', 'cursor-text', 'cursor-erase');
+    cv.classList.add(t === 'select' ? 'cursor-select' : (t === 'hand' ? 'cursor-hand' : (t === 'text' ? 'cursor-text' : (t === 'eraser' ? 'cursor-erase' : 'cursor-draw'))));
+    setHint(TOOL_HINT[t] || '그려 보세요');
+    updateStatus();
+  }
+  function toggleSwitch(el, on) {
+    el.classList.toggle('on', !!on);
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+
+  /* ---------------- view + layout ---------------- */
+  var curView = 'home';
+  var viewSet = false;
+  var go = null;
+  function layoutStudio() {
+    var wrap = $('studioWrap');
+    if (!wrap) return;
+    var r = wrap.getBoundingClientRect();
+    if (!r.width || wrap.offsetParent === null) return;
+    var h = Math.max(360, Math.round(window.innerHeight - r.top - 12));
+    wrap.style.height = h + 'px';
+    resize();
+    if (!viewSet) {
+      view = { x: Math.round(cv.clientWidth / 2), y: Math.round(cv.clientHeight / 2), k: 1 };
+      viewSet = true;
+    }
+    if (pendingFit) {
+      pendingFit = false;
+      fitView();
+    }
+    render();
+    updateStatus();
+  }
+
+  /* ---------------- boot ---------------- */
+  var docName = $('docName');
+  docName.addEventListener('input', function () {
+    if (!doc) return;
+    doc.name = docName.value.slice(0, 60);
+    markDirty();
+  });
+  docName.addEventListener('blur', function () { if (doc) { doc.name = docName.value.trim() || '제목 없는 스케치'; docName.value = doc.name; commit(); markDirty(); } });
+  docName.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); docName.blur(); } e.stopPropagation(); });
+
+  function bindUI() {
+    var tools = document.querySelectorAll('.tool-btn');
+    for (var i = 0; i < tools.length; i++) {
+      (function (b) {
+        b.addEventListener('click', function () { setTool(b.getAttribute('data-tool')); });
+      })(tools[i]);
+    }
+    $('btnUndo').addEventListener('click', undo);
+    $('btnRedo').addEventListener('click', redo);
+    $('btnZoomIn').addEventListener('click', function () { zoomCenter(1.25); });
+    $('btnZoomOut').addEventListener('click', function () { zoomCenter(0.8); });
+    $('btnFit').addEventListener('click', fitView);
+    $('btnFit2').addEventListener('click', fitView);
+    $('btnSnap').addEventListener('click', toggleSnap);
+    var swSnap = $('swSnap');
+    if (swSnap) swSnap.addEventListener('click', toggleSnap);
+    $('btnRough').addEventListener('click', function () {
+      doc.rough = !(doc.rough !== false);
+      syncRoughUI(); queueRender(); markDirty(); commit();
+    });
+    $('swRough').addEventListener('click', function () {
+      doc.rough = !(doc.rough !== false);
+      syncRoughUI(); queueRender(); markDirty(); commit();
+    });
+    var bgBtns = document.querySelectorAll('[data-bg]');
+    for (var bi = 0; bi < bgBtns.length; bi++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          doc.bg = b.getAttribute('data-bg');
+          syncBgUI(); queueRender(); markDirty(); commit(); updateStatus();
+        });
+      })(bgBtns[bi]);
+    }
+    $('btnExport').addEventListener('click', openExport);
+    $('btnExportTop').addEventListener('click', function () {
+      if (curView !== 'studio') { go('studio'); setTimeout(openExport, 260); return; }
+      openExport();
+    });
+    $('btnNewSheet').addEventListener('click', function () { newSheet(); });
+    $('btnInspector').addEventListener('click', function () { $('inspector').classList.toggle('open'); });
+    $('btnInsClose').addEventListener('click', function () { $('inspector').classList.remove('open'); });
+
+    $('widthRange').addEventListener('input', function () {
+      st.width = parseFloat(this.value) || 2;
+      $('widthVal').textContent = st.width.toFixed(1);
+      if (sel.length) { sel.forEach(function (o) { if (o.t !== 'text') o.w = st.width; }); queueRender(); commit(); saveSoon(); }
+    });
+    $('sizeRange').addEventListener('input', function () {
+      st.size = parseFloat(this.value) || 20;
+      $('sizeVal').textContent = st.size;
+      if (sel.length) { sel.forEach(function (o) { if (o.t === 'text') { o.size = st.size; textCache = {}; } }); queueRender(); commit(); saveSoon(); }
+    });
+    $('swFill').addEventListener('click', function () {
+      st.fill = !st.fill; toggleSwitch(this, st.fill);
+      if (sel.length) { sel.forEach(function (o) { if (o.t === 'shape' && (o.kind === 'rect' || o.kind === 'ellipse')) o.fill = st.fill; }); queueRender(); commit(); saveSoon(); }
+    });
+    $('swDash').addEventListener('click', function () {
+      st.dash = !st.dash; toggleSwitch(this, st.dash);
+      if (sel.length) { sel.forEach(function (o) { if (o.t === 'shape' && (o.kind === 'line' || o.kind === 'arrow' || o.kind === 'rect' || o.kind === 'ellipse')) o.dash = st.dash; }); queueRender(); commit(); saveSoon(); }
+    });
+    $('btnDup').addEventListener('click', duplicateSel);
+    $('btnDel').addEventListener('click', deleteSel);
+    $('btnFront').addEventListener('click', function () { layerMove(true); });
+    $('btnBack').addEventListener('click', function () { layerMove(false); });
+    $('btnClear').addEventListener('click', function () {
+      if (!doc.objects.length) { Lemon.toast('이미 빈 도면이에요', 'info'); return; }
+      openConfirm('도면을 비울까요?', '지금 그린 ' + doc.objects.length + '개 객체가 지워집니다. 되돌리기로 복구할 수 있지만, JSON 백업을 권장합니다.', function () {
+        doc.objects = []; sel = []; selChange(); queueRender(); commit(); saveSoon();
+        Lemon.toast('도면을 비웠어요', 'info');
+      });
+    });
+
+    var fmtBtns = document.querySelectorAll('#segFmt button');
+    for (var fi = 0; fi < fmtBtns.length; fi++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          expState.fmt = b.getAttribute('data-fmt');
+          for (var i2 = 0; i2 < fmtBtns.length; i2++) fmtBtns[i2].classList.toggle('on', fmtBtns[i2] === b);
+          togglePngOpts();
+        });
+      })(fmtBtns[fi]);
+    }
+    var scBtns = document.querySelectorAll('#segScale button');
+    for (var si = 0; si < scBtns.length; si++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          expState.scale = parseInt(b.getAttribute('data-scale'), 10) || 2;
+          for (var i2 = 0; i2 < scBtns.length; i2++) scBtns[i2].classList.toggle('on', scBtns[i2] === b);
+          togglePngOpts();
+        });
+      })(scBtns[si]);
+    }
+    $('swExportBg').addEventListener('click', function () {
+      expState.bg = !expState.bg;
+      if (expState.bg) { expState.alpha = false; toggleSwitch($('swExportAlpha'), false); }
+      toggleSwitch(this, expState.bg);
+    });
+    $('swExportAlpha').addEventListener('click', function () {
+      expState.alpha = !expState.alpha;
+      if (expState.alpha) { expState.bg = false; toggleSwitch($('swExportBg'), false); }
+      toggleSwitch(this, expState.alpha);
+    });
+    $('btnDoExport').addEventListener('click', doExport);
+
+    var startBtns = document.querySelectorAll('[data-goto]');
+    for (var gi = 0; gi < startBtns.length; gi++) {
+      (function (b) {
+        b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+      })(startBtns[gi]);
+    }
+    var tplBtns = document.querySelectorAll('[data-tpl]');
+    for (var ti = 0; ti < tplBtns.length; ti++) {
+      (function (b) {
+        b.addEventListener('click', function () { startTemplate(b.getAttribute('data-tpl')); });
+      })(tplBtns[ti]);
+    }
+    $('btnBlankHero').addEventListener('click', function () { newSheet(); });
+    $('btnStudioHero').addEventListener('click', function () { newSheet(); });
+    $('btnNewArch').addEventListener('click', function () { newSheet(); });
+    $('btnEmptyStart').addEventListener('click', function () { newSheet(); });
+    $('btnHelp').addEventListener('click', function () { openModal('dlgHelp'); });
+    $('btnImport').addEventListener('click', function () { $('fileImport').click(); });
+    $('fileImport').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function () { importJSON(String(fr.result || '')); };
+      fr.readAsText(f);
+      this.value = '';
+    });
+    $('archSearch').addEventListener('input', function () {
+      archQuery = this.value;
+      renderArchive();
+    });
+    window.addEventListener('resize', function () {
+      if (curView === 'studio') layoutStudio();
+    });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(function () { if (curView === 'studio') layoutStudio(); }, 220);
+    });
+  }
+
+  function newSheet() {
+    flushSave();
+    doc = newDoc();
+    viewSet = false;
+    sel = []; draft = null; mode = null;
+    textCache = {};
+    docName.value = doc.name;
+    syncAllUI();
+    resetHistory();
+    if (curView === 'studio') { layoutStudio(); } else { go('studio'); }
+    queueRender(); markDirty();
+    setHint(TOOL_HINT[st.tool] || '그려 보세요');
+  }
+
+  function onViewChange(v) {
+    curView = v;
+    if (v !== 'studio' && doc) purgeEmptyText(null);
+    document.body.classList.toggle('studio-mode', v === 'studio');
+    if (v === 'studio') {
+      setTimeout(function () { layoutStudio(); }, 30);
+    } else if (v === 'archive') {
+      renderArchive();
+    }
+  }
+
+  function keyHandler(e) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+    if (e.key === ' ') {
+      if (curView === 'studio') { spaceDown = true; e.preventDefault(); }
+      return;
+    }
+    var meta = e.metaKey || e.ctrlKey;
+    if (meta && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+      return;
+    }
+    if (meta && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
+    if (meta && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); duplicateSel(); return; }
+    if (meta && (e.key === 's' || e.key === 'S')) { e.preventDefault(); flushSave(); Lemon.toast('저장했어요', 'ok'); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (sel.length) { e.preventDefault(); deleteSel(); }
+      return;
+    }
+    if (e.key === 'Escape') {
+      closeAllModals();
+      $('inspector').classList.remove('open');
+      if (sel.length) { sel = []; selChange(); }
+      return;
+    }
+    if (e.key.indexOf('Arrow') === 0 && sel.length) {
+      var d = e.shiftKey ? 10 : 1;
+      var dx = e.key === 'ArrowLeft' ? -d : (e.key === 'ArrowRight' ? d : 0);
+      var dy = e.key === 'ArrowUp' ? -d : (e.key === 'ArrowDown' ? d : 0);
+      e.preventDefault();
+      sel.forEach(function (o) { translateObj(o, dx, dy); });
+      queueRender(); commit(); saveSoon();
+      return;
+    }
+    if (curView !== 'studio') return;
+    var map = { v: 'select', h: 'hand', p: 'pen', m: 'marker', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text' };
+    var k = (e.key || '').toLowerCase();
+    if (map[k] && !meta) { setTool(map[k]); }
+  }
+  document.addEventListener('keydown', keyHandler);
+  document.addEventListener('keyup', function (e) { if (e.key === ' ') spaceDown = false; });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) return;
+    if (editing) commitText();
+    if (saveTimer) flushSave();
+  });
+  window.addEventListener('pagehide', function () { if (saveTimer) flushSave(); });
+  document.addEventListener('lemon:theme', function () {
+    tileCache = {};
+    buildPaletteColors();
+    render();
+  });
+  function buildPaletteColors() {
+    var sw = document.querySelectorAll('.swatch');
+    for (var i = 0; i < sw.length; i++) {
+      var id = sw[i].getAttribute('data-color');
+      for (var j = 0; j < PALETTE.length; j++) if (PALETTE[j].id === id) sw[i].style.background = isDark() ? PALETTE[j].dark : PALETTE[j].light;
+    }
+  }
+
+  function saveSoon() { markDirty(); }
+
+  function boot() {
+    buildPalette();
+    bindUI();
+    go = (window.Lemon && Lemon.initTabs) ? Lemon.initTabs('home') : null;
+    if (!go) { go = function () { }; }
+    document.addEventListener('lemon:view', function (e) { onViewChange(e.detail && e.detail.view); });
+    var initial = (location.hash || '').replace('#', '');
+    if (initial === 'studio' || initial === 'archive') { curView = initial; document.body.classList.toggle('studio-mode', initial === 'studio'); }
+    var lk = document.querySelectorAll('[data-tab]');
+    for (var i = 0; i < lk.length; i++) {
+      (function (b) { b.addEventListener('click', function () { setTimeout(function () { if (curView === 'studio') layoutStudio(); }, 60); }); })(lk[i]);
+    }
+
+    openDB().then(dbAll).then(function (list) {
+      var last = null;
+      try { last = localStorage.getItem('lemon_sketch_last'); } catch (e) { }
+      var rec = null;
+      for (var j = 0; j < list.length; j++) if (last && list[j].id === last) rec = list[j];
+      if (rec) { loadDocRecord(rec); }
+      else { doc = newDoc(); viewSet = false; }
+      docName.value = doc.name;
+      syncAllUI();
+      resetHistory();
+      setSaveBadge('자동 저장 준비', 'idle');
+      $('tabArchiveCount').textContent = list.length;
+      if (curView === 'archive') renderArchive();
+      if (curView === 'studio') setTimeout(layoutStudio, 40);
+      else queueRender();
+    }, function () {
+      doc = newDoc();
+      docName.value = doc.name;
+      syncAllUI();
+      resetHistory();
+      setSaveBadge('저장소를 쓸 수 없음', 'off');
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  window.LemonSketch = {
+    get doc() { return doc; },
+    get view() { return view; },
+    get sel() { return sel; },
+    get history() { return { idx: hist.idx, len: hist.stack.length }; },
+    setTool: setTool,
+    undo: undo, redo: redo,
+    save: flushSave,
+    exportPNG: renderPNGBlob,
+    exportSVG: buildSVG,
+    open: function (v) { go(v); },
+    addRect: function (x, y, w, h) {
+      var o = { id: uid(), t: 'shape', kind: 'rect', x1: x, y1: y, x2: x + w, y2: y + h, c: st.color, w: st.width, fill: st.fill, dash: st.dash };
+      doc.objects.push(o); queueRender(); commit(); return o;
+    }
+  };
+})();
+</script>
+</body>
+</html>
