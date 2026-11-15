@@ -6,6 +6,7 @@
 <title>Lemon Canvas — 빈 캔버스 자유 디자인 스튜디오</title>
 <meta name="description" content="템플릿 없이 빈 캔버스에서 텍스트·이미지·도형을 자유롭게 배치하고, 배경 그라데이션과 색을 바꿔 고화질 PNG로 내보냅니다.">
 <meta name="theme-color" content="#7c3aed">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%237c3aed'/%3E%3Ccircle cx='16' cy='16' r='6.5' fill='%23ffffff'/%3E%3C/svg%3E">
 <script>
 (function () {
   try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
@@ -49,6 +50,22 @@ tailwind.config = {
   .mini-btn { transition: transform .14s, background-color .18s, color .18s, border-color .18s; }
   .mini-btn:active { transform: scale(.94); }
   .grid-check { background-image: linear-gradient(45deg, rgba(140,140,160,.10) 25%, transparent 25%), linear-gradient(-45deg, rgba(140,140,160,.10) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(140,140,160,.10) 75%), linear-gradient(-45deg, transparent 75%, rgba(140,140,160,.10) 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+  /* centre snap guides */
+  #guideV, #guideH { position: absolute; z-index: 36; pointer-events: none; opacity: 0; transition: opacity .1s ease; }
+  #guideV { top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ec4899; box-shadow: 0 0 8px rgba(236,72,153,.7); }
+  #guideH { left: 0; right: 0; height: 2px; margin-top: -1px; background: #ec4899; box-shadow: 0 0 8px rgba(236,72,153,.7); }
+  #guideV.on, #guideH.on { opacity: 1; }
+  #guideV::after, #guideH::after {
+    content: ''; position: absolute; inset: -3px;
+    background: repeating-linear-gradient(0deg, #ec4899 0 8px, transparent 8px 16px);
+  }
+  .ce-pop > * { animation: lemonPop .38s cubic-bezier(.34,1.56,.64,1) both; }
+  .ce-gone > * { animation: lemonPopOut .2s ease-in both; }
+  .seg2.on { color:#fff; border-color:transparent; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+  .prop-ico { width: 1rem; height: 1rem; flex-shrink: 0; }
+  .tool-sep { width: 1px; height: 1.4rem; background: rgb(228 228 231); }
+  .dark .tool-sep { background: rgb(45 45 50); }
+  #btnUndo:disabled, #btnRedo:disabled { opacity: .4; }
 </style>
 </head>
 <body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
@@ -176,13 +193,25 @@ tailwind.config = {
       <button id="btnAddShape" class="pill-btn !text-[11px]">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="8" height="8" rx="1.5"></rect><circle cx="17" cy="17" r="4"></circle></svg>도형
       </button>
+      <span class="tool-sep hidden sm:block"></span>
+      <button id="btnUndo" class="ghost-btn !py-2 !px-2.5 !text-[11px]" title="실행취소 (Ctrl+Z)" aria-label="실행취소" disabled>
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h9a6 6 0 0 1 0 12H8"></path></svg>
+        <span class="hidden sm:inline">실행취소</span>
+      </button>
+      <button id="btnRedo" class="ghost-btn !py-2 !px-2.5 !text-[11px]" title="다시실행 (Ctrl+Shift+Z)" aria-label="다시실행" disabled>
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"></path><path d="M20 9h-9a6 6 0 0 0 0 12h5"></path></svg>
+        <span class="hidden sm:inline">다시실행</span>
+      </button>
       <input type="file" id="imgInput" accept="image/*" class="hidden">
       <span class="grow"></span>
       <button id="btnExport" class="primary-btn !py-2 !px-3 !text-[11px]">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         PNG 내보내기
       </button>
-      <button id="btnNewCanvas" class="ghost-btn !py-2 !px-3 !text-[11px]">새 캔버스</button>
+      <button id="btnNewCanvas" class="ghost-btn !py-2 !px-3 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M12 8.5v7M8.5 12h7"></path></svg>
+        새 캔버스
+      </button>
     </div>
 
     <div class="grid lg:grid-cols-[1fr_320px] gap-3 items-start">
@@ -199,6 +228,8 @@ tailwind.config = {
                 <div class="handle" data-h="se"></div>
                 <div class="handle rot" data-h="rot"></div>
               </div>
+              <div id="guideV"></div>
+              <div id="guideH"></div>
             </div>
           </div>
           <p class="text-center text-[10px] text-neutral-500 dark:text-neutral-400 mt-3">요소를 끌어 옮기고, 모서리 핸들로 크기 · 위쪽 동그라미로 회전</p>
@@ -207,7 +238,10 @@ tailwind.config = {
         <div class="panel p-3">
           <div class="flex items-center justify-between mb-2">
             <h3 class="text-[11px] font-black">페이지</h3>
-            <button id="btnAddPage" class="ghost-btn !px-2 !py-1 !text-[10px]">페이지 추가</button>
+            <button id="btnAddPage" class="ghost-btn !px-2 !py-1 !text-[10px]">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+              페이지 추가
+            </button>
           </div>
           <div id="pageRow" class="flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
         </div>
@@ -223,9 +257,15 @@ tailwind.config = {
         <div class="panel p-3 space-y-2.5">
           <h3 class="text-[11px] font-black">배경</h3>
           <div class="grid grid-cols-3 gap-1.5">
-            <button class="pill-btn !text-[10px] !px-2 bg-mode on" data-bg="solid">단색</button>
-            <button class="pill-btn !text-[10px] !px-2 bg-mode" data-bg="grad">그라데이션</button>
-            <button class="pill-btn !text-[10px] !px-2 bg-mode" data-bg="photo">사진</button>
+            <button class="pill-btn !text-[10px] !px-2 bg-mode on" data-bg="solid">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"></rect></svg>단색
+            </button>
+            <button class="pill-btn !text-[10px] !px-2 bg-mode" data-bg="grad">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"></rect><path d="M3.5 17 17 3.5"></path></svg>그라데이션
+            </button>
+            <button class="pill-btn !text-[10px] !px-2 bg-mode" data-bg="photo">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><circle cx="8.5" cy="9" r="1.6"></circle><path d="m21 16-5-5L5 20"></path></svg>사진
+            </button>
           </div>
           <div id="bgSolid" class="space-y-1.5">
             <div class="flex items-center justify-between"><span class="lemon-label">배경색</span><input type="color" id="bgColor" value="#ffffff"></div>
@@ -267,9 +307,12 @@ tailwind.config = {
             <textarea id="pText" rows="3" class="lemon-textarea !text-[12px]" placeholder="내용을 입력하세요"></textarea>
             <div class="grid grid-cols-2 gap-1.5">
               <select id="pFont" class="lemon-select !py-1.5 !text-[11px]">
-                <option value="sans">고딕 (산세리프)</option>
-                <option value="serif">명조 (세리프)</option>
-                <option value="mono">고정폭</option>
+                <option value="sans" style="font-family:system-ui,sans-serif">고딕 · 산세리프</option>
+                <option value="serif" style="font-family:Georgia,serif">명조 · 세리프</option>
+                <option value="round" style="font-family:system-ui,sans-serif">둥근 고딕</option>
+                <option value="black" style="font-family:system-ui,sans-serif;font-weight:900">검은 고딕 · 제목</option>
+                <option value="hand" style="font-family:cursive">손글씨</option>
+                <option value="mono" style="font-family:ui-monospace,monospace">고정폭</option>
               </select>
               <select id="pWeight" class="lemon-select !py-1.5 !text-[11px]">
                 <option value="400">보통</option>
@@ -288,9 +331,15 @@ tailwind.config = {
             </div>
             <div class="flex items-center gap-1">
               <span class="lemon-label mr-1">정렬</span>
-              <button class="seg2 pill-btn !py-1 !px-2 !text-[10px]" data-align="left">왼쪽</button>
-              <button class="seg2 pill-btn !py-1 !px-2 !text-[10px]" data-align="center">가운데</button>
-              <button class="seg2 pill-btn !py-1 !px-2 !text-[10px]" data-align="right">오른쪽</button>
+              <button class="seg2 pill-btn !py-1 !px-2 !text-[10px]" data-align="left" title="왼쪽 정렬">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>
+              </button>
+              <button class="seg2 pill-btn !py-1 !px-2 !text-[10px]" data-align="center" title="가운데 정렬">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M5.5 18h13"></path></svg>
+              </button>
+              <button class="seg2 pill-btn !py-1 !px-2 !text-[10px]" data-align="right" title="오른쪽 정렬">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M10 12h10M7 18h13"></path></svg>
+              </button>
             </div>
             <label class="flex items-center justify-between panel-soft px-2.5 py-2 cursor-pointer">
               <span class="text-[11px] font-bold">그림자</span>
@@ -300,10 +349,18 @@ tailwind.config = {
 
           <div id="propShape" class="space-y-2 hidden">
             <div class="grid grid-cols-4 gap-1">
-              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="rect">사각</button>
-              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="circle">원</button>
-              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="line">선</button>
-              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="star">별</button>
+              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="rect" title="사각형">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"></rect></svg>사각
+              </button>
+              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="circle" title="원">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle></svg>원
+              </button>
+              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="line" title="선">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19 20 5"></path></svg>선
+              </button>
+              <button class="pill-btn !py-1.5 !px-1 !text-[10px] shape-kind" data-kind="star" title="별">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3.5 2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.9l6.1-.8z"></path></svg>별
+              </button>
             </div>
             <div class="flex items-center justify-between"><span class="lemon-label">채우기</span><input type="color" id="pFill" value="#7c3aed"></div>
             <div class="flex items-center justify-between"><span class="lemon-label">테두리</span><input type="color" id="pStroke" value="#111111"></div>
@@ -330,10 +387,18 @@ tailwind.config = {
               <input type="range" id="pRot" class="lemon-range" min="-180" max="180" value="0">
             </div>
             <div class="grid grid-cols-4 gap-1">
-              <button id="btnLayerUp" class="ghost-btn !py-1.5 !px-1 !text-[10px]">앞으로</button>
-              <button id="btnLayerDown" class="ghost-btn !py-1.5 !px-1 !text-[10px]">뒤로</button>
-              <button id="btnDup" class="ghost-btn !py-1.5 !px-1 !text-[10px]">복제</button>
-              <button id="btnDel" class="ghost-btn !py-1.5 !px-1 !text-[10px] !text-rose-500">삭제</button>
+              <button id="btnLayerUp" class="ghost-btn !py-1.5 !px-1 !text-[9px] flex-col !gap-0.5" title="앞으로">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path></svg>앞으로
+              </button>
+              <button id="btnLayerDown" class="ghost-btn !py-1.5 !px-1 !text-[9px] flex-col !gap-0.5" title="뒤로">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m6 13 6 6 6-6"></path></svg>뒤로
+              </button>
+              <button id="btnDup" class="ghost-btn !py-1.5 !px-1 !text-[9px] flex-col !gap-0.5" title="복제">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>복제
+              </button>
+              <button id="btnDel" class="ghost-btn !py-1.5 !px-1 !text-[9px] flex-col !gap-0.5 !text-rose-500" title="삭제">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9L18 7"></path><path d="M10 11v5M14 11v5"></path></svg>삭제
+              </button>
             </div>
           </div>
         </div>
@@ -383,11 +448,15 @@ tailwind.config = {
     thumb: { w: 1280, h: 720, label: '썸네일', sub: '1280 x 720' }
   };
   var FONTS = {
-    sans: '-apple-system, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto Sans KR", sans-serif',
-    serif: '"AppleMyungjo", "Nanum Myeongjo", "Batang", Georgia, serif',
+    sans: '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto Sans KR", sans-serif',
+    serif: '"AppleMyungjo", "Nanum Myeongjo", "Batang", "Songti SC", Georgia, serif',
+    round: '"SF Pro Rounded", "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif',
+    black: '"Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif',
+    hand: '"Nanum Pen Script", "Gaegu", "Apple SD Gothic Neo", "Malgun Gothic", cursive',
     mono: '"SFMono-Regular", Menlo, Consolas, "D2Coding", monospace'
   };
   var QUICK_COLORS = ['#ffffff', '#111114', '#7c3aed', '#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#e11d48', '#f5f3ff', '#18181b'];
+  var KIND_LABEL = { rect: '사각', circle: '원', line: '선', star: '별' };
   var imgCache = {};
 
   function uid() { return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -402,6 +471,84 @@ tailwind.config = {
   var st = { size: 'ig', cur: 0, pages: [newPage()], sel: null };
   var booted = false;
   var scale = 1;
+
+  /* ---------------- undo / redo history ---------------- */
+  var hist = { stack: [], idx: -1, timer: null, lock: false, MAX: 40 };
+  function snapState() {
+    return JSON.stringify({ size: st.size, cur: st.cur, pages: st.pages });
+  }
+  function updateHistButtons() {
+    var u = $('btnUndo'), r = $('btnRedo');
+    if (u) u.disabled = hist.idx <= 0;
+    if (r) r.disabled = hist.idx >= hist.stack.length - 1;
+  }
+  function histReset() {
+    hist.stack = [snapState()];
+    hist.idx = 0;
+    updateHistButtons();
+  }
+  function histPush() {
+    if (hist.lock || !booted) return;
+    var s = snapState();
+    if (hist.stack[hist.idx] === s) return;
+    hist.stack = hist.stack.slice(0, hist.idx + 1);
+    hist.stack.push(s);
+    if (hist.stack.length > hist.MAX) hist.stack.shift();
+    hist.idx = hist.stack.length - 1;
+    updateHistButtons();
+  }
+  function histSoon() {
+    clearTimeout(hist.timer);
+    hist.timer = setTimeout(histPush, 300);
+  }
+  function applyHistState(json) {
+    var d = JSON.parse(json);
+    hist.lock = true;
+    st.size = d.size;
+    st.pages = d.pages && d.pages.length ? d.pages : [newPage()];
+    st.cur = Math.min(d.cur || 0, st.pages.length - 1);
+    st.sel = null;
+    syncBgInputs();
+    layout();
+    paint();
+    hist.lock = false;
+    updateHistButtons();
+  }
+  function undo() {
+    if (hist.idx <= 0) { Lemon.toast('되돌릴 작업이 없어요', 'info'); return; }
+    hist.idx--;
+    applyHistState(hist.stack[hist.idx]);
+    Lemon.toast('되돌렸어요', 'info');
+    Lemon.hap(8);
+  }
+  function redo() {
+    if (hist.idx >= hist.stack.length - 1) { Lemon.toast('다시 실행할 작업이 없어요', 'info'); return; }
+    hist.idx++;
+    applyHistState(hist.stack[hist.idx]);
+    Lemon.toast('다시 적용했어요', 'ok');
+    Lemon.hap(8);
+  }
+  function popEl(id) {
+    var n = document.querySelector('.ce[data-id="' + id + '"]');
+    if (!n) return;
+    n.classList.remove('ce-pop');
+    void n.offsetWidth;
+    n.classList.add('ce-pop');
+  }
+
+  /* ---------------- centre snap guides ---------------- */
+  function showGuides(v, h) {
+    var a = art();
+    var gv = $('guideV'), gh = $('guideH');
+    gv.style.left = Math.round(a.w / 2) + 'px';
+    gh.style.top = Math.round(a.h / 2) + 'px';
+    gv.classList.toggle('on', !!v);
+    gh.classList.toggle('on', !!h);
+  }
+  function hideGuides() {
+    $('guideV').classList.remove('on');
+    $('guideH').classList.remove('on');
+  }
 
   function art() { return SIZES[st.size]; }
   function page() { return st.pages[st.cur]; }
@@ -693,8 +840,18 @@ tailwind.config = {
     var e = drag.e;
     var p = artPoint(ev);
     if (drag.mode === 'move') {
-      e.x = Math.round(drag.ox + (p.x - drag.sx));
-      e.y = Math.round(drag.oy + (p.y - drag.sy));
+      var aBoard = art();
+      var hh = elHeight(e);
+      var nx = drag.ox + (p.x - drag.sx);
+      var ny = drag.oy + (p.y - drag.sy);
+      var tol = 12 / Math.max(0.2, scale);
+      var snapX = Math.abs(nx + e.w / 2 - aBoard.w / 2) < tol;
+      var snapY = Math.abs(ny + hh / 2 - aBoard.h / 2) < tol;
+      if (snapX) nx = aBoard.w / 2 - e.w / 2;
+      if (snapY) ny = aBoard.h / 2 - hh / 2;
+      showGuides(snapX, snapY);
+      e.x = Math.round(nx);
+      e.y = Math.round(ny);
       if (drag.node) { drag.node.style.left = e.x + 'px'; drag.node.style.top = e.y + 'px'; }
       updateSelBox();
     } else if (drag.mode === 'rot') {
@@ -742,6 +899,7 @@ tailwind.config = {
     if (!drag) return;
     var finished = drag;
     drag = null;
+    hideGuides();
     updateSelBox();
     renderProps();
     if (finished.mode !== 'move' || true) markChanged();
@@ -765,6 +923,7 @@ tailwind.config = {
     page().els.push(e);
     st.sel = e.id;
     paint();
+    popEl(e.id);
     markChanged();
     setTimeout(function () { $('pText').focus(); $('pText').select(); }, 120);
   }
@@ -778,7 +937,7 @@ tailwind.config = {
     var type = { id: uid(), type: 'shape', kind: 'rect', x: pos.x, y: pos.y, w: w, h: w, fill: '#7c3aed', stroke: '#111114', sw: 0, rot: 0, opacity: 1 };
     page().els.push(type);
     st.sel = type.id;
-    paint(); markChanged();
+    paint(); popEl(type.id); markChanged();
   });
 
   $('imgInput').addEventListener('change', function () {
@@ -793,7 +952,7 @@ tailwind.config = {
       var e = { id: uid(), type: 'image', src: src, x: Math.round((a.w - ww) / 2), y: Math.round((a.h - hh) / 2), w: Math.round(ww), h: Math.round(hh), radius: 0, rot: 0, opacity: 1 };
       page().els.push(e);
       st.sel = e.id;
-      paint(); markChanged();
+      paint(); popEl(e.id); markChanged();
       Lemon.toast('이미지를 올렸어요', 'ok');
     });
   });
@@ -980,21 +1139,49 @@ tailwind.config = {
     copy.x += 40; copy.y += 40;
     page().els.push(copy);
     st.sel = copy.id;
-    paint(); markChanged();
+    paint(); popEl(copy.id); markChanged();
     Lemon.toast('복제했어요', 'ok');
   });
-  $('btnDel').addEventListener('click', function () {
-    var e = sel(); if (!e) return;
-    page().els = page().els.filter(function (x) { return x.id !== e.id; });
-    st.sel = null;
-    paint(); markChanged();
+  function deleteSelected() {
+    var e = sel();
+    if (!e) return;
+    var node = document.querySelector('.ce[data-id="' + e.id + '"]');
+    var id = e.id;
+    if (node) {
+      node.classList.add('ce-gone');
+      setTimeout(function () {
+        page().els = page().els.filter(function (x) { return x.id !== id; });
+        if (st.sel === id) st.sel = null;
+        paint(); markChanged();
+      }, 165);
+    } else {
+      page().els = page().els.filter(function (x) { return x.id !== id; });
+      st.sel = null;
+      paint(); markChanged();
+    }
     Lemon.toast('삭제했어요', 'info');
+    Lemon.hap(10);
+  }
+  $('btnDel').addEventListener('click', deleteSelected);
+  $('btnUndo').addEventListener('click', undo);
+  $('btnRedo').addEventListener('click', redo);
+  document.addEventListener('keydown', function (ev) {
+    var mod = ev.metaKey || ev.ctrlKey;
+    if (!mod) return;
+    var k = (ev.key || '').toLowerCase();
+    if (k === 'z') {
+      ev.preventDefault();
+      if (ev.shiftKey) redo(); else undo();
+    } else if (k === 'y') {
+      ev.preventDefault();
+      redo();
+    }
   });
 
   document.addEventListener('keydown', function (ev) {
     if (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
     if (!st.sel) return;
-    if (ev.key === 'Delete' || ev.key === 'Backspace') { $('btnDel').click(); ev.preventDefault(); }
+    if (ev.key === 'Delete' || ev.key === 'Backspace') { deleteSelected(); ev.preventDefault(); }
     if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' || ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
       var e = sel(); if (!e) return;
       var step = ev.shiftKey ? 20 : 2;
@@ -1019,10 +1206,15 @@ tailwind.config = {
     var html = '';
     for (var i = els.length - 1; i >= 0; i--) {
       var e = els[i];
-      var label = e.type === 'text' ? ('"' + String(e.text || '').slice(0, 12) + '"') : e.type === 'image' ? '이미지' : ('도형 · ' + e.kind);
-      html += '<button class="layer-row w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[10px] font-bold ' +
+      var label = e.type === 'text' ? ('"' + String(e.text || '').slice(0, 12) + '"') : e.type === 'image' ? '이미지' : ('도형 · ' + (KIND_LABEL[e.kind] || e.kind));
+      var ico = e.type === 'text'
+        ? '<path d="M4 6h16M12 6v13"></path>'
+        : e.type === 'image'
+          ? '<rect x="3" y="4" width="18" height="16" rx="2.5"></rect><circle cx="8.5" cy="9" r="1.4"></circle><path d="m21 16-5-5L5 20"></path>'
+          : '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5"></rect>';
+      html += '<button class="layer-row w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[10px] font-bold transition ' +
         (e.id === st.sel ? 'bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800') +
-        '" data-sel="' + e.id + '"><span class="w-4 h-4 rounded border border-neutral-300 dark:border-neutral-700 shrink-0"></span>' +
+        '" data-sel="' + e.id + '"><svg class="w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + ico + '</svg>' +
         '<span class="truncate">' + Lemon.esc(label) + '</span></button>';
     }
     box.innerHTML = html;
@@ -1067,21 +1259,28 @@ tailwind.config = {
   });
 
   /* ---------------- sizes ---------------- */
+  function ratioIco(w, h) {
+    var m = Math.max(w, h);
+    var ww = Math.max(6, (12 * w / m)), hh = Math.max(6, (12 * h / m));
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+      '<rect x="' + (12 - ww / 2).toFixed(1) + '" y="' + (12 - hh / 2).toFixed(1) + '" width="' + ww.toFixed(1) + '" height="' + hh.toFixed(1) + '" rx="1.6"></rect></svg>';
+  }
   function renderSizes() {
     var box = $('sizeRow');
     box.innerHTML = Object.keys(SIZES).map(function (k) {
       var s = SIZES[k];
       return '<button class="pill-btn flex-col !items-start !gap-0 !px-2 !py-1.5 size-btn ' + (k === st.size ? 'on' : '') + '" data-size="' + k + '">' +
-        '<span class="text-[10px] font-bold">' + s.label + '</span>' +
+        '<span class="flex items-center gap-1">' + ratioIco(s.w, s.h) + '<span class="text-[10px] font-bold">' + s.label + '</span></span>' +
         '<span class="text-[8px] font-mono opacity-70">' + s.sub + '</span></button>';
     }).join('');
     var home = $('homeSizes');
     if (home) {
       home.innerHTML = Object.keys(SIZES).map(function (k) {
         var s = SIZES[k];
-        return '<button class="panel-soft p-3 text-left hover:border-brand-400" data-start="' + k + '">' +
-          '<p class="text-[12px] font-bold">' + s.label + '</p>' +
-          '<p class="text-[10px] font-mono text-neutral-500">' + s.sub + '</p></button>';
+        return '<button class="panel-soft p-3 text-left hover:border-brand-400 flex items-center gap-2.5 card-lift" data-start="' + k + '">' +
+          '<span class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center text-brand-600 dark:text-brand-300 shrink-0">' + ratioIco(s.w, s.h) + '</span>' +
+          '<span class="min-w-0"><span class="block text-[12px] font-bold">' + s.label + '</span>' +
+          '<span class="block text-[10px] font-mono text-neutral-500 dark:text-neutral-400">' + s.sub + '</span></span></button>';
       }).join('');
     }
   }
@@ -1349,6 +1548,7 @@ tailwind.config = {
   function markChanged() {
     if (!booted) return;
     AUTO.touch(payload);
+    histSoon();
     clearTimeout(markTimer);
     markTimer = setTimeout(renderArchive, 400);
   }
@@ -1441,6 +1641,7 @@ tailwind.config = {
     paint();
     renderArchive();
     booted = true;
+    histReset();
   })();
 })();
 </script>

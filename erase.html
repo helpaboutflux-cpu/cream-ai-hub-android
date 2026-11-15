@@ -6,6 +6,7 @@
 <title>Lemon Erase — 사진에서 원치 않는 것 지우기</title>
 <meta name="description" content="사진 위를 브러시로 칠하면 주변 픽셀을 여러 번 보간해 자연스럽게 지웁니다. 사람, 그림자, 로고, 물건을 지우고 원본과 비교한 뒤 PNG/JPG로 저장하세요.">
 <meta name="theme-color" content="#c026d3">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23c026d3'/%3E%3Ccircle cx='16' cy='16' r='6.5' fill='%23ffffff'/%3E%3C/svg%3E">
 <script>
 (function () {
   try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
@@ -36,6 +37,34 @@ tailwind.config = {
   .tool-btn { transition: transform .14s, color .18s, border-color .18s, background-color .18s; }
   .tool-btn:active { transform: scale(.94); }
   .hist-item { transition: border-color .16s, transform .16s; }
+  #stage { border-radius: .9rem; }
+  #scanFx { position: absolute; inset: 0; border-radius: .9rem; overflow: hidden; z-index: 5; pointer-events: none; opacity: 0; transition: opacity .18s ease; }
+  #stage.busy #scanFx { opacity: 1; }
+  #scanFx .scan-band {
+    position: absolute; left: 0; right: 0; height: 34%;
+    background: linear-gradient(180deg, transparent, rgba(192,38,211,.28) 45%, rgba(255,255,255,.55) 50%, rgba(192,38,211,.28) 55%, transparent);
+    filter: blur(1px);
+    animation: scanPass 1.15s cubic-bezier(.4,0,.6,1) infinite;
+  }
+  @keyframes scanPass { 0% { top: -34%; } 100% { top: 100%; } }
+  #scanFx .scan-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.10) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.10) 1px, transparent 1px); background-size: 22px 22px; animation: scanGrid 3s linear infinite; }
+  @keyframes scanGrid { to { background-position: 22px 22px; } }
+  .spark { position: absolute; opacity: 0; animation: sparkPop 1.3s ease-in-out infinite; }
+  @keyframes sparkPop {
+    0%, 100% { opacity: 0; transform: scale(.3) rotate(0deg); }
+    45% { opacity: 1; transform: scale(1) rotate(35deg); }
+  }
+  #cmpWrap[hidden] { display: none; }
+  #cmpStage { position: relative; display: block; line-height: 0; background: #0e0e12; max-width: 520px; margin: 0 auto; border-radius: .9rem; overflow: hidden; }
+  #cmpStage canvas { display: block; width: 100%; height: auto; }
+  #cmpBeforeClip { position: absolute; inset: 0; overflow: hidden; }
+  #cmpHandle { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 12px rgba(0,0,0,.65); pointer-events: none; }
+  #cmpHandle::after {
+    content: ''; position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+    border-radius: 9999px; background: #fff; border: 2px solid var(--brand);
+    box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+  .cmp-tag { position: absolute; top: 8px; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.55); color: #fff; letter-spacing: .04em; }
 </style>
 </head>
 <body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
@@ -147,8 +176,31 @@ tailwind.config = {
             <div id="stage">
               <canvas id="imgCanvas"></canvas>
               <canvas id="maskCanvas"></canvas>
+              <div id="scanFx" aria-hidden="true">
+                <div class="scan-grid"></div>
+                <div class="scan-band"></div>
+                <svg class="spark" style="left:14%;top:22%;animation-delay:.1s" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"></path></svg>
+                <svg class="spark" style="left:72%;top:18%;animation-delay:.45s" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"></path></svg>
+                <svg class="spark" style="left:38%;top:64%;animation-delay:.75s" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"></path></svg>
+                <svg class="spark" style="left:82%;top:58%;animation-delay:.3s" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"></path></svg>
+                <svg class="spark" style="left:24%;top:46%;animation-delay:.95s" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"></path></svg>
+              </div>
             </div>
           </div>
+            <div id="cmpWrap" class="hidden space-y-2 pt-1">
+              <div class="flex items-center justify-between">
+                <span class="lemon-label">원본 ↔ 결과 비교</span>
+                <span id="cmpPct" class="text-[10px] font-mono font-bold text-brand-600 dark:text-brand-400">50%</span>
+              </div>
+              <div id="cmpStage">
+                <canvas id="cmpAfter"></canvas>
+                <div id="cmpBeforeClip"><canvas id="cmpBefore"></canvas></div>
+                <div id="cmpHandle"></div>
+                <span class="cmp-tag" style="left:8px">원본</span>
+                <span class="cmp-tag" style="right:8px">결과</span>
+              </div>
+              <input type="range" id="cmpRange" class="lemon-range" min="0" max="100" value="50" aria-label="원본과 결과 비교">
+            </div>
           <div id="tools" class="hidden space-y-2">
             <div class="flex items-center gap-2">
               <span class="lemon-label shrink-0">브러시</span>
@@ -156,16 +208,40 @@ tailwind.config = {
               <span id="brushVal" class="text-[11px] font-mono font-bold w-10 text-right">38</span>
             </div>
             <div class="flex flex-wrap items-center gap-1.5">
-              <button id="btnErase" class="primary-btn !py-2 !px-3 !text-[11px]">칠한 부분 지우기</button>
-              <button id="btnUndo" class="ghost-btn !py-2 !px-3 !text-[11px]">되돌리기</button>
-              <button id="btnRedo" class="ghost-btn !py-2 !px-3 !text-[11px]">다시 실행</button>
-              <button id="btnClearMask" class="ghost-btn !py-2 !px-3 !text-[11px]">칠 지우기</button>
-              <button id="btnCompare" class="ghost-btn !py-2 !px-3 !text-[11px]">원본 보기</button>
+              <button id="btnErase" class="primary-btn !py-2 !px-3 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5L3 14.5 13.5 4l6.5 6.5z"></path><path d="M9 11l4 4"></path></svg>
+                칠한 부분 지우기
+              </button>
+              <button id="btnUndo" class="ghost-btn !py-2 !px-3 !text-[11px]" title="되돌리기 (Ctrl+Z)">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h9a6 6 0 0 1 0 12H8"></path></svg>
+                되돌리기
+              </button>
+              <button id="btnRedo" class="ghost-btn !py-2 !px-3 !text-[11px]" title="다시 실행 (Ctrl+Shift+Z)">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"></path><path d="M20 9h-9a6 6 0 0 0 0 12h5"></path></svg>
+                다시 실행
+              </button>
+              <button id="btnClearMask" class="ghost-btn !py-2 !px-3 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+                칠 지우기
+              </button>
+              <button id="btnCompare" class="ghost-btn !py-2 !px-3 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M12 4v16"></path></svg>
+                원본 보기
+              </button>
             </div>
             <div class="flex flex-wrap items-center gap-1.5">
-              <button id="btnPng" class="ghost-btn !py-2 !px-3 !text-[11px]">PNG 저장</button>
-              <button id="btnJpg" class="ghost-btn !py-2 !px-3 !text-[11px]">JPG 저장</button>
-              <button id="btnReset" class="ghost-btn !py-2 !px-3 !text-[11px] !text-rose-500">원본으로 되돌리기</button>
+              <button id="btnPng" class="ghost-btn !py-2 !px-3 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                PNG 저장
+              </button>
+              <button id="btnJpg" class="ghost-btn !py-2 !px-3 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                JPG 저장
+              </button>
+              <button id="btnReset" class="ghost-btn !py-2 !px-3 !text-[11px] !text-rose-500">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>
+                원본으로 되돌리기
+              </button>
               <span class="grow"></span>
               <span id="sizeInfo" class="text-[10px] font-mono text-neutral-400"></span>
             </div>
@@ -229,8 +305,11 @@ tailwind.config = {
   var brush = 38;
   var hasImage = false;
   var original = null;
+  var originalCanvas = null;
+  var cmpPct = 50;
   var undoStack = [];
-  var redoStack = [];
+  var histIdx = 0;
+  var MAXH = 9;
   var booted = false;
   var drawing = null;
 
@@ -252,14 +331,13 @@ tailwind.config = {
         mctx.clearRect(0, 0, W, H);
         hasImage = true;
         original = imgSnapshot();
-        undoStack = [original];
-        redoStack = [];
+        captureOriginal();
+        histReset(original);
         $('dropZone').classList.add('hidden');
         $('stageWrap').classList.remove('hidden');
         $('stageWrap').classList.add('flex');
         $('tools').classList.remove('hidden');
         $('sizeInfo').textContent = W + ' x ' + H;
-        renderHist();
         markChanged();
         Lemon.toast('사진을 열었어요. 지울 부분을 칠해 주세요', 'info');
       };
@@ -268,6 +346,59 @@ tailwind.config = {
     };
     fr.readAsDataURL(file);
   }
+
+  function captureOriginal() {
+    originalCanvas = document.createElement('canvas');
+    originalCanvas.width = W;
+    originalCanvas.height = H;
+    originalCanvas.getContext('2d').drawImage(img, 0, 0);
+  }
+
+  /* ---------------- before / after compare slider ---------------- */
+  function setCmp(p) {
+    cmpPct = Math.max(0, Math.min(100, p));
+    var clip = $('cmpBeforeClip');
+    if (clip) clip.style.clipPath = 'inset(0 ' + (100 - cmpPct) + '% 0 0)';
+    var hd = $('cmpHandle');
+    if (hd) hd.style.left = cmpPct + '%';
+    var lb = $('cmpPct');
+    if (lb) lb.textContent = Math.round(cmpPct) + '%';
+    var rg = $('cmpRange');
+    if (rg && Math.abs(parseFloat(rg.value) - cmpPct) > 0.5) rg.value = cmpPct;
+  }
+  function refreshCompare() {
+    var wrap = $('cmpWrap');
+    if (!wrap) return;
+    var show = hasImage && undoStack.length > 1 && !!originalCanvas;
+    wrap.classList.toggle('hidden', !show);
+    if (!show) return;
+    var a = $('cmpAfter'), b = $('cmpBefore');
+    if (a.width !== W || a.height !== H) { a.width = W; a.height = H; }
+    if (b.width !== W || b.height !== H) { b.width = W; b.height = H; }
+    var actx = a.getContext('2d'), bctx = b.getContext('2d');
+    actx.clearRect(0, 0, W, H); actx.drawImage(img, 0, 0);
+    bctx.clearRect(0, 0, W, H); bctx.drawImage(originalCanvas, 0, 0);
+    setCmp(cmpPct);
+  }
+  $('cmpRange').addEventListener('input', function () { setCmp(parseFloat(this.value)); });
+  (function bindCmpDrag() {
+    var stage = $('cmpStage');
+    var on = false;
+    function fromEvent(ev) {
+      var r = stage.getBoundingClientRect();
+      setCmp(((ev.clientX - r.left) / r.width) * 100);
+    }
+    stage.addEventListener('pointerdown', function (ev) {
+      on = true;
+      stage.setPointerCapture && stage.setPointerCapture(ev.pointerId);
+      fromEvent(ev);
+      ev.preventDefault();
+    });
+    stage.addEventListener('pointermove', function (ev) { if (on) fromEvent(ev); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) {
+      stage.addEventListener(t, function () { on = false; });
+    });
+  })();
 
   function imgSnapshot() {
     var c = document.createElement('canvas');
@@ -452,48 +583,59 @@ tailwind.config = {
   $('btnErase').addEventListener('click', function () {
     if (!hasImage) { Lemon.toast('먼저 사진을 열어 주세요', 'err'); return; }
     $('stage').classList.add('busy');
+    $('btnErase').disabled = true;
     setTimeout(function () {
-      var before = imgSnapshot();
       var n = inpaint();
       $('stage').classList.remove('busy');
+      $('btnErase').disabled = false;
       if (!n) return;
-      undoStack.push(before);
-      if (undoStack.length > 8) undoStack.shift();
-      redoStack = [];
-      renderHist();
+      pushHistory();
       markChanged();
       Lemon.toast('칠한 부분을 주변 색으로 채웠어요', 'ok');
       Lemon.hap(12);
-    }, 30);
+    }, 300);
   });
 
-  function applyHistory() {
-    var top = undoStack[undoStack.length - 1];
-    if (!top) return;
-    restoreSnapshot(top, function () {
-      renderHist(); markChanged();
-    });
+  function histReset(src) {
+    undoStack = [src];
+    histIdx = 0;
+    renderHist();
+    refreshCompare();
+  }
+  function pushHistory() {
+    var snap = imgSnapshot();
+    if (undoStack[histIdx] === snap) { refreshCompare(); return; }
+    undoStack = undoStack.slice(0, histIdx + 1);
+    undoStack.push(snap);
+    if (undoStack.length > MAXH) undoStack.shift();
+    histIdx = undoStack.length - 1;
+    renderHist();
+    refreshCompare();
+  }
+  function gotoHist(i, done) {
+    if (i < 0 || i >= undoStack.length) return false;
+    histIdx = i;
+    restoreSnapshot(undoStack[i], function () { renderHist(); refreshCompare(); if (done) done(); markChanged(); });
+    return true;
   }
   $('btnUndo').addEventListener('click', function () {
-    if (undoStack.length < 2) { Lemon.toast('되돌릴 작업이 없어요', 'info'); return; }
-    var cur = undoStack.pop();
-    redoStack.push(cur);
-    applyHistory();
-    Lemon.toast('되돌렸어요', 'info');
+    if (histIdx <= 0) { Lemon.toast('되돌릴 작업이 없어요', 'info'); return; }
+    gotoHist(histIdx - 1);
+    Lemon.toast('되돌렸어요 (' + (histIdx + 1) + '/' + undoStack.length + ')', 'info');
+    Lemon.hap(8);
   });
   $('btnRedo').addEventListener('click', function () {
-    if (!redoStack.length) { Lemon.toast('다시 실행할 작업이 없어요', 'info'); return; }
-    var next = redoStack.pop();
-    if (undoStack[undoStack.length - 1] !== next) undoStack.push(next);
-    restoreSnapshot(next, function () { renderHist(); markChanged(); });
-    Lemon.toast('다시 적용했어요', 'ok');
+    if (histIdx >= undoStack.length - 1) { Lemon.toast('다시 실행할 작업이 없어요', 'info'); return; }
+    gotoHist(histIdx + 1);
+    Lemon.toast('다시 적용했어요 (' + (histIdx + 1) + '/' + undoStack.length + ')', 'ok');
+    Lemon.hap(8);
   });
   $('btnReset').addEventListener('click', function () {
     if (!original) return;
     if (!window.confirm('편집한 내용을 버리고 원본으로 돌아갈까요?')) return;
     undoStack = [original];
-    redoStack = [];
-    restoreSnapshot(original, function () { renderHist(); markChanged(); });
+    histIdx = 0;
+    restoreSnapshot(original, function () { renderHist(); refreshCompare(); markChanged(); });
     Lemon.toast('원본으로 되돌렸어요', 'info');
   });
 
@@ -508,7 +650,7 @@ tailwind.config = {
     function hide() {
       if (!on) return;
       on = false;
-      var top = undoStack[undoStack.length - 1];
+      var top = undoStack[histIdx];
       if (top) restoreSnapshot(top, null);
     }
     b.addEventListener('pointerdown', show);
@@ -516,23 +658,32 @@ tailwind.config = {
     b.addEventListener('click', function (e) { e.preventDefault(); if (on) hide(); else { show(); setTimeout(hide, 700); } });
   })();
 
+  document.addEventListener('keydown', function (ev) {
+    var mod = ev.metaKey || ev.ctrlKey;
+    if (!mod) return;
+    var k = (ev.key || '').toLowerCase();
+    if (k === 'z') { ev.preventDefault(); if (ev.shiftKey) $('btnRedo').click(); else $('btnUndo').click(); }
+    else if (k === 'y') { ev.preventDefault(); $('btnRedo').click(); }
+  });
+
   function renderHist() {
     var box = $('histRow');
-    var list = undoStack.slice(-6);
-    if (!list.length) { box.innerHTML = '<p class="text-[10px] text-neutral-400 col-span-3">기록 없음</p>'; return; }
+    if (!undoStack.length) { box.innerHTML = '<p class="text-[10px] text-neutral-400 col-span-3">기록 없음</p>'; return; }
+    var start = Math.max(0, undoStack.length - 6);
+    var list = undoStack.slice(start);
     box.innerHTML = list.map(function (src, i) {
-      return '<button class="hist-item rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700" data-hist="' + (undoStack.length - list.length + i) + '">' +
-        '<img src="' + src + '" alt="" class="w-full block" style="aspect-ratio:1/1;object-fit:cover"></button>';
+      var idx = start + i;
+      var cur = idx === histIdx;
+      return '<button class="hist-item rounded-lg overflow-hidden border-2 ' + (cur ? 'border-brand-500' : 'border-neutral-200 dark:border-neutral-700') + '" data-hist="' + idx + '" title="' + (idx + 1) + '단계' + (cur ? ' · 현재' : '') + '">' +
+        '<img src="' + src + '" alt="" class="w-full block" style="aspect-ratio:1/1;object-fit:cover;opacity:' + (cur ? '1' : '.75') + '"></button>';
     }).join('');
   }
   $('histRow').addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-hist]') : null;
     if (!b) return;
     var i = parseInt(b.getAttribute('data-hist'), 10);
-    if (isNaN(i) || i >= undoStack.length) return;
-    var src = undoStack[i];
-    undoStack = undoStack.slice(0, i + 1);
-    restoreSnapshot(src, function () { renderHist(); markChanged(); });
+    if (isNaN(i) || i >= undoStack.length || i === histIdx) return;
+    gotoHist(i, function () { Lemon.toast((i + 1) + '단계로 이동했어요', 'info'); });
   });
 
   /* ---------------- save ---------------- */
@@ -568,7 +719,7 @@ tailwind.config = {
     } catch (e) { work = ''; }
     return {
       title: '편집본 ' + W + ' x ' + H,
-      sub: '자동 저장 · ' + undoStack.length + '단계',
+      sub: '자동 저장 · ' + (histIdx + 1) + '/' + undoStack.length + '단계',
       thumb: smallThumb(),
       data: { work: work, w: W, h: H }
     };
@@ -610,15 +761,14 @@ tailwind.config = {
         mctx.clearRect(0, 0, W, H);
         hasImage = true;
         original = imgSnapshot();
-        undoStack = [original];
-        redoStack = [];
+        captureOriginal();
+        histReset(original);
         $('dropZone').classList.add('hidden');
         $('stageWrap').classList.remove('hidden');
         $('stageWrap').classList.add('flex');
         $('tools').classList.remove('hidden');
         $('sizeInfo').textContent = W + ' x ' + H;
         AUTO.openProject(rec.id);
-        renderHist();
         go('studio');
         Lemon.toast('편집본을 열었어요', 'ok');
       };

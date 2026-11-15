@@ -6,6 +6,7 @@
 <title>Lemon Clock — 세계 시차 · 타이머 · 스톱워치 · 알람</title>
 <meta name="description" content="서울·도쿄·뉴욕·런던 시간을 한 슬라이더로 동시에 맞춰 보고, 타이머·랩타임 스톱워치·소리 알람까지 한 화면에서 씁니다.">
 <meta name="theme-color" content="#0369a1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230369a1'/%3E%3Ccircle cx='16' cy='16' r='6.5' fill='%23ffffff'/%3E%3C/svg%3E">
 <script>
 (function () {
   try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
@@ -35,7 +36,19 @@ tailwind.config = {
   .lap-row { animation: lapIn .25s ease both; }
   @keyframes lapIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   .tick-mark { stroke: currentColor; }
-  #dialHands line { transition: transform .2s cubic-bezier(.3,1.4,.5,1); }
+  #dialHands line { transform-box: view-box; }
+  #dial { filter: drop-shadow(0 10px 26px rgba(3,105,161,.18)); }
+  .city-chip { width: 1.35rem; height: 1.35rem; border-radius: .5rem; display: grid; place-items: center; flex-shrink: 0; }
+  .city-chip.day { background: rgba(14,165,233,.16); color: #0284c7; }
+  .city-chip.night { background: rgba(99,102,241,.16); color: #6366f1; }
+  .dark .city-chip.day { background: rgba(56,189,248,.18); color: #7dd3fc; }
+  .dark .city-chip.night { background: rgba(129,140,248,.2); color: #a5b4fc; }
+  #timerRingWrap { transition: transform .3s cubic-bezier(.34,1.56,.64,1); }
+  #timerRingWrap.done { animation: timerDone .9s cubic-bezier(.34,1.56,.64,1) 2; }
+  @keyframes timerDone { 0% { transform: scale(1); } 45% { transform: scale(1.06); } 100% { transform: scale(1); } }
+  #timerRing { transition: stroke-dashoffset .3s linear, stroke .3s ease; }
+  .lap-row { animation: lapSlide .34s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes lapSlide { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
   .alarm-card { transition: border-color .18s; }
   .alarm-card.on { border-color: color-mix(in srgb, var(--brand) 50%, transparent); }
 </style>
@@ -194,8 +207,20 @@ tailwind.config = {
                 <button id="btnTimerReset" class="ghost-btn !py-1.5 !px-2.5 !text-[11px]">초기화</button>
               </div>
             </div>
-            <div class="progress-track h-2"><div id="timerFill" class="progress-fill" style="width:0%"></div></div>
-            <p id="timerDisplay" class="clock-num text-3xl font-black text-center">05:00</p>
+            <div id="timerRingWrap" class="relative mx-auto grid place-items-center w-40 h-40">
+              <svg viewBox="0 0 120 120" class="w-40 h-40 -rotate-90 absolute inset-0">
+                <defs>
+                  <linearGradient id="timerGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="var(--brand)"></stop>
+                    <stop offset="100%" stop-color="var(--brand-2)"></stop>
+                  </linearGradient>
+                </defs>
+                <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(128,128,150,.18)" stroke-width="9"></circle>
+                <circle id="timerRing" cx="60" cy="60" r="52" fill="none" stroke="url(#timerGrad)" stroke-width="9" stroke-linecap="round"
+                  stroke-dasharray="326.73" stroke-dashoffset="326.73"></circle>
+              </svg>
+              <p id="timerDisplay" class="clock-num text-2xl font-black text-center relative">05:00</p>
+            </div>
           </div>
 
           <div class="panel p-4 space-y-2">
@@ -329,12 +354,27 @@ tailwind.config = {
     $('digitalDate').textContent = now.getFullYear() + '년 ' + parseInt(local.month, 10) + '월 ' + parseInt(local.day, 10) + '일 ' + (WEEK[local.weekday] || '') + '요일';
     $('ampmChip').textContent = hh < 12 ? '오전' : '오후';
     $('heroTime').textContent = Lemon.pad(hh) + ':' + Lemon.pad(mm) + ':' + Lemon.pad(ss);
-    var hAng = (hh % 12) * 30 + mm * 0.5;
-    var mAng = mm * 6 + ss * 0.1;
-    var sAng = ss * 6;
-    $('handH').setAttribute('transform', 'rotate(' + hAng + ' 100 100)');
-    $('handM').setAttribute('transform', 'rotate(' + mAng + ' 100 100)');
-    $('handS').setAttribute('transform', 'rotate(' + sAng + ' 100 100)');
+  }
+
+  /* 60fps second hand: the angle follows the real millisecond clock */
+  var handRaf = 0;
+  function setRot(id, deg) {
+    var el = $(id);
+    if (el) el.setAttribute('transform', 'rotate(' + deg.toFixed(3) + ' 100 100)');
+  }
+  function renderHands() {
+    var d = new Date();
+    var sec = d.getSeconds() + d.getMilliseconds() / 1000;
+    var min = d.getMinutes() + sec / 60;
+    var hr = (d.getHours() % 12) + min / 60;
+    setRot('handS', sec * 6);
+    setRot('handM', min * 6);
+    setRot('handH', hr * 30);
+    handRaf = requestAnimationFrame(renderHands);
+  }
+  function startHands() {
+    if (handRaf) return;
+    renderHands();
   }
 
   function buildTicks() {
@@ -365,8 +405,10 @@ tailwind.config = {
       var diff = Math.round((off - localOff) / 60 * 10) / 10;
       var diffLabel = diff === 0 ? '같은 시간' : (diff > 0 ? '+' + diff + '시간' : diff + '시간');
       var night = hh < 6 || hh >= 19;
+      var sunIco = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"></path></svg>';
+      var moonIco = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"></path></svg>';
       return '<div class="city-row panel-soft px-3 py-2 flex items-center gap-2 border border-transparent">' +
-        '<span class="w-2 h-2 rounded-full shrink-0" style="background:' + (night ? '#334155' : '#0ea5e9') + '"></span>' +
+        '<span class="city-chip ' + (night ? 'night' : 'day') + '" title="' + (night ? '밤' : '낮') + '">' + (night ? moonIco : sunIco) + '</span>' +
         '<div class="min-w-0"><p class="text-[11px] font-bold truncate">' + c.name + '</p>' +
         '<p class="text-[9px] text-neutral-500 dark:text-neutral-400">' + diffLabel + ' · ' + (WEEK[p.weekday] || '') + ' ' + parseInt(p.month, 10) + '/' + parseInt(p.day, 10) + '</p></div>' +
         '<span class="clock-num ml-auto text-[15px] font-black">' + Lemon.pad(hh) + ':' + p.minute + '</span>' +
@@ -421,6 +463,21 @@ tailwind.config = {
 
   /* ---------------- timer ---------------- */
   var timer = { total: 300, left: 300, running: false, endAt: 0 };
+  var RING_LEN = 2 * Math.PI * 52;
+  function setRing(ratio) {
+    var r = $('timerRing');
+    if (!r) return;
+    var k = Math.max(0, Math.min(1, ratio));
+    r.style.strokeDashoffset = (RING_LEN * (1 - k)).toFixed(2);
+  }
+  function pulseRing() {
+    var w = $('timerRingWrap');
+    if (!w) return;
+    w.classList.remove('done');
+    void w.offsetWidth;
+    w.classList.add('done');
+    setTimeout(function () { w.classList.remove('done'); }, 2200);
+  }
 
   function fmtClock(sec) {
     sec = Math.max(0, Math.ceil(sec));
@@ -457,7 +514,7 @@ tailwind.config = {
     $('btnTimerStart').textContent = '시작';
     $('timerState').textContent = '대기';
     $('timerDisplay').textContent = fmtClock(timer.left);
-    $('timerFill').style.width = '0%';
+    setRing(0);
   });
   function tickTimer() {
     if (!timer.running) return;
@@ -469,15 +526,15 @@ tailwind.config = {
       $('btnTimerStart').textContent = '시작';
       $('timerState').textContent = '완료';
       $('timerDisplay').textContent = '00:00';
-      $('timerFill').style.width = '100%';
-      ringBell(true);
+      setRing(1);
+      pulseRing();
       Lemon.toast('타이머가 끝났어요', 'ok');
       notify('타이머 완료', '정한 시간이 지났습니다');
       return;
     }
     $('timerDisplay').textContent = fmtClock(left);
-    var pct = timer.total > 0 ? (1 - left / timer.total) * 100 : 0;
-    $('timerFill').style.width = Math.min(100, pct) + '%';
+    var pct = timer.total > 0 ? (1 - left / timer.total) : 0;
+    setRing(pct);
   }
 
   /* ---------------- stopwatch ---------------- */
@@ -523,7 +580,7 @@ tailwind.config = {
     var best = state.laps.length ? Math.min.apply(null, state.laps) : 0;
     $('lapList').innerHTML = state.laps.map(function (t, i) {
       var gap = i < state.laps.length - 1 ? t - state.laps[i + 1] : t;
-      return '<div class="lap-row flex items-center justify-between text-[10px] font-mono px-1">' +
+      return '<div class="lap-row flex items-center justify-between text-[10px] font-mono px-1" style="animation-delay:' + Math.min(i * 0.04, 0.24).toFixed(2) + 's">' +
         '<span class="text-neutral-400">랩 ' + (state.laps.length - i) + '</span>' +
         '<span class="font-bold">' + fmtSw(t) + '</span>' +
         '<span class="' + (t === best ? 'text-brand-600 dark:text-brand-400 font-bold' : 'text-neutral-400') + '">+' + fmtSw(gap) + '</span></div>';
@@ -701,8 +758,13 @@ tailwind.config = {
   document.addEventListener('lemon:theme', function () { renderClock(); });
 
   buildTicks();
+  startHands();
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { cancelAnimationFrame(handRaf); handRaf = 0; }
+    else { startHands(); renderClock(); }
+  });
   $('timerDisplay').textContent = fmtClock(300);
-  $('timerFill').style.width = '0%';
+  setRing(0);
   renderAll();
   renderArchive();
   booted = true;
