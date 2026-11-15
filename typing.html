@@ -1,0 +1,2620 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Typing — 한글·영문 타자 연습 & 타수 분석기</title>
+<meta name="description" content="한글·영문·코드 타자 연습과 실시간 CPM/WPM·정확도·오타 히트맵. 한글 조합(IME) 중에도 글자별 정오를 판정하고, 청축·적축 타건음과 IndexedDB 기록 차트로 매일의 타수를 쌓는 무서버 타자 연습 스튜디오.">
+<meta name="theme-color" content="#0c0e11">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230c0e11'/%3E%3Crect x='4' y='7' width='16' height='10' rx='2.2' fill='none' stroke='%2319c8a4' stroke-width='1.5'/%3E%3Crect x='7' y='9.4' width='2.4' height='2.4' rx='.6' fill='%2319c8a4'/%3E%3Crect x='10.8' y='9.4' width='2.4' height='2.4' rx='.6' fill='%2319c8a4'/%3E%3Crect x='14.6' y='9.4' width='2.4' height='2.4' rx='.6' fill='%23f0a838'/%3E%3Crect x='8' y='13.2' width='8' height='1.8' rx='.9' fill='%2319c8a4' opacity='.55'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#0c0e11', 900: '#12151a', 850: '#171b21', 800: '#232932', 700: '#333b46', 200: '#e3e7ea', 100: '#f1f4f4' },
+    brand: { 50: '#e6faf4', 100: '#c3f3e6', 200: '#8fe9d2', 300: '#55dbba', 400: '#29cdA4', 500: '#19c8a4', 600: '#0fa585', 700: '#0c846b', 800: '#0b6755', 900: '#094f43', 950: '#04302a' },
+    amber: { 50: '#fdf6e7', 100: '#f9e7bb', 200: '#f3d181', 300: '#f0b94e', 400: '#f0a838', 500: '#de8f1c', 600: '#b76f14', 700: '#8d5412', 800: '#663d10', 900: '#4a2d0e' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #19c8a4;
+    --brand-2: #f0a838;
+    --brand-deep: #0b6653;
+    --ink: #12151a;
+    --paper: #f5f7f5;
+    --panel: #ffffff;
+    --line: #e3e7ea;
+    --muted: #6b7480;
+    --deck: linear-gradient(160deg, #232a33 0%, #161b21 46%, #10141a 100%);
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+    letter-spacing: -0.015em;
+    background-color: var(--paper);
+    color: var(--ink);
+    overflow-x: hidden;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .dark body { background-color: #0c0e11; color: #e7ecef; }
+  ::selection { background: var(--brand); color: #04120f; }
+  .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .smallcaps { font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .dark .smallcaps { color: #8b95a1; }
+
+  /* ---------------- stage ---------------- */
+  .brand-wash {
+    background:
+      radial-gradient(60% 46% at 8% -8%, rgba(25, 200, 164, .16), transparent 70%),
+      radial-gradient(48% 40% at 92% 2%, rgba(240, 168, 56, .13), transparent 72%);
+  }
+  .dark .brand-wash {
+    background:
+      radial-gradient(60% 46% at 8% -8%, rgba(25, 200, 164, .26), transparent 70%),
+      radial-gradient(48% 40% at 92% 2%, rgba(240, 168, 56, .12), transparent 72%);
+  }
+  .grid-lines {
+    position: fixed; inset: 0; pointer-events: none; z-index: -1; opacity: .5;
+    background-image: linear-gradient(rgba(18, 21, 26, .028) 1px, transparent 1px), linear-gradient(90deg, rgba(18, 21, 26, .028) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(70% 50% at 50% 0%, #000 20%, transparent 100%);
+    -webkit-mask-image: radial-gradient(70% 50% at 50% 0%, #000 20%, transparent 100%);
+  }
+  .dark .grid-lines { background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); }
+
+  /* ---------------- header ---------------- */
+  .site-head { background: rgba(255,255,255,.82); backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); }
+  .dark .site-head { background: rgba(12,14,17,.84); }
+  .site-nav { background: rgba(255,255,255,.9); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .dark .site-nav { background: rgba(12,14,17,.9); }
+  .icon-btn {
+    width: 2.25rem; height: 2.25rem; border-radius: .8rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); background: rgba(255,255,255,.75); color: #404852;
+    transition: transform .18s ease, color .2s ease, border-color .2s ease;
+  }
+  .dark .icon-btn { border-color: #2a313b; background: rgba(23,27,33,.75); color: #98a2ae; }
+  .icon-btn:hover { color: var(--brand-deep); border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+  .dark .icon-btn:hover { color: var(--brand-2); }
+  .icon-btn:active { transform: scale(.92); }
+
+  .nav-tabs { display: flex; gap: .3rem; overflow-x: auto; padding: .4rem 0; scrollbar-width: none; }
+  .nav-tabs::-webkit-scrollbar { display: none; }
+  .nav-tab {
+    display: inline-flex; align-items: center; gap: .42rem; white-space: nowrap;
+    padding: .5rem .82rem; border-radius: .7rem; font-size: 12.5px; font-weight: 700;
+    color: #5b6572; transition: background .2s ease, color .2s ease, transform .16s ease;
+  }
+  .dark .nav-tab { color: #98a2ae; }
+  .nav-tab svg { width: .95rem; height: .95rem; }
+  .nav-tab:hover { background: rgba(18,21,26,.055); color: #12151a; }
+  .dark .nav-tab:hover { background: rgba(255,255,255,.07); color: #fff; }
+  .nav-tab:active { transform: scale(.96); }
+  .nav-tab.nav-on, .nav-tab.nav-on:hover {
+    color: var(--brand-deep) !important;
+    background-color: color-mix(in srgb, var(--brand) 15%, transparent);
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+  .dark .nav-tab.nav-on, .dark .nav-tab.nav-on:hover {
+    color: #b7f7e8 !important;
+    background-color: color-mix(in srgb, var(--brand) 22%, transparent);
+    background-image: none !important;
+  }
+  .nav-tab .nav-dot { width: .3rem; height: .3rem; border-radius: 9999px; background: currentColor; opacity: 0; }
+  .nav-tab.nav-on .nav-dot { opacity: 1; }
+
+  /* ---------------- shared surfaces ---------------- */
+  .panel {
+    border-radius: 1.15rem; border: 1px solid var(--line);
+    background: var(--panel);
+    box-shadow: 0 1px 0 rgba(18,21,26,.02), 0 14px 30px -26px rgba(18,21,26,.35);
+  }
+  .dark .panel { background: #12151a; border-color: #232932; box-shadow: none; }
+  .panel-soft { border-radius: 1rem; border: 1px solid var(--line); background: rgba(255,255,255,.6); }
+  .dark .panel-soft { background: rgba(23,27,33,.7); border-color: #232932; }
+  .chip {
+    display: inline-flex; align-items: center; gap: .38rem;
+    padding: .34rem .62rem; border-radius: 9999px;
+    font-size: 10.5px; font-weight: 800; letter-spacing: .02em;
+    color: var(--brand-deep); background: color-mix(in srgb, var(--brand) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  }
+  .dark .chip { color: #a6f4e2; background: color-mix(in srgb, var(--brand) 16%, transparent); border-color: color-mix(in srgb, var(--brand) 34%, transparent); }
+
+  .primary-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+    padding: .72rem 1.1rem; border-radius: .8rem; font-size: 12.5px; font-weight: 800;
+    color: #04120f; background-image: linear-gradient(135deg, var(--brand) 0%, #56e3c3 60%, #ffe0a3 140%);
+    box-shadow: 0 12px 24px -16px rgba(15, 165, 133, .9);
+    transition: transform .16s ease, filter .2s ease, box-shadow .2s ease;
+  }
+  .primary-btn:hover { transform: translateY(-1.5px); filter: brightness(1.04); }
+  .primary-btn:active { transform: scale(.96); }
+  .ghost-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .42rem;
+    padding: .62rem .9rem; border-radius: .75rem; font-size: 12px; font-weight: 700;
+    border: 1px solid var(--line); color: #39424d; background: rgba(255,255,255,.8);
+    transition: transform .16s ease, border-color .2s ease, color .2s ease;
+  }
+  .dark .ghost-btn { border-color: #2a313b; color: #cdd5dd; background: rgba(23,27,33,.75); }
+  .ghost-btn:hover { border-color: color-mix(in srgb, var(--brand) 50%, transparent); color: var(--brand-deep); }
+  .dark .ghost-btn:hover { color: #9deedb; }
+  .ghost-btn:active { transform: scale(.96); }
+  .pill-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .38rem;
+    padding: .42rem .7rem; border-radius: 9999px; font-size: 11px; font-weight: 800;
+    border: 1px solid var(--line); background: #fff; color: #3c4652;
+    transition: transform .16s ease, border-color .2s ease, color .2s ease;
+  }
+  .dark .pill-btn { border-color: #2a313b; background: #171b21; color: #d3dbe3; }
+  .pill-btn:hover { border-color: color-mix(in srgb, var(--brand) 55%, transparent); color: var(--brand-deep); }
+  .dark .pill-btn:hover { color: #9deedb; }
+  .pill-btn:active { transform: scale(.95); }
+  .pill-btn.on { color: #04120f; background-image: linear-gradient(135deg, var(--brand), #7ae9cf); border-color: transparent; }
+  .dark .pill-btn.on { color: #04120f; }
+
+  .seg { display: inline-flex; gap: 3px; padding: 3px; border-radius: .8rem; background: rgba(18,21,26,.06); border: 1px solid rgba(18,21,26,.05); }
+  .dark .seg { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.08); }
+  .seg button { display: inline-flex; align-items: center; gap: .3rem; padding: .38rem .66rem; border-radius: .6rem; font-size: 11.5px; font-weight: 800; color: #5b6572; transition: background .2s ease, color .2s ease, transform .16s ease; }
+  .dark .seg button { color: #9aa4b0; }
+  .seg button:active { transform: scale(.95); }
+  .seg button.on { background: #fff; color: var(--brand-deep); box-shadow: 0 1px 4px rgba(18,21,26,.12); }
+  .dark .seg button.on { background: rgba(255,255,255,.16); color: #c3fbee; }
+  .seg button svg { width: .85rem; height: .85rem; }
+
+  .switch { position: relative; width: 2.5rem; height: 1.4rem; border-radius: 9999px; background: #d8dde1; transition: background .22s; flex-shrink: 0; cursor: pointer; }
+  .dark .switch { background: #333b46; }
+  .switch::after { content: ''; position: absolute; top: .16rem; left: .16rem; width: 1.08rem; height: 1.08rem; border-radius: 9999px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: transform .24s cubic-bezier(.34,1.56,.64,1); }
+  .switch.on { background-image: linear-gradient(135deg, var(--brand), #63e6c7); }
+  .switch.on::after { transform: translateX(1.06rem); }
+
+  .lemon-input, .lemon-select, .lemon-textarea {
+    width: 100%; border-radius: .7rem; border: 1px solid var(--line);
+    background: #fff; color: var(--ink); font-size: 13px; padding: .6rem .75rem; outline: none;
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .dark .lemon-input, .dark .lemon-select, .dark .lemon-textarea { background: #0f1216; border-color: #2a313b; color: #e7ecef; }
+  .lemon-input:focus, .lemon-select:focus, .lemon-textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
+  .lemon-textarea { line-height: 1.7; resize: vertical; }
+
+  /* ---------------- hero machine ---------------- */
+  .hero-shell {
+    position: relative; overflow: hidden; border-radius: 1.5rem;
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(120% 100% at 0% 0%, rgba(25,200,164,.12), transparent 55%),
+      radial-gradient(90% 80% at 100% 10%, rgba(240,168,56,.12), transparent 60%),
+      #fff;
+  }
+  .dark .hero-shell {
+    border-color: #232932;
+    background:
+      radial-gradient(120% 100% at 0% 0%, rgba(25,200,164,.18), transparent 55%),
+      radial-gradient(90% 80% at 100% 10%, rgba(240,168,56,.12), transparent 60%),
+      #101318;
+  }
+  .hero-grid { position: absolute; inset: 0; pointer-events: none; opacity: .55;
+    background-image: radial-gradient(rgba(18,21,26,.13) 1px, transparent 1px);
+    background-size: 18px 18px;
+    mask-image: radial-gradient(70% 70% at 70% 40%, #000, transparent 78%);
+    -webkit-mask-image: radial-gradient(70% 70% at 70% 40%, #000, transparent 78%);
+  }
+  .dark .hero-grid { background-image: radial-gradient(rgba(255,255,255,.10) 1px, transparent 1px); }
+
+  .deck {
+    position: relative; border-radius: 1.1rem; padding: .9rem .85rem 1rem;
+    background: var(--deck);
+    box-shadow: 0 34px 60px -34px rgba(8, 12, 16, .85), inset 0 1px 0 rgba(255,255,255,.10), inset 0 -2px 0 rgba(0,0,0,.5);
+    border: 1px solid rgba(255,255,255,.06);
+    isolation: isolate;
+  }
+  .deck::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(126deg, rgba(255,255,255,.12), transparent 34%, transparent 66%, rgba(25,200,164,.12));
+    mix-blend-mode: screen; opacity: .6;
+  }
+  .deck-screw {
+    position: absolute; width: 7px; height: 7px; border-radius: 9999px;
+    background: radial-gradient(circle at 35% 30%, #8e9aa6, #2a323b 70%);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.5), 0 1px 1px rgba(255,255,255,.12);
+  }
+  .deck-screw::after { content: ''; position: absolute; left: 1px; right: 1px; top: 3px; height: 1px; background: rgba(0,0,0,.55); transform: rotate(24deg); }
+  .deck-row { display: flex; gap: 5px; margin-top: 5px; }
+  .deck-row:first-of-type { margin-top: 0; }
+  .dcap {
+    flex: 1 1 0; min-width: 0; height: 34px; border-radius: .42rem;
+    background: linear-gradient(180deg, #39424d 0%, #2a313b 58%, #20262e 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 -1px 0 rgba(0,0,0,.6), 0 2px 0 #131820, 0 4px 8px -4px rgba(0,0,0,.7);
+    display: flex; align-items: center; justify-content: center;
+    font-family: ui-monospace, monospace; font-size: 9.5px; color: #aab6c2; letter-spacing: 0;
+    transition: transform .1s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+  }
+  .dcap.wide { flex: 1.7 1 0; }
+  .dcap.space { flex: 5 1 0; }
+  .dcap.lit {
+    background: linear-gradient(180deg, #2ee0bb 0%, #17b795 60%, #0e8c73 100%);
+    color: #04211b; box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 1px 0 #0a6a58, 0 0 22px -2px rgba(25,200,164,.75);
+    transform: translateY(1.5px);
+  }
+  .dcap.amber { background: linear-gradient(180deg, #f6c76d 0%, #eda63a 60%, #c47f16 100%); color: #241402; box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 0 22px -3px rgba(240,168,56,.7); transform: translateY(1.5px); }
+  .deck-badge {
+    position: absolute; z-index: 2; border-radius: .8rem; padding: .5rem .65rem;
+    background: rgba(255,255,255,.92); border: 1px solid rgba(255,255,255,.5);
+    box-shadow: 0 18px 30px -20px rgba(0,0,0,.8);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .dark .deck-badge { background: rgba(18,22,27,.88); border-color: rgba(255,255,255,.08); }
+  .deck-traces { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; opacity: .3; pointer-events: none; }
+  .deck-traces svg { width: 100%; height: 100%; }
+
+  @keyframes capRipple { 0% { opacity: .55; transform: scale(.6); } 100% { opacity: 0; transform: scale(1.9); } }
+  .cap-ring { position: absolute; width: 22px; height: 22px; border-radius: 9999px; border: 1.5px solid rgba(25,200,164,.7); animation: capRipple .9s ease-out infinite; }
+
+  .stat-cell { display: flex; flex-direction: column; gap: .1rem; }
+  .stat-num { font-variant-numeric: tabular-nums; font-weight: 900; letter-spacing: -.03em; }
+  .stat-sub { font-size: 10px; color: var(--muted); }
+  .dark .stat-sub { color: #8b95a1; }
+
+  /* ---------------- studio HUD ---------------- */
+  .hud { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 1px; overflow: hidden; border-radius: 1.05rem; border: 1px solid var(--line); background: var(--line); }
+  .dark .hud { border-color: #232932; background: #232932; }
+  .hud-cell { background: #fff; padding: .7rem .8rem; display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+  .dark .hud-cell { background: #12151a; }
+  .hud-label { font-size: 9.5px; font-weight: 800; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+  .dark .hud-label { color: #8b95a1; }
+  .hud-val { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 26px; line-height: 1.05; letter-spacing: -.04em; }
+  .hud-val small { font-size: 10px; font-weight: 800; color: var(--muted); margin-left: 2px; }
+  .hud-cell.main .hud-val { font-size: 34px; }
+  .hud-cell.main .hud-val { color: var(--brand-deep); }
+  .dark .hud-cell.main .hud-val { color: #5ce3c4; }
+
+  /* ---------------- typing surface ---------------- */
+  .type-card { position: relative; border-radius: 1.15rem; border: 1px solid var(--line); background: #fff; overflow: hidden; }
+  .dark .type-card { background: #0f1216; border-color: #232932; }
+  .type-top { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .65rem .9rem; border-bottom: 1px solid var(--line); }
+  .dark .type-top { border-color: #232932; }
+  .type-progress { height: 3px; background: rgba(18,21,26,.07); }
+  .dark .type-progress { background: rgba(255,255,255,.08); }
+  .type-progress i { display: block; height: 100%; width: 0%; background-image: linear-gradient(90deg, var(--brand), #7df0d4); transition: width .18s ease; box-shadow: 0 0 12px rgba(25,200,164,.6); }
+
+  .type-surface { position: relative; padding: 1.1rem 1rem 1.2rem; min-height: 168px; cursor: text; }
+  .type-text {
+    position: relative; font-size: 20px; line-height: 1.95; letter-spacing: .005em;
+    color: #a6b0ba; font-weight: 600; word-break: keep-all; overflow-wrap: break-word;
+  }
+  .dark .type-text { color: #5d6874; }
+  .type-text.code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15.5px; line-height: 1.85; letter-spacing: 0; white-space: pre-wrap; word-break: normal; }
+  .type-text span.ch { border-radius: .18rem; transition: color .12s ease, background-color .12s ease; }
+  .type-text span.ch.ok { color: #0f7f67; }
+  .dark .type-text span.ch.ok { color: #cfeee6; }
+  .type-text span.ch.bad { color: #e2504a; background: rgba(226, 80, 74, .13); text-decoration: underline; text-decoration-color: rgba(226,80,74,.55); text-underline-offset: 3px; }
+  .dark .type-text span.ch.bad { color: #ff8d86; background: rgba(255, 93, 86, .16); }
+  .type-text span.ch.comp { color: #b3760f; background: rgba(240, 168, 56, .18); box-shadow: inset 0 -2px 0 rgba(240,168,56,.8); }
+  .dark .type-text span.ch.comp { color: #ffcb75; background: rgba(240,168,56,.2); }
+  .type-text span.ch.sp { display: inline-block; min-width: .34em; }
+  .type-text span.ch.nl { display: inline-block;
+    width: 100%; height: 0; }
+  .type-text span.ch.sp.bad { background: rgba(226, 80, 74, .3); }
+  .caret {
+    display: inline-block; width: 2.5px; height: 1.22em; border-radius: 2px; margin: 0 -1px;
+    vertical-align: -.22em; background: var(--brand); box-shadow: 0 0 12px rgba(25,200,164,.85);
+    animation: caretBlink 1.05s steps(1) infinite;
+  }
+  @keyframes caretBlink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: .12; } }
+  .type-input {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: .01; border: 0; outline: 0; resize: none; background: transparent;
+    color: transparent; caret-color: transparent; font-size: 16px; padding: 0; z-index: 3;
+  }
+  .type-focus-hint {
+    position: absolute; inset: auto 0 0 0; display: flex; align-items: center; justify-content: center; gap: .45rem;
+    padding: .5rem; font-size: 10.5px; font-weight: 800; color: #7b8591;
+    background: linear-gradient(to top, rgba(255,255,255,.94), rgba(255,255,255,0));
+    pointer-events: none; transition: opacity .2s ease;
+  }
+  .dark .type-focus-hint { color: #98a2ae; background: linear-gradient(to top, rgba(15,18,22,.95), rgba(15,18,22,0)); }
+  .type-surface.focused .type-focus-hint { opacity: 0; }
+  .type-surface.done { opacity: .98; }
+  .type-surface.done .type-focus-hint { opacity: 0; }
+
+  /* ---------------- virtual keyboard ---------------- */
+  .vk { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+  .vk-row { display: flex; gap: 5px; width: 100%; }
+  .key {
+    position: relative; flex: 1 1 0; min-width: 0; height: 40px; border-radius: .42rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+    background: linear-gradient(180deg, #ffffff, #eef1f2);
+    border: 1px solid #dfe4e7;
+    box-shadow: 0 2px 0 #d9dfe2, 0 3px 7px -4px rgba(18,21,26,.35);
+    color: #3c4652; transition: transform .08s ease, box-shadow .1s ease, background .15s ease;
+    overflow: hidden; user-select: none;
+  }
+  .dark .key { background: linear-gradient(180deg, #222932, #171c22); border-color: #2c343e; box-shadow: 0 2px 0 #0e1216, 0 3px 8px -4px rgba(0,0,0,.8); color: #c3ccd6; }
+  .key .k-en { font-family: ui-monospace, monospace; font-size: 10px; font-weight: 800; line-height: 1; }
+  .key .k-ko { font-size: 9px; font-weight: 700; line-height: 1.2; color: #97a2ad; }
+  .dark .key .k-ko { color: #7d8894; }
+  .key.w15 { flex-grow: 1.5; } .key.w17 { flex-grow: 1.7; } .key.w19 { flex-grow: 1.9; }
+  .key.w22 { flex-grow: 2.2; } .key.w24 { flex-grow: 2.4; } .key.w6 { flex-grow: 6; } .key.w13 { flex-grow: 1.3; }
+  .key.down {
+    transform: translateY(2px) scale(.98);
+    background: linear-gradient(180deg, #6ff2d3, #19c8a4) !important;
+    border-color: #12a988 !important; box-shadow: 0 0 0 1px rgba(25,200,164,.5), 0 0 18px rgba(25,200,164,.55) !important;
+    color: #04120f !important;
+  }
+  .key.down .k-ko { color: rgba(4,18,15,.6) !important; }
+  .key.hot::after {
+    content: ''; position: absolute; left: 3px; right: 3px; bottom: 3px; height: 3px; border-radius: 2px;
+    background: linear-gradient(90deg, #f0a838, #e2504a); opacity: var(--heat, 0);
+  }
+  .key .k-heat { position: absolute; inset: 0; background: radial-gradient(circle at 50% 120%, rgba(226,80,74,.55), transparent 70%); opacity: var(--heat, 0); pointer-events: none; }
+  .vk-legend { display: flex; align-items: center; gap: .5rem; font-size: 10px; color: var(--muted); }
+  .dark .vk-legend { color: #8b95a1; }
+  .heat-scale { width: 78px; height: 6px; border-radius: 9999px; background: linear-gradient(90deg, rgba(25,200,164,.15), rgba(240,168,56,.85), rgba(226,80,74,.95)); }
+  .heat-1 { --heat: .18; } .heat-2 { --heat: .34; } .heat-3 { --heat: .55; } .heat-4 { --heat: .78; } .heat-5 { --heat: 1; }
+
+  /* ---------------- charts ---------------- */
+  .chart-box { position: relative; width: 100%; }
+  .chart-box canvas { display: block; width: 100%; height: 100%; }
+  .live-chart { height: 104px; }
+  .day-chart { height: 190px; }
+
+  /* ---------------- lists ---------------- */
+  .run-row {
+    display: grid; grid-template-columns: 1.5fr repeat(4, minmax(0, .8fr)) auto; gap: .5rem; align-items: center;
+    padding: .68rem .8rem; border-radius: .8rem; border: 1px solid transparent;
+    transition: background .18s ease, border-color .18s ease, transform .18s ease;
+  }
+  .run-row:hover { background: rgba(18,21,26,.03); border-color: var(--line); }
+  .dark .run-row:hover { background: rgba(255,255,255,.04); border-color: #232932; }
+  .run-head { font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .dark .run-head { color: #8b95a1; }
+  .run-num { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 13px; }
+
+  /* ---------------- modal ---------------- */
+  .modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 1rem; opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+  .modal.open { opacity: 1; pointer-events: auto; }
+  .modal .m-back { position: absolute; inset: 0; background: rgba(6, 10, 12, .58); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .modal .m-card {
+    position: relative; width: 100%; max-width: 460px; border-radius: 1.35rem; padding: 1.25rem;
+    background: #fff; border: 1px solid var(--line); box-shadow: 0 40px 80px -40px rgba(6,10,12,.7);
+    transform: translateY(14px) scale(.97); transition: transform .3s cubic-bezier(.22,1,.36,1);
+    max-height: 92vh; overflow-y: auto;
+  }
+  .dark .modal .m-card { background: #12151a; border-color: #2a313b; }
+  .modal.open .m-card { transform: none; }
+  .grade-ring { width: 92px; height: 92px; border-radius: 9999px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+  .dark .grade-ring { background: color-mix(in srgb, var(--brand) 14%, transparent); }
+  .res-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+  .res-cell { border-radius: .75rem; border: 1px solid var(--line); padding: .55rem .65rem; background: rgba(255,255,255,.7); }
+  .dark .res-cell { border-color: #232932; background: rgba(23,27,33,.7); }
+
+  /* ---------------- misc ---------------- */
+  .empty-state { text-align: center; padding: 2.2rem 1rem; }
+  .empty-state .ring { width: 62px; height: 62px; margin: 0 auto .8rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center; border: 1px dashed color-mix(in srgb, var(--brand) 45%, transparent); background: color-mix(in srgb, var(--brand) 8%, transparent); }
+  .toast-host { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); z-index: 90; }
+  .fade-up { opacity: 0; transform: translateY(16px); transition: opacity .6s ease, transform .6s cubic-bezier(.22,1,.36,1); }
+  .fade-up.in { opacity: 1; transform: none; }
+  .shk { animation: shkX .34s cubic-bezier(.36,.07,.19,.97) both; }
+  @keyframes shkX { 10%, 90% { transform: translateX(-1.5px); } 20%, 80% { transform: translateX(2.5px); } 30%, 50%, 70% { transform: translateX(-4px); } 40%, 60% { transform: translateX(4px); } }
+  .flash-ok { animation: flashOk .8s ease; }
+  @keyframes flashOk { 0% { box-shadow: 0 0 0 0 rgba(25,200,164,.45); } 100% { box-shadow: 0 0 0 18px rgba(25,200,164,0); } }
+  .num-pop { animation: numPop .4s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes numPop { 0% { transform: scale(.86); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+  .tick { animation: tickIn .5s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes tickIn { from { opacity: 0; transform: translateY(6px) scale(.94); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 640px) {
+    .type-text { font-size: 18px; line-height: 1.95; }
+    .type-text.code { font-size: 13.5px; }
+    .hud { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hud-cell.main { grid-column: span 2; }
+    .hud-cell.main .hud-val { font-size: 32px; }
+    .hud-cell:last-child { grid-column: span 2; }
+    .key { height: 36px; border-radius: .36rem; }
+    .key .k-en { font-size: 9px; }
+    .key .k-ko { font-size: 8px; }
+    .run-row { grid-template-columns: 1.2fr repeat(3, minmax(0, .8fr)) auto; }
+    .run-row .drop-col { display: none; }
+    .deck-badge { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001s !important; transition-duration: .001s !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="brand-wash fixed inset-0 pointer-events-none" style="z-index:-2"></div>
+<div class="grid-lines"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-28 -left-24 opacity-20"></div>
+<div class="ambient-orb o2 w-80 h-80 top-1/3 -right-28 opacity-[.13]" style="background:#f0a838"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.2"></rect><path d="M6 10h.01M9 10h.01M12 10h.01M15 10h.01M18 10h.01M6 13.6h.01M9 13.6h.01M12 13.6h.01M15 13.6h.01M18 13.6h.01"></path><path d="M7.5 17h9"></path></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z"></path></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4"></path><path d="M4 20h16"></path><path d="M8 20v-6M12.5 20V9M17 20v-9.5"></path></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4"></circle><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z" fill="currentColor" stroke="none"></path></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.4L12.5 6v12L7.4 14.5H4z"></path><path d="M16 9.2a4 4 0 0 1 0 5.6"></path><path d="M18.8 6.6a7.6 7.6 0 0 1 0 10.8"></path></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5h3.4L12.5 6v12L7.4 14.5H4z"></path><path d="M16.5 9.5l5 5M21.5 9.5l-5 5"></path></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7v5.4l3.4 2"></path></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.4"></circle></symbol>
+  <symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 3s5.5 4.6 5.5 9.4A5.5 5.5 0 0 1 12 18a5.5 5.5 0 0 1-5.5-5.6C6.5 9.5 8 8 8 8s.6 2.2 2 2.6C10.5 8 12 3 12 3z"></path></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.1"></path><path d="M20 5v6h-6"></path></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"></path></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.6h6V7M6 7l1 13h10l1-13"></path><path d="M10 11v5.5M14 11v5.5"></path></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4 19h16"></path></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5"></path><path d="M7.5 9.5 12 5l4.5 4.5"></path><path d="M4 19h16"></path></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"></path><path d="M15 7l5 5-5 5"></path><path d="M13 4l-2 16"></path></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6h16M4 11h16M4 16h10"></path></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M3.6 12h16.8"></path><path d="M12 3.5c2.4 2.4 3.6 5.3 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.3-3.6-8.5s1.2-6.1 3.6-8.5z"></path></symbol>
+  <symbol id="i-ko" viewBox="0 0 24 24"><path d="M5 5.5h6M8 5.5v6M5 14.5h6M5 17.5h6M8 14.5v6"></path><path d="M15 5.5h4v4h-4z"></path><path d="M15 14h4v6h-4z"></path></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"></rect></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h6M14 6h6M4 12h10M18 12h2M4 18h3M11 18h9"></path><circle cx="12" cy="6" r="1.8"></circle><circle cx="16" cy="12" r="1.8"></circle><circle cx="9" cy="18" r="1.8"></circle></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"></path></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2.5l1.6-5 2.2 11 2.4-14 2.3 17 2.2-12 1.6 6 1.6-3H21"></path></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></symbol>
+  <symbol id="i-speed" viewBox="0 0 24 24"><path d="M4 18a8.5 8.5 0 1 1 16 0"></path><path d="M12 13.5 16 9"></path><circle cx="12" cy="14" r="1.3" fill="currentColor" stroke="none"></circle></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4.5V9h4.5"></path><path d="M12 8v4.4l3 1.8"></path></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V6M6 12l6-6 6 6"></path></symbol>
+</svg>
+
+<header class="site-head sticky top-0 z-40 border-b border-neutral-200/80 dark:border-neutral-800/80">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-10 h-10 rounded-2xl p-[1.5px] shrink-0" style="background-image:linear-gradient(135deg,var(--brand),var(--brand-2))">
+        <div class="w-full h-full rounded-[15px] flex items-center justify-center" style="background:#101418">
+          <svg class="w-5 h-5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-keyboard"></use></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Typing</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md font-bold" style="border:1px solid color-mix(in srgb,var(--brand) 38%,transparent);color:var(--brand-deep);background:color-mix(in srgb,var(--brand) 10%,transparent)">STUDIO</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">한글·영문 타자 연습 & 타수 분석기</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-1.5">
+      <div class="hidden md:flex items-center gap-1.5 mr-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+        <span class="w-1.5 h-1.5 rounded-full pulse-soft" style="background:var(--brand)"></span>
+        <span>서버 0 · 계정 0 · 평생 무료</span>
+      </div>
+      <button id="btnTheme" data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-moon"></use></svg>
+        <svg class="w-4 h-4 hidden dark:block" style="color:#f0a838" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-sun"></use></svg>
+      </button>
+      <button id="btnSoundTop" class="icon-btn" aria-label="타건음 켜기/끄기" title="타건음">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><use id="icoSoundTop" href="#i-volume"></use></svg>
+      </button>
+      <button data-goto="studio" class="primary-btn !px-3 !py-2 !text-[11px] btn-shimmer">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+        <span class="hidden sm:inline">연습 시작</span>
+        <span class="sm:hidden">시작</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="site-nav sticky top-16 z-30 border-b border-neutral-200/80 dark:border-neutral-800/80">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"></use></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-bolt"></use></svg>
+        <span>연습 스튜디오</span>
+        <span id="navLiveDot" class="nav-dot"></span>
+      </button>
+      <button class="nav-tab" data-tab="records">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chart"></use></svg>
+        <span>기록 보관함</span>
+        <span id="navRunCount" class="text-[10px] font-mono px-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-5 sm:space-y-6">
+
+    <div class="hero-shell p-5 sm:p-9">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.02fr_.98fr] gap-7 lg:gap-10 items-center">
+        <div class="space-y-4">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"></use></svg>
+            기록은 내 브라우저에만
+          </span>
+          <h1 class="text-[30px] sm:text-[44px] font-black leading-[1.08] tracking-tight">
+            손끝이 빨라지는<br>
+            <span class="brand-text">타자 스튜디오.</span>
+          </h1>
+          <p class="text-[13px] sm:text-[15px] text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            한글 문장부터 영문, 프로그래밍 코드까지. 한글 조합 중에도 글자마다 정오를 짚어 주고,
+            실시간 CPM·WPM과 오타 히트맵으로 약한 손가락을 찾아냅니다. 타건음은 청축·적축·무음.
+          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button data-start="ko" class="primary-btn btn-shimmer">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+              한글 연습 시작
+            </button>
+            <button data-goto="records" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chart"></use></svg>
+              내 기록 보기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-check"></use></svg>한글 IME 조합 판정</span>
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-check"></use></svg>오타 히트맵</span>
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-check"></use></svg>IndexedDB 기록</span>
+          </div>
+        </div>
+
+        <div class="relative pt-3 pb-2">
+          <div class="deck">
+            <div class="deck-traces" aria-hidden="true">
+              <svg viewBox="0 0 320 150" fill="none" stroke="#19c8a4" stroke-width="1" opacity=".5">
+                <path d="M0 24h60l18 18h52l20-20h80l22 22h68" stroke-dasharray="3 5"/>
+                <path d="M0 118h74l16-16h64l16 16h68l18-18h64" stroke-dasharray="3 5"/>
+                <circle cx="60" cy="24" r="2.4" fill="#19c8a4" stroke="none"/>
+                <circle cx="270" cy="44" r="2.4" fill="#f0a838" stroke="none"/>
+                <circle cx="90" cy="102" r="2.4" fill="#19c8a4" stroke="none"/>
+              </svg>
+            </div>
+            <div class="deck-screw" style="left:8px;top:8px"></div>
+            <div class="deck-screw" style="right:8px;top:8px"></div>
+            <div class="deck-screw" style="left:8px;bottom:8px"></div>
+            <div class="deck-screw" style="right:8px;bottom:8px"></div>
+            <div class="relative pt-2 pb-1">
+              <div class="deck-row" id="heroRow1"></div>
+              <div class="deck-row" id="heroRow2"></div>
+              <div class="deck-row" id="heroRow3"></div>
+            </div>
+            <div class="flex items-center justify-between pt-2 text-[9px] font-mono" style="color:rgba(255,255,255,.32)">
+              <span>LEMON MECHANICAL · 87</span>
+              <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full" style="background:var(--brand);box-shadow:0 0 8px #19c8a4"></span>SWITCH ON</span>
+            </div>
+          </div>
+          <div class="deck-badge" style="left:-16px;bottom:-6px">
+            <p class="text-[8.5px] font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">BEST WPM</p>
+            <p class="mono font-black text-[19px] leading-none mt-1" id="heroBestWpm">0</p>
+          </div>
+          <div class="deck-badge" style="right:-10px;top:-14px">
+            <p class="text-[8.5px] font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">ACCURACY</p>
+            <p class="mono font-black text-[15px] leading-none mt-1" id="heroAcc">--<span class="text-[9px] font-bold" style="color:var(--brand)">%</span></p>
+          </div>
+          <div class="absolute -left-1 top-1/2 w-3 h-3 rounded-full" style="background:var(--brand)">
+            <span class="cap-ring" style="left:-5px;top:-5px"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- quick start -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <button class="panel p-4 text-left card-lift group" data-start="ko">
+        <div class="flex items-center justify-between">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand-deep)">
+            <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-ko"></use></svg>
+            <svg class="w-4 h-4 hidden dark:block" style="color:#5ce3c4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-ko"></use></svg>
+          </span>
+          <span class="text-neutral-400 group-hover:translate-x-1 transition-transform">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-next"></use></svg>
+          </span>
+        </div>
+        <p class="font-black text-[14px] mt-2.5">한글 문장</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">명언·속담·문학 문장으로 두벌식 감각을 올립니다.</p>
+      </button>
+      <button class="panel p-4 text-left card-lift group" data-start="en">
+        <div class="flex items-center justify-between">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:color-mix(in srgb,var(--brand-2) 16%,transparent);color:#a8720f">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-globe"></use></svg>
+          </span>
+          <span class="text-neutral-400 group-hover:translate-x-1 transition-transform">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-next"></use></svg>
+          </span>
+        </div>
+        <p class="font-black text-[14px] mt-2.5">영문 문장</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">팡그램과 인용문으로 영문 타수와 정확도를 잽니다.</p>
+      </button>
+      <button class="panel p-4 text-left card-lift group" data-start="code">
+        <div class="flex items-center justify-between">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:rgba(120,140,160,.14);color:#5b6572">
+            <svg class="w-4 h-4 dark:text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-code"></use></svg>
+          </span>
+          <span class="text-neutral-400 group-hover:translate-x-1 transition-transform">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-next"></use></svg>
+          </span>
+        </div>
+        <p class="font-black text-[14px] mt-2.5">코드 타이핑</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">JS·Python 스니펫을 들여쓰기까지 그대로 따라 칩니다.</p>
+      </button>
+      <button class="panel p-4 text-left card-lift group" data-start="custom">
+        <div class="flex items-center justify-between">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:rgba(120,140,160,.14);color:#5b6572">
+            <svg class="w-4 h-4 dark:text-neutral-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-text"></use></svg>
+          </span>
+          <span class="text-neutral-400 group-hover:translate-x-1 transition-transform">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-next"></use></svg>
+          </span>
+        </div>
+        <p class="font-black text-[14px] mt-2.5">직접 입력</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">시험 지문·발표 대본을 붙여 넣어 그대로 연습합니다.</p>
+      </button>
+    </div>
+
+    <!-- stats strip -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">연습 횟수</span><svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="homeRuns">0</span><span class="text-[11px] font-bold text-neutral-400 ml-1">회</span></p>
+      </div>
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">최고 WPM</span><svg class="w-4 h-4" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-speed"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="homeBest">0</span><span class="text-[11px] font-bold text-neutral-400 ml-1">WPM</span></p>
+      </div>
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">평균 정확도</span><svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-target"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="homeAcc">--</span><span class="text-[11px] font-bold text-neutral-400 ml-1">%</span></p>
+      </div>
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">연속 연습</span><svg class="w-4 h-4" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-fire"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="homeStreak">0</span><span class="text-[11px] font-bold text-neutral-400 ml-1">일</span></p>
+      </div>
+    </div>
+
+    <!-- features -->
+    <div class="space-y-3">
+      <div class="flex items-end justify-between">
+        <div>
+          <h2 class="text-[17px] font-black tracking-tight">연습이 되는 이유</h2>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">측정하고, 약점을 찾고, 다시 치는 세 단계.</p>
+        </div>
+        <span class="hidden sm:inline smallcaps">FEATURES</span>
+      </div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="panel p-4">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand-deep)"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-speed"></use></svg></span>
+          <p class="font-bold text-[13px] mt-2">실시간 CPM·WPM·정확도</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">0.25초마다 다시 계산해 타수가 오르는 순간을 그래프로 보여 줍니다.</p>
+        </div>
+        <div class="panel p-4">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand-deep)"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-ko"></use></svg></span>
+          <p class="font-bold text-[13px] mt-2">한글 조합 판정</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">ㄱㅏ처럼 조합 중인 글자는 판정을 미루고, 완성된 음절만 맞고 틀림을 셉니다.</p>
+        </div>
+        <div class="panel p-4">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:color-mix(in srgb,var(--brand-2) 18%,transparent);color:#a8720f"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-grid"></use></svg></span>
+          <p class="font-bold text-[13px] mt-2">오타 히트맵 키보드</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">누른 키가 눌리고, 오타가 난 키가 붉게 달아오르는 인터랙티브 가상 키보드.</p>
+        </div>
+        <div class="panel p-4">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:color-mix(in srgb,var(--brand-2) 18%,transparent);color:#a8720f"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-volume"></use></svg></span>
+          <p class="font-bold text-[13px] mt-2">기계식 타건음</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">Web Audio로 합성한 청축 클릭과 적축 넉, 그리고 무음. 오디오 파일은 0MB.</p>
+        </div>
+        <div class="panel p-4">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand-deep)"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chart"></use></svg></span>
+          <p class="font-bold text-[13px] mt-2">일별 성장 추이</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">IndexedDB에 쌓인 기록을 7일·30일·전체로 묶어 타수와 정확도 변화를 그립니다.</p>
+        </div>
+        <div class="panel p-4">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand-deep)"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-text"></use></svg></span>
+          <p class="font-bold text-[13px] mt-2">내 텍스트로 연습</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">준비한 지문을 붙여 넣으면 그 문장으로 바로 연습합니다. 저장은 이 브라우저에만.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- sound demo -->
+    <div class="panel p-4 sm:p-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <p class="font-bold text-[13px]">타건음 미리 들어 보기</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">스위치를 고르면 연습 중에도 같은 소리가 납니다.</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <div class="seg" id="homeSoundSeg">
+            <button data-sound="blue" class="on">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-wave"></use></svg>청축
+            </button>
+            <button data-sound="red">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-wave"></use></svg>적축
+            </button>
+            <button data-sound="none">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-mute"></use></svg>무음
+            </button>
+          </div>
+          <button id="btnPreviewSound" class="ghost-btn">소리 듣기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-3 sm:space-y-4">
+
+    <div class="panel p-3 sm:p-4">
+      <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+        <div class="seg shrink-0" id="modeSeg">
+          <button data-mode="ko" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-ko"></use></svg>한글</button>
+          <button data-mode="en"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-globe"></use></svg>영문</button>
+          <button data-mode="code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-code"></use></svg>코드</button>
+          <button data-mode="custom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-text"></use></svg>직접</button>
+        </div>
+        <div class="flex-1 min-w-0 flex items-center gap-2">
+          <select id="sampleSelect" class="lemon-select flex-1 min-w-0 !py-2 !text-[12px]"></select>
+          <button id="btnNextSample" class="pill-btn shrink-0" title="다음 문장">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-next"></use></svg>
+            <span class="hidden sm:inline">다음</span>
+          </button>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="btnKbToggle" class="pill-btn on" title="가상 키보드">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-keyboard"></use></svg>
+            <span class="hidden sm:inline">키보드</span>
+          </button>
+          <button id="btnSettings" class="pill-btn" title="연습 설정">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sliders"></use></svg>
+            <span class="hidden sm:inline">설정</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="settingsPanel" class="hidden mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-800">
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <p class="smallcaps mb-1.5">타건음</p>
+            <div class="seg w-full" id="setSoundSeg">
+              <button data-sound="blue" class="on">청축</button>
+              <button data-sound="red">적축</button>
+              <button data-sound="none">무음</button>
+            </div>
+          </div>
+          <div>
+            <p class="smallcaps mb-1.5">볼륨 <span id="volLabel" class="mono">50%</span></p>
+            <input id="volRange" class="lemon-range w-full" type="range" min="0" max="100" value="50" step="5" style="accent-color:var(--brand)">
+          </div>
+          <div>
+            <p class="smallcaps mb-1.5">가상 키보드</p>
+            <div class="flex items-center gap-2">
+              <button id="switchKb" class="switch on" role="switch" aria-checked="true"></button>
+              <span class="text-[11.5px] text-neutral-500 dark:text-neutral-400">연습 중 표시</span>
+            </div>
+          </div>
+          <div>
+            <p class="smallcaps mb-1.5">오타 알림</p>
+            <div class="flex items-center gap-2">
+              <button id="switchShake" class="switch on" role="switch" aria-checked="true"></button>
+              <span class="text-[11.5px] text-neutral-500 dark:text-neutral-400">틀릴 때 흔들기</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud">
+      <div class="hud-cell main">
+        <span class="hud-label">WPM</span>
+        <span class="hud-val"><span id="hudWpm">0</span><small>WPM</small></span>
+      </div>
+      <div class="hud-cell">
+        <span class="hud-label">CPM</span>
+        <span class="hud-val"><span id="hudCpm">0</span></span>
+      </div>
+      <div class="hud-cell">
+        <span class="hud-label">정확도</span>
+        <span class="hud-val"><span id="hudAcc">100</span><small>%</small></span>
+      </div>
+      <div class="hud-cell">
+        <span class="hud-label">시간</span>
+        <span class="hud-val"><span id="hudTime">0:00</span></span>
+      </div>
+    </div>
+
+    <div class="type-card" id="typeCard">
+      <div class="type-top">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded font-bold" id="modeBadge" style="background:color-mix(in srgb,var(--brand) 14%,transparent);color:var(--brand-deep)">한글</span>
+          <span class="text-[11.5px] font-bold truncate" id="sampleTitle">문장을 불러오는 중</span>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <span class="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 tabular"><span id="progressText">0 / 0</span></span>
+          <button id="btnRestart" class="icon-btn !w-8 !h-8" title="다시 시작">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"></use></svg>
+          </button>
+        </div>
+      </div>
+      <div class="type-progress"><i id="progressBar"></i></div>
+      <div class="type-surface" id="typeSurface">
+        <div class="type-text" id="typeText"></div>
+        <div class="type-focus-hint">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-keyboard"></use></svg>
+          화면을 눌러 입력을 시작하세요
+        </div>
+        <textarea id="typeInput" class="type-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="타자 입력"></textarea>
+      </div>
+    </div>
+
+    <div id="customPanel" class="panel p-4 hidden">
+      <div class="flex items-center justify-between gap-2">
+        <p class="font-bold text-[13px]">직접 입력한 텍스트로 연습</p>
+        <span class="text-[10px] font-mono text-neutral-400"><span id="customLen">0</span> / 1500</span>
+      </div>
+      <textarea id="customText" class="lemon-textarea mt-2" rows="4" maxlength="1500" placeholder="연습할 지문을 붙여 넣으세요. 줄바꿈과 띄어쓰기도 그대로 연습합니다."></textarea>
+      <div class="flex items-center gap-2 mt-2">
+        <button id="btnUseCustom" class="primary-btn !py-2 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-play"></use></svg>
+          이 텍스트로 연습
+        </button>
+        <button id="btnClearCustom" class="ghost-btn !py-2 !text-[11.5px]">지우기</button>
+        <span class="text-[10.5px] text-neutral-500 dark:text-neutral-400">저장은 이 브라우저에만 됩니다.</span>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[1.15fr_.85fr] gap-3">
+      <div class="panel p-3.5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wave"></use></svg>
+            <span class="text-[12px] font-bold">실시간 타수</span>
+          </div>
+          <div class="flex items-center gap-3 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+            <span class="inline-flex items-center gap-1"><i class="w-2 h-2 rounded-full inline-block" style="background:var(--brand)"></i>CPM</span>
+            <span class="inline-flex items-center gap-1"><i class="w-2 h-2 rounded-full inline-block" style="background:var(--brand-2)"></i>정확도</span>
+          </div>
+        </div>
+        <div class="chart-box live-chart mt-2"><canvas id="liveChart"></canvas></div>
+      </div>
+      <div class="panel p-3.5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-speed"></use></svg>
+            <span class="text-[12px] font-bold">이번 판 요약</span>
+          </div>
+          <span class="text-[10px] font-mono text-neutral-400" id="sessionMode">대기 중</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          <div class="panel-soft p-2.5">
+            <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">타수</p>
+            <p class="mono font-black text-[17px] mt-0.5"><span id="sumTyped">0</span><span class="text-[9px] font-bold text-neutral-400 ml-1">타</span></p>
+          </div>
+          <div class="panel-soft p-2.5">
+            <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">오타</p>
+            <p class="mono font-black text-[17px] mt-0.5"><span id="sumErr">0</span><span class="text-[9px] font-bold text-neutral-400 ml-1">회</span></p>
+          </div>
+          <div class="panel-soft p-2.5">
+            <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">진행률</p>
+            <p class="mono font-black text-[17px] mt-0.5"><span id="sumProg">0</span><span class="text-[9px] font-bold text-neutral-400 ml-1">%</span></p>
+          </div>
+          <div class="panel-soft p-2.5">
+            <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">최고 속도</p>
+            <p class="mono font-black text-[17px] mt-0.5"><span id="sumPeak">0</span><span class="text-[9px] font-bold text-neutral-400 ml-1">CPM</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel p-3 sm:p-4" id="kbPanel">
+      <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 mb-2">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-keyboard"></use></svg>
+          <span class="text-[12px] font-bold">가상 키보드</span>
+          <span class="text-[10px] text-neutral-400 hidden sm:inline">두벌식 · QWERTY</span>
+        </div>
+        <div class="vk-legend">
+          <span>오타 적음</span>
+          <span class="heat-scale"></span>
+          <span>잦음</span>
+        </div>
+      </div>
+      <div class="vk" id="vk"></div>
+    </div>
+  </section>
+
+  <!-- ================= RECORDS ================= -->
+  <section data-view="records" class="hidden space-y-3 sm:space-y-4">
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">연습 횟수</span><svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="recRuns">0</span><span class="text-[11px] font-bold text-neutral-400 ml-1">회</span></p>
+        <p class="stat-sub mt-0.5">누적 <span id="recChars">0</span>타</p>
+      </div>
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">최고 WPM</span><svg class="w-4 h-4" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-speed"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="recBest">0</span><span class="text-[11px] font-bold text-neutral-400 ml-1">WPM</span></p>
+        <p class="stat-sub mt-0.5">최근 평균 <span id="recAvg">0</span> WPM</p>
+      </div>
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">평균 정확도</span><svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-target"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="recAcc">--</span><span class="text-[11px] font-bold text-neutral-400 ml-1">%</span></p>
+        <p class="stat-sub mt-0.5">최근 10판 기준</p>
+      </div>
+      <div class="panel p-4">
+        <div class="flex items-center justify-between"><span class="smallcaps">연속 연습</span><svg class="w-4 h-4" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-fire"></use></svg></div>
+        <p class="stat-num text-[26px] mt-1.5"><span id="recStreak">0</span><span class="text-[11px] font-bold text-neutral-400 ml-1">일</span></p>
+        <p class="stat-sub mt-0.5">오늘 <span id="recToday">0</span>판</p>
+      </div>
+    </div>
+
+    <div class="panel p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p class="font-bold text-[13px]">일별 성장 추이</p>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">막대는 하루 평균 WPM, 선은 평균 정확도입니다.</p>
+        </div>
+        <div class="seg" id="rangeSeg">
+          <button data-range="7" class="on">7일</button>
+          <button data-range="30">30일</button>
+          <button data-range="0">전체</button>
+        </div>
+      </div>
+      <div class="chart-box day-chart mt-3"><canvas id="dayChart"></canvas></div>
+      <div class="flex items-center gap-4 mt-2 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+        <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-sm inline-block" style="background:linear-gradient(180deg,#5ce3c4,#19c8a4)"></i>평균 WPM</span>
+        <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-sm inline-block" style="background:var(--brand-2)"></i>정확도</span>
+        <span class="ml-auto hidden sm:inline">표본 <span id="chartSamples">0</span>일</span>
+      </div>
+    </div>
+
+    <div class="panel p-3 sm:p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p class="font-bold text-[13px]">연습 기록</p>
+        <div class="seg" id="filterSeg">
+          <button data-filter="all" class="on">전체</button>
+          <button data-filter="ko">한글</button>
+          <button data-filter="en">영문</button>
+          <button data-filter="code">코드</button>
+          <button data-filter="custom">직접</button>
+        </div>
+      </div>
+      <div class="mt-2 hidden sm:grid run-row !py-1.5 !border-transparent">
+        <span class="run-head">문장</span>
+        <span class="run-head text-right">WPM</span>
+        <span class="run-head text-right">CPM</span>
+        <span class="run-head text-right">정확도</span>
+        <span class="run-head text-right drop-col">오타</span>
+        <span class="run-head text-right">기록</span>
+      </div>
+      <div id="runList" class="divide-y divide-neutral-100 dark:divide-neutral-800/70"></div>
+      <div id="runEmpty" class="empty-state hidden">
+        <div class="ring">
+          <svg class="w-6 h-6" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chart"></use></svg>
+        </div>
+        <p class="font-bold text-[13px]">아직 기록이 없어요</p>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">한 판만 마치면 이곳에 타수와 정확도가 쌓입니다.</p>
+        <button data-start="ko" class="primary-btn !py-2 !text-[11.5px] mt-3">첫 연습 시작</button>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-800">
+        <button id="btnExport" class="pill-btn">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+          JSON 백업
+        </button>
+        <button id="btnImport" class="pill-btn">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+          백업 가져오기
+        </button>
+        <button id="btnClearAll" class="pill-btn !text-rose-500 !border-rose-200 dark:!border-rose-900/60">전체 삭제</button>
+        <span class="text-[10.5px] text-neutral-500 dark:text-neutral-400 ml-auto">기록은 이 기기의 IndexedDB에만 저장됩니다.</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 mt-2">
+  <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500">
+    <div class="flex items-center gap-2">
+      <span class="text-neutral-900 dark:text-white font-semibold">Lemon Typing</span>
+      <span>·</span>
+      <span>Lemon soft가 만든 서비스</span>
+    </div>
+    <div class="flex items-center gap-3 flex-wrap justify-center">
+      <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+      <span>·</span>
+      <a href="focus.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Focus</a>
+      <span>·</span>
+      <a href="player.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Player</a>
+      <span>·</span>
+      <a href="clip.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Clip</a>
+    </div>
+  </div>
+</footer>
+
+<input id="importFile" type="file" accept="application/json,.json" class="hidden">
+
+<!-- result modal -->
+<div id="resultModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="resTitle">
+  <div class="m-back" data-close></div>
+  <div class="m-card">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="smallcaps">RESULT</p>
+        <h2 id="resTitle" class="text-[19px] font-black tracking-tight mt-0.5">연습 완료</h2>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5" id="resSub">문장</p>
+      </div>
+      <div class="grade-ring shrink-0">
+        <span class="text-[9px] font-bold tracking-widest text-neutral-500 dark:text-neutral-400">GRADE</span>
+        <span class="font-black text-[24px] leading-none mt-1" id="resGrade" style="color:var(--brand-deep)">A</span>
+      </div>
+    </div>
+    <div class="res-grid mt-3">
+      <div class="res-cell">
+        <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">WPM</p>
+        <p class="mono font-black text-[24px] leading-tight mt-0.5"><span id="resWpm">0</span></p>
+      </div>
+      <div class="res-cell">
+        <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">CPM</p>
+        <p class="mono font-black text-[24px] leading-tight mt-0.5"><span id="resCpm">0</span></p>
+      </div>
+      <div class="res-cell">
+        <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">정확도</p>
+        <p class="mono font-black text-[24px] leading-tight mt-0.5"><span id="resAcc">0</span><span class="text-[11px]">%</span></p>
+      </div>
+      <div class="res-cell">
+        <p class="text-[9.5px] font-bold tracking-wider uppercase text-neutral-500 dark:text-neutral-400">시간</p>
+        <p class="mono font-black text-[24px] leading-tight mt-0.5"><span id="resTime">0:00</span></p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 mt-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+      <span class="inline-flex items-center gap-1.5" id="resSaveBadge">
+        <span class="w-1.5 h-1.5 rounded-full" style="background:var(--brand)"></span>
+        <span id="resSaveText">기록을 저장하는 중</span>
+      </span>
+      <span class="ml-auto font-mono"><span id="resErr">0</span> 오타 · <span id="resPeak">0</span> 최고 CPM</span>
+    </div>
+    <div id="resBestNote" class="hidden mt-2 rounded-lg px-2.5 py-2 text-[11px] font-bold" style="background:color-mix(in srgb,var(--brand-2) 16%,transparent);color:#8d5412"></div>
+    <div class="flex items-center gap-2 mt-4">
+      <button id="btnResRetry" class="ghost-btn flex-1">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"></use></svg>
+        다시 치기
+      </button>
+      <button id="btnResNext" class="primary-btn flex-1">
+        다음 문장
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-next"></use></svg>
+      </button>
+    </div>
+    <button id="btnResRecords" class="w-full mt-2 text-[11px] font-bold text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition py-1">기록 보관함 열기</button>
+  </div>
+</div>
+
+<!-- confirm modal -->
+<div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="cfTitle">
+  <div class="m-back" data-close></div>
+  <div class="m-card" style="max-width:380px">
+    <h2 id="cfTitle" class="text-[16px] font-black tracking-tight">기록을 모두 지울까요?</h2>
+    <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed" id="cfBody">이 브라우저에 저장된 모든 연습 기록이 사라집니다. 되돌릴 수 없습니다.</p>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="ghost-btn flex-1" data-close>취소</button>
+      <button id="btnConfirmYes" class="primary-btn flex-1" style="background-image:linear-gradient(135deg,#e2504a,#f0805a);color:#fff">모두 지우기</button>
+    </div>
+  </div>
+</div>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     Lemon Typing · 무서버 타자 연습 스튜디오
+     - 한글(IME 조합) / 영문 / 코드 / 직접 입력
+     - 실시간 CPM·WPM·정확도, 실시간 타수 그래프, 가상 키보드 히트맵
+     - Web Audio 타건음(청축·적축·무음)
+     - IndexedDB(lemon_typing_v1) 기록 + 일별 성장 추이
+     ============================================================ */
+
+  var $ = function (id) { return document.getElementById(id); };
+  var root = document.documentElement;
+  var LS_SET = 'lemon_typing_settings_v1';
+  var LS_CUSTOM = 'lemon_typing_custom_v1';
+  var LS_LAST = 'lemon_typing_last_v1';
+  var LS_RUNS = 'lemon_typing_runs_fallback_v1';
+  var DB_NAME = 'lemon_typing_v1';
+  var DB_STORE = 'runs';
+  var MAX_CUSTOM = 1500;
+
+  function toast(msg, type) { try { Lemon.toast(msg, type || 'ok'); } catch (e) { } }
+  function hap(ms) { try { Lemon.hap(ms || 10); } catch (e) { } }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  }); }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtTime(ms) {
+    var s = Math.max(0, Math.round(ms / 1000));
+    var m = Math.floor(s / 60);
+    return m + ':' + pad2(s % 60);
+  }
+  function dateKey(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function cssVar(name, fallback) {
+    var v = getComputedStyle(root).getPropertyValue(name);
+    return (v && v.trim()) || fallback;
+  }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  /* ---------------- settings ---------------- */
+  var DEFAULT_SET = { sound: 'blue', vol: 50, kb: true, shake: true };
+  var settings = Object.assign({}, DEFAULT_SET, Lemon.store.get(LS_SET, {}) || {});
+  if (!settings.sound) settings.sound = 'blue';
+  settings.vol = clamp(Number(settings.vol) || 0, 0, 100);
+  function saveSettings() { Lemon.store.set(LS_SET, settings); }
+
+  /* ============================================================
+     문장 데이터
+     ============================================================ */
+  var SAMPLES = {
+    ko: [
+      { t: '훈민정음 서문', s: '세종대왕', x: '나랏말싸미 듕귁에 달아 문자와로 서르 사맛디 아니할쌔 이런 전차로 어린 백셩이 니르고져 홇배이셔도 마참내 제 뜨들 시러펴디 몯핧 노미 하니라' },
+      { t: '오늘의 연습', s: '속담', x: '가는 말이 고와야 오는 말이 곱다. 티끌 모아 태산이라 하였으니 작은 습관이 쌓이면 결국 큰 힘이 된다.' },
+      { t: '손끝의 기억', s: '연습 노트', x: '오늘의 속도보다 중요한 것은 매일 같은 자리에 앉는 일이다. 손끝의 기억은 하루아침에 생기지 않는다.' },
+      { t: '강가의 봄', s: '묘사문', x: '봄이 오면 강가에 앉아 흐르는 물을 바라본다. 바람이 불 때마다 버들가지가 가볍게 흔들리고, 멀리서 아이들의 웃음소리가 들려온다.' },
+      { t: '천 리 길', s: '명언', x: '천 리 길도 한 걸음부터. 서두르지 않되 멈추지 않는다. 매일 조금씩 앞으로 나아가는 사람이 결국 가장 멀리 간다.' },
+      { t: '숫자와 문장부호', s: '혼합 연습', x: '2026년 11월 15일, 오후 7시. 기록은 1분에 320타, 정확도 97퍼센트였다. 동기부여란 이런 것이다.' },
+      { t: '기록의 힘', s: '연습 노트', x: '잘 치는 사람은 빨리 치는 사람이 아니라 틀린 자리를 기억하는 사람이다. 오타가 난 키를 살펴보면 다음 판이 달라진다.' },
+      { t: '아침 루틴', s: '생활문', x: '아침에 일어나 따뜻한 물 한 잔을 마시고, 창문을 열어 바깥 공기를 들인다. 그리고 십 분 동안 타자 연습을 한다.' }
+    ],
+    en: [
+      { t: 'Pangram', s: '영문 기본', x: 'The quick brown fox jumps over the lazy dog while the curious cat watches from the warm windowsill.' },
+      { t: 'Simplicity', s: 'Leonardo da Vinci', x: 'Simplicity is the ultimate sophistication, and the shortest path between two minds is a sentence clearly written.' },
+      { t: 'Morning commute', s: '영문 묘사', x: 'At half past seven the platform fills with people, and every screen glows the same pale blue while the train waits.' },
+      { t: 'Numbers', s: '혼합 연습', x: 'In 2026, 24 students typed 58 words per minute with 98 percent accuracy, and only three of them used all ten fingers.' },
+      { t: 'Practice', s: '영문 연습문', x: 'Speed is a habit built from small, boring repetitions. Type the same sentence again, but this time watch the keys you miss.' },
+      { t: 'Night sky', s: '영문 묘사', x: 'The night was clear enough to count the stars above the roof, and the air smelled of rain that never came.' }
+    ],
+    code: [
+      { t: 'JavaScript · 합계 구하기', s: 'js', x: 'function totalPrice(items) {\n  const valid = items.filter(item => item.price > 0);\n  const sum = valid.reduce((acc, item) => acc + item.price, 0);\n  return Math.round(sum * 100) / 100;\n}' },
+      { t: 'JavaScript · 디바운스', s: 'js', x: 'function debounce(fn, wait) {\n  let timer = null;\n  return function (...args) {\n    clearTimeout(timer);\n    timer = setTimeout(() => fn.apply(this, args), wait);\n  };\n}' },
+      { t: 'Python · 단어 세기', s: 'py', x: 'def word_count(text):\n    words = text.lower().split()\n    counts = {}\n    for word in words:\n        counts[word] = counts.get(word, 0) + 1\n    return dict(sorted(counts.items()))' },
+      { t: 'Python · 피보나치', s: 'py', x: 'def fib(n, memo=None):\n    if memo is None:\n        memo = {}\n    if n < 2:\n        return n\n    if n not in memo:\n        memo[n] = fib(n - 1, memo) + fib(n - 2, memo)\n    return memo[n]' }
+    ]
+  };
+  var MODE_LABEL = { ko: '한글', en: '영문', code: '코드', custom: '직접' };
+
+  /* ============================================================
+     IndexedDB (lemon_typing_v1)
+     ============================================================ */
+  var dbPromise = null;
+  function idbOpen() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('no-idb')); return; }
+      var req = null;
+      try { req = indexedDB.open(DB_NAME, 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          var st = db.createObjectStore(DB_STORE, { keyPath: 'id' });
+          st.createIndex('ts', 'ts', { unique: false });
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('idb-open-failed')); };
+      req.onblocked = function () { reject(new Error('idb-blocked')); };
+    });
+    return dbPromise;
+  }
+  function idbAdd(rec) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(rec);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error || new Error('idb-write-failed')); };
+        tx.onabort = function () { reject(tx.error || new Error('idb-aborted')); };
+      });
+    });
+  }
+  function idbAll() {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var out = [];
+        var tx = db.transaction(DB_STORE, 'readonly');
+        var req = tx.objectStore(DB_STORE).openCursor();
+        req.onsuccess = function () {
+          var cur = req.result;
+          if (cur) { out.push(cur.value); cur.continue(); }
+          else { resolve(out); }
+        };
+        req.onerror = function () { reject(req.error || new Error('idb-read-failed')); };
+      });
+    });
+  }
+  function idbDelete(id) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).delete(id);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function idbClear() {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).clear();
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function lsRuns() {
+    try { var v = JSON.parse(localStorage.getItem(LS_RUNS) || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function lsSave(list) {
+    try { localStorage.setItem(LS_RUNS, JSON.stringify(list.slice(-300))); return true; } catch (e) { return false; }
+  }
+  function saveRun(rec) {
+    return idbAdd(rec).catch(function () {
+      var list = lsRuns();
+      list.push(rec);
+      if (!lsSave(list)) throw new Error('save-failed');
+      return true;
+    });
+  }
+  function loadRuns() {
+    return idbAll().catch(function () { return lsRuns(); }).then(function (list) {
+      return (list || []).filter(function (r) { return r && typeof r.ts === 'number'; })
+        .sort(function (a, b) { return b.ts - a.ts; });
+    });
+  }
+
+  /* ============================================================
+     기록 요약
+     ============================================================ */
+  var runs = [];
+  function summarize(list) {
+    var n = list.length;
+    var best = 0, chars = 0, accSum = 0, accN = 0;
+    var recent = list.slice(0, 10);
+    var recentAcc = 0;
+    var days = {};
+    list.forEach(function (r) {
+      if (r.wpm > best) best = r.wpm;
+      chars += (r.total || 0);
+      if (typeof r.acc === 'number') { accSum += r.acc; accN++; }
+      days[dateKey(new Date(r.ts))] = true;
+    });
+    recent.forEach(function (r) { recentAcc += r.acc || 0; });
+    var today = dateKey(new Date());
+    var streak = 0;
+    var d = new Date();
+    if (!days[dateKey(d)]) d.setDate(d.getDate() - 1);
+    while (days[dateKey(d)]) { streak++; d.setDate(d.getDate() - 1); }
+    return {
+      n: n,
+      best: best,
+      chars: chars,
+      avgAcc: accN ? accSum / accN : 0,
+      recentAcc: recent.length ? recentAcc / recent.length : 0,
+      recentN: recent.length,
+      today: list.filter(function (r) { return dateKey(new Date(r.ts)) === today; }).length,
+      streak: streak
+    };
+  }
+  function paintStats() {
+    var s = summarize(runs);
+    var map = {
+      homeRuns: s.n, homeBest: s.best, homeAcc: s.n ? Math.round(s.avgAcc) : '--', homeStreak: s.streak,
+      recRuns: s.n, recBest: s.best, recAcc: s.recentN ? Math.round(s.recentAcc * 10) / 10 : '--', recStreak: s.streak,
+      recChars: s.chars, recToday: s.today,
+      navRunCount: s.n
+    };
+    Object.keys(map).forEach(function (id) { var el = $(id); if (el) el.textContent = map[id]; });
+    if ($('heroBestWpm')) $('heroBestWpm').textContent = s.best || 0;
+    if ($('heroAcc')) $('heroAcc').innerHTML = (s.recentN ? Math.round(s.recentAcc) : '--') + '<span class="text-[9px] font-bold" style="color:var(--brand)">%</span>';
+    var recentAvg = runs.slice(0, 10);
+    var avg = recentAvg.length ? Math.round(recentAvg.reduce(function (a, r) { return a + (r.wpm || 0); }, 0) / recentAvg.length) : 0;
+    if ($('recAvg')) $('recAvg').textContent = avg;
+  }
+  function refreshRuns() {
+    return loadRuns().then(function (list) {
+      runs = list;
+      paintStats();
+      renderRunList();
+      drawDayChart();
+      return runs;
+    }).catch(function () { paintStats(); return runs; });
+  }
+
+  /* ============================================================
+     Web Audio · 기계식 타건음
+     ============================================================ */
+  var ac = null, noiseBuf = null;
+  function audioCtx() {
+    try {
+      if (!ac) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ac = new AC();
+      }
+      if (ac.state === 'suspended') ac.resume().catch(function () { });
+      return ac;
+    } catch (e) { return null; }
+  }
+  function noiseBuffer(ctx) {
+    if (!noiseBuf) {
+      var len = Math.floor(ctx.sampleRate * 0.2);
+      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      var d = noiseBuf.getChannelData(0);
+      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    return noiseBuf;
+  }
+  function playClick(code, weak) {
+    if (settings.sound === 'none' || settings.vol <= 0) return;
+    var ctx = audioCtx();
+    if (!ctx) return;
+    try {
+      var t = ctx.currentTime + 0.002;
+      var isSpace = code === 'Space';
+      var isEnter = code === 'Enter';
+      var master = ctx.createGain();
+      master.gain.value = (settings.vol / 100) * (weak ? 0.35 : 0.85);
+      master.connect(ctx.destination);
+
+      var src = ctx.createBufferSource();
+      src.buffer = noiseBuffer(ctx);
+      var f = ctx.createBiquadFilter();
+      var g = ctx.createGain();
+      src.connect(f); f.connect(g); g.connect(master);
+
+      if (settings.sound === 'blue') {
+        f.type = 'bandpass';
+        f.frequency.value = isSpace ? 1300 : (isEnter ? 1600 : 2250 + Math.random() * 260);
+        f.Q.value = 1.15;
+        g.gain.setValueAtTime(isSpace ? 0.55 : 0.46, t);
+        g.gain.exponentialRampToValueAtTime(0.0008, t + 0.042);
+        var o = ctx.createOscillator();
+        o.type = 'square';
+        o.frequency.setValueAtTime(isSpace ? 880 : 1450, t);
+        o.frequency.exponentialRampToValueAtTime(520, t + 0.018);
+        var og = ctx.createGain();
+        og.gain.setValueAtTime(0.09, t);
+        og.gain.exponentialRampToValueAtTime(0.0004, t + 0.03);
+        o.connect(og); og.connect(master);
+        o.start(t); o.stop(t + 0.04);
+      } else {
+        f.type = 'lowpass';
+        f.frequency.value = isSpace ? 640 : 900;
+        g.gain.setValueAtTime(isSpace ? 0.66 : 0.56, t);
+        g.gain.exponentialRampToValueAtTime(0.0008, t + 0.085);
+        var o2 = ctx.createOscillator();
+        o2.type = 'sine';
+        o2.frequency.setValueAtTime(isSpace ? 118 : 168, t);
+        o2.frequency.exponentialRampToValueAtTime(72, t + 0.07);
+        var og2 = ctx.createGain();
+        og2.gain.setValueAtTime(0.2, t);
+        og2.gain.exponentialRampToValueAtTime(0.0004, t + 0.085);
+        o2.connect(og2); og2.connect(master);
+        o2.start(t); o2.stop(t + 0.09);
+      }
+      src.start(t); src.stop(t + 0.11);
+    } catch (e) { }
+  }
+  function playError() {
+    if (settings.sound === 'none' || settings.vol <= 0) return;
+    var ctx = audioCtx();
+    if (!ctx) return;
+    try {
+      var t = ctx.currentTime + 0.002;
+      var o = ctx.createOscillator();
+      var g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(190, t);
+      o.frequency.exponentialRampToValueAtTime(120, t + 0.09);
+      g.gain.setValueAtTime((settings.vol / 100) * 0.18, t);
+      g.gain.exponentialRampToValueAtTime(0.0004, t + 0.1);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + 0.11);
+    } catch (e) { }
+  }
+  function playFinish() {
+    if (settings.sound === 'none' || settings.vol <= 0) return;
+    var ctx = audioCtx();
+    if (!ctx) return;
+    try {
+      var notes = [523.25, 659.25, 783.99, 1046.5];
+      var t0 = ctx.currentTime + 0.01;
+      notes.forEach(function (freq, i) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = freq;
+        var t = t0 + i * 0.085;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime((settings.vol / 100) * 0.16, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t); o.stop(t + 0.36);
+      });
+    } catch (e) { }
+  }
+
+  /* ============================================================
+     가상 키보드 (두벌식 · QWERTY)
+     ============================================================ */
+  var KB_ROWS = [
+    [
+      { c: 'Backquote', en: '`', ko: '`' }, { c: 'Digit1', en: '1', ko: '1' }, { c: 'Digit2', en: '2', ko: '2' },
+      { c: 'Digit3', en: '3', ko: '3' }, { c: 'Digit4', en: '4', ko: '4' }, { c: 'Digit5', en: '5', ko: '5' },
+      { c: 'Digit6', en: '6', ko: '6' }, { c: 'Digit7', en: '7', ko: '7' }, { c: 'Digit8', en: '8', ko: '8' },
+      { c: 'Digit9', en: '9', ko: '9' }, { c: 'Digit0', en: '0', ko: '0' }, { c: 'Minus', en: '-', ko: '-' },
+      { c: 'Equal', en: '=', ko: '=' }, { c: 'Backspace', en: 'DEL', cls: 'w19' }
+    ],
+    [
+      { c: 'Tab', en: 'TAB', cls: 'w15' },
+      { c: 'KeyQ', en: 'q', ko: 'ㅂ' }, { c: 'KeyW', en: 'w', ko: 'ㅈ' }, { c: 'KeyE', en: 'e', ko: 'ㄷ' },
+      { c: 'KeyR', en: 'r', ko: 'ㄱ' }, { c: 'KeyT', en: 't', ko: 'ㅅ' }, { c: 'KeyY', en: 'y', ko: 'ㅛ' },
+      { c: 'KeyU', en: 'u', ko: 'ㅕ' }, { c: 'KeyI', en: 'i', ko: 'ㅑ' }, { c: 'KeyO', en: 'o', ko: 'ㅐ' },
+      { c: 'KeyP', en: 'p', ko: 'ㅔ' }, { c: 'BracketLeft', en: '[', ko: '[' }, { c: 'BracketRight', en: ']', ko: ']' },
+      { c: 'Backslash', en: '\\', ko: '\\', cls: 'w13' }
+    ],
+    [
+      { c: 'CapsLock', en: 'CAPS', cls: 'w17' },
+      { c: 'KeyA', en: 'a', ko: 'ㅁ' }, { c: 'KeyS', en: 's', ko: 'ㄴ' }, { c: 'KeyD', en: 'd', ko: 'ㅇ' },
+      { c: 'KeyF', en: 'f', ko: 'ㄹ' }, { c: 'KeyG', en: 'g', ko: 'ㅎ' }, { c: 'KeyH', en: 'h', ko: 'ㅗ' },
+      { c: 'KeyJ', en: 'j', ko: 'ㅓ' }, { c: 'KeyK', en: 'k', ko: 'ㅏ' }, { c: 'KeyL', en: 'l', ko: 'ㅣ' },
+      { c: 'Semicolon', en: ';', ko: ';' }, { c: 'Quote', en: "'", ko: "'" }, { c: 'Enter', en: 'ENTER', cls: 'w22' }
+    ],
+    [
+      { c: 'ShiftLeft', en: 'SHIFT', cls: 'w22' },
+      { c: 'KeyZ', en: 'z', ko: 'ㅋ' }, { c: 'KeyX', en: 'x', ko: 'ㅌ' }, { c: 'KeyC', en: 'c', ko: 'ㅊ' },
+      { c: 'KeyV', en: 'v', ko: 'ㅍ' }, { c: 'KeyB', en: 'b', ko: 'ㅠ' }, { c: 'KeyN', en: 'n', ko: 'ㅜ' },
+      { c: 'KeyM', en: 'm', ko: 'ㅡ' }, { c: 'Comma', en: ',', ko: ',' }, { c: 'Period', en: '.', ko: '.' },
+      { c: 'Slash', en: '/', ko: '/' }, { c: 'ShiftRight', en: 'SHIFT', cls: 'w22' }
+    ],
+    [
+      { c: 'ControlLeft', en: 'CTRL', cls: 'w13' }, { c: 'AltLeft', en: 'ALT', cls: 'w13' },
+      { c: 'Space', en: 'SPACE', cls: 'w6' }, { c: 'Lang1', en: '한/영', cls: 'w13' },
+      { c: 'AltRight', en: 'ALT', cls: 'w13' }, { c: 'ControlRight', en: 'CTRL', cls: 'w13' }
+    ]
+  ];
+  var keyEls = {};
+
+  function buildKeyboard() {
+    var host = $('vk');
+    if (!host) return;
+    host.innerHTML = '';
+    keyEls = {};
+    KB_ROWS.forEach(function (row) {
+      var rowEl = document.createElement('div');
+      rowEl.className = 'vk-row';
+      row.forEach(function (k) {
+        var el = document.createElement('div');
+        el.className = 'key' + (k.cls ? ' ' + k.cls : '');
+        el.setAttribute('data-code', k.c);
+        var heat = document.createElement('span'); heat.className = 'k-heat';
+        var en = document.createElement('span'); en.className = 'k-en'; en.textContent = k.en;
+        el.appendChild(heat); el.appendChild(en);
+        if (k.ko && /^[a-z]$/.test(k.en)) { var ko = document.createElement('span'); ko.className = 'k-ko'; ko.textContent = k.ko; el.appendChild(ko); }
+        rowEl.appendChild(el);
+        if (!keyEls[k.c]) keyEls[k.c] = el;
+      });
+      host.appendChild(rowEl);
+    });
+  }
+  function keyDownVisual(code, on) {
+    var el = keyEls[code];
+    if (!el) return;
+    el.classList.toggle('down', !!on);
+  }
+  function paintHeat() {
+    var maxErr = 1, maxUse = 1;
+    Object.keys(run.errs).forEach(function (c) { if (run.errs[c] > maxErr) maxErr = run.errs[c]; });
+    Object.keys(run.presses).forEach(function (c) { if (run.presses[c] > maxUse) maxUse = run.presses[c]; });
+    Object.keys(keyEls).forEach(function (code) {
+      var el = keyEls[code];
+      var e = run.errs[code] || 0;
+      var u = run.presses[code] || 0;
+      var heat = e ? clamp(e / maxErr, 0.12, 1) : 0;
+      el.style.setProperty('--heat', heat.toFixed(3));
+      el.classList.toggle('hot', heat > 0);
+      el.title = e ? (keyLabel(code) + ' · 오타 ' + e + '회 / 입력 ' + u + '회') : (u ? (keyLabel(code) + ' · 입력 ' + u + '회') : '');
+    });
+  }
+  function keyLabel(code) {
+    var label = code;
+    KB_ROWS.forEach(function (row) {
+      row.forEach(function (k) { if (k.c === code) label = (k.ko && /^[a-z]$/.test(k.en)) ? (k.en + ' ' + k.ko) : k.en; });
+    });
+    return label;
+  }
+  function clearHeat() {
+    Object.keys(keyEls).forEach(function (code) {
+      var el = keyEls[code];
+      el.style.setProperty('--heat', 0);
+      el.classList.remove('hot');
+      el.title = '';
+    });
+  }
+
+  /* ============================================================
+     타이핑 엔진
+     ============================================================ */
+  var inputEl = $('typeInput');
+  var typeText = $('typeText');
+  var typeSurface = $('typeSurface');
+  var typeCard = $('typeCard');
+  var caretEl = null;
+  var nodes = [];
+  var clsBase = [];
+
+  var run = {
+    mode: 'ko', sampleIdx: 0, title: '', target: '',
+    value: '', committed: '', comp: false, compLen: 0,
+    started: false, done: false, startAt: 0, finalMs: 0,
+    correct: 0, wrong: 0, errs: {}, presses: {}, lastCode: '',
+    points: [], peak: 0, timer: null, sampler: null, lastBadAt: 0, saved: false
+  };
+
+  function currentValue() { return (inputEl.value || '').replace(/\r/g, ''); }
+  function elapsed() {
+    if (!run.started) return 0;
+    if (run.done) return run.finalMs;
+    return performance.now() - run.startAt;
+  }
+  function metrics(final) {
+    var v = run.value;
+    var ms = elapsed();
+    var span = final ? Math.max(ms, 320) : ms;
+    var min = span / 60000;
+    var cpm = (final || ms > 900) && min > 0 ? v.length / min : 0;
+    var wpm = cpm / 5;
+    var strokes = run.correct + run.wrong;
+    var acc = strokes ? (run.correct / strokes) * 100 : 100;
+    return {
+      cpm: Math.round(cpm), wpm: Math.round(wpm), acc: acc,
+      typed: v.length, target: run.target.length,
+      secs: Math.round(ms / 100) / 10,
+      progress: run.target.length ? Math.round((v.length / run.target.length) * 100) : 0
+    };
+  }
+
+  function buildText(text) {
+    typeText.innerHTML = '';
+    nodes = [];
+    clsBase = [];
+    typeText.classList.toggle('code', run.mode === 'code');
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      var span = document.createElement('span');
+      var base = 'ch' + (ch === ' ' ? ' sp' : '');
+      span.className = base;
+      span.textContent = ch === ' ' ? '\u00a0' : ch;
+      typeText.appendChild(span);
+      nodes.push(span);
+      clsBase.push(base);
+    }
+    caretEl = document.createElement('span');
+    caretEl.className = 'caret';
+    typeText.appendChild(caretEl);
+  }
+
+  function renderStates(v) {
+    var from = run.comp ? Math.max(0, v.length - run.compLen) : v.length;
+    for (var i = 0; i < nodes.length; i++) {
+      var c = clsBase[i];
+      if (i < from) c += (v.charAt(i) === run.target.charAt(i) ? ' ok' : ' bad');
+      else if (i < v.length) c += ' comp';
+      if (nodes[i].className !== c) nodes[i].className = c;
+    }
+    var ci = Math.min(v.length, nodes.length);
+    var ref = nodes[ci] || null;
+    if (caretEl.parentNode !== typeText || caretEl.nextSibling !== ref || typeText.children[ci] !== caretEl) {
+      typeText.insertBefore(caretEl, ref);
+    }
+  }
+
+  function paintHud() {
+    var m = metrics();
+    var wpmEl = $('hudWpm');
+    if (wpmEl.textContent !== String(m.wpm)) {
+      wpmEl.textContent = m.wpm;
+      wpmEl.classList.remove('num-pop'); void wpmEl.offsetWidth; wpmEl.classList.add('num-pop');
+    }
+    $('hudCpm').textContent = m.cpm;
+    $('hudAcc').textContent = (run.correct + run.wrong) ? (Math.round(m.acc * 10) / 10) : 100;
+    $('hudTime').textContent = fmtTime(elapsed());
+    $('progressText').textContent = m.typed + ' / ' + m.target;
+    $('progressBar').style.width = clamp(m.progress, 0, 100) + '%';
+    $('sumTyped').textContent = m.typed;
+    $('sumErr').textContent = run.wrong;
+    $('sumProg').textContent = m.progress;
+    $('sumPeak').textContent = run.peak;
+    if (m.cpm > run.peak) { run.peak = m.cpm; $('sumPeak').textContent = run.peak; }
+    if (m.acc < 100 || run.wrong) {
+      $('hudAcc').style.color = m.acc >= 95 ? '' : '#e2504a';
+    } else {
+      $('hudAcc').style.color = '';
+    }
+  }
+
+  function flashError() {
+    if (!settings.shake) return;
+    var now = performance.now();
+    if (now - run.lastBadAt < 260) return;
+    run.lastBadAt = now;
+    typeCard.classList.remove('shk'); void typeCard.offsetWidth; typeCard.classList.add('shk');
+    playError();
+    hap(18);
+  }
+
+  function startTimer() {
+    if (run.started) return;
+    run.started = true;
+    run.startAt = performance.now();
+    run.timer = setInterval(function () { paintHud(); }, 250);
+    run.sampler = setInterval(function () {
+      var m = metrics();
+      run.points.push({ t: Math.round(elapsed() / 100) / 10, cpm: m.cpm, acc: Math.round(m.acc) });
+      if (run.points.length > 300) run.points.shift();
+      if (m.cpm > run.peak) run.peak = m.cpm;
+      drawLiveChart();
+    }, 500);
+  }
+  function stopTimer() {
+    if (run.timer) { clearInterval(run.timer); run.timer = null; }
+    if (run.sampler) { clearInterval(run.sampler); run.sampler = null; }
+  }
+
+  function autoIndent(v) {
+    if (run.mode !== 'code') return;
+    if (!v.length || v.charAt(v.length - 1) !== '\n') return;
+    if (run.target.indexOf(v) !== 0) return;
+    var idx = v.length, ind = '';
+    while (run.target.charAt(idx) === ' ') { ind += ' '; idx++; }
+    if (!ind) return;
+    inputEl.value = v + ind;
+    run.value = inputEl.value;
+    run.committed = inputEl.value;
+    renderStates(run.value);
+    paintHud();
+    moveCaretEnd();
+  }
+
+  function commit() {
+    if (run.done || !run.target) return;
+    var v = currentValue();
+    if (v.length > run.target.length) {
+      v = v.slice(0, run.target.length);
+      inputEl.value = v;
+    }
+    if (v.length > run.committed.length) {
+      for (var i = run.committed.length; i < v.length; i++) {
+        if (v.charAt(i) === run.target.charAt(i)) {
+          run.correct++;
+        } else {
+          run.wrong++;
+          var code = run.lastCode || '?';
+          run.errs[code] = (run.errs[code] || 0) + 1;
+          flashError();
+        }
+      }
+      if (!run.started) startTimer();
+    }
+    run.committed = v;
+    run.value = v;
+    renderStates(v);
+    paintHud();
+    paintHeat();
+    autoIndent(v);
+    if (run.value === run.target) finishRun();
+  }
+
+  function moveCaretEnd() {
+    try { var n = inputEl.value.length; inputEl.setSelectionRange(n, n); } catch (e) { }
+  }
+
+  function resetRun(text, title, mode, idx) {
+    stopTimer();
+    run.mode = mode || run.mode;
+    run.title = title || '';
+    run.sampleIdx = typeof idx === 'number' ? idx : -1;
+    run.target = (text || '').replace(/\r\n/g, '\n').replace(/\t/g, '  ').replace(/\u00a0/g, ' ');
+    while (run.target.charAt(run.target.length - 1) === '\n') run.target = run.target.slice(0, -1);
+    run.value = ''; run.committed = ''; run.comp = false; run.compLen = 0;
+    run.started = false; run.done = false; run.startAt = 0; run.finalMs = 0;
+    run.correct = 0; run.wrong = 0; run.errs = {}; run.presses = {}; run.lastCode = '';
+    run.points = []; run.peak = 0; run.saved = false;
+    inputEl.value = '';
+    inputEl.readOnly = false;
+    $('sampleTitle').textContent = run.title || '연습 준비';
+    $('modeBadge').textContent = MODE_LABEL[run.mode] || '연습';
+    $('sessionMode').textContent = MODE_LABEL[run.mode] + ' · ' + (run.target.length || 0) + '자';
+    $('progressText').textContent = '0 / ' + run.target.length;
+    $('progressBar').style.width = '0%';
+    if (!run.target.length) {
+      typeText.innerHTML = '';
+      nodes = []; clsBase = [];
+      var msg = document.createElement('p');
+      msg.className = 'text-[13px] font-bold text-neutral-400';
+      msg.textContent = '아래에 연습할 텍스트를 붙여 넣고 시작해 주세요.';
+      typeText.appendChild(msg);
+      caretEl = null;
+    } else {
+      buildText(run.target);
+      renderStates('');
+    }
+    clearHeat();
+    paintHud();
+    drawLiveChart();
+    typeSurface.classList.remove('done');
+  }
+
+  function finishRun() {
+    if (run.done) return;
+    run.done = true;
+    run.finalMs = Math.max(1, performance.now() - run.startAt);
+    stopTimer();
+    inputEl.readOnly = true;
+    try { inputEl.blur(); } catch (e) { }
+    var m = metrics(true);
+    var strokes = run.correct + run.wrong;
+    var acc = strokes ? Math.round((run.correct / strokes) * 1000) / 10 : 100;
+    var rec = {
+      id: 't' + Date.now() + '-' + Math.floor(Math.random() * 9999),
+      ts: Date.now(),
+      mode: run.mode,
+      title: run.title || MODE_LABEL[run.mode],
+      wpm: m.wpm, cpm: m.cpm, acc: acc,
+      errors: run.wrong, strokes: strokes,
+      total: run.target.length, secs: Math.round(run.finalMs / 100) / 10,
+      peak: run.peak,
+      errKeys: topErrKeys()
+    };
+    typeSurface.classList.add('done');
+    var prevBest = 0;
+    runs.forEach(function (r) { if (r.wpm > prevBest && r.mode === run.mode) prevBest = r.wpm; });
+    showResult(rec, prevBest);
+    try { Lemon.confetti(30); } catch (e) { }
+    hap(28);
+    playFinish();
+    saveRun(rec).then(function () {
+      rec.saved = true;
+      run.saved = true;
+      $('resSaveText').textContent = '기록을 저장했어요 · IndexedDB';
+      $('resSaveBadge').classList.add('flash-ok');
+      return refreshRuns();
+    }).catch(function () {
+      $('resSaveText').textContent = '저장하지 못했어요 · 브라우저 저장 공간 확인';
+      $('resSaveBadge').querySelector('span').style.background = '#e2504a';
+    });
+  }
+
+  function topErrKeys() {
+    var arr = Object.keys(run.errs).map(function (c) { return { k: c, n: run.errs[c] }; })
+      .sort(function (a, b) { return b.n - a.n; }).slice(0, 5);
+    return arr;
+  }
+
+  /* ---------------- 결과 모달 ---------------- */
+  function gradeOf(wpm) {
+    if (wpm >= 100) return { g: 'S', d: '완벽한 손끝' };
+    if (wpm >= 80) return { g: 'A', d: '매우 빠름' };
+    if (wpm >= 60) return { g: 'B', d: '안정권' };
+    if (wpm >= 45) return { g: 'C', d: '평균 이상' };
+    if (wpm >= 30) return { g: 'D', d: '기본기' };
+    return { g: 'E', d: '첫걸음' };
+  }
+  function showResult(rec, prevBest) {
+    var gr = gradeOf(rec.wpm);
+    $('resGrade').textContent = gr.g;
+    $('resSub').textContent = (MODE_LABEL[rec.mode] || '') + ' · ' + (rec.title || '') + ' · ' + gr.d;
+    $('resWpm').textContent = rec.wpm;
+    $('resCpm').textContent = rec.cpm;
+    $('resAcc').textContent = Math.round(rec.acc * 10) / 10;
+    $('resTime').textContent = fmtTime(rec.secs * 1000);
+    $('resErr').textContent = rec.errors;
+    $('resPeak').textContent = rec.peak;
+    $('resSaveText').textContent = '기록을 저장하는 중';
+    $('resSaveBadge').querySelector('span').style.background = 'var(--brand)';
+    var note = $('resBestNote');
+    note.classList.add('hidden');
+    if (prevBest && rec.wpm > prevBest) {
+      note.textContent = '이 모드 개인 최고 기록입니다. 이전 최고 ' + prevBest + ' WPM보다 ' + (rec.wpm - prevBest) + ' WPM 빨라요.';
+      note.classList.remove('hidden');
+    } else if (prevBest && rec.wpm === prevBest) {
+      note.textContent = '개인 최고 기록과 같은 속도입니다. 정확도를 1퍼센트만 더 올려 보세요.';
+      note.classList.remove('hidden');
+    }
+    openModal('resultModal');
+  }
+
+  /* ---------------- 뷰/모드 ---------------- */
+  function setModeUI() {
+    var seg = $('modeSeg');
+    Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-mode') === run.mode);
+    });
+    $('modeBadge').textContent = MODE_LABEL[run.mode] || '연습';
+    $('customPanel').classList.toggle('hidden', run.mode !== 'custom');
+    $('customText').value = Lemon.store.get(LS_CUSTOM, '') || '';
+    $('customLen').textContent = ($('customText').value || '').length;
+  }
+  function buildSelect(mode) {
+    var sel = $('sampleSelect');
+    sel.innerHTML = '';
+    if (mode === 'custom') {
+      var o = document.createElement('option');
+      o.value = '0'; o.textContent = '직접 입력한 텍스트';
+      sel.appendChild(o);
+      return;
+    }
+    (SAMPLES[mode] || []).forEach(function (s, i) {
+      var op = document.createElement('option');
+      op.value = String(i);
+      op.textContent = s.t + ' · ' + s.s;
+      sel.appendChild(op);
+    });
+  }
+  function rememberIdx(mode, idx) {
+    var map = Lemon.store.get(LS_LAST, {}) || {};
+    map[mode] = idx;
+    Lemon.store.set(LS_LAST, map);
+  }
+  function startSample(mode, idx) {
+    run.mode = mode;
+    setModeUI();
+    buildSelect(mode);
+    if (mode === 'custom') {
+      var txt = Lemon.store.get(LS_CUSTOM, '') || '';
+      if (!txt.trim()) {
+        resetRun('', '직접 입력한 텍스트', 'custom', 0);
+        goView('studio');
+        $('customPanel').classList.remove('hidden');
+        toast('아래 칸에 연습할 텍스트를 먼저 붙여 넣어 주세요', 'info');
+        setTimeout(function () { try { $('customText').focus(); } catch (e) { } }, 320);
+        return;
+      }
+      startRun(txt, '직접 입력한 텍스트', 'custom', 0);
+      return;
+    }
+    var list = SAMPLES[mode] || [];
+    var i = clamp(idx || 0, 0, list.length - 1);
+    var s = list[i];
+    run.sampleIdx = i;
+    $('sampleSelect').value = String(i);
+    rememberIdx(mode, i);
+    startRun(s.x, s.t, mode, i);
+  }
+  function startRun(text, title, mode, idx) {
+    goView('studio');
+    resetRun(text, title, mode, idx);
+    setModeUI();
+    setTimeout(function () {
+      try { inputEl.focus({ preventScroll: true }); moveCaretEnd(); } catch (e) { }
+    }, 280);
+  }
+  function nextSample() {
+    if (run.mode === 'custom') {
+      $('customPanel').classList.remove('hidden');
+      try { $('customText').focus(); } catch (e) { }
+      toast('직접 입력한 텍스트는 아래 칸에서 바꿀 수 있어요', 'info');
+      return;
+    }
+    var list = SAMPLES[run.mode] || [];
+    if (!list.length) return;
+    startSample(run.mode, ((run.sampleIdx < 0 ? 0 : run.sampleIdx) + 1) % list.length);
+  }
+
+  var goView = function () { };
+  function go(id) { try { goView(id); } catch (e) { } }
+
+  /* ============================================================
+     차트
+     ============================================================ */
+  function fitCanvas(cv) {
+    if (!cv) return null;
+    var box = cv.parentNode;
+    var w = box.clientWidth || 0;
+    var h = box.clientHeight || 0;
+    if (!w || !h) return null;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(h * dpr);
+    }
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx: ctx, w: w, h: h };
+  }
+
+  function drawLiveChart() {
+    var cv = $('liveChart');
+    var f = fitCanvas(cv);
+    if (!f) return;
+    var ctx = f.ctx, w = f.w, h = f.h;
+    var brand = cssVar('--brand', '#19c8a4');
+    var amber = cssVar('--brand-2', '#f0a838');
+    var dark = root.classList.contains('dark');
+    var grid = dark ? 'rgba(255,255,255,.08)' : 'rgba(18,21,26,.07)';
+    var label = dark ? 'rgba(255,255,255,.42)' : 'rgba(18,21,26,.42)';
+
+    ctx.strokeStyle = grid; ctx.lineWidth = 1;
+    for (var gy = 0; gy <= 3; gy++) {
+      var y = 8 + (h - 22) * (gy / 3);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    var pts = run.points.slice(-70);
+    if (pts.length < 2) {
+      ctx.fillStyle = label; ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(run.started ? '기록을 모으는 중' : '입력을 시작하면 실시간 타수가 그려집니다', w / 2, h / 2);
+      return;
+    }
+    var maxCpm = 60;
+    pts.forEach(function (p) { if (p.cpm > maxCpm) maxCpm = p.cpm; });
+    maxCpm = Math.ceil(maxCpm * 1.18 / 20) * 20;
+    var padL = 4, padR = 4, top = 8, bottom = 16;
+    function x(i) { return padL + (w - padL - padR) * (i / (pts.length - 1)); }
+    function yC(v) { return top + (h - top - bottom) * (1 - clamp(v / maxCpm, 0, 1)); }
+    function yA(v) { return top + (h - top - bottom) * (1 - clamp(v / 100, 0, 1)); }
+
+    var grad = ctx.createLinearGradient(0, top, 0, h - bottom);
+    grad.addColorStop(0, 'rgba(25,200,164,.34)');
+    grad.addColorStop(1, 'rgba(25,200,164,0)');
+    ctx.beginPath();
+    ctx.moveTo(x(0), yC(pts[0].cpm));
+    for (var i = 1; i < pts.length; i++) ctx.lineTo(x(i), yC(pts[i].cpm));
+    ctx.lineTo(x(pts.length - 1), h - bottom); ctx.lineTo(x(0), h - bottom); ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(x(0), yC(pts[0].cpm));
+    for (var j = 1; j < pts.length; j++) ctx.lineTo(x(j), yC(pts[j].cpm));
+    ctx.strokeStyle = brand; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x(0), yA(pts[0].acc));
+    for (var k = 1; k < pts.length; k++) ctx.lineTo(x(k), yA(pts[k].acc));
+    ctx.strokeStyle = amber; ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(x(pts.length - 1), yC(pts[pts.length - 1].cpm), 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = brand; ctx.fill();
+
+    ctx.fillStyle = label; ctx.font = '9px ui-monospace, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(maxCpm + ' CPM', 2, 10);
+    ctx.textAlign = 'right';
+    ctx.fillText(pts[pts.length - 1].t.toFixed(1) + 's', w - 2, h - 4);
+  }
+
+  function dayBuckets(rangeDays) {
+    var map = {};
+    runs.forEach(function (r) {
+      var d = new Date(r.ts);
+      var k = dateKey(d);
+      if (!map[k]) map[k] = { key: k, n: 0, wpm: 0, acc: 0, date: d };
+      map[k].n++; map[k].wpm += r.wpm || 0; map[k].acc += r.acc || 0;
+    });
+    var out = [];
+    var end = new Date();
+    end.setHours(0, 0, 0, 0);
+    var start;
+    if (rangeDays > 0) {
+      start = new Date(end);
+      start.setDate(start.getDate() - (rangeDays - 1));
+    } else {
+      var keys = Object.keys(map).sort();
+      if (!keys.length) return [];
+      start = new Date(keys[0] + 'T00:00:00');
+      var span = Math.round((end - start) / 86400000) + 1;
+      if (span > 120) start = new Date(end.getTime() - 119 * 86400000);
+    }
+    var cursor = new Date(start);
+    while (cursor <= end) {
+      var kk = dateKey(cursor);
+      var b = map[kk];
+      out.push({
+        key: kk,
+        label: (cursor.getMonth() + 1) + '/' + cursor.getDate(),
+        wpm: b ? b.wpm / b.n : 0,
+        acc: b ? b.acc / b.n : 0,
+        n: b ? b.n : 0
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return out;
+  }
+
+  var chartRange = 7;
+
+  function drawDayChart() {
+    var cv = $('dayChart');
+    var f = fitCanvas(cv);
+    if (!f) return;
+    var ctx = f.ctx, w = f.w, h = f.h;
+    var brand = cssVar('--brand', '#19c8a4');
+    var amber = cssVar('--brand-2', '#f0a838');
+    var dark = root.classList.contains('dark');
+    var grid = dark ? 'rgba(255,255,255,.08)' : 'rgba(18,21,26,.07)';
+    var label = dark ? 'rgba(255,255,255,.45)' : 'rgba(18,21,26,.45)';
+
+    var buckets = dayBuckets(chartRange);
+    if ($('chartSamples')) $('chartSamples').textContent = buckets.filter(function (b) { return b.n; }).length;
+    var padL = 26, padR = 8, top = 10, bottom = 20;
+    var innerW = w - padL - padR, innerH = h - top - bottom;
+
+    var maxWpm = 40;
+    buckets.forEach(function (b) { if (b.wpm > maxWpm) maxWpm = b.wpm; });
+    maxWpm = Math.ceil(maxWpm * 1.15 / 20) * 20;
+
+    ctx.strokeStyle = grid; ctx.lineWidth = 1;
+    ctx.font = '9px ui-monospace, monospace'; ctx.fillStyle = label;
+    for (var g = 0; g <= 3; g++) {
+      var y = top + innerH * (g / 3);
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.textAlign = 'right';
+      ctx.fillText(String(Math.round(maxWpm * (1 - g / 3))), padL - 4, y + 3);
+    }
+
+    if (!buckets.length || !runs.length) {
+      ctx.fillStyle = label; ctx.font = '11px ui-monospace, monospace'; ctx.textAlign = 'center';
+      ctx.fillText('기록이 쌓이면 성장 추이가 그려집니다', w / 2, top + innerH / 2);
+      if (!runs.length) { if ($('chartSamples')) $('chartSamples').textContent = '0'; return; }
+    }
+
+    var slot = innerW / buckets.length;
+    var barW = Math.max(3, Math.min(18, slot * 0.58));
+    buckets.forEach(function (b, i) {
+      var xc = padL + slot * (i + 0.5);
+      var bh = innerH * clamp(b.wpm / maxWpm, 0, 1);
+      var yTop = top + innerH - bh;
+      var grad = ctx.createLinearGradient(0, yTop, 0, top + innerH);
+      grad.addColorStop(0, b.n ? 'rgba(92,227,196,.95)' : 'rgba(120,140,160,.16)');
+      grad.addColorStop(1, b.n ? 'rgba(25,200,164,.55)' : 'rgba(120,140,160,.06)');
+      ctx.fillStyle = grad;
+      var rr = Math.min(3, barW / 2, bh / 2);
+      ctx.beginPath();
+      if (bh <= 0.5) {
+        ctx.rect(xc - barW / 2, top + innerH - 1.5, barW, 1.5);
+      } else {
+        ctx.moveTo(xc - barW / 2, top + innerH);
+        ctx.lineTo(xc - barW / 2, yTop + rr);
+        ctx.quadraticCurveTo(xc - barW / 2, yTop, xc - barW / 2 + rr, yTop);
+        ctx.lineTo(xc + barW / 2 - rr, yTop);
+        ctx.quadraticCurveTo(xc + barW / 2, yTop, xc + barW / 2, yTop + rr);
+        ctx.lineTo(xc + barW / 2, top + innerH);
+        ctx.closePath();
+      }
+      ctx.fill();
+    });
+
+    var accPts = buckets.map(function (b, i) {
+      return { x: padL + slot * (i + 0.5), y: top + innerH * (1 - clamp(b.acc / 100, 0, 1)), n: b.n };
+    }).filter(function (p) { return p.n; });
+    if (accPts.length > 1) {
+      ctx.beginPath();
+      accPts.forEach(function (p, i) { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+      ctx.strokeStyle = amber; ctx.lineWidth = 1.6; ctx.stroke();
+      accPts.forEach(function (p) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI * 2); ctx.fillStyle = amber; ctx.fill();
+      });
+    } else if (accPts.length === 1) {
+      ctx.beginPath(); ctx.arc(accPts[0].x, accPts[0].y, 2.4, 0, Math.PI * 2); ctx.fillStyle = amber; ctx.fill();
+    }
+
+    var step = Math.ceil(buckets.length / (w < 420 ? 5 : 9));
+    ctx.fillStyle = label; ctx.font = '9px ui-monospace, monospace'; ctx.textAlign = 'center';
+    buckets.forEach(function (b, i) {
+      if (i % step === 0 || i === buckets.length - 1) ctx.fillText(b.label, padL + slot * (i + 0.5), h - 5);
+    });
+  }
+
+  /* ============================================================
+     기록 목록
+     ============================================================ */
+  var filter = 'all', showLimit = 60;
+
+  function renderRunList() {
+    var host = $('runList');
+    host.innerHTML = '';
+    var list = runs.filter(function (r) { return filter === 'all' || r.mode === filter; });
+    $('runEmpty').classList.toggle('hidden', list.length > 0);
+    if (!list.length) {
+      host.appendChild(document.createElement('div'));
+      return;
+    }
+    var shown = list.slice(0, showLimit);
+    shown.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'run-row';
+      var accColor = (r.acc || 0) >= 97 ? 'color:var(--brand)' : ((r.acc || 0) >= 90 ? '' : 'color:#e2504a');
+      row.innerHTML =
+        '<div class="min-w-0">' +
+          '<div class="flex items-center gap-1.5">' +
+            '<span class="text-[9px] font-mono px-1.5 py-0.5 rounded font-bold shrink-0" style="background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand-deep)">' + esc(MODE_LABEL[r.mode] || '연습') + '</span>' +
+            '<span class="text-[11.5px] font-bold truncate">' + esc(r.title || '') + '</span>' +
+          '</div>' +
+          '<p class="text-[10px] text-neutral-400 mt-0.5">' + esc(Lemon.timeAgo ? Lemon.timeAgo(r.ts) : new Date(r.ts).toLocaleDateString()) + ' · ' + (r.total || 0) + '자 · ' + fmtTime((r.secs || 0) * 1000) + '</p>' +
+        '</div>' +
+        '<div class="text-right"><span class="run-num">' + (r.wpm || 0) + '</span><span class="text-[9px] font-bold text-neutral-400 ml-0.5">WPM</span></div>' +
+        '<div class="text-right"><span class="run-num">' + (r.cpm || 0) + '</span><span class="text-[9px] font-bold text-neutral-400 ml-0.5">CPM</span></div>' +
+        '<div class="text-right"><span class="run-num" style="' + accColor + '">' + (Math.round((r.acc || 0) * 10) / 10) + '</span><span class="text-[9px] font-bold text-neutral-400 ml-0.5">%</span></div>' +
+        '<div class="text-right drop-col"><span class="run-num text-neutral-400">' + (r.errors || 0) + '</span></div>' +
+        '<div class="text-right"><button class="icon-btn !w-7 !h-7 !rounded-lg" data-del="' + esc(r.id) + '" aria-label="기록 삭제"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg></button></div>';
+      host.appendChild(row);
+    });
+    if (list.length > shown.length) {
+      var more = document.createElement('button');
+      more.className = 'w-full text-[11px] font-bold text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 py-2.5';
+      more.textContent = '더 보기 (' + (list.length - shown.length) + '판 남음)';
+      more.addEventListener('click', function () { showLimit += 60; renderRunList(); });
+      host.appendChild(more);
+    }
+    host.querySelectorAll('[data-del]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-del');
+        b.closest('.run-row').classList.add('pop-out');
+        setTimeout(function () {
+          idbDelete(id).catch(function () {
+            var list2 = lsRuns().filter(function (x) { return x.id !== id; });
+            lsSave(list2);
+          }).then(function () { showLimit = Math.max(showLimit, 60); return refreshRuns(); });
+          toast('기록 한 판을 지웠어요', 'info');
+        }, 190);
+      });
+    });
+  }
+
+  /* ============================================================
+     모달
+     ============================================================ */
+  var confirmCb = null;
+  function openModal(id) {
+    var el = $(id);
+    if (!el) return;
+    el.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal(id) {
+    var el = $(id);
+    if (!el) return;
+    el.classList.remove('open');
+    if (!$('resultModal').classList.contains('open') && !$('confirmModal').classList.contains('open')) {
+      document.body.style.overflow = '';
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-close]');
+    if (c) { closeModal(c.closest('.modal').id); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if ($('confirmModal').classList.contains('open')) closeModal('confirmModal');
+      else if ($('resultModal').classList.contains('open')) closeModal('resultModal');
+    }
+  });
+  function confirmDialog(title, body, okLabel, cb) {
+    $('cfTitle').textContent = title;
+    $('cfBody').textContent = body;
+    $('btnConfirmYes').textContent = okLabel || '확인';
+    confirmCb = cb;
+    openModal('confirmModal');
+  }
+
+  /* ============================================================
+     입력 이벤트
+     ============================================================ */
+  inputEl.addEventListener('compositionstart', function () {
+    run.comp = true;
+    run.compLen = 1;
+  });
+  inputEl.addEventListener('compositionupdate', function (e) {
+    run.comp = true;
+    run.compLen = (e.data || '').length || 1;
+    run.value = currentValue();
+    renderStates(run.value);
+    paintHud();
+  });
+  inputEl.addEventListener('compositionend', function () {
+    run.comp = false;
+    run.compLen = 0;
+    setTimeout(function () { commit(); }, 0);
+  });
+  inputEl.addEventListener('input', function (e) {
+    if (e.isComposing) {
+      run.comp = true;
+      run.value = currentValue();
+      renderStates(run.value);
+      paintHud();
+      return;
+    }
+    run.comp = false;
+    commit();
+  });
+  inputEl.addEventListener('paste', function (e) {
+    e.preventDefault();
+    toast('연습 중에는 붙여넣기를 쓸 수 없어요. 직접 쳐 주세요', 'info');
+  });
+  inputEl.addEventListener('focus', function () { typeSurface.classList.add('focused'); moveCaretEnd(); });
+  inputEl.addEventListener('blur', function () { typeSurface.classList.remove('focused'); });
+  inputEl.addEventListener('click', function () { moveCaretEnd(); });
+  typeSurface.addEventListener('pointerdown', function (e) {
+    if (e.target === typeSurface || e.target === typeText) {
+      try { inputEl.focus({ preventScroll: true }); moveCaretEnd(); } catch (er) { }
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (document.activeElement !== inputEl || run.done) return;
+    var code = e.code || '';
+    if (code) {
+      run.presses[code] = (run.presses[code] || 0) + 1;
+      run.lastCode = code;
+      keyDownVisual(code, true);
+      playClick(code, e.repeat);
+    }
+    if (e.key === 'Enter' && run.mode !== 'code') {
+      e.preventDefault();
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      var s = inputEl.selectionStart, t = inputEl.selectionEnd;
+      try {
+        inputEl.setRangeText('  ', s, t, 'end');
+        commit();
+      } catch (er) { }
+    }
+    if (e.key === 'Escape') { try { inputEl.blur(); } catch (er) { } }
+    paintHeat();
+  });
+  document.addEventListener('keyup', function (e) {
+    if (e.code) keyDownVisual(e.code, false);
+  });
+
+  /* ============================================================
+     화면 이벤트 · 컨트롤
+     ============================================================ */
+  function bindControls() {
+    document.querySelectorAll('[data-tab]').forEach(function (b) { });
+    document.querySelectorAll('[data-goto]').forEach(function (b) {
+      b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+    });
+    document.querySelectorAll('[data-start]').forEach(function (b) {
+      b.addEventListener('click', function () { startSample(b.getAttribute('data-start'), 0); });
+    });
+
+    $('modeSeg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-mode]');
+      if (!b) return;
+      var mode = b.getAttribute('data-mode');
+      if (mode === run.mode && run.target) { setModeUI(); return; }
+      var last = (Lemon.store.get(LS_LAST, {}) || {})[mode] || 0;
+      startSample(mode, last);
+    });
+    $('sampleSelect').addEventListener('change', function () {
+      startSample(run.mode, Number(this.value) || 0);
+    });
+    $('btnNextSample').addEventListener('click', nextSample);
+    $('btnRestart').addEventListener('click', function () {
+      if (!run.target) { toast('연습할 문장이 없어요', 'info'); return; }
+      resetRun(run.target, run.title, run.mode, run.sampleIdx);
+      closeModal('resultModal');
+      try { inputEl.focus({ preventScroll: true }); moveCaretEnd(); } catch (e) { }
+      hap(8);
+    });
+    $('btnSettings').addEventListener('click', function () {
+      $('settingsPanel').classList.toggle('hidden');
+    });
+    $('btnKbToggle').addEventListener('click', function () {
+      settings.kb = !settings.kb;
+      saveSettings();
+      applyKb();
+    });
+    $('switchKb').addEventListener('click', function () {
+      settings.kb = !settings.kb;
+      saveSettings();
+      applyKb();
+    });
+    $('switchShake').addEventListener('click', function () {
+      settings.shake = !settings.shake;
+      saveSettings();
+      applyShake();
+    });
+    $('volRange').addEventListener('input', function () {
+      settings.vol = Number(this.value) || 0;
+      $('volLabel').textContent = settings.vol + '%';
+      saveSettings();
+      try { Lemon.refreshRange(this); } catch (e) { }
+    });
+    document.querySelectorAll('#setSoundSeg button, #homeSoundSeg button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        settings.sound = b.getAttribute('data-sound');
+        if (settings.sound === 'none' && settings.vol === 0) settings.vol = 50;
+        saveSettings();
+        applySound();
+        if (settings.sound !== 'none') playClick('KeyA', false);
+        toast(settings.sound === 'blue' ? '청축 타건음으로 바꿨어요' : settings.sound === 'red' ? '적축 타건음으로 바꿨어요' : '타건음을 껐어요', 'info');
+      });
+    });
+    $('btnPreviewSound').addEventListener('click', function () {
+      if (settings.sound === 'none') { toast('지금은 무음이에요. 청축이나 적축을 골라 주세요', 'info'); return; }
+      var seq = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'Space'];
+      seq.forEach(function (c, i) { setTimeout(function () { playClick(c, false); }, i * 130); });
+    });
+    $('btnSoundTop').addEventListener('click', function () {
+      settings.sound = settings.sound === 'none' ? 'blue' : 'none';
+      saveSettings();
+      applySound();
+      if (settings.sound !== 'none') playClick('KeyA', false);
+      toast(settings.sound === 'none' ? '타건음을 껐어요' : '청축 타건음을 켰어요', 'info');
+    });
+
+    $('customText').addEventListener('input', function () {
+      $('customLen').textContent = (this.value || '').length;
+    });
+    $('btnUseCustom').addEventListener('click', function () {
+      var txt = $('customText').value || '';
+      if (txt.trim().length < 10) { toast('10자 이상 입력해 주세요', 'err'); return; }
+      Lemon.store.set(LS_CUSTOM, txt);
+      resetRun(txt, '직접 입력한 텍스트', 'custom', 0);
+      toast('내 텍스트로 연습을 시작합니다', 'ok');
+      setTimeout(function () { try { inputEl.focus({ preventScroll: true }); moveCaretEnd(); } catch (e) { } }, 200);
+    });
+    $('btnClearCustom').addEventListener('click', function () {
+      $('customText').value = '';
+      $('customLen').textContent = '0';
+      Lemon.store.set(LS_CUSTOM, '');
+      resetRun('', '직접 입력한 텍스트', 'custom', 0);
+      toast('직접 입력한 텍스트를 지웠어요', 'info');
+    });
+
+    $('rangeSeg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-range]');
+      if (!b) return;
+      chartRange = Number(b.getAttribute('data-range'));
+      this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      drawDayChart();
+    });
+    $('filterSeg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-filter]');
+      if (!b) return;
+      filter = b.getAttribute('data-filter');
+      this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      renderRunList();
+    });
+
+    $('btnResRetry').addEventListener('click', function () {
+      closeModal('resultModal');
+      resetRun(run.target, run.title, run.mode, run.sampleIdx);
+      try { inputEl.focus({ preventScroll: true }); moveCaretEnd(); } catch (e) { }
+    });
+    $('btnResNext').addEventListener('click', function () {
+      closeModal('resultModal');
+      nextSample();
+    });
+    $('btnResRecords').addEventListener('click', function () {
+      closeModal('resultModal');
+      go('records');
+    });
+
+    $('btnExport').addEventListener('click', function () {
+      if (!runs.length) { toast('내보낼 기록이 없어요', 'info'); return; }
+      var payload = { app: 'lemon-typing', version: 1, exportedAt: Date.now(), runs: runs };
+      var d = new Date();
+      var name = 'lemon-typing-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '.json';
+      try {
+        Lemon.downloadBlob(name, new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+        toast('기록 ' + runs.length + '판을 JSON으로 내보냈어요');
+      } catch (e) { toast('내보내기에 실패했어요', 'err'); }
+    });
+    $('btnImport').addEventListener('click', function () { $('importFile').click(); });
+    $('importFile').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var data = JSON.parse(String(reader.result || '{}'));
+          var list = Array.isArray(data) ? data : (data.runs || []);
+          if (!Array.isArray(list) || !list.length) throw new Error('empty');
+          var have = {};
+          runs.forEach(function (r) { have[r.id] = true; });
+          var added = 0;
+          var chain = Promise.resolve();
+          list.forEach(function (r) {
+            if (!r || typeof r.ts !== 'number' || have[r.id]) return;
+            r.id = r.id || ('t' + r.ts + '-' + Math.floor(Math.random() * 9999));
+            chain = chain.then(function () { added++; return saveRun(r); });
+          });
+          chain.then(function () {
+            return refreshRuns();
+          }).then(function () {
+            toast(added + '판의 기록을 가져왔어요');
+          });
+        } catch (e) {
+          toast('백업 파일을 읽지 못했어요', 'err');
+        }
+        $('importFile').value = '';
+      };
+      reader.readAsText(f);
+    });
+    $('btnClearAll').addEventListener('click', function () {
+      if (!runs.length) { toast('지울 기록이 없어요', 'info'); return; }
+      confirmDialog('기록을 모두 지울까요?', '이 브라우저에 저장된 연습 기록 ' + runs.length + '판이 사라집니다. 되돌릴 수 없으니 필요하면 먼저 JSON으로 백업해 주세요.', '모두 지우기', function () {
+        idbClear().catch(function () { lsSave([]); }).then(function () {
+          refreshRuns();
+          toast('모든 기록을 지웠어요', 'info');
+        });
+      });
+    });
+    $('btnConfirmYes').addEventListener('click', function () {
+      closeModal('confirmModal');
+      if (typeof confirmCb === 'function') confirmCb();
+      confirmCb = null;
+    });
+  }
+
+  function applySound() {
+    document.querySelectorAll('#setSoundSeg button, #homeSoundSeg button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-sound') === settings.sound);
+    });
+    var ico = $('icoSoundTop');
+    if (ico) ico.setAttribute('href', settings.sound === 'none' ? '#i-mute' : '#i-volume');
+    $('volRange').value = String(settings.vol);
+    $('volLabel').textContent = settings.vol + '%';
+    try { Lemon.refreshRange($('volRange')); } catch (e) { }
+  }
+  function applyKb() {
+    $('kbPanel').classList.toggle('hidden', !settings.kb);
+    $('btnKbToggle').classList.toggle('on', !!settings.kb);
+    $('switchKb').classList.toggle('on', !!settings.kb);
+    $('switchKb').setAttribute('aria-checked', settings.kb ? 'true' : 'false');
+  }
+  function applyShake() {
+    $('switchShake').classList.toggle('on', !!settings.shake);
+    $('switchShake').setAttribute('aria-checked', settings.shake ? 'true' : 'false');
+  }
+
+  /* ============================================================
+     홈 히어로 키캡 애니메이션
+     ============================================================ */
+  var heroCells = [];
+  function buildHeroDeck() {
+    var rows = [
+      'L E M O N T Y P I N G'.split(' '),
+      'A S D F G H J K L'.split(' '),
+      'Z X C V B N M'.split(' ')
+    ];
+    ['heroRow1', 'heroRow2', 'heroRow3'].forEach(function (id, r) {
+      var host = $(id);
+      if (!host) return;
+      host.innerHTML = '';
+      if (r === 2) {
+        var sh1 = document.createElement('div'); sh1.className = 'dcap wide'; sh1.textContent = 'SHIFT'; host.appendChild(sh1);
+        heroCells.push(sh1);
+      }
+      rows[r].forEach(function (ch) {
+        var d = document.createElement('div');
+        d.className = 'dcap';
+        d.textContent = ch;
+        host.appendChild(d);
+        heroCells.push(d);
+      });
+      if (r === 0) {
+        var bs = document.createElement('div'); bs.className = 'dcap wide'; bs.textContent = 'DEL'; host.appendChild(bs); heroCells.push(bs);
+      }
+      if (r === 2) {
+        var sh2 = document.createElement('div'); sh2.className = 'dcap wide'; sh2.textContent = 'SHIFT'; host.appendChild(sh2); heroCells.push(sh2);
+      }
+    });
+    setInterval(function () {
+      if (document.hidden) return;
+      if (!heroCells.length) return;
+      var homeView = document.querySelector('[data-view="home"]');
+      if (!homeView || homeView.classList.contains('hidden')) return;
+      var el = heroCells[Math.floor(Math.random() * heroCells.length)];
+      if (!el) return;
+      var cls = Math.random() < 0.18 ? 'amber' : 'lit';
+      el.classList.add(cls);
+      setTimeout(function () { el.classList.remove('lit', 'amber'); }, 150 + Math.random() * 120);
+    }, 420);
+  }
+
+  /* ============================================================
+     부트
+     ============================================================ */
+  function boot() {
+    buildKeyboard();
+    buildHeroDeck();
+    bindControls();
+    applySound();
+    applyKb();
+    applyShake();
+    setModeUI();
+
+    goView = (Lemon.initTabs && Lemon.initTabs('home')) || function () { };
+
+    document.addEventListener('lemon:view', function (e) {
+      var v = e.detail && e.detail.view;
+      if (v === 'studio') {
+        drawLiveChart();
+        setTimeout(function () { drawLiveChart(); drawDayChart(); }, 60);
+      }
+      if (v === 'records') {
+        refreshRuns().then(function () { setTimeout(drawDayChart, 30); });
+      }
+      if (v === 'home') {
+        setTimeout(function () { drawLiveChart(); }, 40);
+      }
+    });
+    document.addEventListener('lemon:theme', function () {
+      setTimeout(function () { drawLiveChart(); drawDayChart(); }, 30);
+    });
+    window.addEventListener('resize', function () {
+      drawLiveChart(); drawDayChart();
+    });
+
+    refreshRuns();
+
+    var last = (Lemon.store.get(LS_LAST, {}) || {});
+    buildSelect('ko');
+    var idx = clamp(last.ko || 0, 0, SAMPLES.ko.length - 1);
+    var s = SAMPLES.ko[idx];
+    run.sampleIdx = idx;
+    $('sampleSelect').value = String(idx);
+    resetRun(s.x, s.t, 'ko', idx);
+    drawDayChart();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  /* 테스트·디버그용 읽기 전용 훅 */
+  window.Typing = {
+    start: function (mode, idx) { startSample(mode || 'ko', idx || 0); },
+    next: nextSample,
+    go: go,
+    snapshot: function () {
+      var m = metrics();
+      return {
+        mode: run.mode, target: run.target, value: run.value, done: run.done, started: run.started,
+        wpm: m.wpm, cpm: m.cpm, acc: m.acc, typed: m.typed, progress: m.progress,
+        correct: run.correct, wrong: run.wrong, errs: run.errs, presses: run.presses,
+        points: run.points.length, saved: run.saved
+      };
+    },
+    records: function () { return runs; },
+    reload: refreshRuns
+  };
+})();
+</script>
+</body>
+</html>
