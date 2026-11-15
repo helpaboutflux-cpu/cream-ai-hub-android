@@ -1,0 +1,3087 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Quiz — 오답노트·플래시카드 스마트 퀴즈 스튜디오</title>
+<meta name="description" content="객관식 4지선다·단답·빈칸·OX·플래시카드를 한 곳에서 만들고, 틀린 문제는 자동으로 오답노트에 쌓입니다. 제한시간·셔플·해설 피드백, IndexedDB 영구 보관, #view= 링크 공유와 JSON 백업까지. 서버도 계정도 없는 무료 퀴즈 스튜디오.">
+<meta name="theme-color" content="#0b1220">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230f1b33'/%3E%3Crect x='5' y='4' width='12' height='16' rx='2' fill='none' stroke='%23c9a227' stroke-width='1.4'/%3E%3Cpath d='M8 8.5h6M8 12h6M8 15.5h3.5' stroke='%23e8e2d2' stroke-width='1.3' stroke-linecap='round'/%3E%3Cpath d='M17.5 9.5l1.4 1.4 2.4-2.6' fill='none' stroke='%23e2603f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#0b0d12', 900: '#111827', 850: '#161d2b', 800: '#26303f', 700: '#374356', 200: '#e4e4de', 100: '#f0efe9' },
+    brand: { 50: '#eef2fa', 100: '#d6e0f2', 200: '#adc0e3', 300: '#7f9acb', 400: '#5573a8', 500: '#36528a', 600: '#243d6d', 700: '#1a2e55', 800: '#142444', 900: '#0f1b33', 950: '#080f1f' },
+    gold: { 50: '#fbf7e9', 100: '#f5ebc8', 200: '#ecd894', 300: '#e2c25e', 400: '#d5ad3b', 500: '#c9a227', 600: '#a8821c', 700: '#836317', 800: '#5f4814', 900: '#463511' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #1b2c52;
+    --brand-2: #c9a227;
+    --brand-deep: #101d38;
+    --gold: #c9a227;
+    --coral: #e2603f;
+    --good: #24795e;
+    --ink: #141a24;
+    --paper: #f7f5ee;
+    --panel: #fffdf8;
+    --line: #e5dfd0;
+    --muted: #6d6a5f;
+    --soft: #efeade;
+  }
+  .dark {
+    --brand: #3a5588;
+    --brand-2: #d9b34a;
+    --brand-deep: #0f1b33;
+    --gold: #d9b34a;
+    --coral: #f0795c;
+    --good: #54c09a;
+    --ink: #e9e6da;
+    --paper: #0b0d12;
+    --panel: #12161f;
+    --line: #283140;
+    --muted: #9299a6;
+    --soft: #1a202c;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+    letter-spacing: -.015em;
+    background-color: var(--paper);
+    color: var(--ink);
+    overflow-x: hidden;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .dark body { background-color: #0b0d12; color: #e9e6da; }
+  ::selection { background: var(--gold); color: #171307; }
+  .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+  .primary-btn { background-image: linear-gradient(135deg, #1b2c52 0%, #243c68 58%, #2f4d82 100%); box-shadow: 0 14px 30px -14px rgba(27,44,82,.55); }
+  .dark .primary-btn { background-image: linear-gradient(135deg, #c9a227 0%, #e2c25e 100%); color: #1c1608; box-shadow: 0 14px 30px -14px rgba(201,162,39,.55); }
+  .dark .primary-btn:hover { filter: brightness(1.06); }
+  .ico-brand { color: var(--brand-deep); }
+  .dark .ico-brand { color: #a9bde2; }
+  .serif { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Nanum Myeongjo", "Noto Serif KR", serif; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .smallcaps { font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .dark .smallcaps { color: #939bab; }
+
+  /* ---------- paper stage ---------- */
+  .stage-lines {
+    position: fixed; inset: 0; pointer-events: none; z-index: -1;
+    background-image:
+      linear-gradient(rgba(27, 44, 82, .045) 1px, transparent 1px);
+    background-size: 100% 34px;
+    mask-image: radial-gradient(80% 62% at 50% 0%, #000 10%, transparent 100%);
+    -webkit-mask-image: radial-gradient(80% 62% at 50% 0%, #000 10%, transparent 100%);
+  }
+  .dark .stage-lines { background-image: linear-gradient(rgba(217, 179, 74, .07) 1px, transparent 1px); }
+  .brand-wash {
+    background:
+      radial-gradient(58% 44% at 6% -6%, rgba(27, 44, 82, .12), transparent 72%),
+      radial-gradient(46% 38% at 94% 4%, rgba(201, 162, 39, .16), transparent 74%);
+  }
+  .dark .brand-wash {
+    background:
+      radial-gradient(58% 44% at 6% -6%, rgba(58, 85, 136, .30), transparent 72%),
+      radial-gradient(46% 38% at 94% 4%, rgba(217, 179, 74, .13), transparent 74%);
+  }
+
+  /* ---------- header ---------- */
+  .site-head { background: rgba(247,245,238,.86); backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%); }
+  .dark .site-head { background: rgba(11,13,18,.86); }
+  .site-nav { background: rgba(247,245,238,.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .dark .site-nav { background: rgba(11,13,18,.92); }
+  .icon-btn {
+    width: 2.25rem; height: 2.25rem; border-radius: .8rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); background: rgba(255,253,248,.8); color: #4a4f5c;
+    transition: transform .18s ease, color .2s ease, border-color .2s ease, background .2s ease;
+  }
+  .dark .icon-btn { border-color: #283140; background: rgba(18,22,31,.8); color: #a3abba; }
+  .icon-btn:hover { color: var(--brand-deep); border-color: color-mix(in srgb, var(--gold) 62%, transparent); }
+  .dark .icon-btn:hover { color: var(--gold); }
+  .icon-btn:active { transform: scale(.92); }
+
+  .nav-tabs { display: flex; gap: .3rem; overflow-x: auto; padding: .42rem 0; scrollbar-width: none; }
+  .nav-tabs::-webkit-scrollbar { display: none; }
+  .nav-tab {
+    display: inline-flex; align-items: center; gap: .42rem; white-space: nowrap;
+    padding: .5rem .82rem; border-radius: .7rem; font-size: 12.5px; font-weight: 700;
+    color: #5d6270; transition: background .2s ease, color .2s ease, transform .16s ease;
+  }
+  .dark .nav-tab { color: #9aa3b3; }
+  .nav-tab svg { width: .95rem; height: .95rem; }
+  .nav-tab:hover { background: rgba(20,26,36,.06); color: #141a24; }
+  .dark .nav-tab:hover { background: rgba(255,255,255,.07); color: #fff; }
+  .nav-tab:active { transform: scale(.96); }
+  .nav-tab.nav-on, .nav-tab.nav-on:hover {
+    color: var(--brand-deep) !important;
+    background-color: color-mix(in srgb, var(--gold) 24%, transparent);
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+  .dark .nav-tab.nav-on, .dark .nav-tab.nav-on:hover { color: #f4e3ab !important; background-color: color-mix(in srgb, var(--gold) 20%, transparent); }
+  .nav-dot { width: .32rem; height: .32rem; border-radius: 9999px; background: currentColor; opacity: 0; }
+  .nav-tab.nav-on .nav-dot { opacity: 1; }
+
+  /* ---------- index card ---------- */
+  .index-card {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: .35rem .35rem .8rem .8rem;
+    box-shadow: 0 1px 0 rgba(16,20,28,.03), 0 16px 34px -30px rgba(16,20,28,.5);
+  }
+  .index-card::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px;
+    border-radius: .35rem .35rem 0 0;
+    background: linear-gradient(90deg, var(--brand) 0%, var(--brand) 58%, var(--gold) 58%, var(--gold) 100%);
+    opacity: .92;
+  }
+  .index-card.coral::before { background: linear-gradient(90deg, var(--coral) 0%, var(--coral) 58%, var(--gold) 58%, var(--gold) 100%); }
+  .card-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: .1em; color: var(--muted); }
+  .ruled { background-image: repeating-linear-gradient(to bottom, transparent 0 31px, color-mix(in srgb, var(--line) 78%, transparent) 31px 32px); }
+
+  /* ---------- deck visual ---------- */
+  .deck-wrap { position: relative; height: 320px; perspective: 1100px; }
+  .deck-card {
+    position: absolute; inset: 0; margin: auto;
+    width: min(100%, 340px); height: 232px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: .55rem .55rem 1rem 1rem;
+    box-shadow: 0 24px 46px -30px rgba(10,14,22,.62);
+    padding: 1rem 1.05rem;
+    transition: transform .5s cubic-bezier(.22,1,.36,1), box-shadow .5s ease;
+  }
+  .deck-card::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px; border-radius: .55rem .55rem 0 0;
+    background: linear-gradient(90deg, var(--brand) 0%, var(--brand) 62%, var(--gold) 62%);
+  }
+  .deck-c2::before, .deck-c3::before { display: none; }
+  .deck-c3 { transform: translateY(-22px) rotate(-6deg) scale(.94); opacity: .5; }
+  .deck-c2 { transform: translateY(-11px) rotate(-3deg) scale(.97); opacity: .78; }
+  .deck-c1 { transform: translateY(0) rotate(0); }
+  .deck-wrap:hover .deck-c1 { transform: translateY(-6px) rotate(.6deg); box-shadow: 0 34px 60px -34px rgba(10,14,22,.7); }
+  .deck-wrap:hover .deck-c2 { transform: translateY(-18px) rotate(-4.5deg) scale(.965); }
+  .deck-wrap:hover .deck-c3 { transform: translateY(-30px) rotate(-8deg) scale(.93); }
+  .stamp {
+    display: inline-flex; align-items: center; gap: .25rem;
+    border: 2px solid var(--coral); color: var(--coral);
+    padding: .12rem .46rem; border-radius: .3rem;
+    font-size: 11px; font-weight: 900; letter-spacing: .1em;
+    transform: rotate(-9deg); opacity: .92;
+  }
+  .stamp.gold { border-color: var(--gold); color: color-mix(in srgb, var(--gold) 82%, #7a5c05); }
+  .deck-opt { display: flex; align-items: center; gap: .4rem; font-size: 11px; color: var(--muted); }
+  .deck-opt b { width: 16px; height: 16px; border-radius: 9999px; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 8.5px; font-weight: 800; }
+  .deck-opt.bad { color: var(--coral); font-weight: 800; }
+  .deck-opt.bad b { border-color: var(--coral); background: color-mix(in srgb, var(--coral) 12%, transparent); }
+
+  /* ---------- segments / tabs ---------- */
+  .seg { display: inline-flex; padding: 3px; border-radius: .8rem; background: var(--soft); border: 1px solid var(--line); gap: 2px; }
+  .seg button {
+    padding: .42rem .7rem; border-radius: .6rem; font-size: 11.5px; font-weight: 800; color: var(--muted);
+    display: inline-flex; align-items: center; gap: .3rem; transition: all .18s ease; white-space: nowrap;
+  }
+  .seg button svg { width: .9rem; height: .9rem; }
+  .seg button.on { background: var(--panel); color: var(--brand-deep); box-shadow: 0 1px 3px rgba(16,20,28,.12); }
+  .dark .seg button.on { color: #f2e3ac; background: #1b2231; }
+  .tab-line { display: flex; gap: 1.1rem; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .tab-line::-webkit-scrollbar { display: none; }
+  .tab-line button { position: relative; padding: .55rem .1rem .7rem; font-size: 12.5px; font-weight: 800; color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: .38rem; }
+  .tab-line button svg { width: .95rem; height: .95rem; }
+  .tab-line button.on { color: var(--brand-deep); }
+  .dark .tab-line button.on { color: #f2e3ac; }
+  .tab-line button.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2.5px; border-radius: 2px; background: linear-gradient(90deg, var(--brand), var(--gold)); }
+  .count-pill { font-size: 10px; font-weight: 800; padding: .08rem .34rem; border-radius: .35rem; background: var(--soft); color: var(--muted); }
+
+  /* ---------- misc ---------- */
+  .dot-line { height: 1px; background: repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px); }
+  .stat-tile { border: 1px solid var(--line); border-radius: .85rem; background: rgba(255,253,248,.7); padding: .7rem .8rem; }
+  .dark .stat-tile { background: rgba(18,22,31,.72); }
+  .empty-box { border: 1px dashed var(--line); border-radius: 1rem; padding: 2.1rem 1rem; text-align: center; }
+  .type-chip { display: inline-flex; align-items: center; gap: .22rem; font-size: 9.5px; font-weight: 800; padding: .14rem .4rem; border-radius: .35rem; border: 1px solid; white-space: nowrap; }
+  .t-mc { color: #36528a; border-color: #b9c7e2; background: #eef2fa; }
+  .dark .t-mc { color: #a9c0ea; border-color: #2c3d5e; background: #16213a; }
+  .t-short { color: #24795e; border-color: #a9d7c6; background: #eaf6f1; }
+  .dark .t-short { color: #7dd7b5; border-color: #254d41; background: #12271f; }
+  .t-ox { color: #8a6a14; border-color: #e4d29a; background: #fbf5e2; }
+  .dark .t-ox { color: #e6c975; border-color: #55461d; background: #241f12; }
+  .t-card { color: #a8452e; border-color: #efc2b6; background: #fdf0ec; }
+  .dark .t-card { color: #f09a82; border-color: #5a2f25; background: #281814; }
+
+  .field-label { font-size: 11px; font-weight: 800; color: var(--muted); margin-bottom: .28rem; display: flex; align-items: center; gap: .3rem; }
+  .mini-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .28rem;
+    padding: .36rem .56rem; border-radius: .5rem; font-size: 10.5px; font-weight: 800;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    transition: all .15s ease;
+  }
+  .mini-btn svg { width: .78rem; height: .78rem; }
+  .mini-btn:hover { color: var(--brand-deep); border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+  .dark .mini-btn:hover { color: var(--gold); }
+  .mini-btn:active { transform: scale(.94); }
+  .mini-btn.danger:hover { color: #d24c37; border-color: #e7a999; }
+
+  /* ---------- question options ---------- */
+  .q-card { background: var(--panel); border: 1px solid var(--line); border-radius: 1rem; box-shadow: 0 22px 50px -40px rgba(10,14,22,.55); }
+  .opt-btn {
+    width: 100%; display: flex; align-items: flex-start; gap: .7rem; text-align: left;
+    padding: .8rem .9rem; border-radius: .8rem; border: 1.5px solid var(--line);
+    background: var(--panel); color: var(--ink); font-size: 13.5px; line-height: 1.5;
+    transition: transform .13s ease, border-color .16s ease, background .16s ease;
+  }
+  .opt-btn:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); transform: translateX(2px); }
+  .opt-btn:active { transform: scale(.99); }
+  .opt-letter {
+    flex-shrink: 0; width: 1.55rem; height: 1.55rem; border-radius: 9999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 900; font-family: ui-monospace, Menlo, monospace;
+    border: 1.5px solid var(--line); color: var(--muted); background: var(--soft);
+  }
+  .opt-btn.correct { border-color: #3ea483; background: color-mix(in srgb, #3ea483 10%, var(--panel)); }
+  .opt-btn.correct .opt-letter { border-color: #3ea483; background: #3ea483; color: #fff; }
+  .opt-btn.wrong { border-color: var(--coral); background: color-mix(in srgb, var(--coral) 9%, var(--panel)); }
+  .opt-btn.wrong .opt-letter { border-color: var(--coral); background: var(--coral); color: #fff; }
+  .opt-btn.locked { cursor: default; transform: none; }
+  .opt-btn.dim { opacity: .55; }
+
+  .ox-btn {
+    display: flex; align-items: center; justify-content: center; gap: .5rem;
+    padding: 1.15rem .8rem; border-radius: 1rem; border: 2px solid var(--line);
+    font-size: 22px; font-weight: 900; background: var(--panel); transition: all .15s ease;
+  }
+  .ox-btn:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); }
+  .ox-btn:active { transform: scale(.97); }
+  .ox-btn.correct { border-color: #3ea483; background: color-mix(in srgb, #3ea483 12%, var(--panel)); color: #24795e; }
+  .ox-btn.wrong { border-color: var(--coral); background: color-mix(in srgb, var(--coral) 12%, var(--panel)); color: var(--coral); }
+  .dark .ox-btn.correct { color: #7dd7b5; }
+  .dark .ox-btn.wrong { color: #f09a82; }
+
+  /* ---------- flash card flip ---------- */
+  .flip-shell { perspective: 1400px; }
+  .flip-inner { position: relative; width: 100%; min-height: 260px; transform-style: preserve-3d; transition: transform .62s cubic-bezier(.2,.8,.25,1); }
+  .flip-inner.flipped { transform: rotateY(180deg); }
+  .flip-face {
+    position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    border-radius: 1rem; border: 1px solid var(--line); background: var(--panel);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 1.6rem 1.3rem; text-align: center;
+    box-shadow: 0 20px 46px -36px rgba(10,14,22,.6);
+  }
+  .flip-back { transform: rotateY(180deg); background: linear-gradient(160deg, color-mix(in srgb, var(--brand) 9%, var(--panel)), var(--panel)); }
+  .flip-hint { position: absolute; bottom: .8rem; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: .08em; color: var(--muted); }
+
+  /* ---------- timer ring ---------- */
+  .ring-track { stroke: var(--line); }
+  .ring-bar { stroke: var(--gold); transition: stroke-dashoffset .25s linear, stroke .3s ease; }
+  .ring-bar.low { stroke: var(--coral); }
+
+  /* ---------- player ---------- */
+  #player { position: fixed; inset: 0; z-index: 70; display: none; }
+  #player.open { display: block; }
+  .player-back { position: absolute; inset: 0; background: rgba(8,11,17,.62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: fadeIn .25s ease both; }
+  .player-panel {
+    position: relative; z-index: 2; height: 100%; width: 100%;
+    display: flex; flex-direction: column; background: var(--paper);
+    animation: slideUp .38s cubic-bezier(.22,1,.36,1) both;
+  }
+  @media (min-width: 1024px) {
+    .player-panel { max-width: 900px; margin: 1.4rem auto; height: calc(100% - 2.8rem); border-radius: 1.4rem; border: 1px solid var(--line); box-shadow: 0 40px 90px -50px rgba(0,0,0,.7); overflow: hidden; }
+  }
+  .player-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; }
+  #plStage { margin: auto 0; width: 100%; flex-shrink: 0; }
+  .pl-progress { height: 4px; background: var(--soft); overflow: hidden; }
+  .pl-progress > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--brand), var(--gold)); transition: width .45s cubic-bezier(.22,1,.36,1); }
+
+  /* ---------- feedback ---------- */
+  .fb-banner { border-radius: .9rem; padding: .85rem .95rem; border: 1px solid; display: flex; gap: .6rem; align-items: flex-start; animation: riseIn .3s cubic-bezier(.22,1,.36,1) both; }
+  .fb-good { border-color: color-mix(in srgb, #3ea483 45%, transparent); background: color-mix(in srgb, #3ea483 11%, transparent); }
+  .fb-bad { border-color: color-mix(in srgb, var(--coral) 45%, transparent); background: color-mix(in srgb, var(--coral) 10%, transparent); }
+  .fb-time { border-color: color-mix(in srgb, var(--gold) 50%, transparent); background: color-mix(in srgb, var(--gold) 12%, transparent); }
+
+  /* ---------- result ---------- */
+  .score-ring { position: relative; width: 128px; height: 128px; }
+  .score-ring svg { transform: rotate(-90deg); }
+  .score-ring .val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+  /* ---------- list rows ---------- */
+  .row-card { border: 1px solid var(--line); background: var(--panel); border-radius: .9rem; transition: border-color .18s ease, transform .18s ease; }
+  .row-card:hover { border-color: color-mix(in srgb, var(--brand) 35%, var(--line)); }
+  .wrong-answer { font-size: 11.5px; }
+  .wrong-answer .mine { color: var(--coral); font-weight: 800; }
+  .wrong-answer .right { color: var(--good); font-weight: 800; }
+  .dark .wrong-answer .right { color: #7dd7b5; }
+
+  /* ---------- modal ---------- */
+  .modal { position: fixed; inset: 0; z-index: 90; display: none; align-items: center; justify-content: center; padding: 1rem; }
+  .modal.open { display: flex; }
+  .m-back { position: absolute; inset: 0; background: rgba(8,11,17,.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .m-card { position: relative; z-index: 2; width: 100%; max-width: 440px; background: var(--panel); border: 1px solid var(--line); border-radius: 1.15rem; padding: 1.15rem; box-shadow: 0 40px 90px -50px rgba(0,0,0,.7); animation: riseIn .3s cubic-bezier(.22,1,.36,1) both; max-height: 88vh; overflow-y: auto; }
+
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(26px) } to { opacity: 1; transform: none } }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+  @keyframes dealIn { from { opacity: 0; transform: translateY(16px) rotate(-1.2deg) scale(.98) } to { opacity: 1; transform: none } }
+  .deal { animation: dealIn .4s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes stampIn { 0% { opacity: 0; transform: scale(1.5) rotate(-18deg) } 60% { opacity: 1; transform: scale(.94) rotate(-7deg) } 100% { opacity: 1; transform: scale(1) rotate(-9deg) } }
+  .stamp-in { animation: stampIn .38s cubic-bezier(.22,1,.36,1) both; }
+  .shake { animation: shakeX .32s ease; }
+  @keyframes shakeX { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-5px) } 75% { transform: translateX(5px) } }
+  .pulse-gold { animation: pulseGold 2.2s ease-in-out infinite; }
+  @keyframes pulseGold { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 40%, transparent) } 50% { box-shadow: 0 0 0 7px transparent } }
+
+  .no-sb::-webkit-scrollbar { display: none; }
+  .no-sb { scrollbar-width: none; }
+
+  @media (max-width: 640px) {
+    .deck-wrap { height: 258px; }
+    .deck-card { height: 208px; }
+    .flip-inner { min-height: 230px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="brand-wash fixed inset-0 pointer-events-none" style="z-index:-2"></div>
+<div class="stage-lines"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-28 -left-24 opacity-[.18]"></div>
+<div class="ambient-orb o2 w-80 h-80 top-1/3 -right-28 opacity-[.12]" style="background:var(--gold)"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="12.5" height="16" rx="2"></rect><path d="M19 7v12.5a2 2 0 0 1-2 2H7.5"></path><path d="M6.8 8.6h6M6.8 12h6M6.8 15.4h3.4"></path></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></symbol>
+  <symbol id="i-studio" viewBox="0 0 24 24"><path d="M4 5.5h7.5M4 12h5M4 18.5h7.5"></path><circle cx="16.5" cy="7" r="2.4"></circle><circle cx="14.5" cy="17" r="2.4"></circle><path d="M16.5 9.4v5.2M14.5 14.6V9.4"></path></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H17a2 2 0 0 1 2 2v14.5a1.5 1.5 0 0 1-1.5 1.5H6.5A1.5 1.5 0 0 1 5 19.5z"></path><path d="M8 8h8M8 11.6h8M8 15.2h5"></path><path d="M18 7.2h1.5"></path></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4"></circle><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z" fill="currentColor" stroke="none"></path></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7v5.4l3.4 2"></path></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3 7h3.2c1.4 0 2.4.7 3.2 1.8l4.2 6.4c.8 1.1 1.8 1.8 3.2 1.8H21"></path><path d="M17.5 13.5 21 17l-3.5 3.5"></path><path d="M3 17h3.2c1.4 0 2.4-.7 3.2-1.8l1.3-2"></path><path d="M13.3 9l1.1-1.6C15.2 6.3 16.2 5.6 17.6 5.6H21"></path><path d="M17.5 2.5 21 6l-3.5 3.5"></path></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"></path></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.6h6V7M6 7l1 13h10l1-13"></path><path d="M10 11v5.5M14 11v5.5"></path></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4 19h16"></path></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5"></path><path d="M7.5 9.5 12 5l4.5 4.5"></path><path d="M4 19h16"></path></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.6"></circle><circle cx="6" cy="12" r="2.6"></circle><circle cx="18" cy="18.5" r="2.6"></circle><path d="M8.3 10.7 15.7 6.8M8.3 13.3l7.4 3.9"></path></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4.2L19.3 8.9a2.1 2.1 0 0 0 0-3l-1.2-1.2a2.1 2.1 0 0 0-3 0L4 15.8z"></path><path d="M14.5 5.5 18.5 9.5"></path></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h7l5 5v12H6z"></path><path d="M13 3.5V9h5"></path><path d="M9 13h6M9 16.5h4"></path></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"></path></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V6M6 12l6-6 6 6"></path></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.4"></circle></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v4.5a4 4 0 0 1-8 0z"></path><path d="M8 5.5H5.5v2A3 3 0 0 0 8 10.4M16 5.5h2.5v2a3 3 0 0 1-2.5 2.9"></path><path d="M12 12.5V16M8.5 20h7M10 16h4l.8 4H9.2z"></path></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.4 15.4 21 21"></path></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3 3.5 7.3 12 11.6l8.5-4.3z"></path><path d="M3.5 12.2 12 16.5l8.5-4.3M3.5 16.6 12 20.9l8.5-4.3"></path></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.1"></path><path d="M20 5v6h-6"></path></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v5.5"></path><circle cx="12" cy="16.6" r=".9" fill="currentColor" stroke="none"></circle></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4"></path><path d="M4 20h16"></path><path d="M8 20v-6M12.5 20V9M17 20v-9.5"></path></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6h16M4 11h16M4 16h10"></path></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h11"></path><circle cx="5" cy="6.5" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="5" cy="12" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="5" cy="17.5" r="1.1" fill="currentColor" stroke="none"></circle></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6.6 5.8 12 5.8 21.5 12 21.5 12 17.4 18.2 12 18.2 2.5 12 2.5 12z"></path><circle cx="12" cy="12" r="3"></circle></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.4 5.6 2-5.6 2L12 18l-1.9-5.6-5.6-2 5.6-2z"></path><path d="M18.5 16.2l.8 2.1 2.2.8-2.2.8-.8 2.1-.8-2.1-2.2-.8 2.2-.8z"></path></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3s5.5 4.6 5.5 9.4A5.5 5.5 0 0 1 12 18a5.5 5.5 0 0 1-5.5-5.6C6.5 9.5 8 8 8 8s.6 2.2 2 2.6C10.5 8 12 3 12 3z"></path><path d="M12 14.6a2.2 2.2 0 0 0 2.2-2.2c0-1.5-2.2-3.3-2.2-3.3s-2.2 1.8-2.2 3.3A2.2 2.2 0 0 0 12 14.6z"></path></symbol>
+  <symbol id="i-grad" viewBox="0 0 24 24"><path d="M2.5 8.5 12 4l9.5 4.5L12 13z"></path><path d="M6.5 10.6v5.1c0 1.4 2.5 2.6 5.5 2.6s5.5-1.2 5.5-2.6v-5.1"></path><path d="M21.5 8.5v6"></path></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M3.6 12h16.8"></path><path d="M12 3.5c2.4 2.4 3.6 5.3 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.3-3.6-8.5s1.2-6.1 3.6-8.5z"></path></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3.5h6M10 3.5v5.2L5.3 17a2.4 2.4 0 0 0 2.1 3.5h9.2a2.4 2.4 0 0 0 2.1-3.5L14 8.7V3.5"></path><path d="M7.6 14.6h8.8"></path></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9.2 17.5a6 6 0 1 1 5.6 0v1.8a1.7 1.7 0 0 1-1.7 1.7h-2.2a1.7 1.7 0 0 1-1.7-1.7z"></path><path d="M9.4 17.5h5.2M10 14.6h4"></path></symbol>
+  <symbol id="i-plane" viewBox="0 0 24 24"><path d="M10.4 13.6 3 11.2l1.6-2.4 6.2 1.1 3.6-4.4a2.2 2.2 0 0 1 3.4 2.8l-3.7 4.2 1.4 6.2-2.4 1.5-2.5-6.4z"></path></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9.5 12 15.5 18 9.5"></path></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 21V3.8"></path><path d="M6 4.4h10.5l-1.8 3.4 1.8 3.4H6"></path></symbol>
+</svg>
+
+<header class="site-head sticky top-0 z-40 border-b border-neutral-200/80 dark:border-neutral-800/80">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-10 h-10 rounded-2xl p-[1.5px] shrink-0" style="background-image:linear-gradient(135deg,var(--brand),var(--gold))">
+        <div class="w-full h-full rounded-[15px] flex items-center justify-center" style="background:#0f1b33">
+          <svg class="w-5 h-5" style="color:var(--gold)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-card"></use></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Quiz</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md font-bold" style="border:1px solid color-mix(in srgb,var(--gold) 45%,transparent);color:color-mix(in srgb,var(--gold) 75%,#3d2f05);background:color-mix(in srgb,var(--gold) 13%,transparent)">STUDIO</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">오답노트 · 플래시카드 · 스마트 퀴즈</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-1.5">
+      <div class="hidden md:flex items-center gap-1.5 mr-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+        <span class="w-1.5 h-1.5 rounded-full pulse-soft" style="background:var(--good)"></span>
+        <span>서버 0 · 계정 0 · 평생 무료</span>
+      </div>
+      <button id="btnTheme" data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-moon"></use></svg>
+        <svg class="w-4 h-4 hidden dark:block" style="color:var(--gold)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-sun"></use></svg>
+      </button>
+      <button data-goto="studio" class="primary-btn !px-3 !py-2 !text-[11px] btn-shimmer">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+        <span class="hidden sm:inline">퀴즈 만들기</span>
+        <span class="sm:hidden">만들기</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="site-nav sticky top-16 z-30 border-b border-neutral-200/80 dark:border-neutral-800/80">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"></use></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-studio"></use></svg>
+        <span>퀴즈 스튜디오</span>
+        <span class="nav-dot"></span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-note"></use></svg>
+        <span>오답노트 · 보관함</span>
+        <span id="navWrongCount" class="text-[10px] font-mono px-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6 sm:space-y-8">
+
+    <div class="hero-shell p-5 sm:p-9">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.04fr_.96fr] gap-8 lg:gap-10 items-center">
+        <div class="space-y-4">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-spark"></use></svg>
+            오답만 다시, 두 번 맞히면 졸업
+          </span>
+          <h1 class="serif text-[30px] sm:text-[42px] font-bold leading-[1.14] tracking-tight">
+            시험은 결국,<br>
+            <span class="brand-text">틀린 것에서 갈린다.</span>
+          </h1>
+          <p class="text-[13px] sm:text-[14px] text-neutral-600 dark:text-neutral-300 leading-relaxed max-w-md">
+            객관식·빈칸·OX·플래시카드를 한 화면에서 만들고 풉니다.
+            틀린 문제는 자동으로 오답노트에 쌓이고, 맞힌 문제는 조용히 사라집니다.
+            서버도 계정도 없이 내 브라우저에만 남습니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 pt-1">
+            <button id="btnHeroSample" class="primary-btn btn-shimmer">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+              샘플로 바로 풀기
+            </button>
+            <button data-goto="studio" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-plus"></use></svg>
+              내 퀴즈 만들기
+            </button>
+          </div>
+          <div class="grid grid-cols-3 gap-2 pt-2 max-w-md">
+            <div class="stat-tile">
+              <p class="smallcaps !text-[9px]">내 퀴즈</p>
+              <p class="mono font-black text-[19px] leading-tight mt-0.5"><span id="homeStatSets">0</span><span class="text-[10px] font-bold text-neutral-500 ml-1">세트</span></p>
+            </div>
+            <div class="stat-tile">
+              <p class="smallcaps !text-[9px]">오답 카드</p>
+              <p class="mono font-black text-[19px] leading-tight mt-0.5" style="color:var(--coral)"><span id="homeStatWrong">0</span><span class="text-[10px] font-bold text-neutral-500 ml-1">개</span></p>
+            </div>
+            <div class="stat-tile">
+              <p class="smallcaps !text-[9px]">최근 정답률</p>
+              <p class="mono font-black text-[19px] leading-tight mt-0.5"><span id="homeStatAcc">-</span><span class="text-[10px] font-bold text-neutral-500 ml-1" id="homeStatAccUnit"></span></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="deck-wrap" aria-hidden="true">
+          <div class="deck-card deck-c3">
+            <p class="card-num">CARD 03 / 12</p>
+            <p class="text-[11px] font-bold mt-2" style="color:var(--muted)">다음 중 옳은 것은?</p>
+            <p class="serif text-[15px] font-bold mt-1 leading-snug">조선은 1392년에<br>건국되었다.</p>
+            <div class="mt-3 flex items-center justify-between">
+              <span class="text-[11px] font-bold" style="color:var(--good)">복습 완료</span>
+              <span class="stamp gold">CLEAR</span>
+            </div>
+          </div>
+          <div class="deck-card deck-c2">
+            <p class="card-num">CARD 02 / 12</p>
+            <p class="text-[11px] font-bold mt-2" style="color:var(--muted)">빈칸을 채우세요</p>
+            <p class="serif text-[15px] font-bold mt-1 leading-snug">임진왜란은 ____년에<br>일어났다.</p>
+            <div class="mt-3 flex items-center justify-between">
+              <span class="text-[11px] font-bold" style="color:var(--gold)">정답 1592</span>
+              <span class="stamp gold">복습</span>
+            </div>
+          </div>
+          <div class="deck-card deck-c1">
+            <div class="flex items-center justify-between">
+              <p class="card-num">CARD 01 / 12</p>
+              <span class="type-chip t-mc">객관식</span>
+            </div>
+            <p class="text-[11px] font-bold mt-2.5" style="color:var(--muted)">Q. inevitable 의 뜻으로 가장 가까운 것은?</p>
+            <div class="mt-2 space-y-1.5">
+              <div class="deck-opt"><b>A</b> 피할 수 없는</div>
+              <div class="deck-opt bad"><b>B</b> 잠깐의, 일시적인</div>
+              <div class="deck-opt"><b>C</b> 조용한, 한적한</div>
+              <div class="deck-opt"><b>D</b> 분명한, 뚜렷한</div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <span class="text-[10.5px] font-bold" style="color:var(--coral)">오답노트에 담김</span>
+              <span class="stamp stamp-in">WRONG</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5 ico-brand" style="background:color-mix(in srgb,var(--brand) 12%,transparent)">
+          <svg class="w-4.5 h-4.5" style="width:1.15rem;height:1.15rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-layers"></use></svg>
+        </div>
+        <p class="text-[12.5px] font-black">4가지 문제 유형</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">4지선다·단답·빈칸·OX, 앞뒤가 뒤집히는 3D 플래시카드.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5" style="background:color-mix(in srgb,var(--coral) 13%,transparent);color:var(--coral)">
+          <svg style="width:1.15rem;height:1.15rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-note"></use></svg>
+        </div>
+        <p class="text-[12.5px] font-black">자동 오답노트</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">틀린 문제는 해설과 함께 보관. 오답만 모아 다시 풉니다.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5" style="background:color-mix(in srgb,var(--gold) 18%,transparent);color:color-mix(in srgb,var(--gold) 70%,#6a4e07)">
+          <svg style="width:1.15rem;height:1.15rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"></use></svg>
+        </div>
+        <p class="text-[12.5px] font-black">제한시간 · 셔플</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">문제당 10~60초 타이머와 문제·보기 섞기로 실전 감각.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5" style="background:color-mix(in srgb,var(--good) 13%,transparent);color:var(--good)">
+          <svg style="width:1.15rem;height:1.15rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-share"></use></svg>
+        </div>
+        <p class="text-[12.5px] font-black">링크로 바로 공유</p>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">URL 하나에 퀴즈를 압축해 담아, 친구가 바로 풀어봅니다.</p>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <h2 class="serif text-[19px] sm:text-[22px] font-bold tracking-tight">샘플 퀴즈 세트</h2>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">그대로 풀어도 되고, 내 보관함에 담아 고쳐 써도 됩니다.</p>
+        </div>
+        <span class="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 hidden sm:inline">6 SETS · 89 QUESTIONS</span>
+      </div>
+      <div id="sampleGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </div>
+
+    <div class="panel overflow-hidden">
+      <div class="grid lg:grid-cols-[1fr_1.05fr]">
+        <div class="p-5 sm:p-6 space-y-3">
+          <span class="smallcaps">Import</span>
+          <h2 class="serif text-[20px] font-bold tracking-tight leading-snug">엑셀·메모에 있던 문제,<br>붙여넣으면 끝납니다.</h2>
+          <p class="text-[12px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            한 줄에 한 문제씩 적으면 유형을 알아서 나눕니다.
+            <span class="mono text-[11px]">문제, 정답</span> 두 칸만 있어도 단답형으로 들어갑니다.
+            CSV 파일이나 JSON 백업도 그대로 불러옵니다.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button data-goto="studio" data-open-import class="primary-btn !py-2 !px-3 !text-[11.5px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-upload"></use></svg>
+              텍스트로 가져오기
+            </button>
+            <button id="btnHomeJson" class="ghost-btn !py-2 !px-3 !text-[11.5px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-file"></use></svg>
+              JSON 파일 열기
+            </button>
+          </div>
+        </div>
+        <div class="p-4 sm:p-5 border-t lg:border-t-0 lg:border-l border-neutral-200 dark:border-neutral-800" style="background:color-mix(in srgb,var(--soft) 55%,transparent)">
+          <div class="rounded-xl overflow-hidden border" style="border-color:var(--line);background:var(--panel)">
+            <div class="flex items-center gap-1.5 px-3 py-2 border-b" style="border-color:var(--line)">
+              <span class="w-2 h-2 rounded-full" style="background:var(--coral)"></span>
+              <span class="w-2 h-2 rounded-full" style="background:var(--gold)"></span>
+              <span class="w-2 h-2 rounded-full" style="background:var(--good)"></span>
+              <span class="ml-auto text-[9.5px] font-mono" style="color:var(--muted)">quiz.txt</span>
+            </div>
+            <pre class="p-3 text-[10.5px] leading-[1.75] font-mono whitespace-pre-wrap" style="color:var(--ink)">MC | 다음 중 수도가 서울인 나라는? | 대한민국 | 일본 | 중국 | 태국 | 1 | 한반도 중부에 있다.
+SHORT | 임진왜란은 몇 년에 일어났나? | 1592
+OX | 지구는 태양 주위를 돈다. | O | 자전과 공전은 다르다.
+CARD | inevitable | 피할 수 없는
+물,H2O</pre>
+          </div>
+          <p class="text-[10px] mt-2" style="color:var(--muted)">쉼표 두 칸 형식도 자동으로 단답형이 됩니다.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <h2 class="serif text-[19px] sm:text-[22px] font-bold tracking-tight">세 번이면 충분한 이유</h2>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div class="index-card p-4 pt-5">
+          <p class="card-num">STEP 01</p>
+          <p class="text-[13px] font-black mt-1.5">만들거나, 가져오거나</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">문제를 직접 쓰거나 샘플·CSV·JSON으로 시작합니다. 유형은 섞여도 됩니다.</p>
+        </div>
+        <div class="index-card p-4 pt-5">
+          <p class="card-num">STEP 02</p>
+          <p class="text-[13px] font-black mt-1.5">타이머로 한 판</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">정답과 오답을 즉시 짚고 해설을 읽습니다. 틀린 문제는 그 자리에서 오답노트로.</p>
+        </div>
+        <div class="index-card coral p-4 pt-5">
+          <p class="card-num">STEP 03</p>
+          <p class="text-[13px] font-black mt-1.5">오답만 다시</p>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">틀린 것만 모아 한 번 더. 두 번 연속 맞히면 오답노트에서 자동으로 졸업합니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SHARE LANDING (#view=) ================= -->
+  <section data-view="share" class="hidden">
+    <div class="max-w-2xl mx-auto space-y-4">
+      <div id="shareInvalid" class="index-card p-6 pt-7 hidden">
+        <span class="smallcaps" style="color:var(--coral)">SHARE LINK</span>
+        <h1 class="serif text-[22px] font-bold mt-1.5">링크를 읽을 수 없습니다</h1>
+        <p class="text-[12px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">주소가 중간에 잘렸거나, 이 브라우저가 지원하지 않는 형식입니다. 보낸 사람에게 링크를 다시 받아 주세요.</p>
+        <button data-goto="home" class="ghost-btn mt-4">Lemon Quiz 홈으로</button>
+      </div>
+
+      <div id="shareBody" class="space-y-4">
+        <div class="hero-shell p-5 sm:p-7">
+          <div class="hero-grid"></div>
+          <div class="relative space-y-3">
+            <span class="chip">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-share"></use></svg>
+              공유된 퀴즈
+            </span>
+            <h1 id="shareTitle" class="serif text-[24px] sm:text-[30px] font-bold leading-tight">퀴즈</h1>
+            <p id="shareDesc" class="text-[12.5px] text-neutral-600 dark:text-neutral-300 leading-relaxed">링크를 받으면 바로 풀 수 있습니다. 내 답과 오답은 이 브라우저에만 저장됩니다.</p>
+            <div class="flex flex-wrap items-center gap-2 text-[11px] font-bold" style="color:var(--muted)">
+              <span id="shareSubject" class="count-pill !text-[10.5px]">과목</span>
+              <span id="shareCount">0문제</span>
+              <span>·</span>
+              <span id="shareTypes">유형</span>
+            </div>
+            <div class="flex flex-wrap gap-2 pt-1">
+              <button id="btnSharePlay" class="primary-btn btn-shimmer">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+                바로 풀기
+              </button>
+              <button id="btnShareSave" class="ghost-btn">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-download"></use></svg>
+                내 보관함에 담기
+              </button>
+              <button data-goto="studio" class="ghost-btn">나도 만들기</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel p-4">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-[12.5px] font-black">미리 보기</p>
+            <button id="btnShareKey" class="mini-btn">정답 보기</button>
+          </div>
+          <div id="sharePreview" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-4">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="smallcaps">Quiz Studio</p>
+        <h1 class="serif text-[23px] sm:text-[27px] font-bold tracking-tight mt-0.5">퀴즈 스튜디오</h1>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">문제를 쓰고, 저장하고, 그 자리에서 풀어봅니다. 만든 퀴즈는 오답노트·보관함에 남습니다.</p>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span id="saveBadge" class="as-badge">저장 안 됨</span>
+        <button id="btnNewSet" class="ghost-btn !py-2 !px-2.5 !text-[11px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-plus"></use></svg>
+          새 퀴즈
+        </button>
+        <button id="btnSaveSet" class="primary-btn !py-2 !px-3 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>
+          저장
+        </button>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[318px_1fr] gap-4 items-start">
+      <aside class="panel p-4 space-y-4 lg:sticky lg:top-[8.4rem]">
+        <div>
+          <label class="field-label" for="setTitle">퀴즈 제목</label>
+          <input id="setTitle" class="lemon-input" maxlength="60" placeholder="예: 영단어 필수 30" autocomplete="off">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="field-label" for="setSubject">과목</label>
+            <input id="setSubject" class="lemon-input" maxlength="20" placeholder="영어" autocomplete="off">
+          </div>
+          <div>
+            <label class="field-label" for="optTimer">문제당 제한시간</label>
+            <select id="optTimer" class="lemon-select">
+              <option value="0">없음 (자유롭게)</option>
+              <option value="10">10초</option>
+              <option value="20">20초</option>
+              <option value="30">30초</option>
+              <option value="60">60초</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="setDesc">한 줄 설명</label>
+          <input id="setDesc" class="lemon-input" maxlength="90" placeholder="선택 사항" autocomplete="off">
+        </div>
+
+        <div class="space-y-2">
+          <p class="field-label !mb-1">학습 옵션</p>
+          <button id="optShuffleQ" class="w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left" style="border-color:var(--line);background:var(--panel)" aria-pressed="false">
+            <span class="flex items-center gap-2 text-[11.5px] font-bold">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><use href="#i-shuffle"></use></svg>
+              문제 순서 섞기
+            </span>
+            <span class="switch" id="swShuffleQ"></span>
+          </button>
+          <button id="optShuffleO" class="w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left" style="border-color:var(--line);background:var(--panel)" aria-pressed="true">
+            <span class="flex items-center gap-2 text-[11.5px] font-bold">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><use href="#i-layers"></use></svg>
+              보기 순서 섞기
+            </span>
+            <span class="switch" id="swShuffleO"></span>
+          </button>
+          <p class="text-[10px] leading-relaxed" style="color:var(--muted)">플래시카드는 '알았어/몰랐어'로 스스로 채점하고, 몰랐던 카드가 오답노트로 갑니다.</p>
+        </div>
+
+        <div class="dot-line"></div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <p class="field-label !mb-0">문제 구성</p>
+            <span class="mono text-[11px] font-black" id="typeTotal">0문제</span>
+          </div>
+          <div id="typeCounts" class="flex flex-wrap gap-1.5"></div>
+        </div>
+
+        <button id="btnStartStudy" class="primary-btn w-full !py-3" disabled>
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+          학습 시작
+        </button>
+        <p class="text-[10px] text-center" style="color:var(--muted)">저장하지 않아도 이 화면에서 바로 풀 수 있습니다.</p>
+      </aside>
+
+      <div class="space-y-4 min-w-0">
+        <div class="panel p-4">
+          <div class="tab-line mb-3.5">
+            <button data-etab="mc" class="on">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-list"></use></svg>
+              객관식
+            </button>
+            <button data-etab="short">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-text"></use></svg>
+              단답 · 빈칸
+            </button>
+            <button data-etab="ox">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-target"></use></svg>
+              OX
+            </button>
+            <button data-etab="card">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-card"></use></svg>
+              플래시카드
+            </button>
+            <button data-etab="import">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-upload"></use></svg>
+              가져오기
+            </button>
+          </div>
+
+          <div id="editorPane">
+            <div data-epane="mc" class="space-y-3">
+              <div>
+                <label class="field-label" for="mcQ">문제</label>
+                <textarea id="mcQ" class="lemon-textarea" rows="2" maxlength="300" placeholder="다음 중 옳은 것은?"></textarea>
+              </div>
+              <div class="grid sm:grid-cols-2 gap-2">
+                <div class="flex items-center gap-1.5">
+                  <input type="radio" name="mcAns" value="0" id="mcR0" class="accent-current shrink-0" style="accent-color:var(--brand)" checked>
+                  <input id="mcA" class="lemon-input" maxlength="120" placeholder="보기 A" autocomplete="off">
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input type="radio" name="mcAns" value="1" id="mcR1" class="shrink-0" style="accent-color:var(--brand)">
+                  <input id="mcB" class="lemon-input" maxlength="120" placeholder="보기 B" autocomplete="off">
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input type="radio" name="mcAns" value="2" id="mcR2" class="shrink-0" style="accent-color:var(--brand)">
+                  <input id="mcC" class="lemon-input" maxlength="120" placeholder="보기 C" autocomplete="off">
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input type="radio" name="mcAns" value="3" id="mcR3" class="shrink-0" style="accent-color:var(--brand)">
+                  <input id="mcD" class="lemon-input" maxlength="120" placeholder="보기 D" autocomplete="off">
+                </div>
+              </div>
+              <p class="text-[10px]" style="color:var(--muted)">왼쪽 동그라미가 정답입니다. 보기 2개만 써도 됩니다.</p>
+              <div>
+                <label class="field-label" for="mcExp">해설 (선택)</label>
+                <textarea id="mcExp" class="lemon-textarea" rows="2" maxlength="300" placeholder="왜 이 답인지 한 줄로 적어 두면 복습이 빨라집니다."></textarea>
+              </div>
+            </div>
+
+            <div data-epane="short" class="space-y-3 hidden">
+              <div>
+                <label class="field-label" for="shQ">문제 · 빈칸은 ___ 로 표시</label>
+                <textarea id="shQ" class="lemon-textarea" rows="2" maxlength="300" placeholder="임진왜란은 ___년에 일어났다."></textarea>
+              </div>
+              <div>
+                <label class="field-label" for="shA">정답 · 다른 표현은 쉼표로</label>
+                <input id="shA" class="lemon-input" maxlength="120" placeholder="1592, 일오구이" autocomplete="off">
+              </div>
+              <div>
+                <label class="field-label" for="shExp">해설 (선택)</label>
+                <textarea id="shExp" class="lemon-textarea" rows="2" maxlength="300" placeholder="선조 25년, 1592년 4월에 발발했습니다."></textarea>
+              </div>
+            </div>
+
+            <div data-epane="ox" class="space-y-3 hidden">
+              <div>
+                <label class="field-label" for="oxQ">판단할 문장</label>
+                <textarea id="oxQ" class="lemon-textarea" rows="2" maxlength="300" placeholder="지구는 태양 주위를 돈다."></textarea>
+              </div>
+              <div>
+                <p class="field-label">정답</p>
+                <div class="grid grid-cols-2 gap-2 max-w-xs">
+                  <label class="ox-btn !py-3 !text-[17px] cursor-pointer" id="oxLblTrue">
+                    <input type="radio" name="oxAns" value="true" class="hidden" checked> O
+                  </label>
+                  <label class="ox-btn !py-3 !text-[17px] cursor-pointer" id="oxLblFalse">
+                    <input type="radio" name="oxAns" value="false" class="hidden"> X
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label class="field-label" for="oxExp">해설 (선택)</label>
+                <textarea id="oxExp" class="lemon-textarea" rows="2" maxlength="300" placeholder="지구는 태양 둘레를 1년에 한 바퀴 돕니다."></textarea>
+              </div>
+            </div>
+
+            <div data-epane="card" class="space-y-3 hidden">
+              <div class="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="field-label" for="cdF">앞면 (질문 · 단어)</label>
+                  <textarea id="cdF" class="lemon-textarea" rows="3" maxlength="200" placeholder="inevitable"></textarea>
+                </div>
+                <div>
+                  <label class="field-label" for="cdB">뒷면 (답 · 뜻)</label>
+                  <textarea id="cdB" class="lemon-textarea" rows="3" maxlength="200" placeholder="피할 수 없는"></textarea>
+                </div>
+              </div>
+              <div>
+                <label class="field-label" for="cdExp">힌트 · 예문 (선택)</label>
+                <textarea id="cdExp" class="lemon-textarea" rows="2" maxlength="300" placeholder="It was inevitable that the plan would change."></textarea>
+              </div>
+              <p class="text-[10px]" style="color:var(--muted)">풀 때 카드를 눌러 뒤집고, 알았는지 스스로 고릅니다.</p>
+            </div>
+
+            <div data-epane="import" class="space-y-3 hidden">
+              <div>
+                <label class="field-label" for="importArea">문제 붙여넣기 · 한 줄에 한 문제</label>
+                <textarea id="importArea" class="lemon-textarea mono !text-[11px]" rows="7" placeholder="MC | 문제 | 보기1 | 보기2 | 보기3 | 보기4 | 정답번호 | 해설
+SHORT | 문제 | 정답1, 정답2 | 해설
+OX | 문장 | O
+CARD | 앞면 | 뒷면
+문제, 정답"></textarea>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button id="btnParseText" class="ghost-btn !py-2 !px-3 !text-[11.5px]">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-eye"></use></svg>
+                  미리 보기
+                </button>
+                <button id="btnImportText" class="primary-btn !py-2 !px-3 !text-[11.5px]">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-plus"></use></svg>
+                  문제로 추가
+                </button>
+                <button id="btnCsvFile" class="mini-btn !py-2 !px-2.5">CSV 파일</button>
+                <button id="btnJsonFile" class="mini-btn !py-2 !px-2.5">JSON 파일</button>
+              </div>
+              <div id="importPreview" class="space-y-1.5"></div>
+              <div class="rounded-xl p-3 text-[10.5px] leading-relaxed" style="background:color-mix(in srgb,var(--gold) 10%,transparent);color:var(--muted);border-left:3px solid color-mix(in srgb,var(--gold) 60%,transparent)">
+                구분자 <span class="mono">|</span> 또는 <span class="mono">,</span> 를 씁니다. 객관식 정답번호는 첫 보기가 1번입니다.
+                구분자 없이 <span class="mono">문제, 정답</span> 두 칸만 있으면 단답형으로 들어갑니다.
+                엑셀에서 복사한 탭 구분도 인식합니다.
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 mt-4 pt-3 border-t" style="border-color:var(--line)">
+            <button id="btnAddItem" class="primary-btn !py-2.5">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-plus"></use></svg>
+              <span id="btnAddLabel">문제 추가</span>
+            </button>
+            <button id="btnCancelEdit" class="ghost-btn !py-2.5 hidden">수정 취소</button>
+            <span class="ml-auto text-[10px] mono" style="color:var(--muted)">Ctrl + Enter</span>
+          </div>
+        </div>
+
+        <div class="panel p-4">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div class="flex items-center gap-2">
+              <p class="text-[12.5px] font-black">문제 목록</p>
+              <span id="itemCountPill" class="count-pill">0</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button id="btnShuffleItems" class="mini-btn" title="문제 순서 섞기">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shuffle"></use></svg>
+                섞기
+              </button>
+              <button id="btnClearItems" class="mini-btn danger" title="모든 문제 지우기">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>
+                비우기
+              </button>
+            </div>
+          </div>
+          <div id="itemList" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div>
+      <p class="smallcaps">Review &amp; Archive</p>
+      <h1 class="serif text-[23px] sm:text-[27px] font-bold tracking-tight mt-0.5">오답노트 · 보관함</h1>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">틀린 문제는 여기에 쌓입니다. 두 번 연속 맞히면 조용히 졸업하고, 내 퀴즈와 학습 기록도 함께 남습니다.</p>
+    </div>
+
+    <div class="tab-line">
+      <button data-atab="wrong" class="on">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-note"></use></svg>
+        오답노트
+        <span id="wrongTabCount" class="count-pill">0</span>
+      </button>
+      <button data-atab="sets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-layers"></use></svg>
+        내 퀴즈
+        <span id="setsTabCount" class="count-pill">0</span>
+      </button>
+      <button data-atab="runs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chart"></use></svg>
+        학습 기록
+        <span id="runsTabCount" class="count-pill">0</span>
+      </button>
+    </div>
+
+    <div data-apane="wrong" class="space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <select id="wrongFilter" class="lemon-select !w-auto !py-2 !text-[11.5px]">
+          <option value="all">모든 퀴즈</option>
+        </select>
+        <button id="btnRetryAllWrong" class="primary-btn !py-2 !px-3 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+          오답 전체 다시 풀기
+        </button>
+        <button id="btnClearWrong" class="mini-btn danger ml-auto">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>
+          비우기
+        </button>
+      </div>
+      <div id="wrongSummary" class="grid grid-cols-3 gap-2"></div>
+      <div id="wrongList" class="space-y-2"></div>
+    </div>
+
+    <div data-apane="sets" class="space-y-3 hidden">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative flex-1 min-w-[180px]">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--muted)"><use href="#i-search"></use></svg>
+          <input id="setSearch" class="lemon-input !pl-8 !py-2 !text-[11.5px]" placeholder="제목·과목으로 찾기" autocomplete="off">
+        </div>
+        <button id="btnArchiveNew" class="ghost-btn !py-2 !px-3 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-plus"></use></svg>
+          새 퀴즈
+        </button>
+        <button id="btnExportAll" class="mini-btn !py-2 !px-2.5">JSON 전체 백업</button>
+        <button id="btnImportJson2" class="mini-btn !py-2 !px-2.5">JSON 가져오기</button>
+      </div>
+      <div id="setGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+    </div>
+
+    <div data-apane="runs" class="space-y-3 hidden">
+      <div id="runSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
+      <div class="panel p-4">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-[12.5px] font-black">최근 7일 정답률</p>
+          <span class="text-[10px] mono" style="color:var(--muted)">DAILY ACCURACY</span>
+        </div>
+        <div id="runChart" class="w-full"></div>
+      </div>
+      <div class="flex items-center justify-between">
+        <p class="text-[12.5px] font-black">학습 세션</p>
+        <button id="btnClearRuns" class="mini-btn danger">기록 비우기</button>
+      </div>
+      <div id="runList" class="space-y-2"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 mt-2">
+  <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500">
+    <div class="flex items-center gap-2">
+      <span class="text-neutral-900 dark:text-white font-semibold">Lemon Quiz</span>
+      <span>·</span>
+      <span>Lemon soft가 만든 서비스</span>
+    </div>
+    <div class="flex items-center gap-3 flex-wrap justify-center">
+      <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+      <span>·</span>
+      <a href="typing.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Typing</a>
+      <span>·</span>
+      <a href="focus.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Focus</a>
+      <span>·</span>
+      <a href="spell.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Spell</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ================= PLAYER ================= -->
+<div id="player" role="dialog" aria-modal="true" aria-labelledby="plTitle">
+  <div class="player-back" data-pl-close></div>
+  <div class="player-panel">
+    <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color:var(--line)">
+      <button id="btnPlClose" class="icon-btn shrink-0" aria-label="학습 닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-close"></use></svg>
+      </button>
+      <div class="min-w-0 flex-1">
+        <p id="plTitle" class="text-[12.5px] font-black truncate">퀴즈</p>
+        <p id="plSub" class="text-[10px] truncate" style="color:var(--muted)">0 / 0</p>
+      </div>
+      <div id="plTimerWrap" class="hidden items-center gap-1.5 shrink-0">
+        <svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true">
+          <circle class="ring-track" cx="20" cy="20" r="16" fill="none" stroke-width="3.2"></circle>
+          <circle id="plRing" class="ring-bar" cx="20" cy="20" r="16" fill="none" stroke-width="3.2"
+                  stroke-dasharray="100.53" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 20 20)"></circle>
+        </svg>
+        <span id="plTimerText" class="mono text-[11px] font-black tabular w-7 text-right">0</span>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <span class="text-[10px] font-bold hidden sm:inline" style="color:var(--muted)">정답</span>
+        <span id="plScore" class="mono text-[13px] font-black" style="color:var(--good)">0</span>
+      </div>
+    </div>
+    <div class="pl-progress"><div id="plBar"></div></div>
+    <div class="player-scroll">
+      <div id="plStage" class="max-w-2xl mx-auto px-4 sm:px-6 py-5 sm:py-7"></div>
+    </div>
+    <div class="px-4 py-3 border-t flex items-center gap-2" style="border-color:var(--line)">
+      <p id="plHint" class="text-[10.5px] flex-1 min-w-0" style="color:var(--muted)">보기를 고르면 바로 채점됩니다.</p>
+      <button id="btnPlNext" class="primary-btn !py-2.5 !px-4 !text-[12px]" disabled>
+        <span id="btnPlNextLabel">다음 문제</span>
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-arrow"></use></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODALS ================= -->
+<div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="cfTitle">
+  <div class="m-back" data-cf-close></div>
+  <div class="m-card" style="max-width:380px">
+    <h2 id="cfTitle" class="serif text-[17px] font-bold tracking-tight">정말 지울까요?</h2>
+    <p id="cfBody" class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">이 브라우저에 저장된 내용이 사라집니다. 되돌릴 수 없습니다.</p>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="ghost-btn flex-1" data-cf-close>취소</button>
+      <button id="btnConfirmYes" class="primary-btn flex-1" style="background-image:linear-gradient(135deg,#d1543a,#ec7a58)">지우기</button>
+    </div>
+  </div>
+</div>
+
+<div id="shareModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+  <div class="m-back" data-sh-close></div>
+  <div class="m-card" style="max-width:430px">
+    <div class="flex items-start justify-between gap-2">
+      <div>
+        <p class="smallcaps">Share link</p>
+        <h2 id="shTitle" class="serif text-[17px] font-bold tracking-tight mt-0.5">퀴즈 링크</h2>
+      </div>
+      <button class="icon-btn" data-sh-close aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">문제와 정답이 링크 안에 압축되어 들어갑니다. 받은 사람은 설치 없이 바로 풀 수 있습니다.</p>
+    <textarea id="shLink" class="lemon-textarea mono !text-[10px] mt-2.5" rows="4" readonly></textarea>
+    <div class="flex items-center gap-2 mt-3">
+      <button id="btnShareCopy" class="primary-btn flex-1 !py-2.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-share"></use></svg>
+        링크 복사
+      </button>
+      <button id="btnShareOpen" class="ghost-btn !py-2.5">열어 보기</button>
+    </div>
+  </div>
+</div>
+
+<input id="fileCsv" type="file" accept=".csv,.txt,text/csv,text/plain" class="hidden">
+<input id="fileJson" type="file" accept="application/json,.json" class="hidden">
+<input id="fileJsonHome" type="file" accept="application/json,.json" class="hidden">
+
+<script src="vendor/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     Lemon Quiz · 무서버 오답노트 퀴즈 스튜디오
+     - 객관식 / 단답·빈칸 / OX / 3D 플래시카드
+     - 자동 오답노트(2연속 정답 졸업), 타이머, 셔플, 해설 피드백
+     - IndexedDB(lemon_quiz_v1): sets · wrong · runs
+     - #view= LZString 공유 링크, JSON 백업/복원
+     ============================================================ */
+
+  var $ = function (id) { return document.getElementById(id); };
+  var root = document.documentElement;
+  var DB_NAME = 'lemon_quiz_v1';
+  var ST_SETS = 'sets', ST_WRONG = 'wrong', ST_RUNS = 'runs';
+  var LS_FALLBACK = 'lemon_quiz_fallback_v1';
+
+  function toast(msg, type) { try { Lemon.toast(msg, type || 'ok'); } catch (e) { } }
+  function hap(ms) { try { Lemon.hap(ms || 10); } catch (e) { } }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function uid(prefix) { return (prefix || 'q') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtClock(ms) {
+    var s = Math.max(0, Math.round(ms / 1000));
+    return Math.floor(s / 60) + ':' + pad2(s % 60);
+  }
+  function fmtDay(ts) {
+    var d = new Date(ts);
+    return d.getMonth() + 1 + '월 ' + d.getDate() + '일';
+  }
+  function dayKey(ts) { var d = new Date(ts); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  function normAns(s) {
+    return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, '')
+      .replace(/[.,!?'"“”‘’~·()\[\]]/g, '');
+  }
+  function shortOk(item, input) {
+    var given = normAns(input);
+    if (!given) return false;
+    var list = [item.answer].concat(item.accept || []);
+    var all = [];
+    list.forEach(function (v) {
+      String(v == null ? '' : v).split(/[,/|]/).forEach(function (piece) { if (normAns(piece)) all.push(normAns(piece)); });
+    });
+    return all.indexOf(given) > -1;
+  }
+  var TYPE_LABEL = { mc: '객관식', short: '단답', ox: 'OX', card: '카드' };
+  function typeChip(t) { return '<span class="type-chip t-' + t + '">' + TYPE_LABEL[t] + '</span>'; }
+
+  /* ============================================================
+     IndexedDB (lemon_quiz_v1) + localStorage fallback
+     ============================================================ */
+  var dbPromise = null, idbBroken = false;
+
+  function dbOpen() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('no-idb')); return; }
+      var req;
+      try { req = indexedDB.open(DB_NAME, 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        [ST_SETS, ST_WRONG, ST_RUNS].forEach(function (name) {
+          if (!db.objectStoreNames.contains(name)) {
+            var st = db.createObjectStore(name, { keyPath: 'id' });
+            st.createIndex('ts', 'ts', { unique: false });
+          }
+        });
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('idb-open')); };
+      req.onblocked = function () { reject(new Error('idb-blocked')); };
+    });
+    return dbPromise;
+  }
+
+  function dbAll(store) {
+    if (idbBroken) return Promise.resolve(lsAll(store));
+    return dbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var out = [], tx = db.transaction(store, 'readonly'), rq = tx.objectStore(store).openCursor();
+        rq.onsuccess = function () { var c = rq.result; if (c) { out.push(c.value); c.continue(); } else resolve(out); };
+        rq.onerror = function () { reject(rq.error); };
+      });
+    }).catch(function (e) { idbBroken = true; return lsAll(store); });
+  }
+
+  function lsAll(store) {
+    try {
+      var box = JSON.parse(localStorage.getItem(LS_FALLBACK) || '{}') || {};
+      return Array.isArray(box[store]) ? box[store] : [];
+    } catch (e) { return []; }
+  }
+  function lsSave(store, list) {
+    try {
+      var box = JSON.parse(localStorage.getItem(LS_FALLBACK) || '{}') || {};
+      box[store] = list;
+      localStorage.setItem(LS_FALLBACK, JSON.stringify(box));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function dbPut(store, rec) {
+    if (idbBroken) {
+      var list = lsAll(store).filter(function (x) { return x.id !== rec.id; });
+      list.push(rec);
+      if (!lsSave(store, list)) return Promise.reject(new Error('storage-full'));
+      return Promise.resolve(true);
+    }
+    return dbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(rec);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error || new Error('idb-put')); };
+        tx.onabort = function () { reject(tx.error || new Error('idb-abort')); };
+      });
+    }).catch(function (e) {
+      idbBroken = true;
+      var list = lsAll(store).filter(function (x) { return x.id !== rec.id; });
+      list.push(rec);
+      if (!lsSave(store, list)) throw e;
+      return true;
+    });
+  }
+
+  function dbDel(store, id) {
+    if (idbBroken) {
+      lsSave(store, lsAll(store).filter(function (x) { return x.id !== id; }));
+      return Promise.resolve(true);
+    }
+    return dbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(id);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    }).catch(function () {
+      idbBroken = true;
+      lsSave(store, lsAll(store).filter(function (x) { return x.id !== id; }));
+      return true;
+    });
+  }
+
+  function dbClear(store) {
+    if (idbBroken) { lsSave(store, []); return Promise.resolve(true); }
+    return dbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).clear();
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    }).catch(function () { idbBroken = true; lsSave(store, []); return true; });
+  }
+
+  /* ============================================================
+     Sample quiz sets
+     ============================================================ */
+  function mc(q, opts, ans, exp) { return { type: 'mc', q: q, options: opts, answer: ans, explain: exp || '' }; }
+  function sh(q, ans, exp, accept) { return { type: 'short', q: q, answer: ans, accept: accept || [], explain: exp || '' }; }
+  function ox(q, ans, exp) { return { type: 'ox', q: q, answer: !!ans, explain: exp || '' }; }
+  function cd(front, back, exp) { return { type: 'card', q: front, answer: back, explain: exp || '' }; }
+
+  var SAMPLE_SETS = [
+    {
+      key: 'vocab', title: '영단어 필수 20', subject: '영어', icon: 'i-globe',
+      desc: '시험에 반복해서 나오는 형용사·동사를 뜻으로 익힙니다.',
+      items: [
+        mc('inevitable 의 뜻으로 가장 가까운 것은?', ['피할 수 없는', '잠깐의', '조용한', '분명한'], 0, 'inevitable = 피할 수 없는, 불가피한. It was inevitable that the plan would change.'),
+        mc('reluctant 의 뜻으로 알맞은 것은?', ['열정적인', '꺼리는, 마지못해 하는', '정확한', '풍부한'], 1, 'be reluctant to do = ~하기를 꺼리다.'),
+        mc('subtle 의 뜻으로 가장 가까운 것은?', ['견고한', '사치스러운', '미묘한', '급격한'], 2, 'a subtle difference = 미묘한 차이.'),
+        mc('genuine 의 반대말에 가장 가까운 것은?', ['진짜의', '인공적인', '임시의', '복잡한'], 1, 'genuine = 진짜의, 진심의. 반대는 fake / artificial.'),
+        mc('fragile 의 뜻은?', ['깨지기 쉬운', '단단한', '무거운', '유연한'], 0, 'fragile = 부서지기 쉬운. Handle with care.'),
+        mc('persuade 의 뜻은?', ['거부하다', '측정하다', '설득하다', '복제하다'], 2, 'persuade someone to do = ~하도록 설득하다.'),
+        mc('withdraw 의 뜻으로 알맞은 것은?', ['확장하다', '요구하다', '승인하다', '철회하다'], 3, 'withdraw an offer = 제안을 철회하다.'),
+        mc('comply 의 뜻은?', ['따르다, 준수하다', '반박하다', '지연하다', '소홀히 하다'], 0, 'comply with the rules = 규칙을 준수하다.'),
+        mc('modest 의 뜻으로 가장 가까운 것은?', ['오만한', '겸손한', '화려한', '급진적인'], 1, 'modest = 겸손한, 소박한. a modest person.'),
+        mc('vivid 의 뜻은?', ['흐릿한', '지루한', '생생한', '무관한'], 2, 'a vivid memory = 생생한 기억.'),
+        mc('obscure 의 뜻으로 알맞은 것은?', ['매우 유명한', '잘 알려지지 않은', '극도로 위험한', '완전히 새로운'], 1, 'obscure = 모호한, 잘 알려지지 않은.'),
+        mc('sustain 의 뜻은?', ['포기하다', '시작하다', '숨기다', '유지하다'], 3, 'sustain growth = 성장을 유지하다.'),
+        cd('abandon', '버리다, 포기하다', 'abandon a plan = 계획을 포기하다.'),
+        cd('brief', '짧은, 간결한', 'a brief summary = 간단한 요약.'),
+        cd('crucial', '결정적인, 중대한', 'a crucial role = 결정적인 역할.'),
+        cd('deliberate', '의도적인, 신중한', 'a deliberate choice = 의도적인 선택.'),
+        cd('emerge', '나타나다, 떠오르다', 'emerge from the water = 물 밖으로 나오다.'),
+        cd('hesitate', '망설이다', 'Don\'t hesitate to ask. = 주저하지 말고 물어보세요.'),
+        cd('tentative', '잠정적인', 'a tentative plan = 잠정적인 계획.'),
+        cd('yield', '양보하다, 산출하다', 'yield to pressure = 압력에 굴복하다.')
+      ]
+    },
+    {
+      key: 'history', title: '한국사 핵심 연표', subject: '한국사', icon: 'i-flag',
+      desc: '연도와 인물만 잡아도 절반은 맞는 한국사 핵심 15문항.',
+      items: [
+        ox('조선은 1392년에 이성계가 세웠다.', true, '1392년 이성계가 위화도 회군 후 조선을 건국했습니다.'),
+        sh('임진왜란이 일어난 해는?', '1592', '1592년 4월 일본군의 침략으로 시작된 7년 전쟁입니다.', ['1592년']),
+        sh('훈민정음이 창제된 해는?', '1443', '세종 25년(1443)에 창제하고 1446년에 반포했습니다.', ['1443년']),
+        mc('삼국을 통일한 나라는?', ['고구려', '백제', '신라', '가야'], 2, '676년 신라가 당군을 몰아내고 삼국 통일을 이루었습니다.'),
+        mc('고려를 세운 인물은?', ['왕건', '이성계', '궁예', '견훤'], 0, '918년 왕건이 고려를 건국했습니다.'),
+        sh('3·1 운동이 일어난 해는?', '1919', '1919년 3월 1일 전국적으로 전개된 독립 만세 운동입니다.', ['1919년']),
+        sh('8·15 광복을 맞은 해는?', '1945', '1945년 8월 15일 일제의 식민 통치가 끝났습니다.', ['1945년']),
+        sh('6·25 전쟁이 일어난 해는?', '1950', '1950년 6월 25일 북한의 남침으로 시작되었습니다.', ['1950년']),
+        mc('조선의 4대 왕은?', ['태조', '세종', '정조', '영조'], 1, '태조(1대) → 정종(2대) → 태종(3대) → 세종(4대)입니다.'),
+        ox('대한민국 정부는 1948년에 수립되었다.', true, '1948년 8월 15일 대한민국 정부가 수립되었습니다.'),
+        sh('4·19 혁명이 일어난 해는?', '1960', '1960년 3·15 부정선거에 항의한 학생·시민 시위입니다.', ['1960년']),
+        sh('5·18 민주화운동이 일어난 도시는?', '광주', '1980년 5월 광주에서 전개된 민주화 운동입니다.', ['광주광역시']),
+        mc('동학농민운동이 일어난 해는?', ['1876', '1894', '1910', '1920'], 1, '1894년 전봉준을 중심으로 일어났습니다.'),
+        ox('갑오개혁은 1894년에 추진되었다.', true, '동학농민운동을 계기로 1894년 갑오개혁이 추진되었습니다.'),
+        mc('서울 올림픽이 열린 해는?', ['1984', '1988', '1992', '1996'], 1, '1988년 서울에서 하계 올림픽이 열렸습니다.')
+      ]
+    },
+    {
+      key: 'it', title: 'IT·개발 상식', subject: 'IT', icon: 'i-flask',
+      desc: '면접·상식 시험에 자주 나오는 웹과 컴퓨터 기본기.',
+      items: [
+        mc('HTTP 404 는 무엇을 뜻할까?', ['요청한 자원을 찾을 수 없음', '서버 내부 오류', '권한 없음', '요청 형식 오류'], 0, '404 Not Found. 500은 서버 내부 오류, 403은 권한 없음입니다.'),
+        sh('웹 주소(도메인)를 IP 주소로 바꿔 주는 시스템은?', 'DNS', 'Domain Name System의 약자입니다.', ['디엔에스']),
+        mc('Git에서 변경 사항을 기록으로 남기는 명령은?', ['push', 'commit', 'clone', 'fetch'], 1, 'commit은 로컬 저장소에 변경 이력을 남깁니다.'),
+        ox('HTTPS는 TLS로 통신을 암호화한다.', true, 'HTTP에 TLS를 얹은 것이 HTTPS입니다.'),
+        sh('2진수 1010을 10진수로 바꾸면?', '10', '8 + 0 + 2 + 0 = 10입니다.', ['십']),
+        mc('알고리즘 복잡도 O(1) 이 뜻하는 것은?', ['입력 크기와 무관한 상수 시간', '입력의 제곱 시간', '로그 시간', '정렬 시간'], 0, '입력이 커져도 걸리는 시간이 일정합니다.'),
+        ox('IPv4 주소는 32비트다.', true, 'IPv4는 32비트, IPv6는 128비트입니다.'),
+        mc('CSS에서 자식 요소를 한 줄로 나란히 배치하는 속성은?', ['display: flex', 'position: fixed', 'z-index', 'overflow: hidden'], 0, 'flex 컨테이너의 기본 방향은 가로(row)입니다.'),
+        sh('데이터를 키-값 쌍으로 담는 경량 텍스트 형식은?', 'JSON', 'JavaScript Object Notation. {"key":"value"} 형태입니다.', ['json']),
+        mc('UDP에 대한 설명으로 맞는 것은?', ['연결 없이 빠르게 보내고 도착을 보장하지 않는다', '항상 순서와 도착을 보장한다', '암호화 전용 프로토콜이다', '이메일 전용이다'], 0, 'UDP는 빠르지만 손실·순서를 보장하지 않습니다.'),
+        ox('TCP는 연결 지향 프로토콜이다.', true, 'TCP는 3-way handshake로 연결을 맺고 순서를 보장합니다.'),
+        mc('캐시(cache)의 주 목적은?', ['자주 쓰는 데이터를 가까이 두어 빠르게 접근', '저장 공간을 무한히 늘리기', '전원을 끄지 않게 하기', '암호를 바꾸기'], 0, '느린 저장소 대신 빠른 저장소에 임시로 담아 둡니다.'),
+        sh('함수가 자기 자신을 다시 호출하는 기법은?', '재귀', 'recursion. 종료 조건이 없으면 무한 호출이 됩니다.', ['재귀 호출', 'recursion']),
+        mc('API의 뜻으로 가장 가까운 것은?', ['프로그램끼리 기능을 주고받는 약속', '화면 디자인 도구', '데이터베이스 종류', '운영체제 이름'], 0, 'Application Programming Interface.'),
+        ox('배열의 인덱스는 보통 0부터 시작한다.', true, 'C, Java, JavaScript 등 대부분의 언어가 0부터 셉니다.')
+      ]
+    },
+    {
+      key: 'science', title: '과학 상식 12', subject: '과학', icon: 'i-bulb',
+      desc: '일상에서 바로 떠올라야 하는 과학 기본값들.',
+      items: [
+        sh('물의 화학식은?', 'H2O', '수소 원자 2개와 산소 원자 1개로 이루어집니다.', ['h2o']),
+        mc('태양계에서 가장 큰 행성은?', ['목성', '토성', '지구', '해왕성'], 0, '목성의 지름은 지구의 약 11배입니다.'),
+        sh('태양계 행성은 모두 몇 개인가?', '8', '2006년 명왕성이 왜소행성으로 분류되며 8개가 되었습니다.', ['8개', '여덟']),
+        ox('빛의 속도는 진공에서 약 30만 km/s다.', true, '초속 약 299,792km입니다.'),
+        mc('인체에서 가장 큰 장기는?', ['피부', '간', '폐', '대장'], 0, '피부는 몸 전체를 덮는 가장 큰 기관입니다.'),
+        sh('산소의 원소 기호는?', 'O', '원자번호 8번, 기호 O입니다.', ['o']),
+        ox('금성은 태양계에서 표면 온도가 가장 높은 행성이다.', true, '두꺼운 이산화탄소 대기와 온실효과로 약 460도에 이릅니다.'),
+        mc('지구가 태양 주위를 한 바퀴 도는 데 걸리는 시간은?', ['약 1년', '약 24시간', '약 30일', '약 100년'], 0, '공전 주기는 약 365.25일입니다.'),
+        sh('1기압에서 물이 끓는 온도는 섭씨 몇 도인가?', '100', '1기압에서 100도입니다.', ['100도', '100℃']),
+        mc('빛의 삼원색은?', ['빨강·초록·파랑', '빨강·노랑·파랑', '청록·자홍·노랑', '검정·흰색·회색'], 0, 'RGB. 색을 더할수록 밝아지는 가산혼합입니다.'),
+        ox('다이아몬드는 탄소로 이루어져 있다.', true, '탄소 원자가 정교한 결정 구조를 이룹니다.'),
+        sh('인체에서 혈액을 순환시키는 펌프 기관은?', '심장', '심장은 하루 약 10만 번 뛰며 혈액을 보냅니다.', ['heart'])
+      ]
+    },
+    {
+      key: 'life', title: '생활 상식 OX', subject: '상식', icon: 'i-bulb',
+      desc: '가볍게 한 판, 헷갈리기 쉬운 생활 상식 15문항.',
+      items: [
+        ox('대한민국의 수도는 서울이다.', true, '서울특별시가 수도입니다.'),
+        ox('1년은 365일이다.', true, '평년은 365일, 윤년은 366일입니다.'),
+        ox('곤충의 다리는 8개다.', false, '곤충은 6개, 거미류가 8개입니다.'),
+        ox('1주일은 8일이다.', false, '일주일은 7일입니다.'),
+        ox('지구는 태양 주위를 돈다.', true, '지구가 태양 둘레를 도는 공전을 합니다.'),
+        ox('한글의 기본 자음은 14자다.', true, 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ 14자입니다.'),
+        ox('피아노의 표준 건반은 88개다.', true, '흰건반 52개, 검은건반 36개입니다.'),
+        ox('하계 올림픽은 4년마다 열린다.', true, '동·하계 올림픽 모두 4년 주기입니다.'),
+        ox('태양계에서 가장 큰 행성은 목성이다.', true, '목성은 태양계 행성 중 가장 큽니다.'),
+        ox('인간의 심장은 3개다.', false, '심장은 1개입니다.'),
+        ox('무지개는 보통 7가지 색으로 표현된다.', true, '빨주노초파남보로 관습적으로 표현합니다.'),
+        ox('1킬로미터는 1000미터다.', true, '1km = 1,000m입니다.'),
+        ox('펭귄은 날 수 있는 새다.', false, '펭귄은 날지 못하고 헤엄치는 새다입니다.'),
+        ox('대한민국의 통화는 원이다.', true, '화폐 단위는 원(KRW)입니다.'),
+        ox('1분은 100초다.', false, '1분은 60초입니다.')
+      ]
+    },
+    {
+      key: 'travel', title: '여행 영어 카드', subject: '영어', icon: 'i-plane',
+      desc: '공항·식당·호텔에서 바로 꺼내 쓰는 12장의 카드.',
+      items: [
+        cd('Where is the nearest subway station?', '가장 가까운 지하철역이 어디인가요?'),
+        cd('How much is this?', '이거 얼마인가요?'),
+        cd('Could I get the check, please?', '계산서 주시겠어요?'),
+        cd('I would like a table for two.', '두 명 자리 부탁드립니다.'),
+        cd('Do you have a vacancy?', '빈방 있나요?'),
+        cd('Can you call a taxi for me?', '택시를 불러 주시겠어요?'),
+        cd('I am just looking, thanks.', '그냥 둘러보는 중이에요, 고맙습니다.'),
+        cd('Could you say that again slowly?', '다시 천천히 말해 주시겠어요?'),
+        cd('Where can I buy a ticket?', '표는 어디서 살 수 있나요?'),
+        cd('Is it within walking distance?', '걸어갈 수 있는 거리인가요?'),
+        cd('I have a reservation.', '예약했습니다.'),
+        cd('Excuse me, could you take a photo?', '실례지만 사진 좀 찍어 주시겠어요?')
+      ]
+    }
+  ];
+
+  /* seed ids at load time */
+  SAMPLE_SETS.forEach(function (s) {
+    s.id = 'sample_' + s.key;
+    s.items.forEach(function (it) { it.id = uid('q'); });
+  });
+
+  /* ============================================================
+     State
+     ============================================================ */
+  function blankSet() {
+    return { id: '', title: '', subject: '', desc: '', items: [], timer: 0, shuffleQ: false, shuffleO: true, createdAt: 0, updatedAt: 0 };
+  }
+  var state = {
+    set: blankSet(),
+    editingId: null,
+    editorTab: 'mc',
+    archiveTab: 'wrong',
+    sets: [],
+    wrong: [],
+    runs: [],
+    search: '',
+    wrongFilter: 'all',
+    share: null,
+    shareMode: false,
+    sampleIndex: 0
+  };
+  var autosaveTimer = null;
+
+  function currentSetId() { return state.set.id || ''; }
+
+  function setBadge(text, st) {
+    var b = $('saveBadge');
+    if (!b) return;
+    b.textContent = text;
+    b.setAttribute('data-state', st || 'idle');
+  }
+
+  function scheduleAutosave() {
+    if (!currentSetId()) { setBadge('저장 안 됨', 'new'); return; }
+    setBadge('저장 중…', 'saving');
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(function () { persistSet(true); }, 900);
+  }
+
+  function persistSet(auto) {
+    var s = state.set;
+    if (!s.items.length) {
+      if (!auto) toast('문제를 먼저 추가해 주세요.', 'err');
+      setBadge('저장 안 됨', 'new');
+      return Promise.resolve(false);
+    }
+    var now = Date.now();
+    if (!s.id) s.id = 'quiz_' + now.toString(36) + Math.random().toString(36).slice(2, 6);
+    if (!s.title.trim()) s.title = '제목 없는 퀴즈';
+    if (!s.createdAt) s.createdAt = now;
+    s.updatedAt = now;
+    var rec = JSON.parse(JSON.stringify(s));
+    return dbPut(ST_SETS, rec).then(function () {
+      setBadge((auto ? '자동 저장됨 ' : '저장됨 ') + pad2(new Date().getHours()) + ':' + pad2(new Date().getMinutes()), 'saved');
+      if (!auto) toast('퀴즈를 저장했습니다.', 'ok');
+      return loadAll();
+    }).catch(function () {
+      setBadge('저장 공간 부족', 'off');
+      toast('저장하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.', 'err');
+    });
+  }
+
+  /* ============================================================
+     Load + refresh
+     ============================================================ */
+  function loadAll() {
+    return Promise.all([dbAll(ST_SETS), dbAll(ST_WRONG), dbAll(ST_RUNS)]).then(function (res) {
+      state.sets = (res[0] || []).sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+      state.wrong = (res[1] || []).sort(function (a, b) { return (b.lastAt || 0) - (a.lastAt || 0); });
+      state.runs = (res[2] || []).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+      paintCounts();
+      renderSets();
+      renderWrong();
+      renderRuns();
+      return true;
+    });
+  }
+
+  function paintCounts() {
+    var nSets = state.sets.length, nWrong = state.wrong.length;
+    var navW = $('navWrongCount'); if (navW) navW.textContent = nWrong;
+    var hS = $('homeStatSets'); if (hS) hS.textContent = nSets;
+    var hW = $('homeStatWrong'); if (hW) hW.textContent = nWrong;
+    var acc = recentAccuracy();
+    var hA = $('homeStatAcc'); if (hA) hA.textContent = acc == null ? '-' : acc + '%';
+    var hAU = $('homeStatAccUnit'); if (hAU) hAU.textContent = acc == null ? '' : '정답';
+    var wt = $('wrongTabCount'); if (wt) wt.textContent = nWrong;
+    var stc = $('setsTabCount'); if (stc) stc.textContent = nSets;
+    var rc = $('runsTabCount'); if (rc) rc.textContent = state.runs.length;
+  }
+
+  function recentAccuracy() {
+    if (!state.runs.length) return null;
+    var list = state.runs.slice(0, 5);
+    var sum = 0;
+    list.forEach(function (r) { sum += (r.acc || 0); });
+    return Math.round(sum / list.length);
+  }
+
+  /* ============================================================
+     Home rendering
+     ============================================================ */
+  function sampleCard(s, i) {
+    var types = {};
+    s.items.forEach(function (it) { types[it.type] = (types[it.type] || 0) + 1; });
+    var chips = Object.keys(types).map(function (t) { return typeChip(t) + '<span class="text-[9.5px] font-bold" style="color:var(--muted)">' + types[t] + '</span>'; }).join('');
+    return '' +
+      '<div class="panel p-4 card-lift flex flex-col gap-3" data-sample-card="' + i + '">' +
+        '<div class="flex items-start gap-2.5">' +
+          '<div class="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center" style="background:color-mix(in srgb,var(--brand) 11%,transparent);color:var(--brand-deep)">' +
+            '<svg style="width:1.1rem;height:1.1rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#' + s.icon + '"></use></svg>' +
+          '</div>' +
+          '<div class="min-w-0 flex-1">' +
+            '<div class="flex items-center gap-1.5">' +
+              '<p class="text-[13px] font-black truncate">' + esc(s.title) + '</p>' +
+            '</div>' +
+            '<p class="text-[10px] mt-0.5" style="color:var(--muted)">' + esc(s.subject) + ' · ' + s.items.length + '문제</p>' +
+          '</div>' +
+        '</div>' +
+        '<p class="text-[11px] leading-relaxed flex-1" style="color:var(--muted)">' + esc(s.desc) + '</p>' +
+        '<div class="flex flex-wrap items-center gap-1.5">' + chips + '</div>' +
+        '<div class="flex items-center gap-1.5 pt-0.5">' +
+          '<button class="primary-btn flex-1 !py-2 !px-2.5 !text-[11px]" data-sample-play="' + i + '">' +
+            '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg> 바로 풀기' +
+          '</button>' +
+          '<button class="mini-btn !py-2 !px-2.5" data-sample-save="' + i + '">내 보관함에 담기</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderSamples() {
+    var g = $('sampleGrid');
+    if (!g) return;
+    g.innerHTML = SAMPLE_SETS.map(sampleCard).join('');
+  }
+
+  /* ============================================================
+     Studio editor
+     ============================================================ */
+  function setEditorTab(tab) {
+    state.editorTab = tab;
+    document.querySelectorAll('[data-etab]').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-etab') === tab);
+    });
+    document.querySelectorAll('[data-epane]').forEach(function (p) {
+      p.classList.toggle('hidden', p.getAttribute('data-epane') !== tab);
+    });
+    $('btnAddItem').classList.toggle('hidden', tab === 'import');
+    if (tab !== 'import') $('btnAddLabel').textContent = state.editingId ? '수정 저장' : '문제 추가';
+    hap(8);
+  }
+
+  function readForm(type) {
+    if (type === 'mc') {
+      var q = $('mcQ').value.trim();
+      var opts = [$('mcA').value.trim(), $('mcB').value.trim(), $('mcC').value.trim(), $('mcD').value.trim()].filter(function (x) { return x !== ''; });
+      var ans = parseInt((document.querySelector('input[name="mcAns"]:checked') || {}).value || '0', 10);
+      if (!q) return { err: '문제를 입력해 주세요.' };
+      if (opts.length < 2) return { err: '보기를 2개 이상 입력해 주세요.' };
+      if (ans >= opts.length) return { err: '정답으로 고른 보기가 비어 있습니다.' };
+      return { item: { id: state.editingId || uid('q'), type: 'mc', q: q, options: opts, answer: ans, explain: $('mcExp').value.trim() } };
+    }
+    if (type === 'short') {
+      var q2 = $('shQ').value.trim(), a = $('shA').value.trim();
+      if (!q2) return { err: '문제를 입력해 주세요.' };
+      if (!a) return { err: '정답을 입력해 주세요.' };
+      return { item: { id: state.editingId || uid('q'), type: 'short', q: q2, answer: a, accept: [], explain: $('shExp').value.trim() } };
+    }
+    if (type === 'ox') {
+      var q3 = $('oxQ').value.trim();
+      if (!q3) return { err: '판단할 문장을 입력해 주세요.' };
+      var val = (document.querySelector('input[name="oxAns"]:checked') || {}).value !== 'false';
+      return { item: { id: state.editingId || uid('q'), type: 'ox', q: q3, answer: !!val, explain: $('oxExp').value.trim() } };
+    }
+    var f = $('cdF').value.trim(), b = $('cdB').value.trim();
+    if (!f) return { err: '앞면을 입력해 주세요.' };
+    if (!b) return { err: '뒷면을 입력해 주세요.' };
+    return { item: { id: state.editingId || uid('q'), type: 'card', q: f, answer: b, explain: $('cdExp').value.trim() } };
+  }
+
+  function resetForm(type) {
+    if (type === 'mc') {
+      $('mcQ').value = ''; $('mcA').value = ''; $('mcB').value = ''; $('mcC').value = ''; $('mcD').value = ''; $('mcExp').value = '';
+      $('mcR0').checked = true;
+    } else if (type === 'short') {
+      $('shQ').value = ''; $('shA').value = ''; $('shExp').value = '';
+    } else if (type === 'ox') {
+      $('oxQ').value = ''; $('oxExp').value = ''; document.querySelector('input[name="oxAns"][value="true"]').checked = true;
+      syncOxLabels();
+    } else {
+      $('cdF').value = ''; $('cdB').value = ''; $('cdExp').value = '';
+    }
+  }
+
+  function syncOxLabels() {
+    var v = (document.querySelector('input[name="oxAns"]:checked') || {}).value;
+    $('oxLblTrue').style.borderColor = v === 'true' ? '#3ea483' : '';
+    $('oxLblTrue').style.background = v === 'true' ? 'color-mix(in srgb, #3ea483 12%, transparent)' : '';
+    $('oxLblFalse').style.borderColor = v === 'false' ? 'var(--coral)' : '';
+    $('oxLblFalse').style.background = v === 'false' ? 'color-mix(in srgb, var(--coral) 12%, transparent)' : '';
+  }
+
+  function addItem() {
+    var type = state.editorTab;
+    if (type === 'import') return;
+    var res = readForm(type);
+    if (res.err) { toast(res.err, 'err'); return; }
+    if (state.editingId) {
+      var i = state.set.items.findIndex(function (x) { return x.id === state.editingId; });
+      if (i > -1) state.set.items[i] = res.item;
+      state.editingId = null;
+      $('btnAddLabel').textContent = '문제 추가';
+      $('btnCancelEdit').classList.add('hidden');
+      toast('문제를 수정했습니다.', 'ok');
+    } else {
+      state.set.items.push(res.item);
+      toast(TYPE_LABEL[type] + ' 문제를 추가했습니다.', 'ok');
+    }
+    resetForm(type);
+    renderStudio();
+    scheduleAutosave();
+    hap(12);
+  }
+
+  function editItem(id) {
+    var it = state.set.items.find(function (x) { return x.id === id; });
+    if (!it) return;
+    state.editingId = id;
+    setEditorTab(it.type);
+    if (it.type === 'mc') {
+      $('mcQ').value = it.q;
+      var vals = it.options || [];
+      ['mcA', 'mcB', 'mcC', 'mcD'].forEach(function (fid, idx) { $(fid).value = vals[idx] || ''; });
+      var r = document.querySelector('input[name="mcAns"][value="' + (it.answer | 0) + '"]');
+      if (r) r.checked = true;
+      $('mcExp').value = it.explain || '';
+    } else if (it.type === 'short') {
+      $('shQ').value = it.q; $('shA').value = it.answer; $('shExp').value = it.explain || '';
+    } else if (it.type === 'ox') {
+      $('oxQ').value = it.q;
+      var rr = document.querySelector('input[name="oxAns"][value="' + (it.answer ? 'true' : 'false') + '"]');
+      if (rr) rr.checked = true;
+      $('oxExp').value = it.explain || '';
+      syncOxLabels();
+    } else {
+      $('cdF').value = it.q; $('cdB').value = it.answer; $('cdExp').value = it.explain || '';
+    }
+    $('btnAddLabel').textContent = '수정 저장';
+    $('btnCancelEdit').classList.remove('hidden');
+    $('editorPane').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function cancelEdit() {
+    state.editingId = null;
+    resetForm(state.editorTab);
+    $('btnAddLabel').textContent = '문제 추가';
+    $('btnCancelEdit').classList.add('hidden');
+  }
+
+  function answerText(it) {
+    if (it.type === 'mc') return (it.options && it.options[it.answer]) || '';
+    if (it.type === 'ox') return it.answer ? 'O' : 'X';
+    return it.answer;
+  }
+
+  function renderStudio() {
+    var s = state.set;
+    if ($('setTitle').value !== s.title) $('setTitle').value = s.title;
+    if ($('setSubject').value !== s.subject) $('setSubject').value = s.subject;
+    if ($('setDesc').value !== s.desc) $('setDesc').value = s.desc;
+    $('optTimer').value = String(s.timer || 0);
+    setSwitch('optShuffleQ', !!s.shuffleQ);
+    setSwitch('optShuffleO', !!s.shuffleO);
+
+    var counts = { mc: 0, short: 0, ox: 0, card: 0 };
+    s.items.forEach(function (it) { counts[it.type] = (counts[it.type] || 0) + 1; });
+    $('typeCounts').innerHTML = ['mc', 'short', 'ox', 'card'].map(function (t) {
+      return typeChip(t) + '<span class="text-[10px] font-black mono">' + counts[t] + '</span>';
+    }).join('');
+    $('typeTotal').textContent = s.items.length + '문제';
+    $('itemCountPill').textContent = s.items.length;
+    $('btnStartStudy').disabled = !s.items.length;
+
+    var list = $('itemList');
+    if (!s.items.length) {
+      list.innerHTML = '<div class="empty-box">' +
+        '<div class="w-10 h-10 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:var(--soft);color:var(--muted)">' +
+        '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><use href="#i-list"></use></svg></div>' +
+        '<p class="text-[12px] font-bold">아직 문제가 없습니다</p>' +
+        '<p class="text-[11px] mt-1" style="color:var(--muted)">첫 문제를 쓰거나, 가져오기 탭에서 붙여넣어 보세요.</p>' +
+        '</div>';
+      return;
+    }
+    list.innerHTML = s.items.map(function (it, i) {
+      var ans = answerText(it);
+      return '<div class="row-card p-2.5 flex items-start gap-2.5" data-item="' + it.id + '">' +
+        '<span class="mono text-[10px] font-bold w-5 shrink-0 pt-1 text-right" style="color:var(--muted)">' + pad2(i + 1) + '</span>' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="flex items-center gap-1.5 flex-wrap">' + typeChip(it.type) +
+            (it.explain ? '<span class="text-[9.5px]" style="color:var(--muted)">해설</span>' : '') +
+          '</div>' +
+          '<p class="text-[12px] font-bold mt-1 leading-snug break-words">' + esc(it.q) + '</p>' +
+          '<p class="text-[10.5px] mt-0.5 truncate" style="color:var(--muted)">정답 <span style="color:var(--good);font-weight:800">' + esc(ans) + '</span>' +
+            (it.type === 'mc' && it.options ? ' · 보기 ' + it.options.length + '개' : '') + '</p>' +
+        '</div>' +
+        '<div class="flex items-center gap-1 shrink-0">' +
+          '<button class="mini-btn" data-item-up="' + it.id + '" aria-label="위로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(180deg)"><use href="#i-chev"></use></svg></button>' +
+          '<button class="mini-btn" data-item-edit="' + it.id + '" aria-label="수정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"></use></svg></button>' +
+          '<button class="mini-btn danger" data-item-del="' + it.id + '" aria-label="삭제"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg></button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function setSwitch(id, on) {
+    var el = $(id);
+    if (!el) return;
+    el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    var sw = el.querySelector('.switch');
+    if (sw) sw.classList.toggle('on', on);
+    var icon = el.querySelector('svg');
+    if (icon) icon.style.color = on ? 'var(--brand-deep)' : 'var(--muted)';
+  }
+
+  /* ============================================================
+     Text / CSV / JSON import
+     ============================================================ */
+  function splitCsvLine(line) {
+    var out = [], cur = '', inQ = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === ',' && !inQ) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out.map(function (s) { return s.trim(); });
+  }
+
+  function parseQuizText(text) {
+    var items = [], errors = [];
+    String(text || '').split(/\r?\n/).forEach(function (raw, ln) {
+      var line = raw.trim();
+      if (!line || line.charAt(0) === '#') return;
+      var fields;
+      if (line.indexOf('|') > -1) fields = line.split('|').map(function (s) { return s.trim(); });
+      else if (line.indexOf('\t') > -1) fields = line.split('\t').map(function (s) { return s.trim(); });
+      else fields = splitCsvLine(line);
+      fields = fields.filter(function (s, i, arr) { return !(s === '' && i === arr.length - 1); });
+      if (!fields.length) return;
+
+      var head = fields[0].replace(/\s/g, '').toUpperCase();
+      var type = null;
+      if (/^(MC|객관식|4지선다|선택형)$/.test(head)) type = 'mc';
+      else if (/^(SHORT|단답|빈칸|주관식)$/.test(head)) type = 'short';
+      else if (/^(OX|참거짓|진위)$/.test(head)) type = 'ox';
+      else if (/^(CARD|카드|플래시카드|FLASH)$/.test(head)) type = 'card';
+
+      try {
+        if (type === 'mc') {
+          var q = fields[1] || '';
+          var rest = fields.slice(2);
+          var exp = '';
+          var last = rest[rest.length - 1];
+          var ansNum = 0;
+          if (rest.length >= 6 && /^\d+$/.test(rest[rest.length - 2])) { exp = rest[rest.length - 1]; ansNum = parseInt(rest[rest.length - 2], 10); rest = rest.slice(0, -2); }
+          else if (rest.length >= 5 && /^\d+$/.test(last)) { ansNum = parseInt(last, 10); rest = rest.slice(0, -1); }
+          else if (rest.length >= 4 && /^\d+$/.test(rest[rest.length - 2]) && !/^\d+$/.test(last)) { exp = last; ansNum = parseInt(rest[rest.length - 2], 10); rest = rest.slice(0, -2); }
+          var opts = rest.filter(Boolean);
+          if (!q || opts.length < 2) { errors.push(ln + 1); return; }
+          items.push({ id: uid('q'), type: 'mc', q: q, options: opts.slice(0, 6), answer: Math.max(0, Math.min(opts.length - 1, ansNum - 1)), explain: exp });
+        } else if (type === 'short') {
+          if (!fields[1] || !fields[2]) { errors.push(ln + 1); return; }
+          items.push({ id: uid('q'), type: 'short', q: fields[1], answer: fields[2], accept: [], explain: fields[3] || '' });
+        } else if (type === 'ox') {
+          var v = String(fields[2] || '').toUpperCase();
+          if (!fields[1] || !/^(O|X|TRUE|FALSE|참|거짓)$/.test(v)) { errors.push(ln + 1); return; }
+          items.push({ id: uid('q'), type: 'ox', q: fields[1], answer: /^(O|TRUE|참)$/.test(v), explain: fields[3] || '' });
+        } else if (type === 'card') {
+          if (!fields[1] || !fields[2]) { errors.push(ln + 1); return; }
+          items.push({ id: uid('q'), type: 'card', q: fields[1], answer: fields[2], explain: fields[3] || '' });
+        } else {
+          if (fields.length < 2 || !fields[1]) { errors.push(ln + 1); return; }
+          if (/^(O|X)$/.test(fields[1].toUpperCase()) && fields.length === 2) {
+            items.push({ id: uid('q'), type: 'ox', q: fields[0], answer: fields[1].toUpperCase() === 'O', explain: '' });
+          } else {
+            items.push({ id: uid('q'), type: 'short', q: fields[0], answer: fields[1], accept: [], explain: fields[2] || '' });
+          }
+        }
+      } catch (e) { errors.push(ln + 1); }
+    });
+    return { items: items, errors: errors };
+  }
+
+  function previewImport() {
+    var parsed = parseQuizText($('importArea').value);
+    var box = $('importPreview');
+    if (!parsed.items.length) {
+      box.innerHTML = '<p class="text-[11px] font-bold" style="color:var(--coral)">읽을 수 있는 문제가 없습니다. 형식 예시를 확인해 주세요.</p>';
+      return parsed;
+    }
+    var counts = { mc: 0, short: 0, ox: 0, card: 0 };
+    parsed.items.forEach(function (it) { counts[it.type]++; });
+    box.innerHTML = '<div class="rounded-xl p-2.5" style="background:var(--soft)">' +
+      '<p class="text-[11px] font-black">' + parsed.items.length + '문제 인식 · ' +
+      ['mc', 'short', 'ox', 'card'].map(function (t) { return TYPE_LABEL[t] + ' ' + counts[t]; }).join(' · ') + '</p>' +
+      (parsed.errors.length ? '<p class="text-[10px] mt-1" style="color:var(--coral)">' + parsed.errors.length + '줄은 형식이 맞지 않아 건너뜁니다 (줄 ' + parsed.errors.slice(0, 6).join(', ') + ')</p>' : '') +
+      '<div class="mt-1.5 space-y-1 max-h-40 overflow-auto no-sb">' +
+      parsed.items.slice(0, 6).map(function (it, i) {
+        return '<p class="text-[10.5px] truncate"><span class="mono" style="color:var(--muted)">' + pad2(i + 1) + '</span> ' + esc(it.q) +
+          ' <span style="color:var(--good);font-weight:800">' + esc(answerText(it)) + '</span></p>';
+      }).join('') +
+      (parsed.items.length > 6 ? '<p class="text-[10px]" style="color:var(--muted)">외 ' + (parsed.items.length - 6) + '문제</p>' : '') +
+      '</div></div>';
+    return parsed;
+  }
+
+  function importParsed(parsed, quiet) {
+    if (!parsed.items.length) { toast('추가할 문제가 없습니다.', 'err'); return; }
+    parsed.items.forEach(function (it) { state.set.items.push(it); });
+    renderStudio();
+    scheduleAutosave();
+    if (!quiet) toast(parsed.items.length + '문제를 추가했습니다.', 'ok');
+    $('importArea').value = '';
+    $('importPreview').innerHTML = '';
+    hap(16);
+  }
+
+  function normalizeItem(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    var t = raw.type || raw.t || 'short';
+    if (t === 'multiple') t = 'mc';
+    if (t === 'flash' || t === 'flashcard') t = 'card';
+    if (['mc', 'short', 'ox', 'card'].indexOf(t) === -1) t = 'short';
+    var q = raw.q || raw.question || raw.front || '';
+    if (!q) return null;
+    var it = { id: uid('q'), type: t, q: String(q), explain: raw.explain || raw.e || raw.exp || '' };
+    if (t === 'mc') {
+      it.options = (raw.options || raw.o || []).map(String);
+      it.answer = typeof raw.answer === 'number' ? raw.answer : parseInt(raw.answer || raw.a || 0, 10) || 0;
+      it.answer = Math.max(0, Math.min(it.options.length - 1, it.answer));
+      if (it.options.length < 2) return null;
+    } else if (t === 'ox') {
+      var a = raw.answer != null ? raw.answer : raw.a;
+      it.answer = (a === true || a === 'O' || a === 'o' || a === 'true' || a === 1);
+    } else {
+      it.answer = String(raw.answer != null ? raw.answer : (raw.a != null ? raw.a : (raw.back || '')));
+      if (raw.accept) it.accept = Array.isArray(raw.accept) ? raw.accept.map(String) : [String(raw.accept)];
+      if (!it.answer) return null;
+    }
+    return it;
+  }
+
+  function importJsonObject(obj, quiet) {
+    var sets = [];
+    if (Array.isArray(obj)) sets = obj;
+    else if (obj && Array.isArray(obj.sets)) sets = obj.sets;
+    else if (obj && obj.quiz) sets = [obj.quiz];
+    else if (obj && (obj.items || obj.questions)) sets = [obj];
+    var added = 0, addedSets = 0;
+    sets.forEach(function (s) {
+      var items = (s.items || s.questions || []).map(normalizeItem).filter(Boolean);
+      if (!items.length) return;
+      if (sets.length === 1 && !s.title) {
+        items.forEach(function (it) { state.set.items.push(it); });
+        added += items.length;
+        if (s.desc) state.set.desc = s.desc;
+        if (s.subject) state.set.subject = s.subject;
+        if (s.title) state.set.title = s.title;
+        return;
+      }
+      addSetRecord(s, items);
+      addedSets++;
+      added += items.length;
+    });
+    if (added) {
+      renderStudio();
+      scheduleAutosave();
+      if (!quiet) toast(added + '문제' + (addedSets ? ' · ' + addedSets + '세트' : '') + '를 가져왔습니다.', 'ok');
+    } else if (!quiet) {
+      toast('가져올 문제를 찾지 못했습니다.', 'err');
+    }
+  }
+
+  function addSetRecord(s, items) {
+    var now = Date.now();
+    var rec = {
+      id: 'quiz_' + now.toString(36) + Math.random().toString(36).slice(2, 6),
+      title: s.title || '가져온 퀴즈',
+      subject: s.subject || '',
+      desc: s.desc || '',
+      items: items,
+      timer: Number(s.timer) || 0,
+      shuffleQ: !!s.shuffleQ,
+      shuffleO: s.shuffleO !== false,
+      createdAt: now,
+      updatedAt: now
+    };
+    state.sets.unshift(rec);
+    dbPut(ST_SETS, rec).then(function () { paintCounts(); renderSets(); });
+    return rec;
+  }
+
+  /* ============================================================
+     Home / studio bindings
+     ============================================================ */
+  function bindStudioMeta() {
+    function meta() {
+      state.set.title = $('setTitle').value;
+      state.set.subject = $('setSubject').value;
+      state.set.desc = $('setDesc').value;
+      scheduleAutosave();
+    }
+    ['setTitle', 'setSubject', 'setDesc'].forEach(function (id) {
+      $(id).addEventListener('input', meta);
+    });
+    $('optTimer').addEventListener('change', function () {
+      state.set.timer = parseInt(this.value, 10) || 0;
+      scheduleAutosave();
+    });
+    $('optShuffleQ').addEventListener('click', function () {
+      state.set.shuffleQ = !state.set.shuffleQ;
+      setSwitch('optShuffleQ', state.set.shuffleQ);
+      scheduleAutosave();
+      hap(8);
+    });
+    $('optShuffleO').addEventListener('click', function () {
+      state.set.shuffleO = !state.set.shuffleO;
+      setSwitch('optShuffleO', state.set.shuffleO);
+      scheduleAutosave();
+      hap(8);
+    });
+    document.querySelectorAll('input[name="oxAns"]').forEach(function (r) {
+      r.addEventListener('change', syncOxLabels);
+    });
+  }
+
+  /* ============================================================
+     Study session / player
+     ============================================================ */
+  var session = null;
+
+  function prepQuestion(q, opts) {
+    if (q.type === 'mc' && Array.isArray(q.options) && q.options.length) {
+      var order = q.options.map(function (_, i) { return i; });
+      if (!opts || opts.shuffleO !== false) shuffle(order);
+      var ans = Number(q.answer) || 0;
+      q.options = order.map(function (i) { return q.options[i]; });
+      q.answer = Math.max(0, order.indexOf(ans));
+    }
+    return q;
+  }
+
+  function startStudy(items, opts, meta) {
+    items = (items || []).filter(Boolean);
+    if (!items.length) { toast('문제가 없습니다.', 'err'); return; }
+    opts = opts || {};
+    var qs = items.map(function (it) { return JSON.parse(JSON.stringify(it)); });
+    if (opts.shuffleQ) shuffle(qs);
+    qs.forEach(function (q) { prepQuestion(q, opts); });
+    session = {
+      meta: meta || {},
+      opts: opts,
+      qs: qs,
+      idx: 0,
+      correct: 0,
+      answers: [],
+      startedAt: Date.now(),
+      locked: false,
+      timerId: null,
+      limit: Number(opts.timer) || 0,
+      deadline: 0,
+      finished: false,
+      shared: !!meta.shared
+    };
+    var pl = $('player');
+    pl.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    $('plTitle').textContent = meta.title || '퀴즈';
+    $('plScore').textContent = '0';
+    renderQuestion();
+    hap(14);
+  }
+
+  function closePlayer() {
+    stopTimer();
+    $('player').classList.remove('open');
+    document.body.style.overflow = '';
+    session = null;
+    if (location.hash.indexOf('#view=') === 0 || state.shareMode) { /* keep share link intact */ }
+  }
+
+  function stopTimer() {
+    if (session && session.timerId) { clearInterval(session.timerId); session.timerId = null; }
+    var w = $('plTimerWrap');
+    if (w) { w.style.display = 'none'; }
+  }
+
+  function startTimer() {
+    stopTimer();
+    var q = session.qs[session.idx];
+    if (!session.limit || q.type === 'card') return;
+    var wrap = $('plTimerWrap');
+    wrap.style.display = 'flex';
+    wrap.classList.remove('hidden');
+    session.deadline = Date.now() + session.limit * 1000;
+    paintTimer();
+    session.timerId = setInterval(function () {
+      if (!session || session.locked) return;
+      if (Date.now() >= session.deadline) {
+        clearInterval(session.timerId);
+        session.timerId = null;
+        timeoutAnswer();
+        return;
+      }
+      paintTimer();
+    }, 100);
+  }
+
+  function paintTimer() {
+    if (!session) return;
+    var left = Math.max(0, session.deadline - Date.now());
+    var ratioLeft = left / (session.limit * 1000);
+    var ring = $('plRing');
+    var circ = 100.53;
+    if (ring) {
+      ring.setAttribute('stroke-dashoffset', String(circ * (1 - ratioLeft)));
+      ring.classList.toggle('low', ratioLeft <= 0.3);
+    }
+    var txt = $('plTimerText');
+    if (txt) txt.textContent = String(Math.ceil(left / 1000));
+  }
+
+  function timeoutAnswer() {
+    if (!session || session.locked) return;
+    var q = session.qs[session.idx];
+    session.locked = true;
+    lockAnswers(null);
+    finishAnswer(false, null, q, true);
+  }
+
+  function lockAnswers(chosen) {
+    document.querySelectorAll('[data-opt]').forEach(function (b) {
+      b.classList.add('locked');
+      var i = parseInt(b.getAttribute('data-opt'), 10);
+      var q = session.qs[session.idx];
+      if (i === Number(q.answer)) b.classList.add('correct');
+      else if (chosen != null && i === chosen) b.classList.add('wrong');
+      else b.classList.add('dim');
+    });
+    document.querySelectorAll('[data-ox]').forEach(function (b) {
+      b.classList.add('locked');
+      var v = b.getAttribute('data-ox') === 'true';
+      var q2 = session.qs[session.idx];
+      if (v === !!q2.answer) b.classList.add('correct');
+      else if (chosen != null && v === chosen) b.classList.add('wrong');
+      else b.classList.add('dim');
+    });
+    var sh = $('plShort');
+    if (sh) { sh.disabled = true; sh.classList.add('opacity-60'); }
+    var sbtn = $('plShortBtn');
+    if (sbtn) { sbtn.disabled = true; sbtn.classList.add('opacity-50'); }
+  }
+
+  function answerMc(i) {
+    if (!session || session.locked) return;
+    var q = session.qs[session.idx];
+    session.locked = true;
+    lockAnswers(i);
+    finishAnswer(i === Number(q.answer), q.options[i], q, false);
+  }
+
+  function answerOx(v) {
+    if (!session || session.locked) return;
+    var q = session.qs[session.idx];
+    session.locked = true;
+    lockAnswers(v);
+    finishAnswer(v === !!q.answer, v ? 'O' : 'X', q, false);
+  }
+
+  function answerShort() {
+    if (!session || session.locked) return;
+    var input = $('plShort');
+    if (!input) return;
+    var val = input.value.trim();
+    if (!val) { input.classList.add('shake'); setTimeout(function () { input.classList.remove('shake'); }, 350); toast('답을 입력해 주세요.', 'err'); return; }
+    var q = session.qs[session.idx];
+    session.locked = true;
+    lockAnswers(null);
+    finishAnswer(shortOk(q, val), val, q, false);
+  }
+
+  function answerCard(knew) {
+    if (!session || session.locked) return;
+    var q = session.qs[session.idx];
+    session.locked = true;
+    finishAnswer(!!knew, knew ? '알았어' : '몰랐어', q, false);
+  }
+
+  function finishAnswer(ok, given, q, timedOut) {
+    stopTimer();
+    session.answers.push({ q: q, ok: !!ok, given: given == null ? '' : given, timedOut: !!timedOut });
+    if (ok) session.correct++;
+    var note = recordWrongResult(q, ok, given, timedOut);
+    $('plScore').textContent = String(session.correct);
+
+    var fb = $('plFeedback');
+    var head, sub = '', cls;
+    if (timedOut) { head = '시간 초과'; cls = 'fb-time'; }
+    else if (ok) { head = '정답입니다'; cls = 'fb-good'; }
+    else { head = '오답입니다'; cls = 'fb-bad'; }
+    var ansTxt = answerText(q);
+    if (q.type === 'card') ansTxt = q.answer;
+    if (q.type === 'mc') ansTxt = q.options[Number(q.answer)] || '';
+    sub += '<p class="text-[11.5px] mt-1" style="color:var(--ink)">정답 <span class="font-black" style="color:var(--good)">' + esc(ansTxt) + '</span>' +
+      (!ok && given ? ' <span style="color:var(--muted)">· 내 답</span> <span class="font-bold" style="color:var(--coral)">' + esc(given) + '</span>' : '') + '</p>';
+    if (q.explain) sub += '<p class="text-[11.5px] mt-1.5 leading-relaxed" style="color:var(--muted)">' + esc(q.explain) + '</p>';
+    if (note.added) sub += '<p class="text-[10.5px] font-bold mt-1.5" style="color:var(--coral)">오답노트에 담았습니다.</p>';
+    if (note.streak) sub += '<p class="text-[10.5px] font-bold mt-1.5" style="color:var(--good)">오답노트 1연속 정답 · 한 번 더 맞히면 졸업합니다.</p>';
+    if (note.graduated) sub += '<p class="text-[10.5px] font-bold mt-1.5" style="color:var(--good)">두 번 연속 정답 · 오답노트에서 졸업했습니다.</p>';
+
+    var ico = ok ? '<svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>'
+      : '<svg class="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#' + (timedOut ? 'i-clock' : 'i-x') + '"></use></svg>';
+    fb.innerHTML = '<div class="fb-banner ' + cls + '">' +
+      '<span style="color:' + (ok ? 'var(--good)' : timedOut ? 'var(--gold)' : 'var(--coral)') + '">' + ico + '</span>' +
+      '<div class="min-w-0 flex-1"><p class="text-[12.5px] font-black">' + head + '</p>' + sub + '</div></div>';
+
+    var next = $('btnPlNext');
+    next.disabled = false;
+    $('btnPlNextLabel').textContent = session.idx === session.qs.length - 1 ? '결과 보기' : '다음 문제';
+    $('plHint').textContent = session.idx === session.qs.length - 1 ? '마지막 문제입니다. 결과를 확인하세요.' : '해설을 읽고 다음 문제로 넘어가세요.';
+    hap(ok ? 12 : 20);
+    if (next.scrollIntoView) { /* keep view stable */ }
+  }
+
+  function recordWrongResult(q, ok, given, timedOut) {
+    var out = { added: false, streak: false, graduated: false };
+    var setId = session.meta.setId || (state.share ? 'shared' : 'local');
+    var key = setId + '::' + (q.id || q.q);
+    var i = state.wrong.findIndex(function (e) { return e.id === key; });
+    if (!ok) {
+      if (i > -1) {
+        var e = state.wrong[i];
+        e.count = (e.count || 1) + 1;
+        e.ok = 0;
+        e.lastAt = Date.now();
+        e.item = q;
+        e.given = given == null ? '' : String(given);
+        e.setTitle = session.meta.title || e.setTitle;
+        e.timedOut = !!timedOut;
+        dbPut(ST_WRONG, e);
+      } else {
+        var rec = {
+          id: key, setId: setId, setTitle: session.meta.title || '퀴즈',
+          itemId: q.id || '', item: q, given: given == null ? '' : String(given),
+          count: 1, ok: 0, lastAt: Date.now(), timedOut: !!timedOut
+        };
+        state.wrong.unshift(rec);
+        dbPut(ST_WRONG, rec);
+      }
+      out.added = true;
+    } else if (i > -1) {
+      var e2 = state.wrong[i];
+      e2.ok = (e2.ok || 0) + 1;
+      e2.lastAt = Date.now();
+      if (e2.ok >= 2) {
+        state.wrong.splice(i, 1);
+        dbDel(ST_WRONG, e2.id);
+        out.graduated = true;
+        toast('두 번 연속 정답! 오답노트에서 졸업했습니다.', 'ok');
+      } else {
+        out.streak = true;
+        dbPut(ST_WRONG, e2);
+      }
+    }
+    paintCounts();
+    renderWrong();
+    return out;
+  }
+
+  function fmtQuestion(text) {
+    return esc(text).replace(/_{2,}/g, '<span style="display:inline-block;min-width:3.4rem;border-bottom:2px solid var(--gold);color:var(--gold);text-align:center;font-weight:800">?</span>');
+  }
+
+  function renderQuestion() {
+    if (!session) return;
+    var q = session.qs[session.idx];
+    var total = session.qs.length;
+    $('plSub').textContent = (session.meta.subject ? session.meta.subject + ' · ' : '') + (session.idx + 1) + ' / ' + total;
+    $('plBar').style.width = ((session.idx) / total * 100) + '%';
+    $('btnPlNext').classList.remove('hidden');
+    $('btnPlNext').disabled = true;
+    $('btnPlNextLabel').textContent = session.idx === total - 1 ? '결과 보기' : '다음 문제';
+    $('plHint').textContent = q.type === 'card' ? '카드를 눌러 뒤집고, 알았는지 스스로 골라 주세요.'
+      : q.type === 'short' ? '답을 입력하고 Enter 또는 확인을 누르세요.'
+      : q.type === 'ox' ? 'O 또는 X를 고르면 바로 채점됩니다.' : '보기를 고르면 바로 채점됩니다.';
+    session.locked = false;
+
+    var inner = '';
+    if (q.type === 'mc') {
+      var letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+      inner = (q.options || []).map(function (opt, i) {
+        return '<button class="opt-btn" data-opt="' + i + '"><span class="opt-letter">' + letters[i] + '</span><span class="flex-1">' + esc(opt) + '</span></button>';
+      }).join('');
+    } else if (q.type === 'short') {
+      inner = '<div class="space-y-2">' +
+        '<input id="plShort" class="lemon-input !text-[14px] !py-3" placeholder="정답을 입력하세요" autocomplete="off" maxlength="120">' +
+        '<button id="plShortBtn" class="primary-btn w-full !py-2.5" data-short-submit>정답 확인</button></div>';
+    } else if (q.type === 'ox') {
+      inner = '<div class="grid grid-cols-2 gap-2.5">' +
+        '<button class="ox-btn" data-ox="true">O</button>' +
+        '<button class="ox-btn" data-ox="false">X</button></div>';
+    } else {
+      inner = '<div class="flip-shell"><div class="flip-inner" id="flipInner">' +
+        '<div class="flip-face"><p class="smallcaps">FRONT</p><p class="serif text-[20px] font-bold leading-snug mt-2">' + esc(q.q) + '</p>' +
+          (q.explain ? '<p class="text-[11px] mt-2.5" style="color:var(--muted)">' + esc(q.explain) + '</p>' : '') +
+          '<span class="flip-hint">카드를 눌러 뒤집기</span></div>' +
+        '<div class="flip-face flip-back"><p class="smallcaps">BACK</p><p class="serif text-[20px] font-bold leading-snug mt-2">' + esc(q.answer) + '</p><span class="flip-hint">다시 누르면 앞면</span></div>' +
+        '</div></div>' +
+        '<div class="flex items-center gap-2 mt-3"><button class="ghost-btn flex-1 !py-2.5" data-flip>카드 뒤집기</button></div>' +
+        '<div id="cardGrade" class="grid grid-cols-2 gap-2 mt-2"></div>';
+    }
+
+    $('plStage').innerHTML = '<div class="deal">' +
+      '<div class="flex items-center justify-between gap-2">' +
+        '<div class="flex items-center gap-1.5"><span class="card-num">Q.' + pad2(session.idx + 1) + '</span>' + typeChip(q.type) + '</div>' +
+        '<span class="text-[10px] mono" style="color:var(--muted)">' + (session.limit && q.type !== 'card' ? 'LIMIT ' + session.limit + 's' : 'FREE') + '</span>' +
+      '</div>' +
+      '<div class="q-card p-4 sm:p-5 mt-2">' +
+        (q.type === 'card'
+          ? '<p class="text-[11px] font-bold" style="color:var(--muted)">카드를 눌러 뒤집고, 알았는지 스스로 골라 주세요.</p>'
+          : '<p class="serif text-[19px] sm:text-[21px] font-bold leading-snug">' + fmtQuestion(q.q) + '</p>') +
+        '<div class="mt-4 space-y-2" id="plAnswers">' + inner + '</div>' +
+      '</div>' +
+      '<div id="plFeedback" class="mt-3"></div>' +
+      '</div>';
+
+    if (q.type === 'short') {
+      var inp = $('plShort');
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); answerShort(); } });
+      setTimeout(function () { try { inp.focus(); } catch (e) { } }, 80);
+    }
+    if (q.type === 'card') {
+      var fl = $('flipInner');
+      var flip = function () {
+        fl.classList.toggle('flipped');
+        var back = fl.classList.contains('flipped');
+        var g = $('cardGrade');
+        if (back) {
+          g.innerHTML = '<button class="ghost-btn !py-2.5" style="border-color:#e7a999;color:var(--coral)" data-card-no>몰랐어</button>' +
+            '<button class="primary-btn !py-2.5" data-card-yes>알았어</button>';
+        } else {
+          g.innerHTML = '';
+        }
+      };
+      fl.addEventListener('click', flip);
+      $('player').querySelectorAll('[data-flip]').forEach(function (b) { b.addEventListener('click', flip); });
+    }
+    startTimer();
+  }
+
+  function nextQuestion() {
+    if (!session) return;
+    if (session.idx < session.qs.length - 1) {
+      session.idx++;
+      renderQuestion();
+      window.requestAnimationFrame(function () {
+        var sc = document.querySelector('.player-scroll');
+        if (sc) sc.scrollTop = 0;
+      });
+    } else {
+      finishSession();
+    }
+  }
+
+  function finishSession() {
+    stopTimer();
+    var total = session.qs.length, correct = session.correct, wrong = total - correct;
+    var acc = total ? Math.round(correct / total * 100) : 0;
+    var dur = Date.now() - session.startedAt;
+    var rec = {
+      id: uid('run'), setId: session.meta.setId || '', setTitle: session.meta.title || '퀴즈',
+      total: total, correct: correct, wrong: wrong, acc: acc, durationMs: dur, ts: Date.now()
+    };
+    state.runs.unshift(rec);
+    dbPut(ST_RUNS, rec).then(function () { paintCounts(); renderRuns(); });
+    session.finished = true;
+    $('plBar').style.width = '100%';
+    $('btnPlNext').disabled = true;
+    $('btnPlNext').classList.add('hidden');
+    $('btnPlNextLabel').textContent = '다음 문제';
+    $('plHint').textContent = '학습을 마쳤습니다.';
+    var wrongList = session.answers.filter(function (a) { return !a.ok; });
+
+    var r = 54, c = 2 * Math.PI * r;
+    var grade = acc >= 90 ? 'A' : acc >= 75 ? 'B' : acc >= 60 ? 'C' : 'D';
+    var gradeColor = acc >= 75 ? 'var(--good)' : acc >= 60 ? 'var(--gold)' : 'var(--coral)';
+    var rows = wrongList.slice(0, 6).map(function (a, i) {
+      var ans = a.q.type === 'mc' ? (a.q.options[Number(a.q.answer)] || '') : a.q.type === 'ox' ? (a.q.answer ? 'O' : 'X') : a.q.answer;
+      return '<div class="flex items-start gap-2 text-[11px] py-1.5 border-b last:border-0" style="border-color:var(--line)">' +
+        '<span class="mono shrink-0" style="color:var(--coral)">' + pad2(i + 1) + '</span>' +
+        '<span class="min-w-0 flex-1"><span class="font-bold">' + esc(a.q.q) + '</span>' +
+        '<span class="block mt-0.5" style="color:var(--muted)">정답 <b style="color:var(--good)">' + esc(String(ans)) + '</b></span></span>' +
+        '</div>';
+    }).join('');
+
+    $('plStage').innerHTML = '<div class="deal max-w-md mx-auto text-center pt-2">' +
+      '<p class="smallcaps">RESULT</p>' +
+      '<div class="score-ring mx-auto mt-2">' +
+        '<svg width="128" height="128" viewBox="0 0 128 128">' +
+          '<circle cx="64" cy="64" r="54" fill="none" stroke="var(--line)" stroke-width="9"></circle>' +
+          '<circle cx="64" cy="64" r="54" fill="none" stroke="' + gradeColor + '" stroke-width="9" stroke-linecap="round" ' +
+            'stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + (c * (1 - acc / 100)).toFixed(1) + '"></circle>' +
+        '</svg>' +
+        '<div class="val"><span class="mono font-black text-[30px] leading-none" style="color:' + gradeColor + '">' + acc + '<span class="text-[13px]">%</span></span>' +
+        '<span class="text-[9.5px] font-bold mt-0.5" style="color:var(--muted)">정답률 · ' + grade + '</span></div>' +
+      '</div>' +
+      '<h2 class="serif text-[20px] font-bold tracking-tight mt-3">' + (acc === 100 ? '완벽합니다.' : acc >= 70 ? '좋은 감각입니다.' : '오답이 남았습니다.') + '</h2>' +
+      '<p class="text-[11.5px] mt-1" style="color:var(--muted)">' + total + '문제 중 ' + correct + '개 정답 · ' + fmtClock(dur) + ' 소요</p>' +
+      '<div class="grid grid-cols-3 gap-2 mt-4">' +
+        '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">정답</p><p class="mono font-black text-[17px]" style="color:var(--good)">' + correct + '</p></div>' +
+        '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">오답</p><p class="mono font-black text-[17px]" style="color:var(--coral)">' + wrong + '</p></div>' +
+        '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">소요</p><p class="mono font-black text-[17px]">' + fmtClock(dur) + '</p></div>' +
+      '</div>' +
+      (rows ? '<div class="q-card p-3 mt-3 text-left"><p class="text-[11px] font-black mb-1">틀린 문제 ' + wrongList.length + '개</p>' + rows + '</div>' : '') +
+      '<div class="space-y-2 mt-4">' +
+        (wrongList.length ? '<button class="primary-btn w-full !py-3" data-res="wrong"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>틀린 문제만 다시 풀기</button>' : '') +
+        '<div class="grid grid-cols-2 gap-2">' +
+          '<button class="ghost-btn !py-2.5" data-res="retry"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-refresh"></use></svg>처음부터</button>' +
+          '<button class="ghost-btn !py-2.5" data-res="archive"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-note"></use></svg>오답노트</button>' +
+        '</div>' +
+        '<button class="w-full text-[11px] font-bold py-1.5" style="color:var(--muted)" data-res="close">닫기</button>' +
+      '</div>' +
+      '</div>';
+    if (acc >= 80) { try { Lemon.confetti(30); } catch (e) { } }
+    hap(24);
+  }
+
+  /* ============================================================
+     Share (#view=)
+     ============================================================ */
+  function packShare(set) {
+    var payload = {
+      v: 1, t: set.title || '공유 퀴즈', s: set.subject || '', d: set.desc || '',
+      i: (set.items || []).map(function (it) {
+        var o = { y: it.type, q: it.q };
+        if (it.type === 'mc') { o.o = it.options || []; o.a = Number(it.answer) || 0; }
+        else if (it.type === 'ox') { o.a = it.answer ? 1 : 0; }
+        else { o.a = it.answer; if (it.accept && it.accept.length) o.c = it.accept; }
+        if (it.explain) o.e = it.explain;
+        return o;
+      })
+    };
+    if (!window.LZString) return '';
+    return LZString.compressToEncodedURIComponent(JSON.stringify(payload));
+  }
+
+  function unpackShare(code) {
+    if (!window.LZString || !code) return null;
+    var json;
+    try { json = LZString.decompressFromEncodedURIComponent(code); } catch (e) { return null; }
+    if (!json) return null;
+    var p;
+    try { p = JSON.parse(json); } catch (e) { return null; }
+    if (!p || !Array.isArray(p.i) || !p.i.length) return null;
+    var items = [];
+    p.i.forEach(function (o) {
+      if (!o || !o.q) return;
+      var type = ['mc', 'short', 'ox', 'card'].indexOf(o.y) > -1 ? o.y : 'short';
+      var it = { id: uid('q'), type: type, q: String(o.q), explain: o.e || '' };
+      if (type === 'mc') {
+        it.options = (o.o || []).map(String);
+        it.answer = Math.max(0, Math.min(it.options.length - 1, Number(o.a) || 0));
+        if (it.options.length < 2) return;
+      } else if (type === 'ox') { it.answer = !!o.a; }
+      else {
+        it.answer = String(o.a == null ? '' : o.a);
+        if (!it.answer) return;
+        if (Array.isArray(o.c)) it.accept = o.c.map(String);
+      }
+      items.push(it);
+    });
+    if (!items.length) return null;
+    return { id: 'shared_' + Date.now().toString(36), title: p.t || '공유 퀴즈', subject: p.s || '', desc: p.d || '', items: items, timer: 0, shuffleQ: false, shuffleO: true, shared: true };
+  }
+
+  function buildShareUrl(set) {
+    var code = packShare(set);
+    if (!code) return '';
+    return location.origin + location.pathname + '#view=' + code;
+  }
+
+  function renderShare() {
+    var s = state.share;
+    var invalid = $('shareInvalid'), body = $('shareBody');
+    if (!s) { invalid.classList.remove('hidden'); body.classList.add('hidden'); return; }
+    invalid.classList.add('hidden'); body.classList.remove('hidden');
+    $('shareTitle').textContent = s.title;
+    $('shareDesc').textContent = s.desc || '링크를 받으면 바로 풀 수 있습니다. 내 답과 오답은 이 브라우저에만 저장됩니다.';
+    $('shareSubject').textContent = s.subject || '공유 퀴즈';
+    $('shareCount').textContent = s.items.length + '문제';
+    var types = {};
+    s.items.forEach(function (it) { types[it.type] = true; });
+    $('shareTypes').textContent = Object.keys(types).map(function (t) { return TYPE_LABEL[t]; }).join(' · ');
+    $('sharePreview').innerHTML = s.items.slice(0, 5).map(function (it, i) {
+      var ans = it.type === 'mc' ? (it.options[Number(it.answer)] || '') : it.type === 'ox' ? (it.answer ? 'O' : 'X') : it.answer;
+      return '<div class="flex items-start gap-2 text-[11.5px] py-1.5 border-b last:border-0" style="border-color:var(--line)">' +
+        '<span class="mono shrink-0" style="color:var(--muted)">' + pad2(i + 1) + '</span>' +
+        '<span class="min-w-0 flex-1"><span class="font-bold">' + esc(it.q) + '</span>' +
+        '<span class="ans-line hidden block mt-0.5" style="color:var(--muted)">정답 <b style="color:var(--good)">' + esc(String(ans)) + '</b></span></span>' +
+        '</div>';
+    }).join('') + (s.items.length > 5 ? '<p class="text-[10px] pt-1" style="color:var(--muted)">외 ' + (s.items.length - 5) + '문제</p>' : '');
+  }
+
+  function saveSharedToLibrary() {
+    if (!state.share) return;
+    var now = Date.now();
+    var rec = {
+      id: 'quiz_' + now.toString(36) + Math.random().toString(36).slice(2, 6),
+      title: state.share.title + ' (공유)',
+      subject: state.share.subject || '',
+      desc: state.share.desc || '공유 링크로 받은 퀴즈',
+      items: state.share.items.map(function (it) { var c = JSON.parse(JSON.stringify(it)); c.id = uid('q'); return c; }),
+      timer: 0, shuffleQ: false, shuffleO: true, createdAt: now, updatedAt: now
+    };
+    dbPut(ST_SETS, rec).then(function () {
+      toast('내 보관함에 담았습니다.', 'ok');
+      return loadAll();
+    });
+  }
+
+  /* ============================================================
+     Archive rendering
+     ============================================================ */
+  function renderWrong() {
+    var list = $('wrongList');
+    if (!list) return;
+    var filter = $('wrongFilter');
+    var setsWithWrong = {};
+    state.wrong.forEach(function (e) { setsWithWrong[e.setId || 'local'] = e.setTitle || '퀴즈'; });
+    var keep = filter.value || 'all';
+    filter.innerHTML = '<option value="all">모든 퀴즈</option>' + Object.keys(setsWithWrong).map(function (id) {
+      return '<option value="' + esc(id) + '">' + esc(setsWithWrong[id]) + '</option>';
+    }).join('');
+    filter.value = Object.prototype.hasOwnProperty.call(setsWithWrong, keep) || keep === 'all' ? keep : 'all';
+    state.wrongFilter = filter.value;
+
+    var rows = state.wrong.filter(function (e) {
+      return state.wrongFilter === 'all' || (e.setId || 'local') === state.wrongFilter;
+    });
+    var repeated = rows.filter(function (e) { return (e.count || 1) >= 2; }).length;
+    $('wrongSummary').innerHTML =
+      '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">오답 카드</p><p class="mono font-black text-[18px]" style="color:var(--coral)">' + rows.length + '</p></div>' +
+      '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">퀴즈</p><p class="mono font-black text-[18px]">' + Object.keys(setsWithWrong).length + '</p></div>' +
+      '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">반복 오답</p><p class="mono font-black text-[18px]" style="color:var(--gold)">' + repeated + '</p></div>';
+
+    if (!rows.length) {
+      list.innerHTML = '<div class="empty-box">' +
+        '<div class="w-11 h-11 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:color-mix(in srgb,var(--good) 12%,transparent);color:var(--good)">' +
+        '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg></div>' +
+        '<p class="text-[12.5px] font-bold">오답노트가 비어 있습니다</p>' +
+        '<p class="text-[11px] mt-1" style="color:var(--muted)">퀴즈를 풀면 틀린 문제가 해설과 함께 여기에 쌓입니다.</p>' +
+        '<button class="primary-btn mt-3 !py-2 !px-3 !text-[11px]" data-goto="home">샘플로 풀어 보기</button>' +
+        '</div>';
+      return;
+    }
+    var letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    list.innerHTML = rows.map(function (e) {
+      var it = e.item || {};
+      var ans = it.type === 'mc' ? (it.options && it.options[Number(it.answer)] ? letters[Number(it.answer)] + '. ' + it.options[Number(it.answer)] : '') :
+        it.type === 'ox' ? (it.answer ? 'O' : 'X') : it.answer;
+      var mine = e.given ? (it.type === 'mc' && it.options && /^\d+$/.test(String(e.given)) ? (letters[Number(e.given)] + '. ' + (it.options[Number(e.given)] || '')) : e.given) : (e.timedOut ? '시간 초과' : '답 없음');
+      return '<div class="row-card p-3" data-wrong="' + esc(e.id) + '">' +
+        '<div class="flex items-start gap-2.5">' +
+          '<div class="min-w-0 flex-1">' +
+            '<div class="flex items-center gap-1.5 flex-wrap">' + typeChip(it.type || 'short') +
+              '<span class="count-pill">' + esc(e.setTitle || '퀴즈') + '</span>' +
+              '<span class="text-[9.5px] font-black" style="color:var(--coral)">오답 ' + (e.count || 1) + '회</span>' +
+              (e.ok ? '<span class="text-[9.5px] font-bold" style="color:var(--good)">정답 ' + e.ok + '연속</span>' : '') +
+            '</div>' +
+            '<p class="text-[12.5px] font-bold mt-1.5 leading-snug">' + esc(it.q || '') + '</p>' +
+            '<p class="wrong-answer mt-1" style="color:var(--muted)">내 답 <span class="mine">' + esc(mine) + '</span> · 정답 <span class="right">' + esc(String(ans == null ? '' : ans)) + '</span></p>' +
+            (it.explain ? '<p class="text-[10.5px] mt-1 leading-relaxed" style="color:var(--muted)">' + esc(it.explain) + '</p>' : '') +
+          '</div>' +
+          '<div class="flex flex-col items-end gap-1 shrink-0">' +
+            '<button class="mini-btn" data-wrong-retry="' + esc(e.id) + '"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><use href="#i-play"></use></svg>풀기</button>' +
+            '<button class="mini-btn danger" data-wrong-del="' + esc(e.id) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>해결</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderSets() {
+    var g = $('setGrid');
+    if (!g) return;
+    var q = state.search.trim().toLowerCase();
+    var list = state.sets.filter(function (s) {
+      if (!q) return true;
+      return (s.title || '').toLowerCase().indexOf(q) > -1 || (s.subject || '').toLowerCase().indexOf(q) > -1;
+    });
+    if (!list.length) {
+      g.innerHTML = '<div class="empty-box sm:col-span-2 xl:col-span-3">' +
+        '<div class="w-11 h-11 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:var(--soft);color:var(--muted)">' +
+        '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-layers"></use></svg></div>' +
+        '<p class="text-[12.5px] font-bold">' + (state.sets.length ? '찾는 퀴즈가 없습니다' : '저장한 퀴즈가 없습니다') + '</p>' +
+        '<p class="text-[11px] mt-1" style="color:var(--muted)">' + (state.sets.length ? '다른 검색어로 찾아보세요.' : '스튜디오에서 첫 퀴즈를 만들거나 샘플을 담아 보세요.') + '</p>' +
+        (state.sets.length ? '' : '<button class="primary-btn mt-3 !py-2 !px-3 !text-[11px]" data-goto="studio">퀴즈 만들기</button>') +
+        '</div>';
+      return;
+    }
+    g.innerHTML = list.map(function (s) {
+      var counts = { mc: 0, short: 0, ox: 0, card: 0 };
+      (s.items || []).forEach(function (it) { counts[it.type] = (counts[it.type] || 0) + 1; });
+      return '<div class="panel p-3.5 flex flex-col gap-2" data-set-card="' + esc(s.id) + '">' +
+        '<div class="flex items-start justify-between gap-2">' +
+          '<div class="min-w-0">' +
+            '<p class="text-[13px] font-black truncate">' + esc(s.title) + '</p>' +
+            '<p class="text-[10px] mt-0.5" style="color:var(--muted)">' + esc(s.subject || '퀴즈') + ' · ' + (s.items || []).length + '문제 · ' + (s.updatedAt ? fmtDay(s.updatedAt) : '') + '</p>' +
+          '</div>' +
+          '<span class="count-pill shrink-0">' + (s.items || []).length + '</span>' +
+        '</div>' +
+        '<div class="flex flex-wrap gap-1">' +
+          ['mc', 'short', 'ox', 'card'].filter(function (t) { return counts[t]; }).map(function (t) {
+            return typeChip(t) + '<span class="text-[9.5px] font-bold mr-1" style="color:var(--muted)">' + counts[t] + '</span>';
+          }).join('') +
+        '</div>' +
+        '<div class="flex items-center gap-1.5 mt-0.5">' +
+          '<button class="primary-btn flex-1 !py-2 !px-2 !text-[11px]" data-set-play="' + esc(s.id) + '"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>학습</button>' +
+          '<button class="mini-btn !py-2" data-set-edit="' + esc(s.id) + '" aria-label="수정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"></use></svg></button>' +
+          '<button class="mini-btn !py-2" data-set-share="' + esc(s.id) + '" aria-label="공유"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-share"></use></svg></button>' +
+          '<button class="mini-btn !py-2" data-set-export="' + esc(s.id) + '" aria-label="JSON 내보내기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg></button>' +
+          '<button class="mini-btn danger !py-2" data-set-del="' + esc(s.id) + '" aria-label="삭제"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg></button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderRuns() {
+    var list = $('runList');
+    if (!list) return;
+    var n = state.runs.length;
+    var avg = n ? Math.round(state.runs.reduce(function (a, r) { return a + (r.acc || 0); }, 0) / n) : 0;
+    var best = n ? Math.max.apply(null, state.runs.map(function (r) { return r.acc || 0; })) : 0;
+    var mins = n ? Math.round(state.runs.reduce(function (a, r) { return a + (r.durationMs || 0); }, 0) / 60000) : 0;
+    $('runSummary').innerHTML =
+      '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">학습 세션</p><p class="mono font-black text-[18px]">' + n + '</p></div>' +
+      '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">평균 정답률</p><p class="mono font-black text-[18px]">' + (n ? avg + '%' : '-') + '</p></div>' +
+      '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">최고 정답률</p><p class="mono font-black text-[18px]" style="color:var(--gold)">' + (n ? best + '%' : '-') + '</p></div>' +
+      '<div class="stat-tile"><p class="smallcaps !text-[8.5px]">누적 시간</p><p class="mono font-black text-[18px]">' + (n ? mins + '분' : '-') + '</p></div>';
+
+    var days = [];
+    for (var d = 6; d >= 0; d--) {
+      var dt = new Date(); dt.setDate(dt.getDate() - d);
+      var k = dayKey(dt.getTime());
+      var dayRuns = state.runs.filter(function (r) { return dayKey(r.ts) === k; });
+      var a = dayRuns.length ? Math.round(dayRuns.reduce(function (x, r) { return x + (r.acc || 0); }, 0) / dayRuns.length) : null;
+      days.push({ label: (dt.getMonth() + 1) + '/' + dt.getDate(), acc: a, n: dayRuns.length });
+    }
+    $('runChart').innerHTML = '<div class="flex items-end gap-1.5 h-24">' + days.map(function (day) {
+      var h = day.acc == null ? 6 : Math.max(8, Math.round(day.acc * 0.86));
+      var col = day.acc == null ? 'var(--soft)' : day.acc >= 75 ? 'var(--good)' : day.acc >= 50 ? 'var(--gold)' : 'var(--coral)';
+      return '<div class="flex-1 flex flex-col items-center justify-end gap-1">' +
+        '<span class="mono text-[9px]" style="color:var(--muted)">' + (day.acc == null ? '' : day.acc) + '</span>' +
+        '<div style="width:100%;height:' + h + 'px;background:' + col + ';border-radius:.35rem;opacity:' + (day.acc == null ? '.7' : '1') + '"></div>' +
+        '<span class="text-[8.5px]" style="color:var(--muted)">' + day.label + '</span>' +
+        '</div>';
+    }).join('') + '</div>';
+
+    if (!n) {
+      list.innerHTML = '<div class="empty-box"><p class="text-[12.5px] font-bold">학습 기록이 없습니다</p>' +
+        '<p class="text-[11px] mt-1" style="color:var(--muted)">한 판만 풀어도 정답률과 소요 시간이 여기에 쌓입니다.</p></div>';
+      return;
+    }
+    list.innerHTML = state.runs.slice(0, 30).map(function (r) {
+      var col = r.acc >= 75 ? 'var(--good)' : r.acc >= 50 ? 'var(--gold)' : 'var(--coral)';
+      return '<div class="row-card p-2.5 flex items-center gap-2.5">' +
+        '<div class="w-10 h-10 rounded-xl shrink-0 flex flex-col items-center justify-center" style="background:color-mix(in srgb, ' + col + ' 12%, transparent)">' +
+          '<span class="mono font-black text-[13px] leading-none" style="color:' + col + '">' + r.acc + '</span>' +
+          '<span class="text-[7.5px] font-bold" style="color:var(--muted)">%</span>' +
+        '</div>' +
+        '<div class="min-w-0 flex-1">' +
+          '<p class="text-[11.5px] font-bold truncate">' + esc(r.setTitle || '퀴즈') + '</p>' +
+          '<p class="text-[10px]" style="color:var(--muted)">' + (r.total || 0) + '문제 · 정답 ' + (r.correct || 0) + ' · ' + fmtClock(r.durationMs || 0) + ' · ' + (Lemon.fmtDateTime ? Lemon.fmtDateTime(r.ts) : fmtDay(r.ts)) + '</p>' +
+        '</div>' +
+        '<button class="mini-btn" data-run-retry="' + esc(r.setId || '') + '" aria-label="다시 풀기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"></use></svg></button>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* ============================================================
+     Confirm modal
+     ============================================================ */
+  var confirmCb = null;
+  function askConfirm(title, body, cb) {
+    $('cfTitle').textContent = title;
+    $('cfBody').textContent = body;
+    confirmCb = cb;
+    $('confirmModal').classList.add('open');
+  }
+  function closeConfirm() { $('confirmModal').classList.remove('open'); confirmCb = null; }
+
+  /* ============================================================
+     Routing
+     ============================================================ */
+  function showView(name, push) {
+    if (name !== 'share') state.shareMode = false;
+    document.querySelectorAll('[data-view]').forEach(function (p) {
+      var on = p.getAttribute('data-view') === name;
+      p.classList.toggle('hidden', !on);
+      if (on) { p.classList.remove('view-anim'); void p.offsetWidth; p.classList.add('view-anim'); }
+    });
+    document.querySelectorAll('[data-tab]').forEach(function (b) {
+      b.classList.toggle('nav-on', b.getAttribute('data-tab') === name);
+    });
+    if (push && !state.shareMode) {
+      try { history.replaceState(null, '', '#' + name); } catch (e) { }
+    }
+    if (name === 'archive') { renderWrong(); renderSets(); renderRuns(); paintCounts(); }
+    if (name === 'studio') renderStudio();
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+  }
+
+  function setArchiveTab(tab) {
+    state.archiveTab = tab;
+    document.querySelectorAll('[data-atab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-atab') === tab); });
+    document.querySelectorAll('[data-apane]').forEach(function (p) { p.classList.toggle('hidden', p.getAttribute('data-apane') !== tab); });
+    hap(8);
+  }
+
+  function loadSetIntoStudio(id) {
+    var s = state.sets.find(function (x) { return x.id === id; });
+    if (!s) return;
+    state.set = JSON.parse(JSON.stringify(s));
+    state.editingId = null;
+    cancelEdit();
+    setBadge('열림', 'saved');
+    showView('studio', true);
+    renderStudio();
+    toast('"' + s.title + '" 을(를) 열었습니다.', 'ok');
+  }
+
+  function newSet() {
+    state.set = blankSet();
+    state.editingId = null;
+    cancelEdit();
+    setBadge('저장 안 됨', 'new');
+    showView('studio', true);
+    renderStudio();
+    try { $('setTitle').focus(); } catch (e) { }
+  }
+
+  function openShareModal(set) {
+    var url = buildShareUrl(set);
+    if (!url) { toast('공유 링크를 만들지 못했습니다.', 'err'); return; }
+    $('shLink').value = url;
+    $('shareModal').classList.add('open');
+    state._shareUrl = url;
+  }
+
+  function exportSet(set) {
+    var data = JSON.stringify({ app: 'lemon-quiz', version: 1, exportedAt: new Date().toISOString(), title: set.title, subject: set.subject, desc: set.desc, items: set.items }, null, 2);
+    try { Lemon.download((set.title || 'lemon-quiz') + '.json', data, 'application/json'); toast('JSON으로 내보냈습니다.', 'ok'); }
+    catch (e) { toast('내보내지 못했습니다.', 'err'); }
+  }
+
+  /* ============================================================
+     Events
+     ============================================================ */
+  function bindEvents() {
+    document.querySelectorAll('[data-tab]').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.preventDefault(); showView(b.getAttribute('data-tab'), true); });
+    });
+    document.addEventListener('click', function (e) {
+      var goto = e.target.closest && e.target.closest('[data-goto]');
+      if (goto) {
+        e.preventDefault();
+        showView(goto.getAttribute('data-goto'), true);
+        if (goto.hasAttribute('data-open-import')) setEditorTab('import');
+      }
+    });
+
+    /* home */
+    $('btnHeroSample').addEventListener('click', function () { playSample(0); });
+    $('sampleGrid').addEventListener('click', function (e) {
+      var play = e.target.closest('[data-sample-play]');
+      var save = e.target.closest('[data-sample-save]');
+      if (play) playSample(parseInt(play.getAttribute('data-sample-play'), 10));
+      else if (save) saveSample(parseInt(save.getAttribute('data-sample-save'), 10));
+    });
+    ['btnHomeJson', 'btnImportJson2'].forEach(function (id) {
+      var el = $(id); if (el) el.addEventListener('click', function () { $('fileJsonHome').click(); });
+    });
+
+    /* studio */
+    document.querySelectorAll('[data-etab]').forEach(function (b) {
+      b.addEventListener('click', function () { state.editingId = null; $('btnCancelEdit').classList.add('hidden'); setEditorTab(b.getAttribute('data-etab')); });
+    });
+    $('btnAddItem').addEventListener('click', addItem);
+    $('btnCancelEdit').addEventListener('click', cancelEdit);
+    $('btnSaveSet').addEventListener('click', function () { clearTimeout(autosaveTimer); persistSet(false); });
+    $('btnNewSet').addEventListener('click', newSet);
+    $('btnStartStudy').addEventListener('click', function () {
+      var s = state.set;
+      startStudy(s.items, { shuffleQ: s.shuffleQ, shuffleO: s.shuffleO, timer: s.timer }, { setId: s.id, title: s.title || '내 퀴즈', subject: s.subject });
+    });
+    $('itemList').addEventListener('click', function (e) {
+      var ed = e.target.closest('[data-item-edit]');
+      var del = e.target.closest('[data-item-del]');
+      var up = e.target.closest('[data-item-up]');
+      if (ed) editItem(ed.getAttribute('data-item-edit'));
+      if (up) {
+        var id = up.getAttribute('data-item-up');
+        var i = state.set.items.findIndex(function (x) { return x.id === id; });
+        if (i > 0) { var t = state.set.items[i - 1]; state.set.items[i - 1] = state.set.items[i]; state.set.items[i] = t; renderStudio(); scheduleAutosave(); }
+      }
+      if (del) {
+        var did = del.getAttribute('data-item-del');
+        var it = state.set.items.find(function (x) { return x.id === did; });
+        askConfirm('문제를 지울까요?', '이 문제만 삭제됩니다. 저장된 퀴즈는 저장을 눌러야 반영됩니다.', function () {
+          state.set.items = state.set.items.filter(function (x) { return x.id !== did; });
+          if (state.editingId === did) cancelEdit();
+          renderStudio(); scheduleAutosave();
+          toast('문제를 지웠습니다.', 'ok');
+        });
+      }
+    });
+    $('btnShuffleItems').addEventListener('click', function () {
+      if (state.set.items.length < 2) return;
+      shuffle(state.set.items); renderStudio(); scheduleAutosave(); hap(10);
+      toast('문제 순서를 섞었습니다.', 'ok');
+    });
+    $('btnClearItems').addEventListener('click', function () {
+      if (!state.set.items.length) return;
+      askConfirm('모든 문제를 지울까요?', state.set.items.length + '문제가 이 화면에서 사라집니다. 저장을 누르지 않았다면 보관함은 그대로입니다.', function () {
+        state.set.items = [];
+        renderStudio(); scheduleAutosave();
+      });
+    });
+
+    /* import */
+    $('btnParseText').addEventListener('click', previewImport);
+    $('btnImportText').addEventListener('click', function () {
+      var parsed = parseQuizText($('importArea').value);
+      importParsed(parsed);
+    });
+    $('btnCsvFile').addEventListener('click', function () { $('fileCsv').click(); });
+    $('btnJsonFile').addEventListener('click', function () { $('fileJson').click(); });
+    $('fileCsv').addEventListener('change', function () {
+      var f = this.files && this.files[0]; if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () {
+        $('importArea').value = String(rd.result || '');
+        var parsed = previewImport();
+        if (parsed.items.length) importParsed(parsed, true), toast(parsed.items.length + '문제를 추가했습니다.', 'ok');
+        else toast('CSV에서 문제를 읽지 못했습니다.', 'err');
+      };
+      rd.readAsText(f, 'UTF-8');
+      this.value = '';
+    });
+    function handleJsonFile(input) {
+      var f = input.files && input.files[0]; if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () {
+        try {
+          var obj = JSON.parse(String(rd.result || '{}'));
+          importJsonObject(obj);
+          showView('studio', true);
+        } catch (e) { toast('JSON을 읽지 못했습니다.', 'err'); }
+      };
+      rd.readAsText(f, 'UTF-8');
+      input.value = '';
+    }
+    $('fileJson').addEventListener('change', function () { handleJsonFile(this); });
+    $('fileJsonHome').addEventListener('change', function () { handleJsonFile(this); });
+
+    /* archive */
+    document.querySelectorAll('[data-atab]').forEach(function (b) {
+      b.addEventListener('click', function () { setArchiveTab(b.getAttribute('data-atab')); });
+    });
+    $('wrongFilter').addEventListener('change', function () { state.wrongFilter = this.value; renderWrong(); });
+    $('setSearch').addEventListener('input', function () { state.search = this.value; renderSets(); });
+    $('btnArchiveNew').addEventListener('click', newSet);
+    $('btnExportAll').addEventListener('click', function () {
+      if (!state.sets.length) { toast('내보낼 퀴즈가 없습니다.', 'err'); return; }
+      var data = JSON.stringify({ app: 'lemon-quiz', version: 1, exportedAt: new Date().toISOString(), sets: state.sets }, null, 2);
+      try { Lemon.download('lemon-quiz-backup.json', data, 'application/json'); toast(state.sets.length + '세트를 백업했습니다.', 'ok'); }
+      catch (e) { toast('백업하지 못했습니다.', 'err'); }
+    });
+    $('btnRetryAllWrong').addEventListener('click', retryAllWrong);
+    $('btnClearWrong').addEventListener('click', function () {
+      if (!state.wrong.length) return;
+      askConfirm('오답노트를 비울까요?', '모든 오답 카드가 사라집니다. 되돌릴 수 없습니다.', function () {
+        state.wrong = [];
+        dbClear(ST_WRONG).then(function () { paintCounts(); renderWrong(); toast('오답노트를 비웠습니다.', 'ok'); });
+      });
+    });
+    $('btnClearRuns').addEventListener('click', function () {
+      if (!state.runs.length) return;
+      askConfirm('학습 기록을 비울까요?', '세션별 정답률과 시간 기록이 모두 사라집니다.', function () {
+        state.runs = [];
+        dbClear(ST_RUNS).then(function () { paintCounts(); renderRuns(); toast('기록을 비웠습니다.', 'ok'); });
+      });
+    });
+
+    $('wrongList').addEventListener('click', function (e) {
+      var retry = e.target.closest('[data-wrong-retry]');
+      var del = e.target.closest('[data-wrong-del]');
+      if (retry) {
+        var entry = state.wrong.find(function (x) { return x.id === retry.getAttribute('data-wrong-retry'); });
+        if (entry) startStudy([entry.item], { shuffleQ: false, shuffleO: false, timer: 0 }, { setId: entry.setId, title: entry.setTitle + ' · 오답' });
+      }
+      if (del) {
+        var id = del.getAttribute('data-wrong-del');
+        state.wrong = state.wrong.filter(function (x) { return x.id !== id; });
+        dbDel(ST_WRONG, id).then(function () { paintCounts(); renderWrong(); toast('오답노트에서 지웠습니다.', 'ok'); });
+      }
+    });
+
+    $('setGrid').addEventListener('click', function (e) {
+      var play = e.target.closest('[data-set-play]');
+      var edit = e.target.closest('[data-set-edit]');
+      var share = e.target.closest('[data-set-share]');
+      var exp = e.target.closest('[data-set-export]');
+      var del = e.target.closest('[data-set-del]');
+      var find = function (id) { return state.sets.find(function (x) { return x.id === id; }); };
+      if (play) { var s = find(play.getAttribute('data-set-play')); if (s) startStudy(s.items, { shuffleQ: s.shuffleQ, shuffleO: s.shuffleO, timer: s.timer }, { setId: s.id, title: s.title, subject: s.subject }); }
+      if (edit) loadSetIntoStudio(edit.getAttribute('data-set-edit'));
+      if (share) { var s2 = find(share.getAttribute('data-set-share')); if (s2) openShareModal(s2); }
+      if (exp) { var s3 = find(exp.getAttribute('data-set-export')); if (s3) exportSet(s3); }
+      if (del) {
+        var id = del.getAttribute('data-set-del');
+        var s4 = find(id);
+        if (!s4) return;
+        askConfirm('퀴즈를 지울까요?', '"' + s4.title + '" 이(가) 보관함에서 사라집니다. 오답노트의 카드는 그대로 남습니다.', function () {
+          state.sets = state.sets.filter(function (x) { return x.id !== id; });
+          dbDel(ST_SETS, id).then(function () {
+            paintCounts(); renderSets();
+            if (state.set.id === id) { state.set = blankSet(); renderStudio(); }
+            toast('퀴즈를 지웠습니다.', 'ok');
+          });
+        });
+      }
+    });
+
+    $('runList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-run-retry]');
+      if (!b) return;
+      var s = state.sets.find(function (x) { return x.id === b.getAttribute('data-run-retry'); });
+      if (s) startStudy(s.items, { shuffleQ: s.shuffleQ, shuffleO: s.shuffleO, timer: s.timer }, { setId: s.id, title: s.title, subject: s.subject });
+      else toast('퀴즈가 삭제되어 다시 풀 수 없습니다.', 'err');
+    });
+
+    /* player */
+    $('btnPlClose').addEventListener('click', closePlayer);
+    document.querySelectorAll('[data-pl-close]').forEach(function (el) { el.addEventListener('click', closePlayer); });
+    $('btnPlNext').addEventListener('click', nextQuestion);
+    $('plStage').addEventListener('click', function (e) {
+      var opt = e.target.closest('[data-opt]');
+      var oxb = e.target.closest('[data-ox]');
+      var sb = e.target.closest('[data-short-submit]');
+      var cy = e.target.closest('[data-card-yes]');
+      var cn = e.target.closest('[data-card-no]');
+      var res = e.target.closest('[data-res]');
+      if (opt) answerMc(parseInt(opt.getAttribute('data-opt'), 10));
+      else if (oxb) answerOx(oxb.getAttribute('data-ox') === 'true');
+      else if (sb) answerShort();
+      else if (cy) answerCard(true);
+      else if (cn) answerCard(false);
+      else if (res) handleResult(res.getAttribute('data-res'));
+    });
+
+    /* share modal */
+    document.querySelectorAll('[data-sh-close]').forEach(function (el) {
+      el.addEventListener('click', function () { $('shareModal').classList.remove('open'); });
+    });
+    $('btnShareCopy').addEventListener('click', function () {
+      var url = $('shLink').value;
+      try {
+        if (Lemon.copy) Lemon.copy(url, '공유 링크를 복사했습니다.');
+        else { $('shLink').select(); document.execCommand('copy'); toast('복사했습니다.', 'ok'); }
+      } catch (e) { $('shLink').select(); }
+    });
+    $('btnShareOpen').addEventListener('click', function () {
+      window.open($('shLink').value, '_blank');
+    });
+    $('btnShareKey').addEventListener('click', function () {
+      var show = this.getAttribute('data-on') !== 'true';
+      this.setAttribute('data-on', show ? 'true' : 'false');
+      this.textContent = show ? '정답 숨기기' : '정답 보기';
+      document.querySelectorAll('#sharePreview .ans-line').forEach(function (el) { el.classList.toggle('hidden', !show); });
+    });
+    $('btnSharePlay').addEventListener('click', function () {
+      if (!state.share) return;
+      startStudy(state.share.items, { shuffleQ: false, shuffleO: true, timer: 0 }, { setId: state.share.id, title: state.share.title, subject: state.share.subject, shared: true });
+    });
+    $('btnShareSave').addEventListener('click', saveSharedToLibrary);
+
+    /* confirm modal */
+    document.querySelectorAll('[data-cf-close]').forEach(function (el) {
+      el.addEventListener('click', closeConfirm);
+    });
+    $('btnConfirmYes').addEventListener('click', function () {
+      var cb = confirmCb; closeConfirm();
+      if (cb) cb();
+    });
+
+    /* keyboard */
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if ($('confirmModal').classList.contains('open')) closeConfirm();
+        else if ($('shareModal').classList.contains('open')) $('shareModal').classList.remove('open');
+        else if ($('player').classList.contains('open')) closePlayer();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (!$('editorPane').closest('[data-view]').classList.contains('hidden') && state.editorTab !== 'import') {
+          e.preventDefault(); addItem();
+        }
+      }
+    });
+
+    /* hash navigation */
+    window.addEventListener('hashchange', function () {
+      var h = location.hash || '';
+      if (h.indexOf('#view=') === 0) {
+        try {
+          var code = h.slice(6);
+          var set = unpackShare(code);
+          state.share = set;
+          state.shareMode = true;
+          renderShare();
+          showView('share', false);
+        } catch (err) { }
+      } else if (/^#(home|studio|archive)$/.test(h)) {
+        if (!state.shareMode) showView(h.slice(1), false);
+      }
+    });
+  }
+
+  function playSample(i) {
+    var s = SAMPLE_SETS[i];
+    if (!s) return;
+    startStudy(s.items, { shuffleQ: true, shuffleO: true, timer: 0 }, { setId: s.id, title: s.title, subject: s.subject });
+  }
+
+  function saveSample(i) {
+    var s = SAMPLE_SETS[i];
+    if (!s) return;
+    var exists = state.sets.find(function (x) { return x.title === s.title && (x.items || []).length === s.items.length; });
+    if (exists) { toast('이미 보관함에 있는 샘플입니다.', 'info'); return; }
+    var now = Date.now();
+    var rec = {
+      id: 'quiz_' + now.toString(36) + Math.random().toString(36).slice(2, 6),
+      title: s.title, subject: s.subject, desc: s.desc,
+      items: s.items.map(function (it) { var c = JSON.parse(JSON.stringify(it)); c.id = uid('q'); return c; }),
+      timer: 0, shuffleQ: false, shuffleO: true, createdAt: now, updatedAt: now
+    };
+    dbPut(ST_SETS, rec).then(function () {
+      toast('"' + s.title + '" 을(를) 보관함에 담았습니다.', 'ok');
+      return loadAll();
+    });
+  }
+
+  function retryAllWrong() {
+    var rows = state.wrong.filter(function (e) { return state.wrongFilter === 'all' || (e.setId || 'local') === state.wrongFilter; });
+    if (!rows.length) { toast('다시 풀 오답이 없습니다.', 'info'); return; }
+    var items = rows.map(function (e) { return e.item; }).filter(Boolean);
+    startStudy(items, { shuffleQ: true, shuffleO: true, timer: 0 }, { setId: 'wrong_review', title: '오답 복습', subject: '오답노트' });
+  }
+
+  function handleResult(kind) {
+    if (!session) return;
+    var qs = session.qs.slice();
+    var answers = session.answers.slice();
+    if (kind === 'retry') {
+      startStudy(qs, { shuffleQ: false, shuffleO: false, timer: session.limit }, session.meta);
+    } else if (kind === 'wrong') {
+      var wrongQs = answers.filter(function (a) { return !a.ok; }).map(function (a) { return a.q; });
+      if (!wrongQs.length) { toast('틀린 문제가 없습니다.', 'info'); return; }
+      startStudy(wrongQs, { shuffleQ: false, shuffleO: false, timer: session.limit }, { setId: session.meta.setId, title: session.meta.title + ' · 오답', subject: session.meta.subject });
+    } else if (kind === 'archive') {
+      closePlayer(); showView('archive', true); setArchiveTab('wrong');
+    } else {
+      closePlayer();
+      if (state.shareMode) showView('share', false);
+    }
+  }
+
+  /* ============================================================
+     Boot
+     ============================================================ */
+  function boot() {
+    renderSamples();
+    renderStudio();
+    bindStudioMeta();
+    bindEvents();
+    setSwitch('optShuffleQ', false);
+    setSwitch('optShuffleO', true);
+    syncOxLabels();
+
+    var initial = 'home';
+    var rawHash = '';
+    try { rawHash = decodeURIComponent(location.hash || ''); } catch (e) { rawHash = location.hash || ''; }
+    if (rawHash.indexOf('#view=') === 0) {
+      var set = null;
+      try { set = unpackShare(rawHash.slice(6)); } catch (e) { set = null; }
+      state.share = set;
+      state.shareMode = true;
+      renderShare();
+      initial = 'share';
+    } else if (/^#(studio|archive|home)$/.test(rawHash)) {
+      initial = rawHash.slice(1);
+    }
+    showView(initial, false);
+
+    loadAll().then(function () {
+      if (initial === 'studio') renderStudio();
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+})();
+</script>
+</body>
+</html>
