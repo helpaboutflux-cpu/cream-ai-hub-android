@@ -1,0 +1,2536 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Zip — 무설치 ZIP 압축·해제 스튜디오</title>
+<meta name="description" content="서버 전송 없이 브라우저에서 바로. 여러 파일과 폴더를 ZIP으로 묶고, 압축 파일 안을 트리로 열어 필요한 파일만 골라 꺼내는 무설치 아카이브 스튜디오. 최근 작업은 이 기기의 IndexedDB에만 남습니다.">
+<meta name="theme-color" content="#2e4c57">
+<meta property="og:title" content="Lemon Zip — 무설치 ZIP 압축·해제 스튜디오">
+<meta property="og:description" content="파일은 여기서 묶고, 필요한 것만 꺼냅니다. 브라우저 안에서만 동작하는 ZIP 압축·열람·부분 추출 스튜디오.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232e4c57'/%3E%3Cpath d='M4.5 8.5h15v10.5h-15z' fill='none' stroke='%23eaf3e2' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M4.5 8.5 7 5.5h10l2.5 3' fill='none' stroke='%23eaf3e2' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M10.4 8.5v2.2h3.2V8.5' fill='none' stroke='%23c6f24f' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M8.4 14h7.2' stroke='%23c6f24f' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    steel: { 50: '#f3f6f4', 100: '#e4ebe7', 200: '#c8d7d2', 300: '#a3bab5', 400: '#779693', 500: '#5a7a78', 600: '#456260', 700: '#384f4e', 800: '#2e4241', 900: '#283837', 950: '#131f1f' },
+    lime2: { 50: '#f7fce8', 100: '#ebf8c7', 200: '#d8f193', 300: '#c6f24f', 400: '#b0dd33', 500: '#93bd24', 600: '#72961c', 700: '#56721a', 800: '#455b1a', 900: '#3a4d1b' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #2e4c57;
+    --brand-2: #4f7d8b;
+    --brand-deep: #1c3238;
+    --lb: #c6f24f;
+    --lb-deep: #9bc92f;
+    --paper: #edefe7;
+    --ink: #101619;
+    --line: #d5d9cc;
+    --surf: #fbfcf6;
+    --surf-2: #f2f4ec;
+    --muted: #5d6663;
+  }
+  .dark {
+    --brand: #51808f;
+    --brand-2: #74a7b5;
+    --brand-deep: #2b4a55;
+    --lb: #cbf55c;
+    --lb-deep: #a9dc3f;
+    --paper: #0a0d0e;
+    --ink: #e9ede3;
+    --line: #242b2b;
+    --surf: #111517;
+    --surf-2: #0e1213;
+    --muted: #9aa4a0;
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: var(--paper); color: var(--ink); overflow-x: hidden; }
+  .dark body { background: #0a0d0e; color: #e9ede3; }
+  ::selection { background: var(--lb); color: #101619; }
+
+  .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "DejaVu Sans Mono", monospace; }
+  .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9.5px; font-weight: 800; letter-spacing: .28em; text-transform: uppercase; color: var(--muted); }
+  .stencil { font-weight: 900; letter-spacing: -.03em; }
+  .wide { letter-spacing: .14em; }
+
+  /* ---------- technical grid backdrop ---------- */
+  .grid-bg {
+    position: fixed; inset: 0; z-index: -3; pointer-events: none;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--ink) 6%, transparent) 1px, transparent 1px);
+    background-size: 30px 30px;
+    mask-image: radial-gradient(120% 90% at 50% 0%, #000 20%, transparent 82%);
+    -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 20%, transparent 82%);
+    opacity: .5;
+  }
+  .dark .grid-bg { opacity: .55; }
+  .lime-orb { background: var(--lb) !important; }
+
+  /* ---------- surfaces ---------- */
+  .crate {
+    position: relative;
+    background: var(--surf);
+    border: 1px solid var(--line);
+    border-radius: .7rem;
+    box-shadow: 0 1px 0 rgba(16, 22, 25, .03), 0 20px 44px -42px rgba(16, 22, 25, .6);
+  }
+  .dark .crate { box-shadow: 0 1px 0 rgba(0, 0, 0, .5), 0 22px 46px -40px #000; }
+  .crate-top { border-top: 3px solid var(--lb); border-top-left-radius: .7rem; border-top-right-radius: .7rem; }
+  .crate-hd {
+    display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+    padding: .62rem .85rem; border-bottom: 1px dashed var(--line);
+  }
+  .crate-hd h3 { font-size: .8rem; font-weight: 800; letter-spacing: -.01em; }
+  .perf { display: inline-flex; gap: 3px; align-items: center; }
+  .perf i { width: 3px; height: 3px; border-radius: 9999px; background: var(--line); display: block; }
+  .dark .perf i { background: #3a4442; }
+
+  .hero-crate {
+    position: relative; overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: .9rem;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surf) 96%, white) 0%, var(--surf) 100%);
+    box-shadow: 0 30px 70px -60px rgba(16, 22, 25, .75);
+    isolation: isolate;
+  }
+  .dark .hero-crate { background: linear-gradient(180deg, #111618 0%, #0d1113 100%); }
+  .hero-crate .hero-grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--brand) 13%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--brand) 13%, transparent) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(80% 80% at 72% 20%, #000 0%, transparent 76%);
+    -webkit-mask-image: radial-gradient(80% 80% at 72% 20%, #000 0%, transparent 76%);
+  }
+  .hazard {
+    height: 8px;
+    background-image: repeating-linear-gradient(135deg, var(--lb) 0 10px, #101619 10px 20px);
+    opacity: .85;
+  }
+  .dark .hazard { background-image: repeating-linear-gradient(135deg, var(--lb) 0 10px, #0a0d0e 10px 20px); opacity: .7; }
+
+  /* ---------- hero stage illustration ---------- */
+  .stage { position: relative; padding: 1rem; border: 1px solid var(--line); border-radius: .7rem; background: color-mix(in srgb, var(--surf-2) 70%, transparent); }
+  .dark .stage { background: rgba(10, 14, 15, .6); }
+  .stage-top { display: flex; align-items: center; justify-content: space-between; font-size: 9px; letter-spacing: .18em; color: var(--muted); padding: 0 .15rem .6rem; border-bottom: 1px dashed var(--line); }
+  .stack { position: relative; height: 262px; margin: .85rem 0 .2rem; }
+  .fk {
+    position: absolute; left: 8%; width: 84%; display: flex; align-items: center; gap: .5rem;
+    padding: .55rem .7rem; border: 1px solid var(--line); border-radius: .55rem;
+    background: var(--surf); box-shadow: 0 12px 22px -20px rgba(16, 22, 25, .8);
+    font-size: 10.5px; font-weight: 700; color: var(--ink);
+    animation: fkFloat 7s ease-in-out infinite;
+  }
+  .dark .fk { background: #151b1c; }
+  .fk svg { width: 15px; height: 15px; color: var(--brand); flex-shrink: 0; }
+  .fk span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fk em { margin-left: auto; font-style: normal; font-size: 9px; color: var(--muted); letter-spacing: .04em; }
+  .fk1 { top: 4px; transform: rotate(-1.4deg); animation-delay: -.4s; }
+  .fk2 { top: 50px; transform: rotate(.9deg); animation-delay: -2.2s; }
+  .fk3 { top: 96px; transform: rotate(-.6deg); animation-delay: -3.6s; }
+  @keyframes fkFloat { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
+
+  .crate-box {
+    position: absolute; left: 6%; right: 6%; bottom: 2px; padding: .7rem .8rem .6rem;
+    border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--line));
+    border-radius: .55rem;
+    background: linear-gradient(150deg, var(--brand-deep), var(--brand) 55%, var(--brand-2));
+    color: #eef5ea;
+    box-shadow: 0 26px 40px -30px color-mix(in srgb, var(--brand) 90%, transparent);
+    overflow: hidden;
+  }
+  .crate-box::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 88% -20%, rgba(255, 255, 255, .22), transparent 60%);
+  }
+  .crate-lid { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+  .crate-lid b { font-size: 26px; font-weight: 900; letter-spacing: -.04em; line-height: 1; }
+  .crate-lid span { font-size: 8.5px; letter-spacing: .22em; opacity: .8; }
+  .barcode { height: 20px; margin-top: .5rem; border-radius: 2px; background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.9) 0 1px, transparent 1px 3px, rgba(255,255,255,.9) 3px 5px, transparent 5px 8px, rgba(255,255,255,.85) 8px 9px, transparent 9px 13px); opacity: .75; }
+  .crate-meta { margin-top: .4rem; font-size: 8.5px; letter-spacing: .16em; opacity: .85; display: flex; justify-content: space-between; }
+  .stage-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; margin-top: .8rem; }
+  .stage-stats > div { border: 1px solid var(--line); border-radius: .45rem; padding: .45rem .5rem; background: color-mix(in srgb, var(--surf) 80%, transparent); }
+  .stage-stats b { display: block; font-family: ui-monospace, Menlo, monospace; font-size: 13px; font-weight: 800; letter-spacing: -.02em; }
+  .stage-stats span { display: block; font-size: 8.5px; letter-spacing: .06em; color: var(--muted); margin-top: 1px; }
+
+  /* ---------- stat strip ---------- */
+  .stat-tile { position: relative; overflow: hidden; padding: .85rem .95rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--surf); }
+  .stat-tile::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--lb); opacity: .9; }
+  .stat-tile b { font-family: ui-monospace, Menlo, monospace; font-size: 18px; font-weight: 800; letter-spacing: -.03em; }
+  .stat-tile span { display: block; font-size: 10px; letter-spacing: .06em; color: var(--muted); }
+
+  /* ---------- annotation / tag ---------- */
+  .tag {
+    display: inline-flex; align-items: center; gap: .32rem;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+    padding: .22rem .45rem; border-radius: .28rem;
+    border: 1px solid var(--line); background: var(--surf-2); color: var(--muted);
+    white-space: nowrap;
+  }
+  .tag.lime { border-color: color-mix(in srgb, var(--lb-deep) 55%, transparent); background: color-mix(in srgb, var(--lb) 30%, transparent); color: color-mix(in srgb, var(--brand-deep) 90%, black); }
+  .dark .tag.lime { background: color-mix(in srgb, var(--lb) 16%, transparent); color: var(--lb); }
+  .tag.steel { border-color: color-mix(in srgb, var(--brand) 40%, transparent); background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); }
+  .dark .tag.steel { color: var(--brand-2); }
+  .tag.warn { border-color: #e7b04a; background: rgba(231, 176, 74, .14); color: #a06a10; }
+  .dark .tag.warn { color: #f0c065; }
+
+  /* ---------- manifest rows ---------- */
+  .mrow {
+    display: grid; grid-template-columns: 18px 26px minmax(0, 1fr) auto 26px; align-items: center; gap: .5rem;
+    padding: .5rem .7rem; border-bottom: 1px dashed var(--line);
+    transition: background-color .18s ease;
+  }
+  .mrow:last-child { border-bottom: 0; }
+  .mrow:hover { background: color-mix(in srgb, var(--brand) 5%, transparent); }
+  .mrow.excluded { opacity: .45; }
+  .mrow.excluded .fname { text-decoration: line-through; }
+  .fname { font-size: .76rem; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fsize { font-family: ui-monospace, Menlo, monospace; font-size: .68rem; color: var(--muted); white-space: nowrap; }
+  .ftype { width: 26px; height: 26px; border-radius: .4rem; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--brand); flex-shrink: 0; }
+  .dark .ftype { background: color-mix(in srgb, var(--brand) 22%, transparent); color: var(--brand-2); }
+  .ftype svg { width: 14px; height: 14px; }
+  .mini-check {
+    width: 16px; height: 16px; border-radius: .25rem; border: 1.5px solid color-mix(in srgb, var(--ink) 26%, transparent);
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+    transition: background-color .15s, border-color .15s, transform .12s;
+  }
+  .mini-check svg { width: 10px; height: 10px; opacity: 0; color: #101619; }
+  .mini-check.on { background: var(--lb); border-color: var(--lb-deep); }
+  .mini-check.on svg { opacity: 1; }
+  .mini-check:active { transform: scale(.9); }
+  .icon-mini {
+    width: 24px; height: 24px; border-radius: .35rem; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--muted); border: 1px solid transparent; transition: color .16s, border-color .16s, transform .12s, background-color .16s;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .icon-mini svg { width: 13px; height: 13px; }
+  .icon-mini:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 35%, transparent); background: color-mix(in srgb, var(--brand) 6%, transparent); }
+  .dark .icon-mini:hover { color: var(--lb); border-color: color-mix(in srgb, var(--lb) 30%, transparent); }
+  .icon-mini:active { transform: scale(.9); }
+
+  /* ---------- dock ---------- */
+  .dock {
+    position: relative; border: 2px dashed color-mix(in srgb, var(--brand) 35%, var(--line));
+    border-radius: .7rem; padding: 1.6rem 1.1rem; text-align: center;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--brand) 4%, transparent), transparent 70%);
+    transition: border-color .22s, background-color .22s, transform .22s;
+    cursor: pointer; overflow: hidden;
+  }
+  .dock:hover { border-color: color-mix(in srgb, var(--brand) 62%, transparent); }
+  .dock.over { border-color: var(--lb-deep); background: color-mix(in srgb, var(--lb) 16%, transparent); transform: scale(1.006); }
+  .dock::before, .dock::after { content: ''; position: absolute; width: 16px; height: 16px; pointer-events: none; }
+  .dock::before { top: 6px; left: 6px; border-top: 2px solid var(--lb-deep); border-left: 2px solid var(--lb-deep); }
+  .dock::after { bottom: 6px; right: 6px; border-bottom: 2px solid var(--lb-deep); border-right: 2px solid var(--lb-deep); }
+  .dock-ico { width: 46px; height: 46px; margin: 0 auto .6rem; border-radius: .6rem; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--brand); }
+  .dark .dock-ico { background: color-mix(in srgb, var(--brand) 26%, transparent); color: var(--lb); }
+  .dock-ico svg { width: 22px; height: 22px; }
+  .dock.over .dock-ico { animation: dockPulse .9s ease-in-out infinite; }
+  @keyframes dockPulse { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+  /* ---------- level switch ---------- */
+  .lvl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; padding: .28rem; border: 1px solid var(--line); border-radius: .55rem; background: var(--surf-2); }
+  .lvl button {
+    padding: .5rem .3rem; border-radius: .38rem; font-size: .72rem; font-weight: 800; color: var(--muted);
+    border: 1px solid transparent; transition: all .18s ease; white-space: nowrap;
+  }
+  .lvl button b { display: block; font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; letter-spacing: .1em; font-weight: 700; opacity: .7; margin-top: 1px; }
+  .lvl button.on { background: var(--surf); color: var(--brand-deep); border-color: color-mix(in srgb, var(--brand) 30%, transparent); box-shadow: 0 6px 14px -12px rgba(16, 22, 25, .8); }
+  .dark .lvl button.on { background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; border-color: transparent; box-shadow: 0 10px 20px -16px #000; }
+  .lvl button.on b { color: var(--lb-deep); opacity: 1; }
+  .dark .lvl button.on b { color: var(--lb); }
+
+  /* ---------- ratio meter ---------- */
+  .ratio { height: 8px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 9%, transparent); overflow: hidden; position: relative; }
+  .ratio > i { display: block; height: 100%; width: 0; border-radius: 3px; background-image: linear-gradient(90deg, var(--brand), var(--lb)); transition: width .55s cubic-bezier(.22, 1, .36, 1); }
+  .ratio.striped > i { background-image: repeating-linear-gradient(135deg, var(--lb) 0 5px, color-mix(in srgb, var(--lb) 65%, var(--brand)) 5px 10px); }
+  .ratio-legend { display: flex; justify-content: space-between; gap: .5rem; font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; color: var(--muted); margin-top: .35rem; letter-spacing: .04em; }
+
+  /* ---------- tree ---------- */
+  .tree-row {
+    display: grid; grid-template-columns: 20px minmax(0, 1fr) 62px 74px 54px; align-items: center; gap: .45rem;
+    padding: .32rem .6rem; border-bottom: 1px dashed var(--line); font-size: .75rem;
+    transition: background-color .16s ease;
+  }
+  .tree-row:hover { background: color-mix(in srgb, var(--brand) 5%, transparent); }
+  .tree-row.dir { background: color-mix(in srgb, var(--brand) 4%, transparent); font-weight: 800; }
+  .tree-row .tname { display: flex; align-items: center; gap: .35rem; min-width: 0; }
+  .tree-row .tname span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-row .tname svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted); }
+  .tree-row.dir .tname svg { color: var(--brand); }
+  .dark .tree-row.dir .tname svg { color: var(--lb); }
+  .tree-kids { overflow: hidden; }
+  .tree-kids.collapsed { display: none; }
+  .caret { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); transition: transform .2s ease; cursor: pointer; border-radius: .3rem; }
+  .caret svg { width: 11px; height: 11px; }
+  .caret.open { transform: rotate(90deg); }
+  .caret-off { visibility: hidden; }
+  .tbar { height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; display: block; }
+  .ratio-cell { display: flex; flex-direction: column; gap: 2px; }
+  .ratio-cell b { font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; font-weight: 700; color: var(--muted); line-height: 1; }
+  .tbar i { display: block; height: 100%; background: var(--brand-2); }
+  .tbody { max-height: 30rem; overflow-y: auto; overscroll-behavior: contain; }
+
+  /* ---------- segmented ---------- */
+  .seg { display: inline-flex; padding: .22rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--surf-2); gap: .18rem; }
+  .seg button { padding: .42rem .75rem; border-radius: .34rem; font-size: .74rem; font-weight: 800; color: var(--muted); transition: all .18s ease; white-space: nowrap; }
+  .seg button.on { background: var(--brand); color: #fff; box-shadow: 0 6px 16px -12px color-mix(in srgb, var(--brand) 90%, transparent); }
+  .dark .seg button.on { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #08100f; }
+  .seg button.on svg { color: var(--lb); }
+
+  /* ---------- modal ---------- */
+  .mk-modal {
+    position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center;
+    padding: 0; background: rgba(6, 10, 11, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  @media (min-width: 640px) { .mk-modal { align-items: center; padding: 1.5rem; } }
+  .mk-modal.hidden { display: none; }
+  .mk-card {
+    width: 100%; max-width: 46rem; max-height: 92vh; overflow: auto; background: var(--surf);
+    border: 1px solid var(--line); border-radius: 1rem 1rem 0 0; padding: 1rem 1.1rem 1.2rem;
+    animation: mkUp .3s cubic-bezier(.22, 1, .36, 1) both;
+  }
+  @media (min-width: 640px) { .mk-card { border-radius: .8rem; } }
+  @keyframes mkUp { from { opacity: 0; transform: translateY(22px) scale(.99); } to { opacity: 1; transform: none; } }
+  .mk-card h3 { font-size: .95rem; font-weight: 900; letter-spacing: -.02em; }
+
+  /* ---------- buttons / misc ---------- */
+  .primary-btn { background-image: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); color: #fff; }
+  .dark .primary-btn { background-image: linear-gradient(135deg, var(--lb) 0%, #a9dc3f 100%); color: #10190b; }
+  .dark .primary-btn svg { color: #10190b; }
+  .dark .primary-btn:hover { filter: brightness(1.06); }
+  .ghost-btn { border-radius: .55rem; }
+  .primary-btn, .ghost-btn, .pill-btn { border-radius: .55rem; }
+  .chip { border-radius: .35rem; }
+  .nav-tab { border-radius: .45rem; }
+  .nav-tabs { gap: .2rem; }
+  .icon-btn { border-radius: .5rem; }
+  .lemon-input, .lemon-select { border-radius: .45rem; }
+  .panel { border-radius: .7rem; }
+
+  .badge-kind { font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; font-weight: 800; letter-spacing: .12em; padding: .2rem .4rem; border-radius: .25rem; border: 1px solid; }
+  .badge-kind.pack { color: #7a5a00; border-color: #e4c463; background: #fbf1d2; }
+  .dark .badge-kind.pack { color: #f0d488; border-color: rgba(228, 196, 99, .35); background: rgba(228, 196, 99, .12); }
+  .badge-kind.open { color: #215a4c; border-color: #9dc9bb; background: #e4f2ec; }
+  .dark .badge-kind.open { color: #9adcbf; border-color: rgba(120, 200, 170, .3); background: rgba(120, 200, 170, .12); }
+
+  .empty { border: 2px dashed var(--line); border-radius: .6rem; padding: 2rem 1rem; text-align: center; color: var(--muted); }
+  .empty svg { width: 26px; height: 26px; margin: 0 auto .5rem; color: color-mix(in srgb, var(--muted) 70%, transparent); }
+
+  .arc-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: .7rem; align-items: center; padding: .75rem .8rem; border: 1px solid var(--line); border-radius: .55rem; background: var(--surf); transition: border-color .18s, transform .18s, box-shadow .18s; }
+  .arc-row:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); transform: translateY(-1px); box-shadow: 0 14px 26px -24px rgba(16, 22, 25, .7); }
+  .arc-ico { width: 36px; height: 36px; border-radius: .45rem; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--brand); }
+  .dark .arc-ico { background: color-mix(in srgb, var(--brand) 26%, transparent); color: var(--lb); }
+  .arc-ico svg { width: 17px; height: 17px; }
+
+  .progress-shell { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; }
+  .progress-shell > i { display: block; height: 100%; width: 0; background-image: linear-gradient(90deg, var(--brand), var(--lb)); transition: width .3s ease; }
+
+  .sticky-build { position: static; }
+
+  .fade-up { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s cubic-bezier(.22, 1, .36, 1); }
+  .fade-up.in { opacity: 1; transform: none; }
+
+  .scroll-thin { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 20%, transparent) transparent; }
+  .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ink) 18%, transparent); border-radius: 99px; }
+
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .pv-body { max-height: 62vh; overflow: auto; border-radius: .5rem; border: 1px solid var(--line); background: var(--surf-2); }
+  .pv-body img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  .pv-body pre { padding: .8rem; font-family: ui-monospace, Menlo, monospace; font-size: .72rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+
+  @media (max-width: 420px) {
+    .mrow { grid-template-columns: 18px 24px minmax(0, 1fr) auto 24px; gap: .35rem; }
+    .tree-row { grid-template-columns: 16px minmax(0, 1fr) 50px 50px; gap: .25rem; }
+    .tree-row .tbar-wrap { display: none; }
+    .tree-row .icon-mini { width: 1.15rem; height: 1.15rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fk, .ambient-orb, .dock.over .dock-ico, .spin { animation: none !important; }
+    .fade-up { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body class="min-h-screen antialiased flex flex-col">
+
+<div class="grid-bg"></div>
+<div class="brand-wash"></div>
+<div class="ambient-orb w-72 h-72 -top-24 -left-24 opacity-20" style="background:var(--brand)"></div>
+<div class="ambient-orb lime-orb o2 w-64 h-64 top-[38%] -right-28 opacity-[.13]"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/70 dark:bg-[#0a0d0e]/80 border-b border-[color:var(--line)]">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-[.55rem] brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[.45rem] bg-white dark:bg-[#111517] flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.2 8.5v2.4h3.6V8.5"></path><path d="M8.6 14.4h6.8"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Zip</span>
+          <span class="hidden sm:inline mono text-[8.5px] px-1.5 py-0.5 rounded border border-[color:var(--line)] text-[color:var(--muted)] tracking-[.14em] font-bold">ARCHIVE</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">무설치 압축·해제 스튜디오</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <div class="hidden md:flex items-center gap-1.5 mono text-[9px] tracking-[.12em] text-[color:var(--muted)] mr-1">
+        <span class="w-1.5 h-1.5 rounded-full" style="background:var(--lb-deep)"></span>
+        NO SERVER
+      </div>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block" style="color:var(--lb)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"></path></svg>
+      </button>
+      <button id="btnQuickOpen" class="primary-btn !px-3 !py-2 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.4 11.8h3.2"></path></svg>
+        <span class="hidden sm:inline">ZIP 열기</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-[color:var(--surf)]/85 border-b border-[color:var(--line)]">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.4"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path></svg>
+        <span>스튜디오</span>
+        <span id="tabStudioDot" class="nav-dot"></span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v3H4z"></path><path d="M5 10v9h14v-9"></path><path d="M9.5 13.5h5"></path></svg>
+        <span>보관함</span>
+        <span id="tabCount" class="mono text-[9px] px-1.5 rounded bg-[color:var(--surf-2)] border border-[color:var(--line)]">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-5">
+
+    <div class="hero-crate fade-up">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.04fr_.96fr] gap-7 lg:gap-9 items-center p-5 sm:p-9">
+        <div class="space-y-4">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="tag lime">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6 " stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8h14M5 8l3-4M19 8l-3-4"></path></svg>
+              ZIP WORKBENCH
+            </span>
+            <span class="tag">100% 브라우저</span>
+            <span class="tag">전송 없음</span>
+          </div>
+          <h1 class="text-[28px] sm:text-[38px] leading-[1.12] stencil">
+            파일은 여기서 묶고,<br><span class="brand-text">필요한 것만 꺼냅니다.</span>
+          </h1>
+          <p class="text-[13px] sm:text-sm text-[color:var(--muted)] leading-relaxed max-w-md">
+            여러 파일과 폴더를 ZIP 한 덩어리로 만들고, 받은 ZIP은 안을 먼저 들여다본 뒤 필요한 파일만 골라 꺼내세요. 어떤 파일도 서버로 올라가지 않습니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btnHomePack" class="primary-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+              파일 묶어 ZIP 만들기
+            </button>
+            <button id="btnHomeOpen" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.4 11.8h3.2"></path></svg>
+              ZIP 열어보기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1">
+            <span class="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-[color:var(--muted)]">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              폴더 구조 그대로
+            </span>
+            <span class="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-[color:var(--muted)]">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              이미지·텍스트 미리보기
+            </span>
+            <span class="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-[color:var(--muted)]">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              오프라인 동작
+            </span>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="stage-top mono">
+            <span>MANIFEST / READY</span>
+            <span class="perf"><i></i><i></i><i></i></span>
+          </div>
+          <div class="stack">
+            <div class="fk fk1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"></path><path d="M14 3.5v4h4"></path><path d="M9.6 12h5M9.6 15.4h3.4"></path></svg>
+              <span>project/README.md</span>
+              <em>4.2 KB</em>
+            </div>
+            <div class="fk fk2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><circle cx="8.6" cy="9.6" r="1.6"></circle><path d="M4.5 17l4.7-4.6 3.2 3.1 3-2.8 4 4.3"></path></svg>
+              <span>photos/sunset.jpg</span>
+              <em>1.8 MB</em>
+            </div>
+            <div class="fk fk3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h6l2 2.5h7v9.5h-15z"></path></svg>
+              <span>docs/보고서_최종.pdf</span>
+              <em>820 KB</em>
+            </div>
+            <div class="crate-box">
+              <div class="crate-lid"><b>ZIP</b><span>DEFLATE · STORE</span></div>
+              <div class="barcode"></div>
+              <div class="crate-meta mono"><span>LOCAL ONLY</span><span id="heroFiles">3 FILES</span></div>
+            </div>
+          </div>
+          <div class="stage-stats">
+            <div><b id="heroArchives">0</b><span>보관 아카이브</span></div>
+            <div><b id="heroJobs">0</b><span>최근 작업</span></div>
+            <div><b id="heroSaved">0 B</b><span>절감 용량</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="hazard"></div>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <div class="stat-tile">
+        <span>보관한 아카이브</span>
+        <div class="flex items-baseline gap-1 mt-0.5"><b id="statArchives">0</b><span class="!text-[9px]">개</span></div>
+      </div>
+      <div class="stat-tile">
+        <span>최근 작업 기록</span>
+        <div class="flex items-baseline gap-1 mt-0.5"><b id="statJobs">0</b><span class="!text-[9px]">건</span></div>
+      </div>
+      <div class="stat-tile">
+        <span>아카이브 사용량</span>
+        <div class="flex items-baseline gap-1 mt-0.5"><b id="statUsage">0 B</b></div>
+      </div>
+      <div class="stat-tile">
+        <span>ZIP으로 아낀 용량</span>
+        <div class="flex items-baseline gap-1 mt-0.5"><b id="statSaved">0 B</b></div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-3">
+      <div class="crate crate-top p-5 card-lift">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-[.5rem] flex items-center justify-center shrink-0" style="background:color-mix(in srgb, var(--brand) 12%, transparent); color:var(--brand)">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg>
+          </div>
+          <div class="min-w-0">
+            <h3 class="font-black text-[14px] tracking-tight">끌어다 놓으면 바로 묶입니다</h3>
+            <p class="text-[11.5px] leading-relaxed text-[color:var(--muted)] mt-1">파일 여러 개는 물론 폴더째 끌어다 놓아도 안의 구조를 그대로 살려 ZIP으로 묶습니다. 압축률은 저장·보통·최대 중에서 고르고, 결과 용량을 미리 확인하세요.</p>
+          </div>
+        </div>
+      </div>
+      <div class="crate crate-top p-5 card-lift">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-[.5rem] flex items-center justify-center shrink-0" style="background:color-mix(in srgb, var(--brand) 12%, transparent); color:var(--brand)">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path><path d="M8 10.5h5M10.5 8v5"></path></svg>
+          </div>
+          <div class="min-w-0">
+            <h3 class="font-black text-[14px] tracking-tight">ZIP 안을 먼저 들여다봅니다</h3>
+            <p class="text-[11.5px] leading-relaxed text-[color:var(--muted)] mt-1">압축을 풀지 않고도 폴더 트리와 파일별 원본 크기·압축률·형식을 한눈에. 이미지와 텍스트는 그 자리에서 미리보기로 확인합니다.</p>
+          </div>
+        </div>
+      </div>
+      <div class="crate crate-top p-5 card-lift">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-[.5rem] flex items-center justify-center shrink-0" style="background:color-mix(in srgb, var(--brand) 12%, transparent); color:var(--brand)">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v12H4z"></path><path d="M4 7 6 4h12l2 3"></path><path d="M9.5 12.5h5"></path><path d="M12 15.5v-6"></path></svg>
+          </div>
+          <div class="min-w-0">
+            <h3 class="font-black text-[14px] tracking-tight">필요한 것만 골라 꺼내기</h3>
+            <p class="text-[11.5px] leading-relaxed text-[color:var(--muted)] mt-1">전체를 풀 이유는 없습니다. 체크한 파일만 개별로, 여럿이면 다시 ZIP으로 묶어 내려받으세요. 원본 압축 데이터를 그대로 옮겨 다시 압축하지 않습니다.</p>
+          </div>
+        </div>
+      </div>
+      <div class="crate crate-top p-5 card-lift">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-[.5rem] flex items-center justify-center shrink-0" style="background:color-mix(in srgb, var(--brand) 12%, transparent); color:var(--brand)">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v3H4z"></path><path d="M5 10v9h14v-9"></path><path d="M9.5 13.5h5"></path></svg>
+          </div>
+          <div class="min-w-0">
+            <h3 class="font-black text-[14px] tracking-tight">작업은 이 기기에만 남습니다</h3>
+            <p class="text-[11.5px] leading-relaxed text-[color:var(--muted)] mt-1">최근 압축·해제 기록과 다시 쓸 아카이브를 브라우저 IndexedDB에 보관합니다. 용량을 보고 지우는 것도 직접. 계정도, 업로드도 없습니다.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="crate p-5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="eyebrow">HOW IT WORKS</div>
+          <h3 class="font-black text-[15px] tracking-tight mt-1">세 단계면 끝</h3>
+        </div>
+        <span class="tag steel">NO INSTALL</span>
+      </div>
+      <div class="grid sm:grid-cols-3 gap-3 mt-4">
+        <div class="rounded-[.5rem] border border-[color:var(--line)] p-3.5 bg-[color:var(--surf-2)]">
+          <div class="mono text-[10px] font-extrabold" style="color:var(--lb-deep)">01 / LOAD</div>
+          <p class="text-[12px] font-bold mt-1">파일·폴더를 끌어다 놓기</p>
+          <p class="text-[11px] text-[color:var(--muted)] mt-0.5 leading-relaxed">ZIP을 만들 파일이거나, 열어볼 ZIP 하나.</p>
+        </div>
+        <div class="rounded-[.5rem] border border-[color:var(--line)] p-3.5 bg-[color:var(--surf-2)]">
+          <div class="mono text-[10px] font-extrabold" style="color:var(--lb-deep)">02 / CHECK</div>
+          <p class="text-[12px] font-bold mt-1">목록·트리로 확인</p>
+          <p class="text-[11px] text-[color:var(--muted)] mt-0.5 leading-relaxed">이름·제외·압축률·미리보기까지 그 자리에서.</p>
+        </div>
+        <div class="rounded-[.5rem] border border-[color:var(--line)] p-3.5 bg-[color:var(--surf-2)]">
+          <div class="mono text-[10px] font-extrabold" style="color:var(--lb-deep)">03 / TAKE</div>
+          <p class="text-[12px] font-bold mt-1">ZIP 또는 파일로 꺼내기</p>
+          <p class="text-[11px] text-[color:var(--muted)] mt-0.5 leading-relaxed">만든 ZIP을 내려받고, 고른 파일만 추출.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[1.1fr_.9fr] gap-3">
+      <div class="crate">
+        <div class="crate-hd">
+          <h3>최근 작업</h3>
+          <button id="btnHomeArchive" class="mono text-[9.5px] tracking-[.1em] text-[color:var(--muted)] hover:text-[color:var(--brand)]">보관함 전체 →</button>
+        </div>
+        <div id="homeRecent" class="p-2.5 space-y-1.5"></div>
+        <div id="homeRecentEmpty" class="empty m-2.5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v3H4z"></path><path d="M5 10v9h14v-9"></path><path d="M9.5 13.5h5"></path></svg>
+          <p class="text-[11.5px] font-bold">아직 작업 기록이 없습니다</p>
+          <p class="text-[10.5px] mt-0.5">첫 ZIP을 만들면 여기에 남습니다.</p>
+        </div>
+      </div>
+      <div class="crate p-4 sm:p-5">
+        <div class="eyebrow">SUPPORTED</div>
+        <h3 class="font-black text-[15px] tracking-tight mt-1">다루는 형식</h3>
+        <div class="mt-3 space-y-2.5">
+          <div>
+            <div class="mono text-[9px] tracking-[.14em] text-[color:var(--muted)]">CREATE</div>
+            <div class="flex flex-wrap gap-1.5 mt-1">
+              <span class="tag">모든 파일</span><span class="tag">폴더 구조</span><span class="tag">빈 폴더</span><span class="tag">한글 파일명</span>
+            </div>
+          </div>
+          <div>
+            <div class="mono text-[9px] tracking-[.14em] text-[color:var(--muted)]">READ</div>
+            <div class="flex flex-wrap gap-1.5 mt-1">
+              <span class="tag">ZIP</span><span class="tag">DEFLATE</span><span class="tag">STORE</span><span class="tag">ZIP64</span><span class="tag">CP949 이름</span>
+            </div>
+          </div>
+          <div>
+            <div class="mono text-[9px] tracking-[.14em] text-[color:var(--muted)]">PREVIEW</div>
+            <div class="flex flex-wrap gap-1.5 mt-1">
+              <span class="tag">PNG</span><span class="tag">JPG</span><span class="tag">GIF</span><span class="tag">WEBP</span><span class="tag">SVG</span><span class="tag">TXT</span><span class="tag">MD</span><span class="tag">JSON</span><span class="tag">CSV</span>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-dashed border-[color:var(--line)] text-[10.5px] leading-relaxed text-[color:var(--muted)]">
+          암호가 걸린 ZIP 항목은 열 수 없으며, 그 사실을 목록에 표시합니다. 4GB를 넘는 단일 아카이브는 브라우저 메모리 한계로 만들지 않습니다.
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-3.5 pb-8">
+
+    <div class="flex flex-wrap items-center justify-between gap-2.5">
+      <div>
+        <div class="eyebrow">WORKBENCH</div>
+        <h2 class="text-lg font-black tracking-tight mt-0.5">압축·해제 스튜디오</h2>
+      </div>
+      <div class="seg" role="tablist" aria-label="작업 종류">
+        <button id="modePack" class="on" role="tab" aria-selected="true">
+          <span class="inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+            압축 만들기
+          </span>
+        </button>
+        <button id="modeOpen" role="tab" aria-selected="false">
+          <span class="inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.4 11.8h3.2"></path></svg>
+            ZIP 열기·추출
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ---------- PACK ---------- -->
+    <div id="packPane" class="space-y-3">
+      <div class="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)] gap-3 items-start">
+
+        <div class="space-y-3">
+          <div id="dockPack" class="dock" role="button" tabindex="0" aria-label="압축할 파일 또는 폴더 선택">
+            <div class="dock-ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg>
+            </div>
+            <p class="text-[13px] font-black dock-title">여기로 파일이나 폴더를 끌어다 놓으세요</p>
+            <p class="text-[11px] text-[color:var(--muted)] mt-0.5 dock-hint">또는 아래 버튼으로 직접 고르기 · 여러 개 동시 선택 가능</p>
+            <div class="flex flex-wrap items-center justify-center gap-1.5 mt-3">
+              <button id="btnPickFiles" class="ghost-btn !py-2 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"></path><path d="M14 3.5v4h4"></path></svg>
+                파일 추가
+              </button>
+              <button id="btnPickFolder" class="ghost-btn !py-2 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h6l2 2.5h7v9.5h-15z"></path></svg>
+                폴더 추가
+              </button>
+            </div>
+            <input id="fileInput" type="file" multiple class="hidden">
+            <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden">
+          </div>
+
+          <div class="crate p-3.5">
+            <div class="flex items-center justify-between gap-2">
+              <label class="lemon-label">압축률</label>
+              <span id="levelNote" class="mono text-[9px] text-[color:var(--muted)] tracking-[.06em]"></span>
+            </div>
+            <div id="levelPick" class="lvl mt-2" role="group" aria-label="압축률">
+              <button data-level="0">저장<b>STORE · 빠름</b></button>
+              <button data-level="1" class="on">보통<b>DEFLATE</b></button>
+              <button data-level="2">최대<b>ALL DEFLATE</b></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="crate">
+          <div class="crate-hd">
+            <h3>묶을 파일 목록</h3>
+            <span class="perf"><i></i><i></i><i></i></span>
+          </div>
+          <div class="p-3 space-y-2.5">
+            <div class="grid grid-cols-3 gap-2">
+              <div class="rounded-[.4rem] border border-[color:var(--line)] bg-[color:var(--surf-2)] px-2.5 py-2">
+                <div class="mono text-[8.5px] tracking-[.12em] text-[color:var(--muted)]">FILES</div>
+                <div id="packCount" class="mono text-[14px] font-extrabold">0</div>
+              </div>
+              <div class="rounded-[.4rem] border border-[color:var(--line)] bg-[color:var(--surf-2)] px-2.5 py-2">
+                <div class="mono text-[8.5px] tracking-[.12em] text-[color:var(--muted)]">ORIGINAL</div>
+                <div id="packRaw" class="mono text-[14px] font-extrabold">0 B</div>
+              </div>
+              <div class="rounded-[.4rem] border border-[color:var(--line)] bg-[color:var(--surf-2)] px-2.5 py-2">
+                <div class="mono text-[8.5px] tracking-[.12em] text-[color:var(--muted)]">EST. ZIP</div>
+                <div id="packEst" class="mono text-[14px] font-extrabold" style="color:var(--brand)">0 B</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <div class="relative flex-1 min-w-0">
+                <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path></svg>
+                <input id="packSearch" class="lemon-input !pl-8 !py-1.5 !text-[11px]" type="search" placeholder="파일 이름으로 찾기" autocomplete="off">
+              </div>
+              <button id="btnClearAll" class="ghost-btn !py-1.5 !px-2 !text-[10.5px]" title="목록 비우기">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M6.5 7V19.5h11V7"></path><path d="M9.5 7V4.5h5V7"></path></svg>
+                비우기
+              </button>
+            </div>
+          </div>
+          <div id="packList" class="tbody scroll-thin"></div>
+          <div id="packEmpty" class="empty m-3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"></path><path d="M14 3.5v4h4"></path></svg>
+            <p class="text-[11.5px] font-bold">아직 파일이 없습니다</p>
+            <p class="text-[10.5px] mt-0.5">왼쪽 작업대에 파일을 끌어다 놓으세요.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="crate p-3.5 sticky-build">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="mono text-[9px] tracking-[.12em] text-[color:var(--muted)]">ZIP SIZE FORECAST</span>
+              <span id="estLabel" class="mono text-[10px] font-extrabold">—</span>
+            </div>
+            <div class="ratio striped"><i id="estBar"></i></div>
+            <div class="ratio-legend">
+              <span id="estLeft">원본 0 B</span>
+              <span id="estRight">예상 0 B</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <label class="flex items-center gap-1.5 cursor-pointer select-none px-1">
+              <span id="swSaveResult" class="switch on" role="switch" aria-checked="true" tabindex="0"></span>
+              <span class="text-[10.5px] font-bold text-[color:var(--muted)]">보관함 저장</span>
+            </label>
+            <button id="btnBuild" class="primary-btn !py-2.5 !px-4">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg>
+              ZIP 만들기
+            </button>
+          </div>
+        </div>
+        <div id="buildProg" class="hidden mt-3">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span id="buildProgText" class="mono text-[9.5px] text-[color:var(--muted)]">압축하는 중…</span>
+            <span id="buildProgPct" class="mono text-[9.5px] font-extrabold">0%</span>
+          </div>
+          <div class="progress-shell"><i id="buildProgBar"></i></div>
+        </div>
+        <div id="buildErr" class="hidden mt-2.5 text-[10.5px] font-bold" style="color:#b45309"></div>
+        <div id="buildResult" class="hidden mt-3 rounded-[.5rem] border p-3" style="border-color:color-mix(in srgb, var(--lb-deep) 45%, var(--line)); background:color-mix(in srgb, var(--lb) 10%, transparent)">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="mono text-[8.5px] tracking-[.14em]" style="color:var(--lb-deep)">READY TO TAKE</div>
+              <div id="brName" class="font-black text-[13px] truncate mt-0.5">archive.zip</div>
+              <div id="brMeta" class="mono text-[10px] text-[color:var(--muted)] mt-1"></div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button id="btnReopenResult" class="ghost-btn !py-1.5 !px-2 !text-[10.5px]">열어보기</button>
+              <button id="btnDownloadResult" class="primary-btn !py-2 !px-3 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg>
+                내려받기
+              </button>
+            </div>
+          </div>
+        </div>
+        <p id="buildNote" class="text-[10px] text-[color:var(--muted)] mt-2 leading-relaxed">압축은 이 브라우저 안에서만 일어납니다. 파일은 어디로도 전송되지 않습니다.</p>
+      </div>
+    </div>
+
+    <!-- ---------- OPEN ---------- -->
+    <div id="openPane" class="hidden space-y-3">
+      <div id="dockOpenWrap">
+        <div id="dockOpen" class="dock" role="button" tabindex="0" aria-label="열어볼 ZIP 파일 선택">
+          <div class="dock-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.4 11.8h3.2"></path><path d="M12 15.5v3"></path></svg>
+          </div>
+          <p class="text-[13px] font-black">열어볼 ZIP 파일을 여기로</p>
+          <p class="text-[11px] text-[color:var(--muted)] mt-0.5">전송 없이 이 브라우저에서 바로 구조를 읽습니다</p>
+          <div class="flex flex-wrap items-center justify-center gap-1.5 mt-3">
+            <button id="btnPickZip" class="ghost-btn !py-2 !text-[11px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20.5H7z"></path><path d="M14 3.5v4h4"></path></svg>
+              ZIP 고르기
+            </button>
+          </div>
+          <input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" class="hidden">
+        </div>
+        <label class="flex items-center gap-2 mt-2 px-1 cursor-pointer select-none">
+          <span id="swSaveSource" class="switch" role="switch" aria-checked="false" tabindex="0"></span>
+          <span class="text-[10.5px] font-bold text-[color:var(--muted)]">이 ZIP도 보관함에 저장 (나중에 다시 열기)</span>
+        </label>
+      </div>
+
+      <div id="zipEmpty" class="crate p-5 text-center">
+        <div class="w-12 h-12 mx-auto rounded-[.5rem] flex items-center justify-center" style="background:color-mix(in srgb, var(--brand) 10%, transparent); color:var(--brand)">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.4 11.8h3.2"></path></svg>
+        </div>
+        <p class="text-[12.5px] font-black mt-2">아직 열어본 ZIP이 없습니다</p>
+        <p class="text-[11px] text-[color:var(--muted)] mt-1 leading-relaxed max-w-md mx-auto">ZIP을 올리면 폴더 트리와 파일별 원본 크기·압축률·형식이 나타납니다. 이미지와 텍스트는 미리보기로 바로 확인하고, 필요한 파일만 골라 꺼내세요.</p>
+        <div class="flex flex-wrap items-center justify-center gap-1.5 mt-3">
+          <span class="tag">구조 열람</span><span class="tag">개별 추출</span><span class="tag">일괄 추출</span><span class="tag">미리보기</span>
+        </div>
+      </div>
+
+      <div id="zipPanel" class="hidden space-y-3">
+        <div class="crate">
+          <div class="crate-hd flex-wrap">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <h3 id="zipName" class="truncate">archive.zip</h3>
+                <span class="tag lime">OPEN</span>
+              </div>
+              <div id="zipMeta" class="mono text-[10px] text-[color:var(--muted)] mt-0.5 truncate"></div>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <button id="btnZipReset" class="ghost-btn !py-1.5 !px-2 !text-[10.5px]">다른 ZIP</button>
+              <button id="btnSaveZip" class="ghost-btn !py-1.5 !px-2 !text-[10.5px]">보관함에 저장</button>
+              <button id="btnExtractSel" class="primary-btn !py-2 !px-3 !text-[11px]">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg>
+                선택 추출
+              </button>
+              <button id="btnExtractAll" class="ghost-btn">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg>
+                전체 추출
+              </button>
+            </div>
+          </div>
+          <div class="p-2.5 space-y-2">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <div class="rounded-[.35rem] border border-[color:var(--line)] bg-[color:var(--surf-2)] px-2 py-1.5">
+                <div class="mono text-[8px] tracking-[.1em] text-[color:var(--muted)]">FILES</div>
+                <div id="zipFileCount" class="mono text-[12.5px] font-extrabold">0</div>
+              </div>
+              <div class="rounded-[.35rem] border border-[color:var(--line)] bg-[color:var(--surf-2)] px-2 py-1.5">
+                <div class="mono text-[8px] tracking-[.1em] text-[color:var(--muted)]">UNPACKED</div>
+                <div id="zipRaw" class="mono text-[12.5px] font-extrabold">0 B</div>
+              </div>
+              <div class="rounded-[.35rem] border border-[color:var(--line)] bg-[color:var(--surf-2)] px-2 py-1.5">
+                <div class="mono text-[8px] tracking-[.1em] text-[color:var(--muted)]">ZIP SIZE</div>
+                <div id="zipSize" class="mono text-[12.5px] font-extrabold">0 B</div>
+              </div>
+              <div class="rounded-[.35rem] border border-[color:var(--line)] bg-[color:var(--surf-2)] px-2 py-1.5">
+                <div class="mono text-[8px] tracking-[.1em] text-[color:var(--muted)]">RATIO</div>
+                <div id="zipRatio" class="mono text-[12.5px] font-extrabold" style="color:var(--brand)">—</div>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <div class="relative flex-1 min-w-[8rem]">
+                <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path></svg>
+                <input id="zipSearch" class="lemon-input !pl-8 !py-1.5 !text-[11px]" type="search" placeholder="트리에서 파일 찾기" autocomplete="off">
+              </div>
+              <button id="btnExpandAll" class="ghost-btn !py-1.5 !px-2 !text-[10.5px]">모두 펼치기</button>
+              <button id="btnCollapseAll" class="ghost-btn !py-1.5 !px-2 !text-[10.5px]">접기</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-2 border-y border-dashed border-[color:var(--line)] bg-[color:var(--surf-2)]">
+            <span id="chkAll" class="mini-check" role="checkbox" aria-checked="false" tabindex="0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+            </span>
+            <span class="text-[10.5px] font-bold">전체 선택</span>
+            <span id="selCount" class="mono text-[9.5px] text-[color:var(--muted)] ml-auto">0 / 0 선택</span>
+            <span id="selBytes" class="mono text-[9.5px] text-[color:var(--muted)] hidden sm:inline">0 B</span>
+          </div>
+          <div id="zipTree" class="tbody scroll-thin"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-3.5 pb-8">
+    <div class="flex flex-wrap items-end justify-between gap-2">
+      <div>
+        <div class="eyebrow">STORAGE / LOCAL</div>
+        <h2 class="text-lg font-black tracking-tight mt-0.5">작업 보관함</h2>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <div class="seg">
+          <button data-filter="all" class="on">전체</button>
+          <button data-filter="pack">압축</button>
+          <button data-filter="open">해제</button>
+        </div>
+        <button id="btnClearArchive" class="ghost-btn !py-1.5 !px-2 !text-[10.5px]">전체 비우기</button>
+      </div>
+    </div>
+
+    <div class="crate p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div class="mono text-[9px] tracking-[.14em] text-[color:var(--muted)]">INDEXEDDB · LEMON_ZIP_V1</div>
+          <div class="flex items-baseline gap-1.5 mt-0.5">
+            <b id="arcUsed" class="mono text-[19px] font-extrabold tracking-tight">0 B</b>
+            <span id="arcQuota" class="mono text-[10px] text-[color:var(--muted)]">/ —</span>
+          </div>
+        </div>
+        <div class="text-right">
+          <div id="arcCount" class="mono text-[10px] text-[color:var(--muted)]">아카이브 0개 · 기록 0건</div>
+          <div class="text-[9.5px] text-[color:var(--muted)] mt-0.5">이 기기의 브라우저에만 저장됩니다</div>
+        </div>
+      </div>
+      <div class="progress-shell mt-2.5"><i id="arcBar"></i></div>
+    </div>
+
+    <div id="arcList" class="space-y-2"></div>
+    <div id="arcEmpty" class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v3H4z"></path><path d="M5 10v9h14v-9"></path><path d="M9.5 13.5h5"></path></svg>
+      <p class="text-[12px] font-bold">보관함이 비어 있습니다</p>
+      <p class="text-[10.5px] mt-0.5">ZIP을 만들거나 열면 최근 작업이 여기에 쌓입니다.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-[color:var(--line)] py-5">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-[color:var(--muted)]">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.4 11.8h3.2"></path></svg>
+      <span class="font-bold text-[color:var(--ink)]">Lemon Zip</span>
+      <span>—</span>
+      <span>Lemon soft가 만든 서비스</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="hover:underline">Developer Hub</a>
+      <a href="compress.html" class="hover:underline">Lemon Compress</a>
+      <a href="pdf.html" class="hover:underline">Lemon PDF</a>
+    </div>
+  </div>
+</footer>
+
+<!-- modals -->
+<div id="modalRename" class="mk-modal hidden" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+  <div class="mk-card !max-w-md">
+    <div class="flex items-center justify-between gap-2">
+      <h3 id="renameTitle">파일 이름 변경</h3>
+      <button id="renameCancel" class="icon-btn !w-8 !h-8" aria-label="닫기">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+      </button>
+    </div>
+    <p class="text-[10.5px] text-[color:var(--muted)] mt-1">ZIP 안에 들어갈 경로를 포함해 적을 수 있습니다. 예: docs/report.md</p>
+    <input id="renameInput" class="lemon-input mt-2.5" type="text" autocomplete="off" spellcheck="false">
+    <div class="flex items-center justify-end gap-1.5 mt-3">
+      <button id="renameCancel2" class="ghost-btn !py-2 !text-[11px]">취소</button>
+      <button id="renameOk" class="primary-btn !py-2 !text-[11px]">저장</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalPreview" class="mk-modal hidden" role="dialog" aria-modal="true" aria-labelledby="pvTitle">
+  <div class="mk-card">
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <h3 id="pvTitle" class="truncate">미리보기</h3>
+        <div id="pvMeta" class="mono text-[10px] text-[color:var(--muted)] mt-0.5"></div>
+      </div>
+      <button id="pvClose" class="icon-btn !w-8 !h-8 shrink-0" aria-label="닫기">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+      </button>
+    </div>
+    <div id="pvBody" class="pv-body mt-3"></div>
+    <div class="flex items-center justify-between gap-2 mt-3">
+      <span id="pvNote" class="text-[10px] text-[color:var(--muted)]"></span>
+      <button id="pvDownload" class="primary-btn !py-2 !px-3 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg>
+        이 파일 내려받기
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="modalConfirm" class="mk-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cfTitle">
+  <div class="mk-card !max-w-sm">
+    <h3 id="cfTitle">확인</h3>
+    <p id="cfText" class="text-[11.5px] text-[color:var(--muted)] mt-1.5 leading-relaxed"></p>
+    <div class="flex items-center justify-end gap-1.5 mt-3.5">
+      <button id="cfCancel" class="ghost-btn !py-2 !text-[11px]">취소</button>
+      <button id="cfOk" class="primary-btn !py-2 !text-[11px]">삭제</button>
+    </div>
+  </div>
+</div>
+
+<script src="lemon-ui.js"></script>
+<script>
+'use strict';
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = Lemon.esc;
+  var fmtB = Lemon.fmtBytes;
+  var ENC = new TextEncoder();
+
+  var state = {
+    pack: { items: [], level: 1, busy: false, gen: 0, result: null, query: '' },
+    zip: null,
+    sel: { files: {} },
+    collapsed: {},
+    query: '',
+    jobs: [],
+    archives: [],
+    filter: 'all',
+    preview: null,
+    rename: null,
+    confirm: null
+  };
+
+  function uid(p) { return (p || 'i') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function baseName(p) { var s = String(p || '').split('/'); return s[s.length - 1] || p; }
+  function extOf(p) { var b = baseName(p); var i = b.lastIndexOf('.'); return i > 0 ? b.slice(i + 1).toLowerCase() : ''; }
+  function stripZip(n) { return String(n || '').replace(/\.zip$/i, ''); }
+  function pct(part, whole) { if (!whole) return 0; return Math.round((1 - part / whole) * 100); }
+  function todayName() { var d = new Date(); return 'lemon-zip-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes()); }
+
+  /* ============================================================
+     IndexedDB · lemon_zip_v1
+     ============================================================ */
+  var DB_NAME = 'lemon_zip_v1', DB_VER = 1;
+  var dbPromise = null;
+  function db() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('no-idb')); return; }
+      var r = indexedDB.open(DB_NAME, DB_VER);
+      r.onupgradeneeded = function () {
+        var d = r.result;
+        if (!d.objectStoreNames.contains('jobs')) d.createObjectStore('jobs', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('archives')) d.createObjectStore('archives', { keyPath: 'id' });
+      };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error || new Error('idb-open')); };
+      r.onblocked = function () { rej(new Error('idb-blocked')); };
+    });
+    dbPromise = dbPromise.then(function (d) { return d; }, function (e) { dbPromise = null; throw e; });
+    return dbPromise;
+  }
+  function dbOp(store, mode, fn) {
+    return db().then(function (d) {
+      return new Promise(function (res, rej) {
+        var t;
+        try { t = d.transaction(store, mode); } catch (e) { rej(e); return; }
+        var s = t.objectStore(store);
+        var out = fn(s);
+        t.oncomplete = function () { res(out && out.result !== undefined ? out.result : out); };
+        t.onerror = function () { rej(t.error || new Error('idb-tx')); };
+        t.onabort = function () { rej(t.error || new Error('idb-abort')); };
+      });
+    });
+  }
+  function dbAll(store) { return dbOp(store, 'readonly', function (s) { return s.getAll(); }); }
+  function dbPut(store, val) { return dbOp(store, 'readwrite', function (s) { s.put(val); return true; }); }
+  function dbDel(store, key) { return dbOp(store, 'readwrite', function (s) { s.delete(key); return true; }); }
+  function dbClear(store) { return dbOp(store, 'readwrite', function (s) { s.clear(); return true; }); }
+
+  /* ============================================================
+     ZIP · CRC32 / DEFLATE
+     ============================================================ */
+  var CRC_T = (function () {
+    var t = new Uint32Array(256), c, n, k;
+    for (n = 0; n < 256; n++) {
+      c = n;
+      for (k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(u8) {
+    var c = 0xFFFFFFFF, i, len = u8.length;
+    for (i = 0; i < len; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function canDeflate() { return typeof window.CompressionStream === 'function' && typeof window.DecompressionStream === 'function'; }
+  function deflateBytes(u8) {
+    if (!canDeflate()) return Promise.resolve(null);
+    try {
+      var cs = new CompressionStream('deflate-raw');
+      var stream = new Blob([u8]).stream().pipeThrough(cs);
+      return new Response(stream).arrayBuffer().then(function (ab) { return new Uint8Array(ab); }, function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+  function inflateBytes(u8) {
+    if (!canDeflate()) return Promise.reject(new Error('이 브라우저는 압축 해제를 지원하지 않습니다'));
+    var ds = new DecompressionStream('deflate-raw');
+    var stream = new Blob([u8]).stream().pipeThrough(ds);
+    return new Response(stream).arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+  }
+
+  /* 이미 압축된 형식은 '보통' 단계에서 그대로 저장한다. */
+  var PRE_COMPRESSED = { jpg: 1, jpeg: 1, png: 1, gif: 1, webp: 1, avif: 1, heic: 1, mp4: 1, m4v: 1, mov: 1, webm: 1, mkv: 1, avi: 1, mp3: 1, m4a: 1, aac: 1, ogg: 1, opus: 1, flac: 1, zip: 1, gz: 1, rar: 1, '7z': 1, bz2: 1, xz: 1, docx: 1, xlsx: 1, pptx: 1, hwpx: 1, epub: 1, apk: 1, jar: 1, pdf: 1 };
+  function shouldDeflate(path, level) {
+    if (level === 0) return false;
+    if (level === 2) return true;
+    var e = extOf(path);
+    return !PRE_COMPRESSED[e];
+  }
+
+  function dosTime(d) {
+    if (!d || !isFinite(d)) d = Date.now();
+    var dt = new Date(d);
+    var y = clamp(dt.getFullYear(), 1980, 2107);
+    return {
+      time: (dt.getHours() << 11) | (dt.getMinutes() << 5) | (Math.floor(dt.getSeconds() / 2)),
+      date: ((y - 1980) << 9) | ((dt.getMonth() + 1) << 5) | dt.getDate()
+    };
+  }
+
+  /* records: [{path, method, crc, usize, data:Uint8Array, dir, mtime}] */
+  function zipFromRecords(records) {
+    var parts = [], central = [], offset = 0;
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      var nameBytes = ENC.encode(r.path);
+      var dt = dosTime(r.mtime || Date.now());
+      var csize = r.data.length;
+      var flags = 0x0800; /* UTF-8 파일명 */
+      var lh = new Uint8Array(30 + nameBytes.length);
+      var lv = new DataView(lh.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, flags, true);
+      lv.setUint16(8, r.method ? 8 : 0, true);
+      lv.setUint16(10, dt.time, true);
+      lv.setUint16(12, dt.date, true);
+      lv.setUint32(14, r.crc >>> 0, true);
+      lv.setUint32(18, csize, true);
+      lv.setUint32(22, r.usize, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      lh.set(nameBytes, 30);
+      parts.push(lh);
+      if (csize) parts.push(r.data);
+
+      var ch = new Uint8Array(46 + nameBytes.length);
+      var cv = new DataView(ch.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, flags, true);
+      cv.setUint16(10, r.method ? 8 : 0, true);
+      cv.setUint16(12, dt.time, true);
+      cv.setUint16(14, dt.date, true);
+      cv.setUint32(16, r.crc >>> 0, true);
+      cv.setUint32(20, csize, true);
+      cv.setUint32(24, r.usize, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, r.dir ? 0x10 : 0, true);
+      cv.setUint32(42, offset, true);
+      ch.set(nameBytes, 46);
+      central.push(ch);
+      offset += lh.length + csize;
+      if (offset > 0xFFFFFFF0) throw new Error('ZIP이 4GB를 넘어 브라우저에서 만들 수 없습니다');
+    }
+    if (records.length > 65000) throw new Error('파일이 너무 많습니다 (6만 5천 개 이하)');
+    var cdSize = 0;
+    for (var j = 0; j < central.length; j++) cdSize += central[j].length;
+    var eocd = new Uint8Array(22);
+    var ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, records.length, true);
+    ev.setUint16(10, records.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, offset, true);
+    var all = parts.concat(central);
+    all.push(eocd);
+    return new Blob(all, { type: 'application/zip' });
+  }
+
+  /* ============================================================
+     ZIP · 읽기
+     ============================================================ */
+  function u16at(u8, o) { return u8[o] | (u8[o + 1] << 8); }
+  function u32at(u8, o) { return (u8[o] | (u8[o + 1] << 8) | (u8[o + 2] << 16) | (u8[o + 3] << 24)) >>> 0; }
+  function u64at(u8, o) { return u32at(u8, o) + u32at(u8, o + 4) * 4294967296; }
+
+  function findEOCD(u8) {
+    var start = Math.max(0, u8.length - 66000);
+    for (var i = u8.length - 22; i >= start; i--) {
+      if (u32at(u8, i) === 0x06054b50) return i;
+    }
+    return -1;
+  }
+  function decodeName(bytes, utf8Flag) {
+    var s = new TextDecoder('utf-8').decode(bytes);
+    if (!utf8Flag && s.indexOf('\uFFFD') >= 0) {
+      try { return new TextDecoder('euc-kr').decode(bytes); } catch (e) { return s; }
+    }
+    return s;
+  }
+  function zip64Extra(extra, need) {
+    /* need: {usize, csize, lho} */
+    var p = 0;
+    while (p + 4 <= extra.length) {
+      var id = u16at(extra, p), sz = u16at(extra, p + 2);
+      if (id === 0x0001) {
+        var q = p + 4, out = {};
+        if (need.usize) { out.usize = u64at(extra, q); q += 8; }
+        if (need.csize) { out.csize = u64at(extra, q); q += 8; }
+        if (need.lho) { out.lho = u64at(extra, q); q += 8; }
+        return out;
+      }
+      p += 4 + sz;
+    }
+    return null;
+  }
+
+  function parseZip(buffer) {
+    var u8 = new Uint8Array(buffer);
+    if (u8.length < 22) throw new Error('ZIP 파일이 너무 작거나 손상되었습니다');
+    var eocd = findEOCD(u8);
+    if (eocd < 0) throw new Error('ZIP 구조(EOCD)를 찾지 못했습니다');
+    var count = u16at(u8, eocd + 10);
+    var cdSize = u32at(u8, eocd + 12);
+    var cdOff = u32at(u8, eocd + 16);
+    var commentLen = u16at(u8, eocd + 20);
+    if (eocd + 22 + commentLen > u8.length + 4) commentLen = 0;
+
+    /* ZIP64 */
+    var locator = eocd - 20;
+    if (locator >= 0 && u32at(u8, locator) === 0x07064b50) {
+      var z64off = u64at(u8, locator + 8);
+      if (z64off + 56 <= u8.length && u32at(u8, z64off) === 0x06064b50) {
+        count = u64at(u8, z64off + 32);
+        cdSize = u64at(u8, z64off + 40);
+        cdOff = u64at(u8, z64off + 48);
+      }
+    }
+    if (cdOff + cdSize > u8.length) throw new Error('ZIP 중앙 디렉터리가 잘렸습니다');
+
+    var entries = [];
+    var p = cdOff;
+    for (var i = 0; i < count; i++) {
+      if (p + 46 > u8.length || u32at(u8, p) !== 0x02014b50) break;
+      var flags = u16at(u8, p + 8);
+      var method = u16at(u8, p + 10);
+      var dtm = u16at(u8, p + 12), dtd = u16at(u8, p + 14);
+      var mtime = new Date(1980 + ((dtd >> 9) & 0x7F), ((dtd >> 5) & 0x0F) - 1, dtd & 0x1F, (dtm >> 11) & 0x1F, (dtm >> 5) & 0x3F, (dtm & 0x1F) * 2).getTime();
+      var crc = u32at(u8, p + 16);
+      var csize = u32at(u8, p + 20);
+      var usize = u32at(u8, p + 24);
+      var nlen = u16at(u8, p + 28), elen = u16at(u8, p + 30), clen = u16at(u8, p + 32);
+      var lho = u32at(u8, p + 42);
+      var nameBytes = u8.subarray(p + 46, p + 46 + nlen);
+      var extra = u8.subarray(p + 46 + nlen, p + 46 + nlen + elen);
+      if (usize === 0xFFFFFFFF || csize === 0xFFFFFFFF || lho === 0xFFFFFFFF) {
+        var z = zip64Extra(extra, { usize: usize === 0xFFFFFFFF, csize: csize === 0xFFFFFFFF, lho: lho === 0xFFFFFFFF });
+        if (z) {
+          if (z.usize !== undefined) usize = z.usize;
+          if (z.csize !== undefined) csize = z.csize;
+          if (z.lho !== undefined) lho = z.lho;
+        }
+      }
+      var name = decodeName(nameBytes, !!(flags & 0x0800));
+      var entry = {
+        name: name, flags: flags, method: method, crc: crc, csize: csize, usize: usize,
+        lho: lho, mtime: mtime, encrypted: !!(flags & 1),
+        dir: /\/$/.test(name), dataStart: 0, ok: true, error: ''
+      };
+      if (method !== 0 && method !== 8) { entry.ok = false; entry.error = '지원하지 않는 압축 방식(' + method + ')'; }
+      if (entry.encrypted) { entry.ok = false; entry.error = '암호가 걸린 항목'; }
+      entries.push(entry);
+      p += 46 + nlen + elen + clen;
+    }
+    if (!entries.length) throw new Error('ZIP 안에 읽을 수 있는 항목이 없습니다');
+
+    /* 로컬 헤더에서 데이터 시작 위치 계산 */
+    for (var k = 0; k < entries.length; k++) {
+      var e = entries[k];
+      if (e.lho + 30 > u8.length || u32at(u8, e.lho) !== 0x04034b50) { e.ok = false; e.error = e.error || '로컬 헤더 손상'; continue; }
+      var ln = u16at(u8, e.lho + 26), le = u16at(u8, e.lho + 28);
+      e.dataStart = e.lho + 30 + ln + le;
+      if (e.dataStart + e.csize > u8.length) { e.ok = false; e.error = e.error || '데이터가 잘렸습니다'; }
+    }
+    return { entries: entries, size: u8.length, u8: u8, name: '' };
+  }
+
+  function entryData(entry) {
+    if (entry.encrypted) return Promise.reject(new Error('암호가 걸린 항목은 열 수 없습니다'));
+    var slice = state.zip.u8.subarray(entry.dataStart, entry.dataStart + entry.csize);
+    if (entry.method === 0) return Promise.resolve(slice);
+    if (entry.method === 8) return inflateBytes(slice);
+    return Promise.reject(new Error('지원하지 않는 압축 방식입니다'));
+  }
+
+  /* ============================================================
+     공통 · 파일 형식 아이콘
+     ============================================================ */
+  var ICO = {
+    file: '<path d="M7 3.5h7l4 4V20.5H7z"></path><path d="M14 3.5v4h4"></path>',
+    image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><circle cx="8.6" cy="9.6" r="1.6"></circle><path d="M4.5 17l4.7-4.6 3.2 3.1 3-2.8 4 4.3"></path>',
+    text: '<path d="M7 3.5h7l4 4V20.5H7z"></path><path d="M9.6 11h5M9.6 14h5M9.6 17h3"></path>',
+    code: '<path d="M9 8.5 5.5 12 9 15.5"></path><path d="M15 8.5 18.5 12 15 15.5"></path>',
+    audio: '<path d="M9 17V7l9-2v10"></path><circle cx="6.5" cy="17" r="2.5"></circle><circle cx="15.5" cy="15" r="2.5"></circle>',
+    video: '<rect x="3" y="6" width="12" height="12" rx="2"></rect><path d="M15 11l5-3v8l-5-3z"></path>',
+    pdf: '<path d="M7 3.5h7l4 4V20.5H7z"></path><path d="M9.6 12h4.8M9.6 15.4h4.8"></path>',
+    zip: '<path d="M4 8.5h16V19H4z"></path><path d="M4 8.5 6.2 5h11.6L20 8.5"></path><path d="M10.4 11.8h3.2"></path>',
+    folder: '<path d="M4.5 6.5h6l2 2.5h7v9.5h-15z"></path>',
+    sheet: '<rect x="4" y="4.5" width="16" height="15" rx="1.8"></rect><path d="M4 9.5h16M9.5 4.5v15"></path>'
+  };
+  function kindOf(name, dir) {
+    if (dir) return 'folder';
+    var e = extOf(name);
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'ico', 'heic'].indexOf(e) > -1) return 'image';
+    if (['txt', 'md', 'json', 'csv', 'log', 'yml', 'yaml', 'xml', 'html', 'htm', 'css', 'ini', 'conf'].indexOf(e) > -1) return 'text';
+    if (['js', 'ts', 'jsx', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'go', 'rs', 'sh', 'sql', 'php', 'rb', 'kt'].indexOf(e) > -1) return 'code';
+    if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus'].indexOf(e) > -1) return 'audio';
+    if (['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'].indexOf(e) > -1) return 'video';
+    if (e === 'pdf') return 'pdf';
+    if (['zip', 'gz', 'rar', '7z', 'tar', 'bz2', 'xz'].indexOf(e) > -1) return 'zip';
+    if (['xls', 'xlsx', 'csv', 'numbers'].indexOf(e) > -1) return 'sheet';
+    return 'file';
+  }
+  function icoSvg(kind, cls) {
+    return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (ICO[kind] || ICO.file) + '</svg>';
+  }
+  function kindLabel(name, dir) {
+    if (dir) return '폴더';
+    var e = extOf(name);
+    return e ? e.toUpperCase() : '파일';
+  }
+
+  /* ============================================================
+     PACK · 파일 추가·예상 용량
+     ============================================================ */
+  function uniquePath(path) {
+    var exists = {};
+    state.pack.items.forEach(function (it) { exists[it.path] = 1; });
+    if (!exists[path]) return path;
+    var isDirPath = /\/$/.test(path);
+    var body = isDirPath ? path.slice(0, -1) : path;
+    var dot = body.lastIndexOf('.');
+    var slash = body.lastIndexOf('/');
+    var base = dot > slash ? body.slice(0, dot) : body;
+    var ext = dot > slash ? body.slice(dot) : '';
+    var n = 2;
+    while (exists[base + ' (' + n + ')' + ext + (isDirPath ? '/' : '')]) n++;
+    return base + ' (' + n + ')' + ext + (isDirPath ? '/' : '');
+  }
+  function addItems(list) {
+    var added = 0;
+    list.forEach(function (row) {
+      var path = uniquePath(String(row.path || row.file.name).replace(/^\/+/, ''));
+      if (!row.file && !row.dir) return;
+      state.pack.items.push({
+        id: uid('f'), path: path, size: row.file ? row.file.size : 0,
+        file: row.file || null, dir: !!row.dir, mtime: row.file ? row.file.lastModified : Date.now(),
+        included: true, est: null, estFor: -1
+      });
+      added++;
+    });
+    if (!added) return;
+    state.pack.result = null;
+    $('buildResult').classList.add('hidden');
+    renderPack();
+    kickEstimate();
+    Lemon.hap(10);
+  }
+  function walkEntry(entry, path, out) {
+    return new Promise(function (res) {
+      if (!entry) { res(); return; }
+      if (entry.isFile) {
+        entry.file(function (f) { out.push({ file: f, path: path + entry.name }); res(); }, function () { res(); });
+      } else if (entry.isDirectory) {
+        var reader = entry.createReader();
+        var all = [];
+        var readBatch = function () {
+          reader.readEntries(function (batch) {
+            if (!batch.length) {
+              var base = path + entry.name + '/';
+              out.push({ dir: true, path: base });
+              var chain = Promise.resolve();
+              all.sort(function (a, b) { return (a.isDirectory === b.isDirectory) ? a.name.localeCompare(b.name) : (a.isDirectory ? -1 : 1); });
+              all.forEach(function (child) {
+                chain = chain.then(function () { return walkEntry(child, base, out); });
+              });
+              chain.then(function () { res(); });
+              return;
+            }
+            all = all.concat(Array.prototype.slice.call(batch));
+            readBatch();
+          }, function () { res(); });
+        };
+        readBatch();
+      } else { res(); }
+    });
+  }
+  function filesFromDataTransfer(dt) {
+    var out = [];
+    var items = dt.items ? Array.prototype.slice.call(dt.items) : [];
+    var entries = [];
+    items.forEach(function (it) {
+      if (it.kind !== 'file') return;
+      var en = it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
+      if (en) entries.push(en);
+    });
+    if (!entries.length) {
+      Array.prototype.slice.call(dt.files || []).forEach(function (f) {
+        out.push({ file: f, path: f.webkitRelativePath || f.name });
+      });
+      return Promise.resolve(out);
+    }
+    var chain = Promise.resolve();
+    entries.forEach(function (en) {
+      chain = chain.then(function () { return walkEntry(en, '', out); });
+    });
+    return chain.then(function () { return out; });
+  }
+
+  function included() { return state.pack.items.filter(function (it) { return it.included; }); }
+  function rawTotal() { return included().reduce(function (a, it) { return a + (it.size || 0); }, 0); }
+  function estTotal() {
+    var sum = 0, unknown = 0, count = 0;
+    included().forEach(function (it) {
+      if (it.dir) return;
+      count++;
+      if (!it.size) return;
+      if (it.estFor === state.pack.level && typeof it.est === 'number') sum += it.est;
+      else if (shouldDeflate(it.path, state.pack.level) === false) sum += it.size;
+      else unknown += it.size;
+    });
+    if (unknown) sum += unknown * (state.pack.level === 0 ? 1 : 0.72);
+    sum += count * 100 + 22;
+    return Math.max(0, Math.round(sum));
+  }
+
+  var estTimer = null, estRunning = false;
+  function kickEstimate() {
+    state.pack.gen++;
+    clearTimeout(estTimer);
+    estTimer = setTimeout(runEstimates, 90);
+  }
+  function estimateOne(it, level) {
+    if (!it.file || !it.size) return Promise.resolve(0);
+    if (level === 0 || !shouldDeflate(it.path, level) || !canDeflate()) return Promise.resolve(it.size);
+    var sample = Math.min(it.size, 400 * 1024);
+    return it.file.slice(0, sample).arrayBuffer().then(function (ab) {
+      return deflateBytes(new Uint8Array(ab));
+    }).then(function (c) {
+      if (!c || !c.length) return it.size;
+      var ratio = c.length / Math.max(1, sample);
+      return Math.min(it.size, Math.max(0, Math.round(it.size * ratio)));
+    }, function () { return it.size; });
+  }
+  function runEstimates() {
+    if (estRunning) return;
+    var gen = state.pack.gen, level = state.pack.level;
+    var list = included().filter(function (it) { return !it.dir && it.size && it.estFor !== level; });
+    if (!list.length) { renderPack(); return; }
+    estRunning = true;
+    var i = 0;
+    function step() {
+      if (gen !== state.pack.gen) { estRunning = false; return; }
+      if (i >= list.length) { estRunning = false; renderPack(); return; }
+      var it = list[i++];
+      estimateOne(it, level).then(function (v) {
+        it.est = v; it.estFor = level;
+        updateRowEst(it);
+        updatePackStats();
+        step();
+      });
+    }
+    step();
+  }
+  function updateRowEst(it) {
+    var el = document.querySelector('[data-est-id="' + it.id + '"]');
+    if (el) el.textContent = (it.estFor === state.pack.level && typeof it.est === 'number') ? '→ ' + fmtB(it.est) : '계산 중';
+  }
+
+  /* ============================================================
+     PACK · 렌더
+     ============================================================ */
+  function renderPack() {
+    var list = $('packList');
+    if (!list) return;
+    var q = (state.pack.query || '').trim().toLowerCase();
+    var items = state.pack.items.filter(function (it) { return !q || it.path.toLowerCase().indexOf(q) > -1; });
+    $('packEmpty').classList.toggle('hidden', state.pack.items.length > 0);
+    var dockTitle = document.querySelector('#dockPack .dock-title');
+    var dockHint = document.querySelector('#dockPack .dock-hint');
+    if (dockTitle && dockHint) {
+      var n = state.pack.items.filter(function (x) { return !x.dir; }).length;
+      dockTitle.textContent = n ? n + '개 파일이 작업대에 있습니다' : '여기로 파일이나 폴더를 끌어다 놓으세요';
+      dockHint.textContent = n ? '파일·폴더를 더 추가하면 아래 목록에 이어 붙습니다' : '또는 아래 버튼으로 직접 고르기 · 여러 개 동시 선택 가능';
+    }
+    list.classList.toggle('hidden', state.pack.items.length === 0);
+    var html = '';
+    items.forEach(function (it) {
+      var kind = kindOf(it.path, it.dir);
+      html += '<div class="mrow' + (it.included ? '' : ' excluded') + '" data-id="' + esc(it.id) + '">' +
+        '<span class="mini-check' + (it.included ? ' on' : '') + '" data-act="inc" role="checkbox" aria-checked="' + (it.included ? 'true' : 'false') + '" tabindex="0" title="' + (it.included ? 'ZIP에서 제외' : 'ZIP에 포함') + '">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>' +
+        '<span class="ftype">' + icoSvg(kind) + '</span>' +
+        '<div class="min-w-0">' +
+        '<div class="fname" data-act="rename" title="눌러서 이름·경로 변경" style="cursor:text">' + esc(it.path) + '</div>' +
+        '<div class="mono text-[8.5px] text-[color:var(--muted)]">' + esc(kindLabel(it.path, it.dir)) + ' <span data-est-id="' + esc(it.id) + '">' + (it.dir ? '' : (it.estFor === state.pack.level && typeof it.est === 'number' ? '→ ' + fmtB(it.est) : '계산 중')) + '</span></div>' +
+        '</div>' +
+        '<div class="text-right"><div class="fsize">' + (it.dir ? '—' : fmtB(it.size)) + '</div></div>' +
+        '<button class="icon-mini" data-act="del" aria-label="목록에서 제거" title="목록에서 제거">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>' +
+        '</div>';
+    });
+    if (state.pack.items.length && !items.length) {
+      html = '<div class="px-3 py-6 text-center text-[11px] text-[color:var(--muted)]">“‘' + esc(q) + '’에 해당하는 파일이 없습니다</div>';
+    }
+    list.innerHTML = html;
+    updatePackStats();
+  }
+  function updatePackStats() {
+    var inc = included();
+    var files = inc.filter(function (i) { return !i.dir; });
+    var raw = rawTotal(), est = estTotal();
+    $('packCount').textContent = files.length + (inc.length - files.length ? ' +' + (inc.length - files.length) : '');
+    $('packRaw').textContent = fmtB(raw);
+    $('packEst').textContent = fmtB(est);
+    $('estLeft').textContent = '원본 ' + fmtB(raw);
+    $('estRight').textContent = '예상 ' + fmtB(est);
+    var bar = $('estBar');
+    var ratio = raw > 0 ? Math.round(clamp((1 - est / raw) * 100, 0, 100)) : 0;
+    bar.style.width = (raw > 0 ? clamp((est / raw) * 100, 2, 100) : 0) + '%';
+    $('estLabel').textContent = raw > 0 ? (ratio >= 0 ? ratio + '% 절감 · ' + fmtB(est) : fmtB(est)) : '—';
+    $('tabStudioDot').classList.toggle('hidden', !files.length);
+    $('heroFiles').textContent = files.length ? files.length + ' FILES' : 'ZIP READY';
+    var totalFiles = $('buildProg');
+    if (!totalFiles) return;
+  }
+
+  /* ============================================================
+     PACK · 실행
+     ============================================================ */
+  function showBuildErr(msg) {
+    var el = $('buildErr');
+    el.textContent = msg;
+    el.classList.toggle('hidden', !msg);
+  }
+  function setProgress(p, text) {
+    $('buildProg').classList.remove('hidden');
+    $('buildProgBar').style.width = clamp(p, 0, 100) + '%';
+    $('buildProgPct').textContent = Math.round(clamp(p, 0, 100)) + '%';
+    if (text) $('buildProgText').textContent = text;
+  }
+  function guessZipName(items) {
+    var files = items.filter(function (i) { return !i.dir; });
+    if (!files.length) return todayName() + '.zip';
+    var first = files[0].path.split('/');
+    if (first.length > 1) {
+      var top = first[0];
+      var same = files.every(function (f) { return f.path.indexOf(top + '/') === 0; });
+      if (same) return top + '.zip';
+    }
+    return todayName() + '.zip';
+  }
+  function doBuild() {
+    if (state.pack.busy) return;
+    var items = included();
+    var files = items.filter(function (i) { return !i.dir; });
+    if (!files.length) { Lemon.toast('먼저 묶을 파일을 추가하세요', 'err'); return; }
+    var raw = rawTotal();
+    if (raw > 4 * 1024 * 1024 * 1024) { showBuildErr('원본이 4GB를 넘어 브라우저에서 ZIP을 만들 수 없습니다. 폴더를 나눠 주세요.'); return; }
+    showBuildErr('');
+    state.pack.busy = true;
+    var btn = $('btnBuild');
+    btn.disabled = true;
+    $('buildResult').classList.add('hidden');
+    setProgress(0, '준비 중…');
+    var level = state.pack.level;
+    var recs = [];
+    var doneBytes = 0;
+    var totalBytes = Math.max(1, raw);
+    var i = 0;
+
+    function next() {
+      if (i >= items.length) return finish();
+      var it = items[i++];
+      if (it.dir) {
+        recs.push({ path: it.path, method: 0, crc: 0, usize: 0, data: new Uint8Array(0), dir: true, mtime: it.mtime });
+        setProgress((doneBytes / totalBytes) * 100, it.path);
+        return next();
+      }
+      setProgress((doneBytes / totalBytes) * 100, baseName(it.path) + ' 읽는 중…');
+      it.file.arrayBuffer().then(function (ab) {
+        var u8 = new Uint8Array(ab);
+        var crc = crc32(u8);
+        var p = Promise.resolve(null);
+        if (shouldDeflate(it.path, level) && canDeflate() && u8.length > 64) p = deflateBytes(u8);
+        return p.then(function (comp) {
+          var method = 0, data = u8;
+          if (comp && comp.length && comp.length < u8.length) { method = 1; data = comp; }
+          recs.push({ path: it.path, method: method, crc: crc, usize: u8.length, data: data, dir: false, mtime: it.mtime });
+          doneBytes += u8.length;
+          setProgress((doneBytes / totalBytes) * 100, baseName(it.path));
+          return new Promise(function (r) { setTimeout(r, 0); });
+        });
+      }).then(next, function (err) {
+        fail('“' + it.path + '” 파일을 읽지 못했습니다');
+      });
+    }
+    function finish() {
+      setProgress(100, 'ZIP 조립 중…');
+      var blob;
+      try { blob = zipFromRecords(recs); }
+      catch (e) { fail(e.message || 'ZIP을 만들지 못했습니다'); return; }
+      var name = guessZipName(items);
+      var result = {
+        id: uid('z'), name: name, blob: blob, size: blob.size, raw: raw,
+        files: files.length, level: level, at: Date.now()
+      };
+      state.pack.result = result;
+      state.pack.busy = false;
+      btn.disabled = false;
+      setTimeout(function () { $('buildProg').classList.add('hidden'); }, 450);
+      $('brName').textContent = name;
+      $('brName').style.cursor = 'text';
+      $('brName').title = '눌러서 ZIP 이름 변경';
+      $('brMeta').textContent = files.length + '개 파일 · ' + fmtB(raw) + ' → ' + fmtB(blob.size) + ' · ' + (blob.size <= raw ? pct(blob.size, raw) + '% 절감' : '+' + fmtB(blob.size - raw) + ' (헤더 포함)');
+      $('buildResult').classList.remove('hidden');
+      $('buildNote').textContent = '서버 전송 없이 이 브라우저에서 만들었습니다. 내려받기 전까지 어디에도 저장되지 않습니다.';
+      Lemon.confetti(30);
+      Lemon.hap(24);
+      Lemon.toast('ZIP을 만들었습니다 · ' + fmtB(blob.size), 'ok');
+      saveJob({ kind: 'pack', name: name, files: files.length, raw: raw, zip: blob.size, level: level });
+      if (saveResultOn()) saveArchiveFromResult(result);
+      updatePackStats();
+    }
+    function fail(msg) {
+      state.pack.busy = false;
+      btn.disabled = false;
+      $('buildProg').classList.add('hidden');
+      showBuildErr(msg);
+      Lemon.toast(msg, 'err');
+    }
+    next();
+  }
+
+  function saveResultOn() { return $('swSaveResult').classList.contains('on'); }
+
+  /* ============================================================
+     저장 · 작업 기록 / 아카이브
+     ============================================================ */
+  var MAX_ARCHIVE_ITEM = 220 * 1024 * 1024;
+  var MAX_ARCHIVE_TOTAL = 320 * 1024 * 1024;
+
+  function saveJob(rec) {
+    var row = Object.assign({ id: uid('j'), at: Date.now() }, rec);
+    dbPut('jobs', row).then(function () {
+      pruneJobs();
+      refreshArchive();
+    }, function () { });
+    return row;
+  }
+  function pruneJobs() {
+    dbAll('jobs').then(function (rows) {
+      rows.sort(function (a, b) { return b.at - a.at; });
+      rows.slice(60).forEach(function (r) { if (!r.archiveId) dbDel('jobs', r.id); });
+    }, function () { });
+  }
+  function archiveTotal() {
+    return state.archives.reduce(function (a, x) { return a + (x.size || 0); }, 0);
+  }
+  function saveArchiveFromResult(result) {
+    var size = result.blob.size;
+    if (size > MAX_ARCHIVE_ITEM) { Lemon.toast('ZIP이 ' + fmtB(size) + '라 보관함에 저장하지 않았습니다 (한 건 220MB까지)', 'info'); return Promise.resolve(null); }
+    if (archiveTotal() + size > MAX_ARCHIVE_TOTAL) {
+      Lemon.toast('보관함이 가득 찼습니다. 보관함에서 오래된 ZIP을 지운 뒤 다시 시도하세요.', 'err');
+      return Promise.resolve(null);
+    }
+    var arc = {
+      id: uid('a'), name: result.name, kind: 'pack', size: size,
+      files: result.files, raw: result.raw, at: Date.now(), blob: result.blob
+    };
+    return dbPut('archives', arc).then(function () {
+      state.archives.unshift(arc);
+      dbAll('jobs').then(function (rows) {
+        rows.sort(function (a, b) { return b.at - a.at; });
+        var job = rows[0];
+        if (job && job.name === result.name && !job.archiveId) {
+          job.archiveId = arc.id;
+          dbPut('jobs', job);
+        }
+        renderArchive();
+        renderHome();
+      });
+      Lemon.toast('보관함에 저장했습니다 · ' + fmtB(size), 'ok');
+      return arc;
+    }, function () {
+      Lemon.toast('보관함 저장에 실패했습니다 (저장 공간 부족)', 'err');
+      return null;
+    });
+  }
+  function saveZipToArchive(blob, name, meta) {
+    if (blob.size > MAX_ARCHIVE_ITEM) { Lemon.toast('이 ZIP은 ' + fmtB(blob.size) + '라 보관함에 저장하지 않았습니다 (한 건 220MB까지)', 'info'); return Promise.resolve(null); }
+    if (archiveTotal() + blob.size > MAX_ARCHIVE_TOTAL) { Lemon.toast('보관함이 가득 찼습니다. 오래된 ZIP을 지운 뒤 다시 시도하세요.', 'err'); return Promise.resolve(null); }
+    var arc = { id: uid('a'), name: name, kind: 'open', size: blob.size, files: meta.files || 0, raw: meta.raw || 0, at: Date.now(), blob: blob };
+    return dbPut('archives', arc).then(function () {
+      state.archives.unshift(arc);
+      renderArchive(); renderHome();
+      Lemon.toast('ZIP을 보관함에 저장했습니다', 'ok');
+      return arc;
+    }, function () {
+      Lemon.toast('보관함 저장에 실패했습니다', 'err');
+      return null;
+    });
+  }
+
+  function refreshArchive() {
+    return Promise.all([dbAll('jobs').then(null, function () { return []; }), dbAll('archives').then(null, function () { return []; })]).then(function (r) {
+      state.jobs = (r[0] || []).sort(function (a, b) { return b.at - a.at; });
+      state.archives = (r[1] || []).sort(function (a, b) { return b.at - a.at; });
+      renderArchive();
+      renderHome();
+    });
+  }
+
+  /* ============================================================
+     ZIP 열기 · 트리
+     ============================================================ */
+  function setMode(mode) {
+    var packOn = mode !== 'open';
+    $('packPane').classList.toggle('hidden', !packOn);
+    $('openPane').classList.toggle('hidden', packOn);
+    $('modePack').classList.toggle('on', packOn);
+    $('modeOpen').classList.toggle('on', !packOn);
+    $('modePack').setAttribute('aria-selected', packOn ? 'true' : 'false');
+    $('modeOpen').setAttribute('aria-selected', packOn ? 'false' : 'true');
+    if (!packOn) { $('dockOpenWrap').classList.toggle('hidden', !!state.zip); }
+  }
+
+  function openZipFile(file) {
+    if (!file) return;
+    if (!/\.zip$/i.test(file.name) && file.type.indexOf('zip') < 0) {
+      Lemon.toast('ZIP 파일을 골라 주세요', 'err');
+      return;
+    }
+    if (file.size > 600 * 1024 * 1024) { Lemon.toast('600MB가 넘는 ZIP은 브라우저에서 열기 어렵습니다', 'err'); return; }
+    Lemon.toast('ZIP을 읽는 중…', 'info');
+    file.arrayBuffer().then(function (ab) {
+      var z = parseZip(ab);
+      z.name = file.name;
+      z.blob = file;
+      state.zip = z;
+      state.sel.files = {};
+      state.collapsed = {};
+      state.query = '';
+      $('zipSearch').value = '';
+      var files = z.entries.filter(function (e) { return !e.dir; });
+      if (files.length > 250) {
+        z.entries.forEach(function (e) {
+          if (e.dir) state.collapsed[e.name] = true;
+        });
+      }
+      renderZip();
+      $('zipEmpty').classList.add('hidden');
+      $('zipPanel').classList.remove('hidden');
+      $('dockOpenWrap').classList.add('hidden');
+      setMode('open');
+      $('tabStudioDot').classList.remove('hidden');
+      Lemon.confetti(18);
+      saveJob({ kind: 'open', name: file.name, files: files.length, raw: files.reduce(function (a, e) { return a + e.usize; }, 0), zip: file.size });
+      if ($('swSaveSource').classList.contains('on')) {
+        saveZipToArchive(file, file.name, { files: files.length, raw: files.reduce(function (a, e) { return a + e.usize; }, 0) });
+      }
+      Lemon.toast(files.length + '개 파일을 열었습니다', 'ok');
+    }).catch(function (e) {
+      Lemon.toast(e && e.message ? e.message : 'ZIP을 읽지 못했습니다', 'err');
+    });
+  }
+
+  function buildTree(entries) {
+    var root = { name: '', path: '', dir: true, children: [], entry: null, map: {}, size: 0, count: 0 };
+    entries.forEach(function (e) {
+      var clean = e.name.replace(/\/+$/, '');
+      if (!clean) return;
+      var parts = clean.split('/');
+      var node = root;
+      for (var i = 0; i < parts.length; i++) {
+        var isLast = i === parts.length - 1;
+        var isDir = !isLast || e.dir;
+        var key = parts[i] + (isDir ? '/' : '');
+        if (!node.map[key]) {
+          var child = { name: parts[i], path: (node.path ? node.path.replace(/\/$/, '') + '/' : '') + parts[i] + (isDir ? '/' : ''), dir: isDir, children: [], entry: null, map: {}, size: 0, count: 0 };
+          node.map[key] = child;
+          node.children.push(child);
+        }
+        node = node.map[key];
+      }
+      if (!e.dir) node.entry = e;
+    });
+    function roll(n) {
+      n.children.sort(function (a, b) {
+        if (a.dir !== b.dir) return a.dir ? -1 : 1;
+        return a.name.localeCompare(b.name, 'ko');
+      });
+      n.children.forEach(function (c) {
+        roll(c);
+        if (c.dir) { n.size += c.size; n.count += c.count; }
+        else { n.size += (c.entry ? c.entry.usize : 0); n.count += 1; }
+      });
+    }
+    roll(root);
+    return root;
+  }
+
+  function selectedCount() { return Object.keys(state.sel.files).length; }
+  function selectedEntries() {
+    var out = [];
+    Object.keys(state.sel.files).forEach(function (path) {
+      var e = entryByPath[path];
+      if (e) out.push(e);
+    });
+    return out;
+  }
+  var entryByPath = {};
+  var treeRoot = null;
+
+  function renderZip() {
+    if (!state.zip) return;
+    var z = state.zip;
+    var files = z.entries.filter(function (e) { return !e.dir; });
+    var raw = files.reduce(function (a, e) { return a + e.usize; }, 0);
+    var ratio = pct(z.size, raw);
+    $('zipName').textContent = z.name;
+    $('zipMeta').textContent = files.length + '개 파일 · ' + (z.entries.length - files.length) + '개 폴더 · ' + fmtB(z.size) + ' ZIP';
+    $('zipFileCount').textContent = files.length;
+    $('zipRaw').textContent = fmtB(raw);
+    $('zipSize').textContent = fmtB(z.size);
+    $('zipRatio').textContent = ratio >= 0 ? ratio + '% 절감' : '—';
+    entryByPath = {};
+    z.entries.forEach(function (e) { entryByPath[e.name] = e; });
+    treeRoot = buildTree(z.entries);
+    renderTree();
+    updateSelBar();
+  }
+
+  function nodeMatches(node, q) {
+    if (!q) return true;
+    if (node.name.toLowerCase().indexOf(q) > -1) return true;
+    for (var i = 0; i < node.children.length; i++) if (nodeMatches(node.children[i], q)) return true;
+    return false;
+  }
+  function renderTree() {
+    if (!treeRoot) return;
+    var q = (state.query || '').trim().toLowerCase();
+    var html = '';
+    function walk(node, depth) {
+      node.children.forEach(function (c) {
+        if (!nodeMatches(c, q)) return;
+        var indent = 8 + depth * 14;
+        if (c.dir) {
+          var collapsed = q ? false : !!state.collapsed[c.path];
+          var allSel = c.count > 0 && countSelIn(c) === c.count;
+          html += '<div class="tree-row dir" data-path="' + esc(c.path) + '">' +
+            '<span class="caret' + (collapsed ? '' : ' open') + '" data-act="fold">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></span>' +
+            '<div class="tname" style="padding-left:' + indent + 'px">' + icoSvg('folder') + '<span>' + esc(c.name) + '</span><span class="mono text-[8.5px] text-[color:var(--muted)] ml-1">' + c.count + '</span></div>' +
+            '<span class="fsize">' + fmtB(c.size) + '</span>' +
+            '<span class="fsize mono" style="font-size:8.5px">' + (c.entry ? '' : '') + '</span>' +
+            '<span class="mini-check' + (allSel ? ' on' : '') + '" data-act="seldir" role="checkbox" aria-checked="' + (allSel ? 'true' : 'false') + '" tabindex="0"></span>' +
+            '</div>';
+          html += '<div class="tree-kids' + (collapsed ? ' collapsed' : '') + '" data-kids="' + esc(c.path) + '">';
+          walk(c, depth + 1);
+          html += '</div>';
+        } else {
+          var e = c.entry || {};
+          var sel = !!state.sel.files[c.path] || !!(e.name && state.sel.files[e.name]);
+          var ratioNum = e.usize ? Math.round(e.csize / Math.max(1, e.usize) * 100) : 0;
+          var bad = e.ok === false;
+          html += '<div class="tree-row' + (bad ? '' : '') + '" data-path="' + esc(c.path) + '" data-file="' + esc(e.name || '') + '">' +
+            '<span class="caret caret-off"></span>' +
+            '<div class="tname" style="padding-left:' + indent + 'px" title="' + esc(e.name || '') + '">' + icoSvg(kindOf(c.name)) + '<span>' + esc(c.name) + '</span>' +
+            (bad ? ' <span class="tag warn" style="font-size:7.5px;padding:.05rem .25rem">' + esc(e.error || '열 수 없음') + '</span>' : '') +
+            '</div>' +
+            '<span class="fsize">' + (e.usize !== undefined ? fmtB(e.usize) : '') + '</span>' +
+            '<span class="tbar-wrap ratio-cell" title="압축률 ' + ratioNum + '%"><b>' + (e.usize ? ratioNum + '%' : '') + '</b><span class="tbar"><i style="width:' + Math.min(100, ratioNum) + '%"></i></span></span>' +
+            '<span class="flex items-center justify-end gap-0.5">' +
+            (e.ok === false ? '' : '<button class="icon-mini !w-6 !h-6" data-act="pv" title="미리보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path><circle cx="12" cy="12" r="2.6"></circle></svg></button>' +
+              '<button class="icon-mini !w-6 !h-6" data-act="dl" title="이 파일만 내려받기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4.5 17.5v2h15v-2"></path></svg></button>') +
+            '<span class="mini-check' + (sel ? ' on' : '') + '" data-act="selfile" role="checkbox" aria-checked="' + (sel ? 'true' : 'false') + '" tabindex="0"></span>' +
+            '</span></div>';
+        }
+      });
+    }
+    walk(treeRoot, 0);
+    if (!html) html = '<div class="px-3 py-6 text-center text-[11px] text-[color:var(--muted)]">검색 결과가 없습니다</div>';
+    $('zipTree').innerHTML = html;
+  }
+
+  function countSelIn(node) {
+    var n = 0;
+    node.children.forEach(function (c) {
+      if (c.dir) n += countSelIn(c);
+      else if (state.sel.files[c.path] || (c.entry && state.sel.files[c.entry.name])) n++;
+    });
+    return n;
+  }
+  function setDirSelection(node, on) {
+    node.children.forEach(function (c) {
+      if (c.dir) setDirSelection(c, on);
+      else if (c.entry && c.entry.ok !== false) {
+        if (on) state.sel.files[c.entry.name] = 1; else delete state.sel.files[c.entry.name];
+      }
+    });
+  }
+  function updateSelBar() {
+    var n = selectedCount();
+    var total = state.zip ? state.zip.entries.filter(function (e) { return !e.dir; }).length : 0;
+    var bytes = 0;
+    Object.keys(state.sel.files).forEach(function (p) {
+      var e = entryByPath[p];
+      if (e) bytes += e.usize;
+    });
+    $('selCount').textContent = n + ' / ' + total + ' 선택';
+    $('selBytes').textContent = fmtB(bytes);
+    $('chkAll').classList.toggle('on', n > 0 && n === total);
+    $('chkAll').setAttribute('aria-checked', (n > 0 && n === total) ? 'true' : 'false');
+    $('btnExtractSel').disabled = n === 0;
+  }
+
+  /* ============================================================
+     추출
+     ============================================================ */
+  function copyZip(entries, onProgress) {
+    var recs = [], i = 0;
+    function next() {
+      if (i >= entries.length) return Promise.resolve(zipFromRecords(recs));
+      var e = entries[i++];
+      if (e.dir) {
+        recs.push({ path: e.name, method: 0, crc: 0, usize: 0, data: new Uint8Array(0), dir: true, mtime: e.mtime });
+        return next();
+      }
+      var slice = state.zip.u8.slice(e.dataStart, e.dataStart + e.csize);
+      recs.push({ path: e.name, method: e.method, crc: e.crc, usize: e.usize, data: slice, dir: false, mtime: e.mtime });
+      if (onProgress) onProgress(i, entries.length);
+      return new Promise(function (r) { setTimeout(r, 0); }).then(next);
+    }
+    return next();
+  }
+
+  function extractEntries(entries, opts) {
+    opts = opts || {};
+    if (!entries.length) { Lemon.toast('꺼낼 파일을 선택하세요', 'err'); return; }
+    var bad = entries.filter(function (e) { return e.ok === false; });
+    var good = entries.filter(function (e) { return e.ok !== false; });
+    if (!good.length) { Lemon.toast('선택한 항목을 열 수 없습니다', 'err'); return; }
+    if (good.length === 1 && !good[0].dir && !opts.forceZip) {
+      entryData(good[0]).then(function (data) {
+        Lemon.downloadBlob(baseName(good[0].name), new Blob([data], { type: mimeOf(good[0].name) }));
+        Lemon.toast('파일을 꺼냈습니다', 'ok');
+      }, function (e) { Lemon.toast(e.message || '꺼내지 못했습니다', 'err'); });
+      return;
+    }
+    Lemon.toast('꺼내는 중…', 'info');
+    copyZip(good).then(function (blob) {
+      var nm = stripZip(state.zip.name) + '-extracted.zip';
+      Lemon.downloadBlob(nm, blob);
+      Lemon.confetti(16);
+      Lemon.toast(good.length + '개 항목을 ZIP으로 꺼냈습니다 · ' + fmtB(blob.size), 'ok');
+      if (bad.length) Lemon.toast(bad.length + '개 항목은 열 수 없어 제외했습니다', 'info');
+    }, function (e) {
+      Lemon.toast('추출에 실패했습니다: ' + (e.message || e), 'err');
+    });
+  }
+
+  function mimeOf(name) {
+    var e = extOf(name);
+    var map = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', avif: 'image/avif', txt: 'text/plain', md: 'text/plain', json: 'application/json', csv: 'text/csv', mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'video/mp4', webm: 'video/webm', pdf: 'application/pdf', html: 'text/html', css: 'text/css', js: 'text/javascript' };
+    return map[e] || 'application/octet-stream';
+  }
+
+  var TEXT_EXT = { txt: 1, md: 1, json: 1, csv: 1, log: 1, yml: 1, yaml: 1, xml: 1, html: 1, htm: 1, css: 1, js: 1, ts: 1, jsx: 1, tsx: 1, py: 1, java: 1, c: 1, cpp: 1, h: 1, go: 1, rs: 1, sh: 1, sql: 1, php: 1, rb: 1, kt: 1, ini: 1, conf: 1, srt: 1, vtt: 1, tsv: 1 };
+  var IMG_EXT = { png: 1, jpg: 1, jpeg: 1, gif: 1, webp: 1, bmp: 1, avif: 1, svg: 1, ico: 1 };
+  var AUD_EXT = { mp3: 1, wav: 1, ogg: 1, m4a: 1, aac: 1, opus: 1, flac: 1 };
+  var VID_EXT = { mp4: 1, webm: 1, mov: 1, m4v: 1 };
+
+  function openPreview(e) {
+    if (!e) return;
+    var ext = extOf(e.name);
+    state.preview = e;
+    $('pvTitle').textContent = baseName(e.name);
+    $('pvMeta').textContent = e.name + ' · ' + fmtB(e.usize) + ' → ' + fmtB(e.csize) + ' · ' + kindLabel(e.name);
+    $('pvBody').innerHTML = '<div class="p-6 text-center mono text-[11px] text-[color:var(--muted)]">불러오는 중…</div>';
+    $('pvNote').textContent = '';
+    $('modalPreview').classList.remove('hidden');
+    if (e.usize > 24 * 1024 * 1024) {
+      $('pvBody').innerHTML = '<div class="p-6 text-center text-[11.5px] text-[color:var(--muted)]">24MB가 넘는 파일은 미리보기를 만들지 않습니다. 내려받아 확인하세요.</div>';
+      return;
+    }
+    entryData(e).then(function (u8) {
+      if (IMG_EXT[ext]) {
+        var b = new Blob([u8], { type: mimeOf(e.name) });
+        var url = URL.createObjectURL(b);
+        state.preview.url = url;
+        $('pvBody').innerHTML = '<img alt="' + esc(baseName(e.name)) + '" src="' + url + '">';
+        $('pvNote').textContent = '이미지 ' + fmtB(u8.length);
+      } else if (TEXT_EXT[ext]) {
+        var s = new TextDecoder('utf-8').decode(u8);
+        var cut = s.length > 60000;
+        if (cut) s = s.slice(0, 60000);
+        $('pvBody').innerHTML = '<pre>' + esc(s) + '</pre>';
+        $('pvNote').textContent = cut ? '앞 6만 자만 표시합니다' : '텍스트 ' + s.length.toLocaleString() + '자';
+      } else if (AUD_EXT[ext]) {
+        var au = URL.createObjectURL(new Blob([u8], { type: mimeOf(e.name) }));
+        state.preview.url = au;
+        $('pvBody').innerHTML = '<div class="p-4"><audio controls src="' + au + '" style="width:100%"></audio></div>';
+        $('pvNote').textContent = '오디오 ' + fmtB(u8.length);
+      } else if (VID_EXT[ext]) {
+        var vu = URL.createObjectURL(new Blob([u8], { type: mimeOf(e.name) }));
+        state.preview.url = vu;
+        $('pvBody').innerHTML = '<video controls playsinline src="' + vu + '" style="max-width:100%;max-height:60vh;display:block;margin:0 auto"></video>';
+        $('pvNote').textContent = '영상 ' + fmtB(u8.length);
+      } else {
+        $('pvBody').innerHTML = '<div class="p-6 text-center"><div class="mono text-[11px] text-[color:var(--muted)]">' + esc(kindLabel(e.name)) + ' 형식은 미리보기를 지원하지 않습니다</div><div class="text-[10.5px] text-[color:var(--muted)] mt-1">내려받아 확인하세요.</div></div>';
+        $('pvNote').textContent = fmtB(u8.length) + ' · ' + esc(kindLabel(e.name));
+      }
+    }, function (err) {
+      $('pvBody').innerHTML = '<div class="p-6 text-center text-[11.5px]" style="color:#b45309">' + esc(err.message || '미리보기를 열지 못했습니다') + '</div>';
+    });
+  }
+  function closePreview() {
+    $('modalPreview').classList.add('hidden');
+    if (state.preview && state.preview.url) { URL.revokeObjectURL(state.preview.url); }
+    state.preview = null;
+    $('pvBody').innerHTML = '';
+  }
+
+  /* ============================================================
+     보관함 렌더
+     ============================================================
+  */
+  function arcById(id) {
+    for (var i = 0; i < state.archives.length; i++) if (state.archives[i].id === id) return state.archives[i];
+    return null;
+  }
+  function renderArchive() {
+    var used = archiveTotal();
+    $('arcUsed').textContent = fmtB(used);
+    $('arcBar').style.width = (used > 0 ? clamp(used / MAX_ARCHIVE_TOTAL * 100, 2, 100) : 0) + '%';
+    $('arcCount').textContent = '아카이브 ' + state.archives.length + '개 · 기록 ' + state.jobs.length + '건';
+    $('tabCount').textContent = state.archives.length + state.jobs.length;
+    var rows = state.jobs.filter(function (j) { return state.filter === 'all' || j.kind === state.filter; });
+    var html = '';
+    if (!rows.length) {
+      $('arcList').innerHTML = '';
+      $('arcEmpty').classList.remove('hidden');
+      return;
+    }
+    $('arcEmpty').classList.add('hidden');
+    rows.forEach(function (j) {
+      var arc = j.archiveId ? arcById(j.archiveId) : null;
+      var saving = j.raw && j.zip && j.raw > j.zip ? Math.round((1 - j.zip / j.raw) * 100) : null;
+      html += '<div class="arc-row" data-id="' + esc(j.id) + '">' +
+        '<div class="arc-ico">' + icoSvg(j.kind === 'pack' ? 'zip' : 'folder') + '</div>' +
+        '<div class="min-w-0">' +
+        '<div class="flex items-center gap-1.5 min-w-0">' +
+        '<span class="badge-kind ' + (j.kind === 'pack' ? 'pack' : 'open') + '">' + (j.kind === 'pack' ? '압축' : '해제') + '</span>' +
+        '<span class="font-bold text-[12.5px] truncate">' + esc(j.name || '이름 없음') + '</span>' +
+        '</div>' +
+        '<div class="mono text-[10px] text-[color:var(--muted)] mt-0.5 truncate">' + (j.files || 0) + '개 파일 · ' + fmtB(j.raw || 0) + ' → ' + fmtB(j.zip || 0) + (saving !== null ? ' · ' + saving + '% 절감' : '') + '</div>' +
+        '<div class="text-[9.5px] text-[color:var(--muted)] mt-0.5">' + (Lemon.timeAgo ? Lemon.timeAgo(j.at) : '') + (arc ? ' · 보관됨 ' + fmtB(arc.size) : ' · 기록만') + '</div>' +
+        '</div>' +
+        '<div class="flex items-center gap-1 flex-wrap justify-end">' +
+        (arc ? '<button class="ghost-btn !py-1.5 !px-2 !text-[10px]" data-act="open">열기</button><button class="ghost-btn !py-1.5 !px-2 !text-[10px]" data-act="dl">내려받기</button>' : '') +
+        '<button class="icon-mini" data-act="del" title="기록 삭제"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M6.5 7V19.5h11V7"></path><path d="M9.5 7V4.5h5V7"></path></svg></button>' +
+        '</div></div>';
+    });
+    $('arcList').innerHTML = html;
+  }
+
+  function renderHome() {
+    var used = archiveTotal();
+    var jobs = state.jobs;
+    var saved = jobs.reduce(function (a, j) { return a + Math.max(0, (j.raw || 0) - (j.zip || 0)); }, 0);
+    $('statArchives').textContent = state.archives.length;
+    $('statJobs').textContent = jobs.length;
+    $('statUsage').textContent = fmtB(used);
+    $('statSaved').textContent = fmtB(saved);
+    $('heroArchives').textContent = state.archives.length;
+    $('heroJobs').textContent = jobs.length;
+    $('heroSaved').textContent = fmtB(saved);
+    var recent = jobs.slice(0, 4);
+    $('homeRecentEmpty').classList.toggle('hidden', jobs.length > 0);
+    var html = '';
+    recent.forEach(function (j) {
+      var arc = j.archiveId ? arcById(j.archiveId) : null;
+      html += '<div class="flex items-center gap-2 rounded-[.4rem] border border-[color:var(--line)] px-2.5 py-2">' +
+        '<span class="ftype !w-7 !h-7">' + icoSvg(j.kind === 'pack' ? 'zip' : 'folder') + '</span>' +
+        '<div class="min-w-0 flex-1">' +
+        '<div class="flex items-center gap-1.5"><span class="badge-kind ' + (j.kind === 'pack' ? 'pack' : 'open') + '">' + (j.kind === 'pack' ? '압축' : '해제') + '</span><span class="text-[11.5px] font-bold truncate">' + esc(j.name || '') + '</span></div>' +
+        '<div class="mono text-[9.5px] text-[color:var(--muted)] mt-0.5">' + (j.files || 0) + '개 · ' + fmtB(j.zip || 0) + ' · ' + (Lemon.timeAgo ? Lemon.timeAgo(j.at) : '') + '</div>' +
+        '</div>' +
+        (arc ? '<button class="ghost-btn !py-1 !px-2 !text-[10px]" data-home-open="' + esc(arc.id) + '">열기</button>' : '') +
+        '</div>';
+    });
+    $('homeRecent').innerHTML = html;
+  }
+
+  /* ============================================================
+     모달 · 이름 변경 / 확인
+     ============================================================
+  */
+  function openRename(target) {
+    state.rename = target;
+    $('renameInput').value = target.value;
+    $('modalRename').classList.remove('hidden');
+    setTimeout(function () { $('renameInput').focus(); $('renameInput').select(); }, 30);
+  }
+  function applyRename() {
+    var v = $('renameInput').value.trim();
+    if (!v) { Lemon.toast('이름을 입력하세요', 'err'); return; }
+    if (!state.rename) return;
+    state.rename.apply(v);
+    $('modalRename').classList.add('hidden');
+    state.rename = null;
+  }
+  function askConfirm(title, text, cb) {
+    $('cfTitle').textContent = title;
+    $('cfText').textContent = text;
+    state.confirm = cb;
+    $('modalConfirm').classList.remove('hidden');
+  }
+
+  /* ============================================================
+     이벤트 배선
+     ============================================================
+  */
+  function bindDock(dockId, onClick, onDrop) {
+    var dock = $(dockId);
+    if (!dock) return;
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      dock.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); dock.classList.add('over'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      dock.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); if (ev === 'dragleave' && dock.contains(e.relatedTarget)) return; dock.classList.remove('over'); });
+    });
+    dock.addEventListener('drop', function (e) {
+      var dt = e.dataTransfer;
+      if (!dt) return;
+      filesFromDataTransfer(dt).then(function (list) {
+        list = (list || []).filter(function (r) { return r.file || r.dir; });
+        if (list.length && onDrop) { onDrop(list); return; }
+        if (dt.files && dt.files.length && onDrop) {
+          onDrop(Array.prototype.slice.call(dt.files).map(function (f) { return { file: f, path: f.webkitRelativePath || f.name }; }));
+          return;
+        }
+        if (onClick) onClick();
+      }, function () { if (onClick) onClick(); });
+    });
+    dock.addEventListener('click', function (e) {
+      if (e.target.closest('button')) return;
+      if (onClick) onClick();
+    });
+    dock.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (onClick) onClick(); }
+    });
+  }
+
+  function bind() {
+    /* theme/style quick nav */
+    $('btnQuickOpen').addEventListener('click', function () { goStudio('open'); });
+    $('btnHomePack').addEventListener('click', function () { goStudio('pack'); });
+    $('btnHomeOpen').addEventListener('click', function () { goStudio('open'); });
+    $('btnHomeArchive').addEventListener('click', function () { if (go) go('archive'); });
+    $('modePack').addEventListener('click', function () { setMode('pack'); Lemon.hap(8); });
+    $('modeOpen').addEventListener('click', function () { setMode('open'); Lemon.hap(8); });
+
+    /* pack */
+    bindDock('dockPack', function () { $('fileInput').click(); }, function (list) { addItems(list); });
+    $('btnPickFiles').addEventListener('click', function (e) { e.stopPropagation(); $('fileInput').click(); });
+    $('btnPickFolder').addEventListener('click', function (e) { e.stopPropagation(); $('folderInput').click(); });
+    $('fileInput').addEventListener('change', function (e) {
+      var list = Array.prototype.slice.call(e.target.files || []).map(function (f) {
+        return { file: f, path: f.webkitRelativePath || f.name };
+      });
+      addItems(list);
+      e.target.value = '';
+    });
+    $('folderInput').addEventListener('change', function (e) {
+      var list = Array.prototype.slice.call(e.target.files || []).map(function (f) {
+        return { file: f, path: f.webkitRelativePath || f.name };
+      });
+      addItems(list);
+      e.target.value = '';
+    });
+    $('levelPick').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-level]');
+      if (!b) return;
+      state.pack.level = parseInt(b.getAttribute('data-level'), 10) || 0;
+      Array.prototype.forEach.call($('levelPick').children, function (x) { x.classList.toggle('on', x === b); });
+      $('levelNote').textContent = state.pack.level === 0 ? '압축 없이 그대로 담기' : (state.pack.level === 1 ? '이미 압축된 형식은 그대로' : '모든 파일 끝까지 압축');
+      kickEstimate();
+      Lemon.hap(6);
+    });
+    $('packSearch').addEventListener('input', function () { state.pack.query = this.value; renderPack(); });
+    $('packList').addEventListener('click', function (e) {
+      var row = e.target.closest('.mrow');
+      if (!row) return;
+      var it = state.pack.items.filter(function (x) { return x.id === row.getAttribute('data-id'); })[0];
+      if (!it) return;
+      var act = e.target.closest('[data-act]');
+      var a = act ? act.getAttribute('data-act') : '';
+      if (a === 'inc') {
+        it.included = !it.included;
+        renderPack();
+        kickEstimate();
+        Lemon.hap(6);
+      } else if (a === 'del') {
+        state.pack.items = state.pack.items.filter(function (x) { return x !== it; });
+        state.pack.result = null;
+        renderPack();
+        kickEstimate();
+      } else if (a === 'rename' || e.target.classList.contains('fname')) {
+        openRename({
+          value: it.path,
+          apply: function (v) { it.path = uniquePath(v.replace(/^\/+/, '')); renderPack(); kickEstimate(); }
+        });
+      }
+    });
+    $('packList').addEventListener('keydown', function (e) {
+      var act = e.target.closest('[data-act]');
+      if (!act) return;
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      act.click();
+    });
+    $('btnClearAll').addEventListener('click', function () {
+      if (!state.pack.items.length) return;
+      askConfirm('목록 비우기', '지금 목록에 있는 ' + state.pack.items.length + '개 항목을 모두 뺍니다. 보관함에 저장된 ZIP은 그대로 남습니다.', function () {
+        state.pack.items = [];
+        state.pack.result = null;
+        $('buildResult').classList.add('hidden');
+        renderPack();
+        kickEstimate();
+      });
+    });
+    $('swSaveResult').addEventListener('click', toggleSwitch);
+    $('swSaveResult').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSwitch.call(this); } });
+    $('swSaveSource').addEventListener('click', toggleSwitch);
+    $('swSaveSource').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSwitch.call(this); } });
+    $('btnBuild').addEventListener('click', doBuild);
+    $('btnDownloadResult').addEventListener('click', function () {
+      if (!state.pack.result) return;
+      Lemon.downloadBlob(state.pack.result.name, state.pack.result.blob);
+      Lemon.hap(12);
+    });
+    $('btnReopenResult').addEventListener('click', function () {
+      if (!state.pack.result) return;
+      goStudio('open');
+      openZipFile(new File([state.pack.result.blob], state.pack.result.name, { type: 'application/zip' }));
+    });
+    $('brName').addEventListener('click', function () {
+      if (!state.pack.result) return;
+      openRename({ value: state.pack.result.name, apply: function (v) {
+        var name = /\.zip$/i.test(v) ? v : v + '.zip';
+        state.pack.result.name = name;
+        $('brName').textContent = name;
+      } });
+    });
+
+    /* open */
+    bindDock('dockOpen', function () { $('zipInput').click(); }, function (list) {
+      var z = list.filter(function (r) { return /\.zip$/i.test(r.path || (r.file && r.file.name) || ''); })[0] || list[0];
+      if (z && z.file) openZipFile(z.file);
+      else Lemon.toast('ZIP 파일을 끌어다 놓으세요', 'err');
+    });
+    $('btnPickZip').addEventListener('click', function (e) { e.stopPropagation(); $('zipInput').click(); });
+    $('zipInput').addEventListener('change', function (e) {
+      var f = (e.target.files || [])[0];
+      if (f) openZipFile(f);
+      e.target.value = '';
+    });
+    $('btnZipReset').addEventListener('click', function () {
+      state.zip = null;
+      state.sel.files = {};
+      $('zipPanel').classList.add('hidden');
+      $('zipEmpty').classList.remove('hidden');
+      $('dockOpenWrap').classList.remove('hidden');
+      updateSelBar();
+    });
+    $('zipSearch').addEventListener('input', function () { state.query = this.value; renderTree(); });
+    $('btnExpandAll').addEventListener('click', function () { state.collapsed = {}; renderTree(); });
+    $('btnCollapseAll').addEventListener('click', function () {
+      if (!treeRoot) return;
+      state.collapsed = {};
+      (function walk(n) { n.children.forEach(function (c) { if (c.dir) { state.collapsed[c.path] = true; walk(c); } }); })(treeRoot);
+      renderTree();
+    });
+    $('zipTree').addEventListener('click', function (e) {
+      var row = e.target.closest('.tree-row');
+      if (!row) return;
+      var path = row.getAttribute('data-path');
+      var act = e.target.closest('[data-act]');
+      var a = act ? act.getAttribute('data-act') : '';
+      if (a === 'fold') {
+        state.collapsed[path] = !state.collapsed[path];
+        renderTree();
+        return;
+      }
+      if (row.classList.contains('dir')) {
+        var node = findNode(treeRoot, path);
+        if (!node) return;
+        if (a === 'seldir') {
+          var allSel = countSelIn(node) === node.count && node.count > 0;
+          setDirSelection(node, !allSel);
+          renderTree();
+          updateSelBar();
+          return;
+        }
+        state.collapsed[path] = !state.collapsed[path];
+        renderTree();
+        return;
+      }
+      var file = row.getAttribute('data-file');
+      var entry = entryByPath[file];
+      if (!entry) return;
+      if (a === 'selfile' || e.target.closest('.tname')) {
+        if (entry.ok === false) { Lemon.toast(entry.error || '열 수 없는 항목입니다', 'err'); return; }
+        if (state.sel.files[file]) delete state.sel.files[file]; else state.sel.files[file] = 1;
+        renderTree();
+        updateSelBar();
+        Lemon.hap(6);
+        return;
+      }
+      if (a === 'pv') { openPreview(entry); return; }
+      if (a === 'dl') { extractEntries([entry], { forceZip: false }); return; }
+    });
+    $('chkAll').addEventListener('click', function () {
+      if (!state.zip) return;
+      var files = state.zip.entries.filter(function (e) { return !e.dir && e.ok !== false; });
+      if (selectedCount() === files.length) state.sel.files = {};
+      else { state.sel.files = {}; files.forEach(function (e) { state.sel.files[e.name] = 1; }); }
+      renderTree();
+      updateSelBar();
+    });
+    $('btnExtractSel').addEventListener('click', function () {
+      var ents = selectedEntries();
+      extractEntries(ents, { forceZip: ents.length > 1 });
+    });
+    $('btnExtractAll').addEventListener('click', function () {
+      if (!state.zip) return;
+      var all = state.zip.entries.filter(function (e) { return e.ok !== false; });
+      extractEntries(all, { forceZip: true });
+    });
+    $('btnSaveZip').addEventListener('click', function () {
+      if (!state.zip || !state.zip.blob) { Lemon.toast('원본 ZIP을 찾지 못했습니다', 'err'); return; }
+      var files = state.zip.entries.filter(function (e) { return !e.dir; });
+      saveZipToArchive(state.zip.blob, state.zip.name, { files: files.length, raw: files.reduce(function (a, e) { return a + e.usize; }, 0) });
+    });
+    $('pvClose').addEventListener('click', closePreview);
+    $('pvDownload').addEventListener('click', function () {
+      if (!state.preview) return;
+      extractEntries([state.preview], { forceZip: false });
+    });
+
+    /* archive */
+    document.querySelectorAll('[data-filter]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.filter = b.getAttribute('data-filter');
+        document.querySelectorAll('[data-filter]').forEach(function (x) { x.classList.toggle('on', x === b); });
+        renderArchive();
+      });
+    });
+    $('arcList').addEventListener('click', function (e) {
+      var row = e.target.closest('.arc-row');
+      if (!row) return;
+      var job = state.jobs.filter(function (j) { return j.id === row.getAttribute('data-id'); })[0];
+      if (!job) return;
+      var act = e.target.closest('[data-act]');
+      var a = act ? act.getAttribute('data-act') : '';
+      if (a === 'del') {
+        askConfirm('기록 삭제', '“' + job.name + '” 기록' + (job.archiveId ? '과 보관된 ZIP' : '') + '을 삭제합니다. 되돌릴 수 없습니다.', function () {
+          if (job.archiveId) dbDel('archives', job.archiveId).then(null, function () { });
+          dbDel('jobs', job.id).then(refreshArchive, refreshArchive);
+          Lemon.toast('삭제했습니다', 'ok');
+        });
+      } else if (a === 'open') {
+        var arc = arcById(job.archiveId);
+        if (arc && arc.blob) { goStudio('open'); openZipFile(new File([arc.blob], arc.name, { type: 'application/zip' })); }
+      } else if (a === 'dl') {
+        var arc2 = arcById(job.archiveId);
+        if (arc2 && arc2.blob) Lemon.downloadBlob(arc2.name, arc2.blob);
+      }
+    });
+    $('homeRecent').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-home-open]');
+      if (!b) return;
+      var arc = arcById(b.getAttribute('data-home-open'));
+      if (arc && arc.blob) { goStudio('open'); openZipFile(new File([arc.blob], arc.name, { type: 'application/zip' })); }
+    });
+    $('btnClearArchive').addEventListener('click', function () {
+      if (!state.jobs.length && !state.archives.length) { Lemon.toast('비울 기록이 없습니다', 'info'); return; }
+      askConfirm('보관함 전체 비우기', '이 기기에 저장된 작업 기록 ' + state.jobs.length + '건과 아카이브 ' + state.archives.length + '개를 모두 지웁니다. 되돌릴 수 없습니다.', function () {
+        Promise.all([dbClear('jobs').then(null, function () { }), dbClear('archives').then(null, function () { })]).then(function () {
+          state.jobs = []; state.archives = [];
+          renderArchive(); renderHome();
+          Lemon.toast('보관함을 비웠습니다', 'ok');
+        });
+      });
+    });
+
+    /* modals */
+    $('renameCancel').addEventListener('click', function () { $('modalRename').classList.add('hidden'); state.rename = null; });
+    $('renameCancel2').addEventListener('click', function () { $('modalRename').classList.add('hidden'); state.rename = null; });
+    $('renameOk').addEventListener('click', applyRename);
+    $('renameInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); applyRename(); } });
+    $('cfCancel').addEventListener('click', function () { $('modalConfirm').classList.add('hidden'); state.confirm = null; });
+    $('cfOk').addEventListener('click', function () {
+      var cb = state.confirm;
+      state.confirm = null;
+      $('modalConfirm').classList.add('hidden');
+      if (cb) cb();
+    });
+    ['modalPreview', 'modalRename', 'modalConfirm'].forEach(function (id) {
+      $(id).addEventListener('click', function (e) {
+        if (e.target !== this) return;
+        if (id === 'modalPreview') closePreview();
+        else { this.classList.add('hidden'); state.rename = null; state.confirm = null; }
+      });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if (!$('modalPreview').classList.contains('hidden')) closePreview();
+        else if (!$('modalRename').classList.contains('hidden')) { $('modalRename').classList.add('hidden'); state.rename = null; }
+        else if (!$('modalConfirm').classList.contains('hidden')) { $('modalConfirm').classList.add('hidden'); state.confirm = null; }
+      }
+    });
+    /* window level drop guard */
+    ['dragover', 'drop'].forEach(function (ev) {
+      window.addEventListener(ev, function (e) {
+        if (e.target.closest && e.target.closest('.dock')) return;
+        e.preventDefault();
+      }, false);
+    });
+    document.addEventListener('lemon:view', function (e) {
+      var v = e.detail && e.detail.view;
+      if (v === 'archive') renderArchive();
+      if (v === 'home') renderHome();
+    });
+  }
+
+  function toggleSwitch(e) {
+    var el = e && e.currentTarget ? e.currentTarget : this;
+    var on = el.classList.toggle('on');
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+    Lemon.hap(8);
+  }
+
+  var go = null;
+  function goStudio(mode) {
+    if (go) go('studio', true);
+    setMode(mode);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (mode === 'open' && state.zip) { $('dockOpenWrap').classList.add('hidden'); }
+  }
+
+  function findNode(node, path) {
+    if (!node) return null;
+    if (node.path === path) return node;
+    for (var i = 0; i < node.children.length; i++) {
+      var r = findNode(node.children[i], path);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  /* ============================================================
+     시작
+     ============================================================
+  */
+  function boot() {
+    go = Lemon.initTabs('home');
+    bind();
+    setMode('pack');
+    $('levelNote').textContent = '이미 압축된 형식은 그대로';
+    renderPack();
+    updateSelBar();
+    renderHome();
+    renderArchive();
+    refreshArchive().then(function () {
+      if (navigator.storage && navigator.storage.estimate) {
+        navigator.storage.estimate().then(function (q) {
+          if (q && q.quota) $('arcQuota').textContent = '/ 브라우저 여유 ' + fmtB(q.quota);
+        }, function () { });
+      }
+    });
+    if (!canDeflate()) {
+      Lemon.toast('이 브라우저는 압축 스트림을 지원하지 않아 저장(무압축) 모드로 동작합니다', 'info');
+    }
+    var hash = (location.hash || '').replace('#', '');
+    if (hash === 'studio') setMode('pack');
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
