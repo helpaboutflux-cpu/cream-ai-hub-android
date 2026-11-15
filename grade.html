@@ -1394,16 +1394,16 @@ tailwind.config = {
   function pctOf(score) {
     var m = mode();
     if (score === null || score === undefined) return null;
-    if (m.kind === 'hs9') {
-      var grade = 10 - score;
-      var g = Math.max(1, Math.min(9, grade));
-      var lo = g <= 1 ? 0 : HS_CUM[Math.floor(g) - 2];
-      var hi = HS_CUM[Math.ceil(g) - 1];
-      var frac = g - Math.floor(g);
-      var v = lo + (hi - lo) * frac;
-      return Math.max(0.5, Math.min(100, v));
-    }
+    if (m.kind === 'hs9') return pctFromGrade(10 - score);
     return score / m.max * 100;
+  }
+
+  function pctFromGrade(grade) {
+    var g = Math.max(1, Math.min(9, Number(grade)));
+    var lo = g <= 1 ? 0 : HS_CUM[Math.floor(g) - 2];
+    var hi = HS_CUM[Math.ceil(g) - 1];
+    var frac = g - Math.floor(g);
+    return Math.max(0.5, Math.min(100, lo + (hi - lo) * frac));
   }
 
   /* 원점수 → 석차등급 (정규분포 근사) */
@@ -2409,6 +2409,7 @@ tailwind.config = {
         thumb: thumbFrom(sheet),
         summary: {
           score: total.score, credits: total.totalW, count: total.count,
+          pct: total.score === null ? null : (m.kind === 'hs9' ? 100 - pctOf(total.score) : pctOf(total.score)),
           label: total.score === null ? '—' : (m.kind === 'hs9' ? (10 - total.score).toFixed(2) + '등급' : total.score.toFixed(2)),
           unit: m.maxLabel
         },
@@ -2464,14 +2465,21 @@ tailwind.config = {
 
   function renderArchiveMeta() {
     $('archCount').textContent = reps.length;
+    /* 척도가 다른 기록을 섞어도 비교되도록 백분율(%)로 최고 기록을 고른다 */
     var best = null;
     reps.forEach(function (r) {
-      if (r.summary && r.summary.score !== null && r.summary.score !== undefined) {
-        if (best === null || r.summary.score > best) best = r.summary.score;
+      if (!r.summary) return;
+      var info = MODES[r.mode] || MODES.u45;
+      var p = r.summary.pct;   /* 저장 시 '높을수록 좋은' 백분율로 통일 */
+      if (p === null || p === undefined) {
+        if (r.summary.score === null || r.summary.score === undefined) return;
+        p = info.kind === 'hs9' ? (100 - pctFromGrade(10 - r.summary.score)) : (r.summary.score / info.max * 100);
       }
+      if (best === null || p > best.p) best = { p: p, label: r.summary.label, unit: r.summary.unit };
     });
+    $('archBest').textContent = best === null ? '—' : best.label;
+    $('archBest').setAttribute('title', best && best.unit ? best.unit : '');
     var m = mode();
-    $('archBest').textContent = best === null ? '—' : (m.kind === 'hs9' ? (10 - best).toFixed(2) : best.toFixed(2));
     var total = computeAll();
     $('archCurrent').textContent = total.score === null ? '—' : (m.kind === 'hs9' ? (10 - total.score).toFixed(2) : total.score.toFixed(2));
     var tab = $('tabArchCount');
@@ -2616,27 +2624,26 @@ tailwind.config = {
         hap(8);
         return;
       }
-      var rowAct = t.closest ? t.closest('[data-act]') : null;
-      if (rowAct) {
-        var act = rowAct.getAttribute('data-act');
+      var actEl = t.closest ? t.closest('[data-act]') : null;
+      if (actEl) {
+        var act = actEl.getAttribute('data-act');
+        var repId = actEl.getAttribute('data-id');
+        if (repId) {
+          var rec = repById(repId);
+          if (!rec) return;
+          if (act === 'load') loadSnapshot(rec);
+          else if (act === 'del') deleteSnapshot(rec);
+          else if (act === 'rename') renameSnapshot(rec);
+          else if (act === 'json') exportSnapshot(rec);
+          return;
+        }
         if (act === 'del') {
-          var rid = rowAct.closest('.c-row');
+          var rid = actEl.closest('.c-row');
           if (rid) delCourse(rid.getAttribute('data-id'));
         } else if (act === 'calc-row') {
-          var row = rowAct.closest('.c-row');
+          var row = actEl.closest('.c-row');
           if (row) calcRowGrade(row.getAttribute('data-id'));
         }
-        return;
-      }
-      var repAct = t.closest ? t.closest('[data-act][data-id]') : null;
-      if (repAct) {
-        var rec = repById(repAct.getAttribute('data-id'));
-        if (!rec) return;
-        var a2 = repAct.getAttribute('data-act');
-        if (a2 === 'load') loadSnapshot(rec);
-        else if (a2 === 'del') deleteSnapshot(rec);
-        else if (a2 === 'rename') renameSnapshot(rec);
-        else if (a2 === 'json') exportSnapshot(rec);
         return;
       }
       var trendBtn = t.closest ? t.closest('[data-trend]') : null;
