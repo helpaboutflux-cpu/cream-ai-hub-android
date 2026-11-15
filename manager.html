@@ -144,6 +144,7 @@ tailwind.config = {
   .soft-hide { display: none !important; }
   select.lemon-select { appearance: none; -webkit-appearance: none; padding-right: 1.7rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .5rem center; background-size: .8rem; }
   @media (max-width: 420px) { .ring-wrap { width: 8.2rem; height: 8.2rem; } .ring-pct { font-size: 1.55rem; } }
+  #confirmModal:not(.open) { visibility: hidden; }
 </style>
 </head>
 <body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
@@ -686,9 +687,23 @@ tailwind.config = {
     { re: /^lemon_(wall|wallpaper)_/, label: 'Lemon Wallpaper', tone: 'violet' },
     { re: /^lemon_study_/, label: 'Lemon Study', tone: 'blue' },
     { re: /^lemon_start_/, label: 'Lemon Start', tone: 'amber' },
+    { re: /^lemon_grid_/, label: 'Lemon Grid', tone: 'indigo' },
+    { re: /^lemon_table_/, label: 'Lemon Table', tone: 'sky' },
+    { re: /^lemon_canvas_/, label: 'Lemon Canvas', tone: 'fuchsia' },
+    { re: /^lemon_mind_/, label: 'Lemon Mind', tone: 'violet' },
+    { re: /^lemon_chart_/, label: 'Lemon Chart', tone: 'emerald' },
+    { re: /^lemon_erase_/, label: 'Lemon Erase', tone: 'red' },
+    { re: /^lemon_mark_/, label: 'Lemon Mark', tone: 'amber' },
+    { re: /^lemon_card_/, label: 'Lemon Card', tone: 'pink' },
+    { re: /^lemon_cam_/, label: 'Lemon Cam', tone: 'slate' },
+    { re: /^lemon_speech_/, label: 'Lemon Speech', tone: 'sky' },
+    { re: /^lemon_speed_/, label: 'Lemon Speed', tone: 'cyan' },
+    { re: /^lemon_ocr_/, label: 'Lemon OCR', tone: 'blue' },
+    { re: /^lemon_blur_/, label: 'Lemon Blur', tone: 'violet' },
+    { re: /^lemon_clock_/, label: 'Lemon Clock', tone: 'teal' },
     { re: /^lemon_calc_/, label: 'Lemon Calculator', tone: 'sky' },
     { re: /^lemon_translate_/, label: 'Lemon Translate', tone: 'teal' },
-    { re: /^lemon_(spell|ocr|blur|erase|grid|mark|card|cam|canvas|table|speech|speed|mind|chart|clock)_/, label: 'Lemon 도구', tone: 'slate' }
+    { re: /^lemon_(spell|pack|form|qr|pdf)_/, label: 'Lemon 도구', tone: 'slate' },
   ];
 
   function classify(key) {
@@ -707,11 +722,28 @@ tailwind.config = {
     if (typeof v === 'string') return v.length > 120 ? v.slice(0, 120) + '…' : v;
     if (typeof v === 'number' || typeof v === 'boolean') return String(v);
     try {
-      var json = JSON.stringify(v);
-      if (Array.isArray(v)) return '배열 ' + v.length + '개 · ' + (json || '').slice(0, 96);
+      if (Array.isArray(v)) return arraySummary(v);
       var keys = Object.keys(v || {});
-      return '{' + keys.slice(0, 4).join(', ') + (keys.length > 4 ? ', +' + (keys.length - 4) : '') + '}';
+      return keys.slice(0, 5).map(function (k) { return k + ':' + brief(v[k]); }).join(' · ') + (keys.length > 5 ? ' …' : '');
     } catch (e) { return '(미리보기 없음)'; }
+  }
+
+  function brief(val) {
+    if (val === null || val === undefined) return '-';
+    if (typeof val === 'string') return val.length > 22 ? val.slice(0, 22) + '…' : val;
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    if (Array.isArray(val)) return '배열' + val.length;
+    if (typeof Blob !== 'undefined' && val instanceof Blob) return '파일';
+    return '객체';
+  }
+
+  function arraySummary(arr) {
+    if (!arr.length) return '빈 배열';
+    var heads = arr.slice(0, 3).map(function (x) {
+      if (x && typeof x === 'object') return x.title || x.name || x.text || x.memo || x.id || null;
+      return String(x);
+    }).filter(Boolean);
+    return arr.length + '개' + (heads.length ? ' · ' + heads.join(' · ') : '') + (arr.length > 3 ? ' …' : '');
   }
 
   function previewOfRaw(raw) {
@@ -956,6 +988,17 @@ tailwind.config = {
       state.ready = true;
       setScanChip('진단 완료', 'ok');
       renderAll();
+      /* Chrome 은 첫 estimate() 에서 0 을 돌려줄 때가 있어 잠시 뒤 한 번 더 묻는다. */
+      if ((!state.usage || state.usage === 0) && navigator.storage && navigator.storage.estimate) {
+        setTimeout(function () {
+          navigator.storage.estimate().then(function (est) {
+            if (!est) return;
+            state.usage = typeof est.usage === 'number' ? est.usage : state.usage;
+            state.quota = typeof est.quota === 'number' ? est.quota : state.quota;
+            renderHome();
+          }, function () { });
+        }, 1500);
+      }
     }).catch(function (err) {
       state.scanning = false;
       setScanChip('진단 실패', 'err');
@@ -1008,8 +1051,10 @@ tailwind.config = {
     $('#statLsKeys').textContent = '키 ' + state.ls.length + '개 · 한도 5MB(문자)';
     $('#statIdbSize').textContent = state.scanning && !state.idb.length ? '…' : fmtB(state.idbBytes);
     $('#statIdbInfo').textContent = '항목 ' + state.idbCount + '개 · DB ' + state.idb.length + '개';
-    $('#statQuota').textContent = state.usage === null ? '-' : fmtB(state.usage);
-    $('#statQuotaInfo').textContent = state.quota ? ('할당 ' + fmtB(state.quota)) : 'navigator.storage 미지원';
+    $('#statQuota').textContent = fmtB(state.usage && state.usage > 0 ? state.usage : totalBytes());
+    $('#statQuotaInfo').textContent = state.quota
+      ? ('할당 ' + fmtB(state.quota) + (state.usage && state.usage > 0 ? '' : ' · 직접 합산'))
+      : '브라우저 미지원';
     var autoItems = state.ls.filter(function (x) { return /^lemon_autosave_/.test(x.key); });
     var autoBytes = autoItems.reduce(function (a, x) { return a + x.bytes; }, 0);
     $('#statClean').textContent = fmtB(autoBytes);
@@ -1603,8 +1648,9 @@ tailwind.config = {
 
   function runRestore(data, mode, keys) {
     state.busy = true;
+    var lsObj = data.localStorage || {};
     Lemon.toast('복원하는 중…', 'info');
-    var failed = 0, done = 0;
+    var failed = 0, done = 0, firstErr = '';
     try {
       if (mode === 'replace') {
         var removals = [];
@@ -1619,7 +1665,7 @@ tailwind.config = {
       }
       keys.forEach(function (k) {
         try { localStorage.setItem(k, lsObj[k]); done += 1; }
-        catch (e) { failed += 1; }
+        catch (e) { failed += 1; if (!firstErr) firstErr = (e && (e.name || e.message)) || 'error'; }
       });
     } catch (e) { }
 
@@ -1630,9 +1676,9 @@ tailwind.config = {
       chain = chain.then(function () { return restoreDB(dbInfo); });
     });
     chain.then(function () {
-      pushLog('import', '복원 ' + done + '개 키 · IndexedDB ' + dbs.length + '개 DB' + (failed ? ' (실패 ' + failed + ')' : ''), 0);
+      pushLog('import', '복원 ' + done + '개 키 · IndexedDB ' + dbs.length + '개 DB' + (failed ? ' (실패 ' + failed + ' · ' + firstErr + ')' : ''), 0);
       state.busy = false;
-      if (failed) Lemon.toast(done + '개 복원 · ' + failed + '개는 공간 부족으로 실패', 'err');
+      if (failed) Lemon.toast(done + '개 복원 · ' + failed + '개 실패 (' + firstErr + ')', 'err');
       else { Lemon.toast(done + '개 키를 복원했어요', 'ok'); Lemon.confetti(18); }
       scanAll();
     }).catch(function () {
