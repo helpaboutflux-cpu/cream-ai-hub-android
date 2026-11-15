@@ -1,0 +1,2273 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Minutes — 회의록·액션 아이템 스튜디오</title>
+<meta name="description" content="회의 중에는 안건별 타임스탬프로 빠르게 적고, 끝나면 결정 사항과 담당자·마감일이 붙은 액션 아이템이 정리된 회의록 한 장. 서버 없이 브라우저에만 저장되고 링크 하나로 읽기 전용 공유합니다.">
+<meta name="theme-color" content="#153e5c">
+<meta property="og:title" content="Lemon Minutes — 회의록·액션 아이템 스튜디오">
+<meta property="og:description" content="안건별 타임스탬프 기록, 결정 사항, 담당자·마감일 액션 아이템, 읽기 전용 공유 링크까지. 서버 없는 회의록 스튜디오.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23153e5c'/%3E%3Cpath d='M7 5.5h7.5L18 9v9.5H7z' fill='none' stroke='%23e9f3f8' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M9.6 10h5.2M9.6 13h5.2M9.6 16h3' stroke='%23e9f3f8' stroke-width='1.3' stroke-linecap='round'/%3E%3Ccircle cx='16.4' cy='16.4' r='2.6' fill='%23d2a03f'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        ink: { 50: '#f8f6f1', 100: '#efeade', 200: '#e2d9c6', 300: '#c9bda5', 400: '#9a8f78', 500: '#6c6555', 600: '#4a4a44', 700: '#37414f', 800: '#22303f', 900: '#16263a', 950: '#0b1520' },
+        brand: { 50: '#eef4f8', 100: '#d7e6ef', 200: '#aecbdd', 300: '#7fabc4', 400: '#4d87a6', 500: '#2f7396', 600: '#1d5b7d', 700: '#174b68', 800: '#153e5c', 900: '#13344c', 950: '#0a1f30' },
+        gold: { 50: '#fbf5e6', 100: '#f6e8c4', 200: '#ecd395', 300: '#dfb662', 400: '#d2a03f', 500: '#c08a2e', 600: '#a06f22', 700: '#7c551c', 800: '#5b3f16', 900: '#3e2b10' }
+      },
+      fontFamily: {
+        serif: ['Iowan Old Style', 'Palatino Linotype', 'Nanum Myeongjo', 'Georgia', 'ui-serif', 'serif']
+      }
+    }
+  }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #173a5c;
+    --brand-2: #2f7396;
+    --brand-deep: #13344c;
+    --paper: #f7f4ed;
+    --gold: #c08a2e;
+    --rule: #e6dccb;
+    --ink: #16263a;
+  }
+  .dark {
+    --brand: #2c5f80;
+    --brand-2: #4e93b0;
+    --brand-deep: #224b66;
+    --paper: #0a1016;
+    --gold: #d2a03f;
+    --rule: #23303c;
+    --ink: #e8eef3;
+  }
+  body { background: var(--paper); }
+  .dark body { background: #0a1016; }
+
+  /* ---------- editorial shell ---------- */
+  .eyebrow { font-size: 9.5px; font-weight: 800; letter-spacing: .3em; text-transform: uppercase; color: color-mix(in srgb, var(--brand) 55%, #6c6555); }
+  .dark .eyebrow { color: color-mix(in srgb, var(--brand-2) 80%, #cbd5e1); }
+  .mins-serif { font-family: 'Iowan Old Style', 'Palatino Linotype', 'Nanum Myeongjo', Georgia, ui-serif, serif; }
+  .hair { height: 1px; background: var(--rule); }
+  .dark .hair { background: #23303c; }
+
+  .paper-doc {
+    position: relative;
+    background: #fffdf9;
+    border: 1px solid var(--rule);
+    border-radius: 1.25rem;
+    box-shadow: 0 26px 60px -46px rgba(15, 33, 53, .55);
+  }
+  .dark .paper-doc { background: #0e151d; border-color: #22303c; box-shadow: 0 26px 60px -44px rgba(0, 0, 0, .9); }
+  .paper-doc::before {
+    content: '';
+    position: absolute; top: 1.1rem; bottom: 1.1rem; left: 2.5rem; width: 1px;
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--gold) 45%, transparent) 12%, color-mix(in srgb, var(--gold) 45%, transparent) 88%, transparent);
+    pointer-events: none;
+  }
+  @media (max-width: 640px) { .paper-doc::before { display: none; } }
+
+  /* ---------- time stamps ---------- */
+  .time-chip {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .01em;
+    color: #8a6416; background: #fdf6e6; border: 1px solid #f0e0bd;
+    border-radius: 5px; padding: 1px 5px; white-space: nowrap;
+    transition: transform .18s cubic-bezier(.34, 1.56, .64, 1), background-color .2s;
+  }
+  .dark .time-chip { color: #e2b56a; background: rgba(192, 138, 46, .14); border-color: rgba(192, 138, 46, .34); }
+  .time-chip.fresh { animation: stampPop .5s cubic-bezier(.34, 1.56, .64, 1) both; }
+  @keyframes stampPop { 0% { transform: scale(.6); opacity: .2; } 60% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
+
+  .stamp-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+    padding: .5rem .8rem; border-radius: .8rem;
+    font-size: .74rem; font-weight: 800;
+    color: #7c551c; background: #fdf3dd;
+    border: 1px solid #eedfba;
+    transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), background-color .2s, box-shadow .2s;
+  }
+  .stamp-btn:hover { background: #fbeccd; transform: translateY(-1px); box-shadow: 0 10px 22px -16px rgba(192, 138, 46, .9); }
+  .stamp-btn:active { transform: scale(.95); }
+  .dark .stamp-btn { color: #e8c078; background: rgba(192, 138, 46, .16); border-color: rgba(192, 138, 46, .34); }
+  .dark .stamp-btn:hover { background: rgba(192, 138, 46, .24); }
+
+  /* ---------- timer ---------- */
+  .timer-face {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .04em;
+  }
+  .timer-dot { width: 7px; height: 7px; border-radius: 9999px; background: #9aa3ad; }
+  .timer-live .timer-dot { background: #c0392b; box-shadow: 0 0 0 0 rgba(192, 57, 43, .6); animation: recPulse 1.7s ease-out infinite; }
+  @keyframes recPulse { 0% { box-shadow: 0 0 0 0 rgba(192, 57, 43, .55); } 70% { box-shadow: 0 0 0 9px rgba(192, 57, 43, 0); } 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0); } }
+
+  /* ---------- agenda / notes ---------- */
+  .agenda-block { position: relative; }
+  .agenda-block + .agenda-block { margin-top: .35rem; }
+  .agenda-num {
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Nanum Myeongjo', Georgia, ui-serif, serif;
+    font-size: 13px; font-style: italic; color: color-mix(in srgb, var(--gold) 85%, #7c551c);
+    width: 1.55rem; flex: 0 0 auto; padding-top: .1rem;
+  }
+  .dark .agenda-num { color: #d2a03f; }
+  .agenda-title {
+    width: 100%; background: transparent; border: 0; outline: none;
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Nanum Myeongjo', Georgia, ui-serif, serif;
+    font-size: 1.02rem; font-weight: 700; color: #16263a; padding: .1rem 0 .2rem;
+    border-bottom: 1px solid transparent; transition: border-color .2s;
+  }
+  .agenda-title::placeholder { color: #b4ab99; font-weight: 600; }
+  .agenda-title:focus { border-bottom-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+  .dark .agenda-title { color: #eef2f6; }
+  .dark .agenda-title::placeholder { color: #4c5a68; }
+
+  .note-row {
+    display: flex; align-items: flex-start; gap: .45rem;
+    border-radius: .6rem; padding: .2rem .25rem;
+    transition: background-color .18s;
+  }
+  .note-row:hover { background: rgba(23, 58, 92, .035); }
+  .dark .note-row:hover { background: rgba(78, 147, 176, .07); }
+  .note-text {
+    width: 100%; min-width: 0; background: transparent; border: 0; outline: none; resize: none;
+    font-size: .84rem; line-height: 1.65; color: #2b3a48;
+    overflow: hidden;
+  }
+  .dark .note-text { color: #d7dee5; }
+  .note-text::placeholder { color: #b4ab99; }
+  .dark .note-text::placeholder { color: #46545f; }
+  .speaker-chip {
+    font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 9999px; white-space: nowrap;
+    color: #17406a; background: rgba(47, 115, 150, .12); border: 1px solid rgba(47, 115, 150, .24);
+    margin-top: 2px;
+  }
+  .dark .speaker-chip { color: #9ccbe0; background: rgba(78, 147, 176, .14); border-color: rgba(78, 147, 176, .3); }
+  .note-del { opacity: 0; transition: opacity .16s; }
+  .note-row:hover .note-del, .note-row:focus-within .note-del { opacity: 1; }
+  @media (hover: none) { .note-del { opacity: .55; } }
+
+  /* ---------- action rows ---------- */
+  .act-row {
+    display: flex; align-items: flex-start; gap: .55rem;
+    padding: .55rem .65rem; border-radius: .8rem;
+    border: 1px solid #ece5d7; background: #fffdf8;
+    transition: border-color .18s, background-color .2s, transform .16s;
+  }
+  .dark .act-row { border-color: #22303c; background: #101820; }
+  .act-row:hover { border-color: color-mix(in srgb, var(--brand) 32%, transparent); transform: translateY(-1px); }
+  .act-row.done { opacity: .62; }
+  .act-row.done .act-text { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+  .tick {
+    flex: 0 0 auto; width: 19px; height: 19px; margin-top: 1px;
+    border-radius: 6px; border: 1.6px solid #c8bda8; background: transparent;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: transparent; transition: all .18s cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .tick svg { width: 12px; height: 12px; }
+  .tick:hover { border-color: #2f7396; }
+  .tick.on { background: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; color: #fff; }
+  .tick.on:active { transform: scale(.88); }
+  .dark .tick { border-color: #3a4a57; }
+
+  /* ---------- attendee chips ---------- */
+  .att-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .22rem .3rem .22rem .55rem; border-radius: 9999px;
+    font-size: .72rem; font-weight: 700;
+    color: #17406a; background: rgba(47, 115, 150, .1); border: 1px solid rgba(47, 115, 150, .22);
+  }
+  .dark .att-chip { color: #a8d2e4; background: rgba(78, 147, 176, .13); border-color: rgba(78, 147, 176, .28); }
+  .att-x { width: 15px; height: 15px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; opacity: .55; transition: opacity .15s, background-color .15s; }
+  .att-x:hover { opacity: 1; background: rgba(23, 58, 92, .14); }
+  .att-x svg { width: 8px; height: 8px; }
+
+  /* ---------- template / feature cards ---------- */
+  .tf-card {
+    position: relative; overflow: hidden;
+    border-radius: 1.1rem; border: 1px solid var(--rule); background: #fffdf9;
+    padding: 1rem 1rem .95rem; text-align: left;
+    transition: transform .22s cubic-bezier(.22, 1, .36, 1), box-shadow .24s, border-color .22s;
+  }
+  .dark .tf-card { background: #0f161e; border-color: #22303c; }
+  .tf-card::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(120% 90% at 88% -10%, color-mix(in srgb, var(--brand) 20%, transparent), transparent 62%);
+    transition: opacity .3s;
+  }
+  .tf-card:hover { transform: translateY(-4px); box-shadow: 0 22px 44px -32px rgba(15, 33, 53, .6); border-color: color-mix(in srgb, var(--brand) 34%, transparent); }
+  .tf-card:hover::after { opacity: 1; }
+  .tf-ico { width: 2.15rem; height: 2.15rem; border-radius: .8rem; display: inline-flex; align-items: center; justify-content: center; color: #fff; background: linear-gradient(140deg, var(--brand), var(--brand-2)); box-shadow: 0 10px 20px -14px rgba(23, 58, 92, .9); }
+  .tf-ico svg { width: 1.05rem; height: 1.05rem; }
+
+  /* ---------- misc ---------- */
+  .stat-line { font-variant-numeric: tabular-nums; }
+  .doc-meta-input {
+    width: 100%; background: transparent; border: 0; outline: none;
+    font-size: .78rem; color: #37414f; padding: .1rem 0;
+    border-bottom: 1px dashed transparent; transition: border-color .2s;
+  }
+  .doc-meta-input:hover { border-bottom-color: #ded3bf; }
+  .doc-meta-input:focus { border-bottom-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+  .dark .doc-meta-input { color: #cbd5e1; }
+  .dark .doc-meta-input:hover { border-bottom-color: #33424f; }
+  input[type="date"].doc-meta-input, input[type="datetime-local"].doc-meta-input { min-width: 0; }
+  input[type="datetime-local"].doc-meta-input::-webkit-calendar-picker-indicator { opacity: .45; cursor: pointer; }
+  .dark input[type="datetime-local"].doc-meta-input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .5; }
+
+  .seg-mini { display: inline-flex; gap: 2px; padding: 3px; border-radius: .7rem; background: rgba(22, 38, 58, .06); border: 1px solid rgba(22, 38, 58, .06); }
+  .dark .seg-mini { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .07); }
+  .seg-mini button { padding: .28rem .6rem; border-radius: .5rem; font-size: .7rem; font-weight: 800; color: #6c6555; transition: all .18s; }
+  .dark .seg-mini button { color: #93a1ad; }
+  .seg-mini button.on { background: #fff; color: #13344c; box-shadow: 0 1px 4px rgba(15, 33, 53, .14); }
+  .dark .seg-mini button.on { background: rgba(255, 255, 255, .16); color: #fff; }
+
+  .meet-card {
+    position: relative; overflow: hidden;
+    border-radius: 1.1rem; border: 1px solid var(--rule); background: #fffdf9;
+    transition: transform .22s cubic-bezier(.22, 1, .36, 1), box-shadow .24s, border-color .2s;
+  }
+  .dark .meet-card { background: #0f161e; border-color: #22303c; }
+  .meet-card:hover { transform: translateY(-3px); box-shadow: 0 22px 44px -34px rgba(15, 33, 53, .55); border-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+  .meet-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: linear-gradient(to bottom, var(--brand), var(--brand-2));
+    opacity: .75;
+  }
+
+  .mini-progress { height: 4px; border-radius: 9999px; background: rgba(22, 38, 58, .09); overflow: hidden; }
+  .dark .mini-progress { background: rgba(255, 255, 255, .09); }
+  .mini-progress > i { display: block; height: 100%; border-radius: 9999px; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .5s cubic-bezier(.22, 1, .36, 1); }
+
+  .read-only-bar {
+    display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    padding: .7rem .9rem; border-radius: .9rem;
+    background: rgba(192, 138, 46, .1); border: 1px solid rgba(192, 138, 46, .28);
+    font-size: .74rem; font-weight: 700; color: #7c551c;
+  }
+  .dark .read-only-bar { background: rgba(192, 138, 46, .13); border-color: rgba(192, 138, 46, .3); color: #e8c078; }
+
+  .log-none { font-size: .76rem; color: #9a8f78; }
+  .dark .log-none { color: #5c6b78; }
+
+  .note-flash { animation: noteFlash 1.5s ease; }
+  @keyframes noteFlash { 0% { background: rgba(192, 138, 46, .22); } 100% { background: transparent; } }
+
+  .btn-soft {
+    display: inline-flex; align-items: center; justify-content: center; gap: .38rem;
+    padding: .5rem .75rem; border-radius: .75rem; font-size: .74rem; font-weight: 700;
+    border: 1px solid var(--rule); color: #37414f; background: rgba(255, 255, 255, .7);
+    transition: all .16s;
+  }
+  .btn-soft:hover { border-color: color-mix(in srgb, var(--brand) 40%, transparent); color: var(--brand); }
+  .btn-soft:active { transform: scale(.96); }
+  .dark .btn-soft { border-color: #2a3843; color: #c3cfd9; background: rgba(255, 255, 255, .03); }
+  .dark .btn-soft:hover { color: #a8d2e4; border-color: rgba(78, 147, 176, .4); }
+  .btn-soft.danger:hover { color: #b3261e; border-color: rgba(179, 38, 30, .35); }
+  .dark .btn-soft.danger:hover { color: #ff8f86; border-color: rgba(255, 143, 134, .35); }
+  .btn-soft svg { width: .95rem; height: .95rem; }
+
+  .text-balance { text-wrap: balance; }
+  .clip-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* ---------- mobile dock only in editor ---------- */
+  #dockMinutes { display: none; }
+  @media (max-width: 1023px) {
+    #dockMinutes.show { display: flex; }
+  }
+
+  /* ---------- print (reader / PDF) ---------- */
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff !important; }
+    .paper-doc { box-shadow: none !important; border: 0 !important; background: #fff !important; }
+    .paper-doc::before { display: none; }
+    .print-doc { color: #000 !important; }
+    .print-doc .note-text { color: #111 !important; }
+    @page { margin: 16mm; }
+  }
+</style>
+</head>
+<body class="text-ink-900 dark:text-ink-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-24 opacity-[.16]"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-28 opacity-[.12]" style="background:#c08a2e"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/80 dark:bg-[#0a1016]/85 border-b border-ink-200/80 dark:border-[#22303c]">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0 group">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-[#0e151d] flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h7.5L19 8.5v11a1 1 0 0 1-1 1H6.5a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1z"></path><path d="M14 3.5v5h5"></path><path d="M9 13h6M9 16.5h4"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Minutes</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-gold-200 dark:border-gold-800 text-gold-700 dark:text-gold-300 bg-gold-50 dark:bg-gold-900/30 font-bold">MINUTES</span>
+        </div>
+        <p class="text-[10px] text-ink-500 dark:text-ink-400 truncate -mt-0.5">회의록 · 액션 아이템 스튜디오</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-gold-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+      <button id="btnNewTop" class="primary-btn !px-3 !py-2 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span class="hidden sm:inline">새 회의록</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/88 dark:bg-[#0a1016]/90 border-b border-ink-200/80 dark:border-[#22303c]">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="editor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>회의록</span>
+        <span id="tabLiveDot" class="nav-dot" aria-hidden="true"></span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M3 4.5h18v3H3z"></path><path d="M10 12h4"></path></svg>
+        <span>보관함</span>
+        <span id="tabArchCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ======================= HOME ======================= -->
+  <section data-view="home" class="hidden space-y-6">
+
+    <div class="hero-shell p-6 sm:p-10">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.02fr_.98fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3 2"></path></svg>
+            초 단위 타임스탬프 · 담당자별 할 일
+          </span>
+          <h1 class="mins-serif text-[1.85rem] sm:text-[2.6rem] leading-[1.18] font-bold tracking-tight text-balance">
+            말하는 동안 기록되고,<br class="hidden sm:block">
+            끝나면 <span style="color:var(--gold)" class="italic">할 일</span>만 남습니다
+          </h1>
+          <p class="text-[13px] sm:text-sm leading-relaxed text-ink-600 dark:text-ink-300 max-w-md">
+            안건마다 대화를 초 단위로 찍어 두고, 마지막에 결정 사항과 담당자·마감일이 붙은 액션 아이템이 정리된 회의록 한 장을 뽑습니다.
+            서버에 아무것도 보내지 않고, 링크 하나면 읽기 전용으로 공유됩니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button id="btnStartNew" class="primary-btn btn-shimmer">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              새 회의록 쓰기
+            </button>
+            <button id="btnResume" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v6h6"></path><path d="M4.6 13a8 8 0 1 0 2-7.4L4 10"></path></svg>
+              <span id="btnResumeLabel">이어서 쓰기</span>
+            </button>
+            <button id="btnPickTemplate" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"></rect></svg>
+              템플릿 고르기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-[11px] text-ink-500 dark:text-ink-400">
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.4-2.9 7.6-7 9-4.1-1.4-7-4.6-7-9V7z"></path><path d="M9 12.2l2 2 4-4.2"></path></svg>100% 브라우저 저장</span>
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 1 2.4 5.7"></path><circle cx="12" cy="12" r="2.4"></circle></svg>회원가입 없음</span>
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h10M4 12h7M4 17.5h12"></path><circle cx="18.5" cy="6.5" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="19" cy="17.5" r="1.6"></circle></svg>액션 아이템 자동 추출</span>
+          </div>
+        </div>
+
+        <!-- document preview -->
+        <div class="relative">
+          <div class="paper-doc p-5 sm:p-6 rotate-[-1.1deg] hover:rotate-0 transition-transform duration-500">
+            <div class="pl-8 sm:pl-10">
+              <div class="flex items-center justify-between gap-2">
+                <span class="eyebrow">회의록 · 11.13 (금)</span>
+                <span class="time-chip">00:42</span>
+              </div>
+              <div class="mins-serif text-[15px] font-bold mt-1.5 truncate">주간 스프린트 싱크</div>
+              <div class="hair my-3"></div>
+              <div class="space-y-2.5 text-[11.5px] leading-relaxed">
+                <div class="flex gap-2">
+                  <span class="text-gold-600 dark:text-gold-400 font-bold shrink-0">01</span>
+                  <div class="min-w-0">
+                    <div class="font-bold text-[12px]">이번 주 진행 상황</div>
+                    <div class="flex gap-1.5 mt-1 items-baseline"><span class="time-chip">04:12</span><span class="truncate text-ink-600 dark:text-ink-300">결제 모듈 QA까지 마무리</span></div>
+                    <div class="flex gap-1.5 mt-1 items-baseline"><span class="time-chip">11:08</span><span class="truncate text-ink-600 dark:text-ink-300">온보딩 화면 문구 확정</span></div>
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <span class="text-gold-600 dark:text-gold-400 font-bold shrink-0">02</span>
+                  <div class="min-w-0">
+                    <div class="font-bold text-[12px]">다음 주 계획</div>
+                    <div class="flex gap-1.5 mt-1 items-baseline"><span class="time-chip">32:40</span><span class="truncate text-ink-600 dark:text-ink-300">베타 초대 200명 발송</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="hair my-3"></div>
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2 text-[11px]">
+                  <span class="tick on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg></span>
+                  <span class="line-through text-ink-400 dark:text-ink-500 truncate">릴리스 노트 초안</span>
+                  <span class="speaker-chip ml-auto">개발</span>
+                </div>
+                <div class="flex items-center gap-2 text-[11px]">
+                  <span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg></span>
+                  <span class="truncate">결제 실패 로그 정리</span>
+                  <span class="speaker-chip ml-auto">기획</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 flex items-center justify-start pl-1 sm:pl-4">
+            <div class="flex items-center gap-2 px-3 py-2 rounded-2xl bg-white dark:bg-[#0f161e] border border-[var(--rule)] shadow-lg pop-in">
+              <span class="w-7 h-7 rounded-xl brand-grad flex items-center justify-center text-white">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 7v5l3 2"></path><circle cx="12" cy="12" r="8.5"></circle></svg>
+              </span>
+              <div class="leading-tight">
+                <div class="text-[10px] font-black">타임스탬프</div>
+                <div class="text-[9.5px] text-ink-500 dark:text-ink-400">누르면 [04:12] 기록</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- live stats -->
+    <div class="grid grid-cols-3 gap-3">
+      <div class="panel p-4">
+        <div class="text-[10px] font-black tracking-wider text-ink-500 dark:text-ink-400">보관된 회의록</div>
+        <div class="text-2xl font-black stat-line mt-1" id="statMeetings">0</div>
+      </div>
+      <div class="panel p-4">
+        <div class="text-[10px] font-black tracking-wider text-ink-500 dark:text-ink-400">남은 액션</div>
+        <div class="text-2xl font-black stat-line mt-1" style="color:var(--gold)" id="statOpen">0</div>
+      </div>
+      <div class="panel p-4">
+        <div class="text-[10px] font-black tracking-wider text-ink-500 dark:text-ink-400">기록된 안건</div>
+        <div class="text-2xl font-black stat-line mt-1" id="statAgendas">0</div>
+      </div>
+    </div>
+
+    <!-- templates -->
+    <div class="space-y-3">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <div class="eyebrow">Templates</div>
+          <h2 class="mins-serif text-lg font-bold mt-0.5">회의 종류로 바로 시작</h2>
+        </div>
+        <span class="text-[11px] text-ink-500 dark:text-ink-400 hidden sm:block">안건 구성이 미리 잡혀 있습니다</span>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="tplGrid"></div>
+    </div>
+
+    <!-- features -->
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div class="panel p-5 flex gap-3.5">
+        <span class="tf-ico shrink-0" style="background:linear-gradient(140deg,#c08a2e,#d2a03f)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7v5l3 2"></path></svg></span>
+        <div class="min-w-0">
+          <div class="font-bold text-sm">안건별 타임스탬프</div>
+          <p class="text-[11.5px] leading-relaxed text-ink-500 dark:text-ink-400 mt-1">경과 타이머를 켜 두고 중요할 때마다 [04:12]를 찍습니다. 회의록에서 "그때 그 얘기"를 정확히 다시 찾습니다.</p>
+        </div>
+      </div>
+      <div class="panel p-5 flex gap-3.5">
+        <span class="tf-ico shrink-0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"></path><circle cx="12" cy="12" r="3.2"></circle></svg></span>
+        <div class="min-w-0">
+          <div class="font-bold text-sm">본문에서 @담당자 추출</div>
+          <p class="text-[11.5px] leading-relaxed text-ink-500 dark:text-ink-400 mt-1">대화 중 "@기획 금요일까지 시안"처럼 적어 두면, 그 줄이 담당자·마감일이 붙은 액션 아이템 후보로 잡힙니다.</p>
+        </div>
+      </div>
+      <div class="panel p-5 flex gap-3.5">
+        <span class="tf-ico shrink-0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M3 4.5h18v3H3z"></path><path d="M10 12h4"></path></svg></span>
+        <div class="min-w-0">
+          <div class="font-bold text-sm">미완료 액션만 모아보기</div>
+          <p class="text-[11.5px] leading-relaxed text-ink-500 dark:text-ink-400 mt-1">회의록마다 따로 흩어진 할 일을 보관함 한 화면에서 모아 봅니다. 끝난 일은 체크 한 번으로 사라집니다.</p>
+        </div>
+      </div>
+      <div class="panel p-5 flex gap-3.5">
+        <span class="tf-ico shrink-0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12.5l2 2 4-4.5"></path><path d="M12 3l7 4v5c0 4.4-2.9 7.6-7 9-4.1-1.4-7-4.6-7-9V7z"></path></svg></span>
+        <div class="min-w-0">
+          <div class="font-bold text-sm">링크 공유 · MD/TXT/JSON</div>
+          <p class="text-[11.5px] leading-relaxed text-ink-500 dark:text-ink-400 mt-1">회의록은 압축된 링크 하나로 읽기 전용 공유. 마크다운·텍스트·JSON으로 내려 위키나 노션에 그대로 옮깁니다.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- recent -->
+    <div class="space-y-3">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <div class="eyebrow">Recent</div>
+          <h2 class="mins-serif text-lg font-bold mt-0.5">최근 회의록</h2>
+        </div>
+        <button class="text-[11px] font-bold hover:underline" style="color:var(--brand)" data-go="archive">보관함 전체 보기</button>
+      </div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" id="recentList"></div>
+    </div>
+
+    <div class="rounded-2xl border border-dashed border-ink-200 dark:border-[#293744] p-5 text-center">
+      <div class="text-[12px] text-ink-500 dark:text-ink-400 leading-relaxed">
+        회의록은 이 브라우저의 IndexedDB(<span class="font-mono text-[11px]">lemon_minutes_v1</span>)에만 저장됩니다. 다른 기기와 자동으로 동기화되지 않으니,
+        오래 보관할 기록은 JSON으로 내려 두세요.
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= EDITOR ======================= -->
+  <section data-view="editor" class="hidden space-y-4 pb-24 lg:pb-2">
+
+    <!-- timer + stamp bar -->
+    <div class="panel p-3 sm:p-4" id="timerBar">
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl brand-grad flex items-center justify-center text-white shrink-0 shadow-md">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 1.8"></path><path d="M9 2.5h6"></path></svg>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="timer-dot shrink-0" id="timerDot"></span>
+              <span class="text-[10px] font-black tracking-wider text-ink-500 dark:text-ink-400" id="timerState">대기 중</span>
+            </div>
+            <div class="timer-face text-lg sm:text-2xl font-black leading-tight" id="timerText">00:00</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <button data-timer-toggle class="stamp-btn shrink-0 !bg-white dark:!bg-white/5 !text-ink-700 dark:!text-ink-200 !border-ink-200 dark:!border-[#2a3843]" aria-label="타이머 시작 · 일시정지">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" data-timer-icon><polygon points="7 4 19 12 7 20"></polygon></svg>
+            <span data-timer-label>시작</span>
+          </button>
+          <button data-stamp class="stamp-btn shrink-0">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3 2"></path></svg>
+            <span class="hidden sm:inline">타임스탬프</span>찍기
+          </button>
+        </div>
+
+        <div class="hidden sm:flex flex-1 min-w-[140px] items-center">
+          <input id="quickNote" class="lemon-input !py-2 !text-[12px] flex-1 min-w-0" placeholder="빠른 기록: 지금 나온 말을 그대로 + Enter">
+        </div>
+
+        <div class="hidden sm:flex items-center gap-1.5 ml-auto">
+          <span id="saveBadge" class="as-badge">자동 저장 대기</span>
+          <button data-end class="btn-soft">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h11"></path><path d="M12 8l4 4-4 4"></path><path d="M19 5v14"></path></svg>
+            회의 종료
+          </button>
+        </div>
+      </div>
+      <div class="sm:hidden mt-2">
+        <input id="quickNoteM" class="lemon-input !py-2 !text-[12px]" placeholder="빠른 기록: 지금 나온 말을 그대로">
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_304px] gap-4 items-start">
+
+      <!-- ---------- document ---------- -->
+      <div class="min-w-0 space-y-3">
+        <div class="paper-doc p-4 sm:p-7" id="docSheet">
+          <div class="pl-6 sm:pl-12 space-y-4">
+
+            <div class="flex items-center justify-between gap-2">
+              <span class="eyebrow">Meeting Minutes</span>
+              <span class="flex items-center gap-2 min-w-0">
+                <span id="saveBadgeM" class="as-badge sm:hidden">자동 저장 대기</span>
+                <span class="text-[10px] font-mono text-ink-400 dark:text-ink-500 truncate" id="docId"></span>
+              </span>
+            </div>
+
+            <input id="inTitle" class="mins-serif w-full bg-transparent border-0 outline-none text-[1.4rem] sm:text-[1.75rem] font-bold leading-snug placeholder:text-ink-300 dark:placeholder:text-ink-600" placeholder="회의 제목">
+            <div class="mt-1 text-[10px] text-ink-400 dark:text-ink-500" id="tplHint"></div>
+
+            <div class="grid sm:grid-cols-2 gap-x-5 gap-y-2">
+              <div>
+                <div class="lemon-label mb-0.5">일시</div>
+                <input id="inWhen" type="datetime-local" class="doc-meta-input">
+              </div>
+              <div>
+                <div class="lemon-label mb-0.5">장소 · 링크</div>
+                <input id="inPlace" class="doc-meta-input" placeholder="3층 회의실 · meet 링크 (선택)">
+              </div>
+            </div>
+
+            <div>
+              <div class="lemon-label mb-1">참석자</div>
+              <div class="flex flex-wrap items-center gap-1.5" id="attList">
+                <input id="attInput" class="bg-transparent border-0 outline-none text-[12px] min-w-[90px] flex-1 placeholder:text-ink-400 dark:placeholder:text-ink-600" placeholder="이름이나 역할 입력 후 Enter">
+              </div>
+            </div>
+
+            <div class="hair"></div>
+
+            <!-- agendas -->
+            <div class="space-y-3" id="agendaList"></div>
+            <button id="btnAddAgenda" class="btn-soft">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              안건 추가
+            </button>
+
+            <div class="hair"></div>
+
+            <!-- decisions -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                  <svg class="w-3.5 h-3.5" style="color:var(--gold)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg>
+                  <span class="text-[11px] font-black tracking-wide">결정 사항</span>
+                  <span class="text-[10px] font-mono text-ink-400 dark:text-ink-500" id="decCount">0</span>
+                </div>
+              </div>
+              <div class="space-y-1.5" id="decisionList"></div>
+              <div class="flex items-center gap-1.5">
+                <input id="decInput" class="lemon-input !py-2 !text-[12px]" placeholder="결정된 내용을 한 줄로 (Enter)">
+                <button id="btnAddDec" class="stamp-btn shrink-0 !px-2.5" aria-label="결정 사항 추가">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="hair"></div>
+
+            <!-- actions -->
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                  <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h10M4 12h7M4 17.5h12"></path><circle cx="18.5" cy="6.5" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="19" cy="17.5" r="1.6"></circle></svg>
+                  <span class="text-[11px] font-black tracking-wide">액션 아이템</span>
+                  <span class="text-[10px] font-mono text-ink-400 dark:text-ink-500" id="actCount">0</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div class="seg-mini" id="actFilter">
+                    <button data-af="all" class="on">전체</button>
+                    <button data-af="open">미완료</button>
+                    <button data-af="done">완료</button>
+                  </div>
+                  <button id="btnExtract" class="btn-soft !py-1.5 !text-[11px]">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10"></path><path d="M8 9l4 4 4-4"></path><path d="M4 17.5V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1.5"></path></svg>
+                    <span id="btnExtractLabel">본문에서 추출</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="space-y-1.5" id="actionList"></div>
+
+              <div class="rounded-xl border border-dashed border-ink-200 dark:border-[#2b3946] p-2 space-y-1.5">
+                <input id="actText" class="lemon-input !py-2 !text-[12px]" placeholder="할 일 (예: 결제 실패 로그 정리)">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <input id="actOwner" class="lemon-input !py-1.5 !text-[11.5px] flex-1 min-w-[90px]" placeholder="담당자">
+                  <input id="actDue" type="date" class="lemon-input !py-1.5 !text-[11.5px] w-[142px]">
+                  <button id="btnAddAct" class="stamp-btn !py-1.5 shrink-0">추가</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- export -->
+        <div class="panel p-3 flex flex-wrap items-center gap-1.5">
+          <button class="btn-soft" data-export="md">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16M4 12h11M4 18.5h8"></path></svg>
+            Markdown
+          </button>
+          <button class="btn-soft" data-export="txt">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8l4 4v12H6z"></path><path d="M14 4v4h4"></path></svg>
+            TXT
+          </button>
+          <button class="btn-soft" data-export="json">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.5c-2 0-2.5 1-2.5 3S6 10.5 4 12c2 1.5 2.5 2 2.5 4.5s.5 3 2.5 3"></path><path d="M15 4.5c2 0 2.5 1 2.5 3S18 10.5 20 12c-2 1.5-2.5 2-2.5 4.5s-.5 3-2.5 3"></path></svg>
+            JSON
+          </button>
+          <div class="w-px h-5 bg-[var(--rule)] mx-1 hidden sm:block"></div>
+          <button class="btn-soft" id="btnCopyMd">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+            마크다운 복사
+          </button>
+          <button class="btn-soft" id="btnShare">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="17.5" cy="6" r="2.5"></circle><circle cx="6.5" cy="12" r="2.5"></circle><circle cx="17.5" cy="18" r="2.5"></circle><path d="M8.7 10.8l6.6-3.6M8.7 13.2l6.6 3.6"></path></svg>
+            읽기 전용 링크
+          </button>
+          <button class="btn-soft ml-auto" id="btnPrint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V4h10v4"></path><rect x="4" y="8" width="16" height="8" rx="2"></rect><path d="M7 16h10v4H7z"></path></svg>
+            인쇄 · PDF
+          </button>
+        </div>
+      </div>
+
+      <!-- ---------- rail ---------- -->
+      <aside class="hidden lg:block space-y-3 lg:sticky lg:top-32">
+        <div class="panel p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="eyebrow">Progress</span>
+            <span class="text-[10px] font-mono text-ink-500 dark:text-ink-400" id="railActRatio">0 / 0</span>
+          </div>
+          <div class="mini-progress"><i id="railActBar" style="width:0%"></i></div>
+          <div class="grid grid-cols-2 gap-2 text-center">
+            <div class="rounded-xl bg-ink-50 dark:bg-white/5 py-2">
+              <div class="text-[9.5px] font-black tracking-wider text-ink-500 dark:text-ink-400">안건</div>
+              <div class="text-base font-black stat-line" id="railAgenda">0</div>
+            </div>
+            <div class="rounded-xl bg-ink-50 dark:bg-white/5 py-2">
+              <div class="text-[9.5px] font-black tracking-wider text-ink-500 dark:text-ink-400">기록</div>
+              <div class="text-base font-black stat-line" id="railNotes">0</div>
+            </div>
+          </div>
+          <div class="text-[10.5px] leading-relaxed text-ink-500 dark:text-ink-400" id="railOpenActs">남은 액션이 없습니다.</div>
+        </div>
+
+        <div class="panel p-4 space-y-2">
+          <div class="eyebrow">Share</div>
+          <p class="text-[10.5px] leading-relaxed text-ink-500 dark:text-ink-400">회의록 전체가 링크에 압축되어 들어갑니다. 받는 사람은 설치 없이 읽기 전용으로 봅니다.</p>
+          <button class="btn-soft w-full !py-2" id="btnShare2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="17.5" cy="6" r="2.5"></circle><circle cx="6.5" cy="12" r="2.5"></circle><circle cx="17.5" cy="18" r="2.5"></circle><path d="M8.7 10.8l6.6-3.6M8.7 13.2l6.6 3.6"></path></svg>
+            공유 링크 만들기
+          </button>
+        </div>
+
+        <div class="panel p-4 space-y-2">
+          <div class="eyebrow">Tips</div>
+          <ul class="space-y-1.5 text-[10.5px] leading-relaxed text-ink-500 dark:text-ink-400">
+            <li class="flex gap-1.5"><span style="color:var(--gold)">·</span>기록 줄에서 Enter를 누르면 바로 다음 줄이 열립니다.</li>
+            <li class="flex gap-1.5"><span style="color:var(--gold)">·</span><span class="font-mono text-[10px] px-1 rounded bg-ink-100 dark:bg-white/10">@담당자</span> 로 시작하는 줄은 액션 후보로 잡힙니다.</li>
+            <li class="flex gap-1.5"><span style="color:var(--gold)">·</span>타임스탬프는 회의 시작 후 경과 시간입니다.</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ======================= ARCHIVE ======================= -->
+  <section data-view="archive" class="hidden space-y-4 pb-6">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <div class="eyebrow">Archive</div>
+        <h2 class="mins-serif text-xl font-bold mt-0.5">보관함</h2>
+      </div>
+      <div class="flex items-center gap-2 w-full sm:w-auto">
+        <div class="relative flex-1 sm:w-64">
+          <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><line x1="16" y1="16" x2="20.5" y2="20.5"></line></svg>
+          <input id="archSearch" class="lemon-input !py-2 !pl-8 !text-[12px] w-full" placeholder="제목 · 참석자 · 할 일 검색">
+        </div>
+        <button id="btnNewArch" class="primary-btn !px-3 !py-2 !text-[11px] shrink-0">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          새 회의록
+        </button>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-1.5">
+      <div class="seg-mini" id="archFilter">
+        <button data-af="all" class="on">전체</button>
+        <button data-af="open">미완료 액션</button>
+        <button data-af="week">이번 주</button>
+      </div>
+      <button id="btnArchSort" class="btn-soft !py-1.5 !text-[11px] ml-auto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16"></path><path d="M4 17l3 3 3-3"></path><path d="M14 7h6M14 12h5M14 17h4"></path></svg>
+        <span id="archSortLabel">최근 수정순</span>
+      </button>
+    </div>
+
+    <!-- open actions rollup -->
+    <div class="panel p-4">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="w-7 h-7 rounded-xl flex items-center justify-center text-white brand-grad">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h10M4 12h7M4 17.5h12"></path><circle cx="18.5" cy="6.5" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="19" cy="17.5" r="1.6"></circle></svg>
+          </span>
+          <div>
+            <div class="text-[12px] font-black">모든 회의의 미완료 액션</div>
+            <div class="text-[10.5px] text-ink-500 dark:text-ink-400" id="rollupSub">비어 있습니다</div>
+          </div>
+        </div>
+        <button id="btnRollupToggle" class="btn-soft !py-1.5 !text-[11px]">
+          <span id="rollupToggleLabel">펼치기</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+      </div>
+      <div class="mt-3 space-y-1.5 hidden" id="rollupList"></div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3" id="archiveList"></div>
+    <div class="hidden text-center py-12" id="archiveEmpty">
+      <div class="w-14 h-14 mx-auto rounded-2xl border border-dashed border-ink-300 dark:border-[#33424f] flex items-center justify-center text-ink-400 dark:text-ink-500">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h8l4 4v13H6z"></path><path d="M14 3.5v4h4"></path><path d="M9 13h6M9 16.5h4"></path></svg>
+      </div>
+      <div class="mt-3 text-[12.5px] font-bold">아직 저장된 회의록이 없습니다</div>
+      <p class="mt-1 text-[11.5px] text-ink-500 dark:text-ink-400">새 회의록을 만들면 이 브라우저에 자동 저장됩니다.</p>
+      <button class="primary-btn mt-4 !text-[12px]" data-new>새 회의록 쓰기</button>
+    </div>
+  </section>
+
+  <!-- ======================= READER (shared link) ======================= -->
+  <section data-view="read" class="hidden space-y-4">
+    <div class="read-only-bar no-print">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+      <span>공유된 회의록 · 읽기 전용</span>
+      <div class="flex flex-wrap items-center gap-1.5 ml-auto">
+        <button class="btn-soft !border-gold-300 dark:!border-gold-800" id="btnCopyShared">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+          링크 복사
+        </button>
+        <button class="btn-soft !border-gold-300 dark:!border-gold-800" id="btnSaveShared">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"></path><path d="M8 9l4 4 4-4"></path><path d="M4 17.5V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1.5"></path></svg>
+          내 보관함에 저장
+        </button>
+        <button class="btn-soft !border-gold-300 dark:!border-gold-800" id="btnPrintShared">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V4h10v4"></path><rect x="4" y="8" width="16" height="8" rx="2"></rect><path d="M7 16h10v4H7z"></path></svg>
+          인쇄 · PDF
+        </button>
+        <button class="btn-soft !border-gold-300 dark:!border-gold-800" id="btnMine">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h6"></path><path d="M7 9l-3 3 3 3"></path><path d="M14 5h6v14h-6"></path></svg>
+          내 회의록으로
+        </button>
+      </div>
+    </div>
+    <div class="paper-doc p-5 sm:p-9 print-doc" id="readDoc"></div>
+    <div class="text-center text-[10.5px] text-ink-400 dark:text-ink-500 no-print">Lemon Minutes로 만든 회의록입니다. 원본은 만든 사람의 브라우저에만 저장되어 있습니다.</div>
+  </section>
+</main>
+
+<!-- mobile dock (editor only) -->
+<div id="dockMinutes" class="mobile-dock items-center gap-1.5">
+  <div class="min-w-0">
+    <div class="text-[9px] font-black tracking-wider text-ink-500 dark:text-ink-400">경과</div>
+    <div class="timer-face text-[15px] font-black leading-none" id="dockTimer">00:00</div>
+  </div>
+  <button data-timer-toggle class="icon-btn !w-8 !h-8 !ml-1" aria-label="타이머 시작 · 일시정지">
+    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" data-timer-icon><polygon points="7 4 19 12 7 20"></polygon></svg>
+  </button>
+  <button data-stamp class="stamp-btn ml-auto shrink-0">
+    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3 2"></path></svg>
+    찍기
+  </button>
+  <button id="dockRecord" class="primary-btn !px-3 !py-2 !text-[11px] shrink-0">기록</button>
+  <button data-end class="icon-btn !w-8 !h-8" aria-label="회의 종료">
+    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h11"></path><path d="M12 8l4 4-4 4"></path><path d="M19 5v14"></path></svg>
+  </button>
+</div>
+
+<!-- share modal -->
+<div id="shareModal" class="lemon-modal" role="dialog" aria-modal="true" aria-label="공유 링크">
+  <div class="lm-backdrop" data-close-share></div>
+  <div class="lm-card w-full max-w-lg p-5">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div class="eyebrow">Share</div>
+        <div class="mins-serif text-lg font-bold mt-0.5">읽기 전용 회의록 링크</div>
+      </div>
+      <button class="icon-btn" data-close-share aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+    <p class="text-[11.5px] leading-relaxed text-ink-500 dark:text-ink-400 mt-2">회의록 내용이 링크에 압축되어 들어갑니다. 받는 사람은 앱 설치나 로그인 없이 열람만 할 수 있습니다.</p>
+    <div class="mt-3 rounded-xl border border-[var(--rule)] bg-ink-50 dark:bg-white/5 p-2.5">
+      <div class="text-[10px] font-mono break-all leading-relaxed text-ink-600 dark:text-ink-300 max-h-28 overflow-auto" id="shareUrlText">-</div>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5 mt-3">
+      <button class="primary-btn flex-1 !py-2.5 !text-[12px]" id="btnCopyShareUrl">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+        링크 복사
+      </button>
+      <a id="btnOpenShareUrl" class="btn-soft !py-2.5" href="#" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"></path><path d="M20 4l-8 8"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg>
+        새 탭에서 보기
+      </a>
+    </div>
+    <div class="mt-2 text-[10px] text-ink-400 dark:text-ink-500" id="shareLen">-</div>
+  </div>
+</div>
+
+<!-- confirm modal -->
+<div id="confirmModal" class="lemon-modal" role="dialog" aria-modal="true" aria-label="확인">
+  <div class="lm-backdrop" data-close-confirm></div>
+  <div class="lm-card w-full max-w-sm p-5">
+    <div class="mins-serif text-base font-bold" id="confirmTitle">삭제할까요?</div>
+    <p class="text-[11.5px] leading-relaxed text-ink-500 dark:text-ink-400 mt-1.5" id="confirmBody">이 작업은 되돌릴 수 없습니다.</p>
+    <div class="flex items-center gap-1.5 mt-4">
+      <button class="btn-soft flex-1 !py-2.5" data-close-confirm>취소</button>
+      <button class="flex-1 !py-2.5 rounded-xl bg-[#b3261e] text-white text-[12px] font-bold" id="confirmOk">삭제</button>
+    </div>
+  </div>
+</div>
+
+<footer class="border-t border-[var(--rule)] py-7 mt-6 no-print">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-ink-500 dark:text-ink-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-ink-700 dark:text-ink-200">Lemon Minutes</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-300">허브</a>
+      <a href="focus.html" class="hover:text-brand-600 dark:hover:text-brand-300">Focus</a>
+      <a href="docs.html" class="hover:text-brand-600 dark:hover:text-brand-300">Docs</a>
+      <a href="sheets.html" class="hover:text-brand-600 dark:hover:text-brand-300">Sheets</a>
+      <a href="quiz.html" class="hover:text-brand-600 dark:hover:text-brand-300">Quiz</a>
+      <a href="wallet.html" class="hover:text-brand-600 dark:hover:text-brand-300">Wallet</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="vendor/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+'use strict';
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var LZ = window.LZString;
+  var esc = Lemon.esc;
+  var pad2 = function (n) { return n < 10 ? '0' + n : '' + n; };
+  function nid(p) { return (p || 'x') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function hhmm() { var d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return h > 0 ? (h + ':' + pad2(m) + ':' + pad2(s)) : (pad2(m) + ':' + pad2(s));
+  }
+  function stampClock(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return h > 0 ? (h + ':' + pad2(m) + ':' + pad2(s)) : (pad2(m) + ':' + pad2(s));
+  }
+  var WD = ['일', '월', '화', '수', '목', '금', '토'];
+  function parseWhen(iso) {
+    if (!iso) return null;
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function whenLabel(iso) {
+    var d = parseWhen(iso);
+    if (!d) return '일시 미정';
+    return (d.getMonth() + 1) + '.' + pad2(d.getDate()) + ' (' + WD[d.getDay()] + ') ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function localISO(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  /* ================= templates ================= */
+  var TEMPLATES = [
+    {
+      key: 'weekly', name: '주간 회의', tag: 'WEEKLY',
+      desc: '한 주의 진행 점검과 다음 주 계획',
+      ico: '<path d="M4 6.5h16v13H4z"></path><path d="M8 3.5v5M16 3.5v5M4 11h16"></path>',
+      agendas: ['이번 주 진행 상황', '이슈 · 막힌 것', '다음 주 계획', '공유 사항']
+    },
+    {
+      key: 'kickoff', name: '프로젝트 킥오프', tag: 'KICKOFF',
+      desc: '목표, 범위, 역할, 마일스톤 정리',
+      ico: '<path d="M5 19l7-15 7 15"></path><path d="M8.5 14h7"></path>',
+      agendas: ['목표와 성공 기준', '범위 · 산출물', '역할 분담', '일정과 마일스톤', '리스크 · 확인 필요']
+    },
+    {
+      key: 'oneonone', name: '1:1 미팅', tag: '1:1',
+      desc: '서로의 진행과 고민을 나누는 시간',
+      ico: '<circle cx="9" cy="8.5" r="3"></circle><circle cx="16.5" cy="9.5" r="2.2"></circle><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"></path><path d="M15 14.2c2.6.2 5 2 5 4.8"></path>',
+      agendas: ['지난 이야기 확인', '잘 되고 있는 것', '막힌 점 · 고민', '다음 단계']
+    },
+    {
+      key: 'brainstorm', name: '브레인스토밍', tag: 'IDEATION',
+      desc: '주제 하나를 넓게 펼치고 좁히기',
+      ico: '<path d="M12 3.5a5.5 5.5 0 0 0-3.2 10v2.2h6.4V13.5A5.5 5.5 0 0 0 12 3.5z"></path><path d="M9.6 18.5h4.8M10.4 21h3.2"></path>',
+      agendas: ['주제 정의', '아이디어 발산', '묶기 · 투표', '다음 단계']
+    }
+  ];
+  function tplByKey(k) { for (var i = 0; i < TEMPLATES.length; i++) if (TEMPLATES[i].key === k) return TEMPLATES[i]; return null; }
+
+  /* ================= storage (IndexedDB lemon_minutes_v1) ================= */
+  var DB_NAME = 'lemon_minutes_v1', ST_MEET = 'meetings';
+  var dbP = null, idbOk = false;
+  var LS_KEY = 'lemon_minutes_v1';
+
+  function openDB() {
+    if (dbP) return dbP;
+    dbP = new Promise(function (res, rej) {
+      var rq;
+      try { rq = indexedDB.open(DB_NAME, 1); } catch (e) { rej(e); return; }
+      rq.onupgradeneeded = function (ev) {
+        var db = ev.target.result;
+        if (!db.objectStoreNames.contains(ST_MEET)) db.createObjectStore(ST_MEET, { keyPath: 'id' });
+      };
+      rq.onsuccess = function () { idbOk = true; res(rq.result); };
+      rq.onerror = function () { rej(rq.error || new Error('idb')); };
+      rq.onblocked = function () { rej(new Error('blocked')); };
+    });
+    dbP = dbP.catch(function (e) { dbP = null; throw e; });
+    return dbP;
+  }
+  function tx(mode, fn) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var t, st, rq;
+        try { t = db.transaction(ST_MEET, mode); st = t.objectStore(ST_MEET); rq = fn(st); }
+        catch (e) { rej(e); return; }
+        if (rq) { rq.onsuccess = function () { res(rq.result); }; rq.onerror = function () { rej(rq.error); }; }
+        t.oncomplete = function () { res(rq ? rq.result : true); };
+        t.onabort = function () { rej(t.error || new Error('abort')); };
+      });
+    });
+  }
+  var Persist = {
+    all: function () {
+      return tx('readonly', function (st) { return st.getAll(); }).catch(function () {
+        var v = Lemon.store.get(LS_KEY, []);
+        return Array.isArray(v) ? v : [];
+      });
+    },
+    put: function (m) {
+      return tx('readwrite', function (st) { return st.put(JSON.parse(JSON.stringify(m))); }).catch(function () {
+        var list = Lemon.store.get(LS_KEY, []);
+        if (!Array.isArray(list)) list = [];
+        var i = -1;
+        for (var k = 0; k < list.length; k++) if (list[k].id === m.id) i = k;
+        var copy = JSON.parse(JSON.stringify(m));
+        if (i > -1) list[i] = copy; else list.unshift(copy);
+        if (Lemon.store.set(LS_KEY, list)) return true;
+        throw new Error('저장 실패');
+      });
+    },
+    del: function (id) {
+      return tx('readwrite', function (st) { return st.delete(id); }).catch(function () {
+        var list = Lemon.store.get(LS_KEY, []);
+        if (!Array.isArray(list)) list = [];
+        Lemon.store.set(LS_KEY, list.filter(function (x) { return x.id !== id; }));
+        return true;
+      });
+    }
+  };
+
+  /* ================= state ================= */
+  var MEETINGS = {};        /* id -> meeting */
+  var CUR = null;           /* current editing meeting */
+  var hydrated = false;
+  var saveT = null;
+  var curAgenda = null;     /* active agenda id */
+  var actFilter = 'all';
+  var archFilter = 'all';
+  var archSort = 'updated';
+  var archQuery = '';
+  var rollupOpen = false;
+  var focusNote = null;
+  var shared = null;        /* decoded share payload */
+  var go = null;            /* tab switcher from Lemon.initTabs */
+  var freshStamp = null;
+
+  /* ================= meeting model ================= */
+  function newMeeting(tplKey) {
+    var t = tplKey ? tplByKey(tplKey) : null;
+    var now = Date.now();
+    var m = {
+      id: nid('m'),
+      title: t ? t.name : '',
+      when: localISO(new Date()),
+      place: '',
+      att: [],
+      tpl: t ? t.key : '',
+      agendas: (t ? t.agendas : ['']).map(function (title) {
+        return { id: nid('a'), title: title || '', notes: [] };
+      }),
+      decisions: [],
+      actions: [],
+      elapsed: 0,
+      running: false,
+      runFrom: null,
+      created: now,
+      updated: now
+    };
+    return m;
+  }
+  function normMeeting(m) {
+    m.id = m.id || nid('m');
+    m.title = typeof m.title === 'string' ? m.title : '';
+    m.when = m.when || localISO(new Date());
+    m.place = m.place || '';
+    m.att = Array.isArray(m.att) ? m.att : [];
+    m.agendas = Array.isArray(m.agendas) ? m.agendas : [];
+    m.agendas.forEach(function (a) {
+      a.id = a.id || nid('a');
+      a.title = typeof a.title === 'string' ? a.title : '';
+      a.notes = Array.isArray(a.notes) ? a.notes : [];
+      a.notes.forEach(function (n) { n.id = n.id || nid('n'); n.text = typeof n.text === 'string' ? n.text : ''; n.who = n.who || ''; n.at = n.at || ''; });
+    });
+    if (!m.agendas.length) m.agendas = [{ id: nid('a'), title: '', notes: [] }];
+    m.decisions = Array.isArray(m.decisions) ? m.decisions : [];
+    m.decisions.forEach(function (d) { d.id = d.id || nid('d'); d.text = typeof d.text === 'string' ? d.text : ''; });
+    m.actions = Array.isArray(m.actions) ? m.actions : [];
+    m.actions.forEach(function (a) {
+      a.id = a.id || nid('t');
+      a.text = typeof a.text === 'string' ? a.text : '';
+      a.who = a.who || '';
+      a.due = a.due || '';
+      a.done = !!a.done;
+      a.src = a.src || 'manual';
+    });
+    m.elapsed = Number(m.elapsed) || 0;
+    m.running = !!m.running;
+    m.runFrom = m.runFrom || null;
+    m.created = m.created || Date.now();
+    m.updated = m.updated || m.created;
+    if (m.running && m.runFrom && (Date.now() - m.runFrom) > 6 * 3600 * 1000) {
+      m.running = false; m.runFrom = null;
+    }
+    return m;
+  }
+  function elapsedSec(m) {
+    if (!m) return 0;
+    var base = Number(m.elapsed) || 0;
+    if (m.running && m.runFrom) base += Math.max(0, (Date.now() - m.runFrom) / 1000);
+    return base;
+  }
+  function noteCount(m) {
+    var n = 0;
+    (m.agendas || []).forEach(function (a) { n += a.notes.length; });
+    return n;
+  }
+  function openActions(m) { return (m.actions || []).filter(function (a) { return !a.done; }); }
+  function allMeetings() { return Object.keys(MEETINGS).map(function (k) { return MEETINGS[k]; }); }
+
+  /* ================= persist current ================= */
+  function setBadge(text, state) {
+    ['saveBadge', 'saveBadgeM'].forEach(function (id) {
+      var el = $(id);
+      if (!el) return;
+      el.textContent = text;
+      el.setAttribute('data-state', state || 'idle');
+    });
+  }
+  function scheduleSave() {
+    if (!hydrated || !CUR) return;
+    setBadge('저장 중…', 'saving');
+    if (saveT) clearTimeout(saveT);
+    saveT = setTimeout(flushSave, 700);
+  }
+  function flushSave() {
+    saveT = null;
+    if (!CUR) return Promise.resolve(false);
+    var m = CUR;
+    m.updated = Date.now();
+    MEETINGS[m.id] = m;
+    return Persist.put(m).then(function () {
+      if (CUR && CUR.id === m.id) setBadge('자동 저장됨 ' + hhmm(), 'saved');
+      renderStats();
+      renderTabs();
+      return true;
+    }, function () {
+      if (CUR && CUR.id === m.id) {
+        setBadge('저장 실패', 'full');
+        Lemon.toast('저장 공간이 부족해 방금 내용을 저장하지 못했어요', 'err');
+      }
+      return false;
+    });
+  }
+  function touch(m) { if (m) { m.updated = Date.now(); MEETINGS[m.id] = m; } scheduleSave(); }
+
+  var PLAY_ICO = '<polygon points="7 4 19 12 7 20"></polygon>';
+  var PAUSE_ICO = '<rect x="7" y="5" width="3.6" height="14" rx="1.2"></rect><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"></rect>';
+  function each(list, fn) { for (var i = 0; i < list.length; i++) fn(list[i]); }
+
+  /* ================= shared icons ================= */
+  var ICO = {
+    share: '<circle cx="17.5" cy="6" r="2.5"></circle><circle cx="6.5" cy="12" r="2.5"></circle><circle cx="17.5" cy="18" r="2.5"></circle><path d="M8.7 10.8l6.6-3.6M8.7 13.2l6.6 3.6"></path>',
+    trash: '<path d="M4.5 7h15"></path><path d="M9.5 4.5h5"></path><path d="M6.5 7l.8 12.2a1.6 1.6 0 0 0 1.6 1.5h6.2a1.6 1.6 0 0 0 1.6-1.5L17.5 7"></path><path d="M10.5 11v6M13.5 11v6"></path>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path>',
+    arrow: '<path d="M5 12h11"></path><path d="M12 8l4 4-4 4"></path><path d="M19 5v14"></path>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>',
+    x: '<line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line>',
+    check: '<polyline points="4 12 9 17 20 6"></polyline>',
+    down: '<path d="M12 3v10"></path><path d="M8 9l4 4 4-4"></path><path d="M4 17.5V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1.5"></path>'
+  };
+  function svg(path, cls, w) {
+    return '<svg class="' + (cls || 'w-4 h-4') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (w || 2) + '" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>';
+  }
+
+  /* ================= home ================= */
+  function renderTemplates() {
+    var box = $('tplGrid');
+    if (!box) return;
+    box.innerHTML = TEMPLATES.map(function (t) {
+      return '<button class="tf-card group" data-tpl="' + t.key + '">' +
+        '<div class="flex items-center justify-between gap-2">' +
+        '<span class="tf-ico">' + svg(t.ico, 'w-4 h-4', 1.9) + '</span>' +
+        '<span class="text-[9px] font-mono font-bold tracking-wider text-ink-400 dark:text-ink-500">' + t.tag + '</span>' +
+        '</div>' +
+        '<div class="mt-2.5 font-bold text-[13px] leading-tight">' + esc(t.name) + '</div>' +
+        '<div class="mt-1 text-[10.5px] leading-relaxed text-ink-500 dark:text-ink-400">' + esc(t.desc) + '</div>' +
+        '<div class="mt-2 flex items-center gap-1 text-[10px] font-bold" style="color:var(--brand)">' + t.agendas.length + '개 안건<span class="opacity-50">·</span>바로 시작</div>' +
+        '</button>';
+    }).join('');
+  }
+
+  function renderStats() {
+    var list = allMeetings();
+    var open = 0, agendas = 0;
+    list.forEach(function (m) {
+      open += openActions(m).length;
+      agendas += (m.agendas || []).filter(function (a) { return a.title.trim() || a.notes.length; }).length;
+    });
+    if ($('statMeetings')) $('statMeetings').textContent = list.length;
+    if ($('statOpen')) $('statOpen').textContent = open;
+    if ($('statAgendas')) $('statAgendas').textContent = agendas;
+  }
+
+  function renderTabs() {
+    var c = $('tabArchCount');
+    if (c) c.textContent = allMeetings().length;
+    var dot = $('tabLiveDot');
+    if (dot) dot.style.opacity = (CUR && CUR.running) ? '1' : '0';
+  }
+
+  function recentSorted(n) {
+    return allMeetings().sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); }).slice(0, n || 3);
+  }
+
+  function meetCard(m) {
+    var total = m.actions.length, open = openActions(m).length;
+    var pct = total ? Math.round((total - open) / total * 100) : 0;
+    var dur = fmtClock(m.elapsed);
+    var title = m.title && m.title.trim() ? m.title : '제목 없는 회의록';
+    var badge = '';
+    if (open > 0) badge = '<span class="text-[9.5px] font-bold px-1.5 py-0.5 rounded-md border border-gold-200 dark:border-gold-800 text-gold-700 dark:text-gold-300 bg-gold-50 dark:bg-gold-900/30">미완료 ' + open + '</span>';
+    return '<article class="meet-card p-4 pl-5 flex flex-col gap-2">' +
+      '<div class="flex items-start justify-between gap-2">' +
+      '<div class="min-w-0">' +
+      '<div class="text-[10px] text-ink-500 dark:text-ink-400">' + esc(whenLabel(m.when)) + '</div>' +
+      '<h3 class="mins-serif font-bold text-[14.5px] mt-0.5 truncate">' + esc(title) + '</h3>' +
+      '</div>' +
+      badge +
+      '</div>' +
+      '<div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] text-ink-500 dark:text-ink-400">' +
+      '<span>' + m.agendas.length + '개 안건</span><span class="opacity-40">·</span>' +
+      '<span>기록 ' + noteCount(m) + '</span><span class="opacity-40">·</span>' +
+      '<span class="timer-face">' + dur + '</span>' +
+      (m.att.length ? '<span class="opacity-40">·</span><span class="truncate max-w-[7rem]">' + esc(m.att.join(' ')) + '</span>' : '') +
+      '</div>' +
+      (total ? '<div class="mini-progress"><i style="width:' + pct + '%"></i></div>' : '<div class="mini-progress"><i style="width:0%"></i></div>') +
+      '<div class="flex items-center justify-between gap-1 pt-0.5">' +
+      '<span class="text-[10px] text-ink-400 dark:text-ink-500">' + (total ? ('액션 ' + (total - open) + '/' + total + ' 완료') : '액션 없음') + '</span>' +
+      '<div class="flex items-center gap-1">' +
+      '<button class="icon-btn !w-7 !h-7" data-share="' + m.id + '" title="공유 링크" aria-label="공유 링크">' + svg(ICO.share, 'w-3.5 h-3.5', 1.9) + '</button>' +
+      '<button class="icon-btn !w-7 !h-7" data-md="' + m.id + '" title="Markdown 내보내기" aria-label="Markdown 내보내기">' + svg('<path d="M4 5.5h16M4 12h11M4 18.5h8"></path>', 'w-3.5 h-3.5', 1.9) + '</button>' +
+      '<button class="icon-btn !w-7 !h-7" data-del="' + m.id + '" title="삭제" aria-label="삭제">' + svg(ICO.trash, 'w-3.5 h-3.5', 1.9) + '</button>' +
+      '<button class="btn-soft !py-1 !px-2 !text-[10.5px]" data-open="' + m.id + '">열기' + svg(ICO.arrow, 'w-3 h-3', 2.2) + '</button>' +
+      '</div></div></article>';
+  }
+
+  function renderHome() {
+    renderStats();
+    var box = $('recentList');
+    if (box) {
+      var list = recentSorted(3);
+      box.innerHTML = list.length ? list.map(meetCard).join('') :
+        '<div class="sm:col-span-2 lg:col-span-3 rounded-2xl border border-dashed border-ink-200 dark:border-[#293744] p-6 text-center text-[12px] text-ink-500 dark:text-ink-400">' +
+        '아직 회의록이 없습니다. 템플릿을 고르고 바로 시작해 보세요.' +
+        '<div class="mt-3"><button class="primary-btn !text-[12px]" data-new>첫 회의록 쓰기</button></div></div>';
+    }
+    var rl = $('btnResumeLabel');
+    if (rl) {
+      var last = recentSorted(1)[0];
+      rl.textContent = last ? '이어서 쓰기' : '템플릿으로 시작';
+    }
+    renderTabs();
+  }
+
+  /* ================= archive ================= */
+  function archMatches(m) {
+    if (archFilter === 'open' && openActions(m).length === 0) return false;
+    if (archFilter === 'week') {
+      var d = parseWhen(m.when) || new Date(m.created || Date.now());
+      var now = new Date();
+      var diff = (now - d) / 86400000;
+      if (diff < -1 || diff > 7) return false;
+    }
+    if (archQuery) {
+      var q = archQuery.toLowerCase();
+      var hay = (m.title + ' ' + m.att.join(' ') + ' ' + m.place + ' ' +
+        m.decisions.map(function (x) { return x.text; }).join(' ') + ' ' +
+        m.actions.map(function (a) { return a.text + ' ' + a.who; }).join(' ') + ' ' +
+        m.agendas.map(function (a) { return a.title + ' ' + a.notes.map(function (n) { return n.text; }).join(' '); }).join(' ')).toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  }
+  function archSorted() {
+    return allMeetings().filter(archMatches).sort(function (a, b) {
+      if (archSort === 'when') return (parseWhen(b.when) || 0) - (parseWhen(a.when) || 0);
+      if (archSort === 'title') return String(a.title).localeCompare(String(b.title), 'ko');
+      return (b.updated || 0) - (a.updated || 0);
+    });
+  }
+
+  function renderRollup() {
+    if (!$('rollupList')) return;
+    var rows = [];
+    allMeetings().sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); }).forEach(function (m) {
+      openActions(m).forEach(function (a) { rows.push({ m: m, a: a }); });
+    });
+    var sub = $('rollupSub');
+    if (sub) sub.textContent = rows.length ? (rows.length + '건 · 회의 ' + allMeetings().length + '개에서 모음') : '남은 액션이 없습니다';
+    var due = 0;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    rows.forEach(function (r) { if (r.a.due && new Date(r.a.due) < today) due++; });
+    if (rows.length && due) sub.textContent = rows.length + '건 · 기한 지난 ' + due + '건';
+    $('rollupList').innerHTML = rows.length ? rows.slice(0, 60).map(function (r) {
+      var late = r.a.due && new Date(r.a.due) < today;
+      return '<div class="act-row">' +
+        '<button class="tick" data-rollup-tick="' + r.m.id + '|' + r.a.id + '" aria-label="완료">' + svg(ICO.check, 'w-3 h-3', 3.4) + '</button>' +
+        '<div class="min-w-0 flex-1">' +
+        '<div class="text-[12px] leading-snug break-words">' + esc(r.a.text || '할 일') + '</div>' +
+        '<div class="flex flex-wrap items-center gap-1.5 mt-1 text-[10px] text-ink-500 dark:text-ink-400">' +
+        (r.a.who ? '<span class="speaker-chip !mt-0">' + esc(r.a.who) + '</span>' : '') +
+        (r.a.due ? '<span class="' + (late ? 'text-[#b3261e] dark:text-[#ff8f86] font-bold' : '') + '">' + (late ? '기한 지남 · ' : '') + esc(r.a.due) + '</span>' : '') +
+        '<span class="opacity-40">·</span>' +
+        '<button class="hover:underline truncate max-w-[11rem] text-left" data-open="' + r.m.id + '">' + esc(r.m.title || '제목 없는 회의록') + '</button>' +
+        '</div></div></div>';
+    }).join('') : '<div class="text-[11.5px] text-ink-500 dark:text-ink-400 py-2">완료하지 않은 할 일이 여기에 모입니다.</div>';
+  }
+
+  function renderArchive() {
+    var list = archSorted();
+    var box = $('archiveList');
+    if (box) box.innerHTML = list.map(meetCard).join('');
+    $('archiveEmpty').classList.toggle('hidden', list.length > 0);
+    if (box) box.classList.toggle('hidden', list.length === 0);
+    renderRollup();
+    renderTabs();
+    var sl = $('archSortLabel');
+    if (sl) sl.textContent = archSort === 'when' ? '회의 일시순' : (archSort === 'title' ? '제목순' : '최근 수정순');
+  }
+
+  /* ================= editor render ================= */
+  function agendaById(id) {
+    if (!CUR) return null;
+    for (var i = 0; i < CUR.agendas.length; i++) if (CUR.agendas[i].id === id) return CUR.agendas[i];
+    return null;
+  }
+  function noteHTML(aid, n) {
+    var t = n.at ? '<span class="time-chip' + (freshStamp === n.id ? ' fresh' : '') + '">[' + esc(n.at) + ']</span>' : '';
+    var w = n.who ? '<span class="speaker-chip">' + esc(n.who) + '</span>' : '';
+    return '<div class="note-row" data-note="' + n.id + '">' + t + w +
+      '<textarea class="note-text" rows="1" data-note-text="' + n.id + '" data-aid="' + aid + '" placeholder="내용을 적어 두세요">' + esc(n.text) + '</textarea>' +
+      '<button class="note-del icon-btn !w-6 !h-6 shrink-0 !border-0 !bg-transparent" data-note-del="' + n.id + '" data-aid="' + aid + '" aria-label="기록 삭제">' + svg(ICO.x, 'w-3 h-3', 2.4) + '</button>' +
+      '</div>';
+  }
+  function agendaHTML(a, idx) {
+    var notes = a.notes.map(function (n) { return noteHTML(a.id, n); }).join('');
+    return '<div class="agenda-block" data-aid="' + a.id + '">' +
+      '<div class="flex items-start gap-1">' +
+      '<div class="agenda-num">' + pad2(idx + 1) + '</div>' +
+      '<input class="agenda-title" data-afield="title" data-aid="' + a.id + '" value="' + esc(a.title) + '" placeholder="안건 제목">' +
+      '<button class="icon-btn !w-6 !h-6 shrink-0 !border-0 !bg-transparent mt-0.5" data-agenda-del="' + a.id + '" aria-label="안건 삭제">' + svg(ICO.x, 'w-3 h-3', 2.4) + '</button>' +
+      '</div>' +
+      '<div class="sm:pl-7 mt-0.5 space-y-0.5">' + notes +
+      '<div class="note-row !py-0.5">' +
+      '<input class="w-full bg-transparent border-0 outline-none text-[11.5px] py-1 text-ink-500 dark:text-ink-400 placeholder:text-ink-400 dark:placeholder:text-ink-600" data-note-new="' + a.id + '" placeholder="＋ 이 안건에 기록 추가 (Enter)">' +
+      '</div></div></div>';
+  }
+  function autosizeAll() {
+    var tas = document.querySelectorAll('.note-text');
+    for (var i = 0; i < tas.length; i++) { var ta = tas[i]; ta.style.height = 'auto'; ta.style.height = Math.max(20, ta.scrollHeight) + 'px'; }
+  }
+  function renderAtt() {
+    var box = $('attList'), inp = $('attInput');
+    if (!box || !inp || !CUR) return;
+    var old = box.querySelectorAll('.att-chip');
+    for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+    CUR.att.forEach(function (a, i) {
+      inp.insertAdjacentHTML('beforebegin', '<span class="att-chip">' + esc(a) +
+        '<button type="button" class="att-x" data-att-del="' + i + '" aria-label="삭제">' + svg(ICO.x, 'w-2 h-2', 3.2) + '</button></span>');
+    });
+  }
+  function renderDecisions() {
+    var box = $('decisionList');
+    if (!box || !CUR) return;
+    box.innerHTML = CUR.decisions.length ? CUR.decisions.map(function (d, i) {
+      return '<div class="flex items-center gap-1.5">' +
+        '<span class="text-[10px] font-mono text-ink-400 dark:text-ink-500 w-4 shrink-0">' + pad2(i + 1) + '</span>' +
+        '<input class="lemon-input !py-1.5 !text-[12px] flex-1 min-w-0" data-dec="' + d.id + '" value="' + esc(d.text) + '" placeholder="결정 내용">' +
+        '<button class="icon-btn !w-6 !h-6 shrink-0 !border-0 !bg-transparent" data-dec-del="' + d.id + '" aria-label="결정 삭제">' + svg(ICO.x, 'w-3 h-3', 2.4) + '</button>' +
+        '</div>';
+    }).join('') : '<div class="log-none">아직 기록된 결정이 없습니다.</div>';
+    $('decCount').textContent = CUR.decisions.length;
+  }
+  function today0() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+  function isLate(a) { return !!(a.due && !a.done && new Date(a.due) < today0()); }
+
+  function visibleActions() {
+    if (!CUR) return [];
+    return CUR.actions.filter(function (a) {
+      return actFilter === 'all' || (actFilter === 'open' ? !a.done : a.done);
+    });
+  }
+  function renderActions() {
+    var box = $('actionList');
+    if (!box || !CUR) return;
+    var list = visibleActions();
+    box.innerHTML = list.length ? list.map(function (a) {
+      return '<div class="act-row' + (a.done ? ' done' : '') + '">' +
+        '<button class="tick' + (a.done ? ' on' : '') + '" data-act-tick="' + a.id + '" aria-label="완료 토글">' + svg(ICO.check, 'w-3 h-3', 3.4) + '</button>' +
+        '<div class="min-w-0 flex-1">' +
+        '<input class="w-full bg-transparent border-0 outline-none text-[12.5px] leading-snug" data-act-text="' + a.id + '" value="' + esc(a.text) + '" placeholder="할 일">' +
+        '<div class="flex flex-wrap items-center gap-1.5 mt-1">' +
+        '<input class="bg-transparent border-0 outline-none text-[10.5px] w-[76px] text-ink-600 dark:text-ink-300 placeholder:text-ink-400 dark:placeholder:text-ink-600" data-act-who="' + a.id + '" value="' + esc(a.who) + '" placeholder="담당자">' +
+        '<input type="date" class="bg-transparent border-0 outline-none text-[10.5px] w-[118px] text-ink-600 dark:text-ink-300" data-act-due="' + a.id + '" value="' + esc(a.due) + '">' +
+        (a.src === 'auto' ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300">@본문</span>' : '') +
+        (isLate(a) ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#fdecea] text-[#b3261e] dark:bg-[#b3261e]/20 dark:text-[#ff8f86]">기한 지남</span>' : '') +
+        '</div></div>' +
+        '<button class="icon-btn !w-6 !h-6 shrink-0 !border-0 !bg-transparent" data-act-del="' + a.id + '" aria-label="액션 삭제">' + svg(ICO.x, 'w-3 h-3', 2.4) + '</button>' +
+        '</div>';
+    }).join('') : '<div class="log-none">' + (actFilter === 'open' ? '남은 액션이 없습니다.' : (actFilter === 'done' ? '완료된 액션이 없습니다.' : '아직 액션이 없습니다. 본문에 @담당자를 적으면 후보로 잡힙니다.')) + '</div>';
+    $('actCount').textContent = CUR.actions.length;
+    var btns = $('actFilter').querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].getAttribute('data-af') === actFilter);
+    var cands = detectCandidates();
+    $('btnExtractLabel').textContent = cands.length ? ('본문에서 ' + cands.length + '건 추출') : '본문에서 추출';
+    $('btnExtract').style.color = cands.length ? 'var(--gold)' : '';
+    renderRail();
+  }
+  function syncExtractLabel() {
+    var c = detectCandidates();
+    var el = $('btnExtractLabel');
+    if (el) el.textContent = c.length ? ('본문에서 ' + c.length + '건 추출') : '본문에서 추출';
+    var b = $('btnExtract');
+    if (b) b.style.color = c.length ? 'var(--gold)' : '';
+  }
+  function renderRail() {
+    if (!CUR || !$('railActRatio')) return;
+    var total = CUR.actions.length, open = CUR.actions.filter(function (a) { return !a.done; }).length;
+    var done = total - open;
+    $('railActRatio').textContent = done + ' / ' + total;
+    $('railActBar').style.width = (total ? Math.round(done / total * 100) : 0) + '%';
+    $('railAgenda').textContent = CUR.agendas.length;
+    $('railNotes').textContent = noteCount(CUR);
+    var box = $('railOpenActs');
+    if (!open) { box.textContent = '남은 액션이 없습니다.'; return; }
+    var items = CUR.actions.filter(function (a) { return !a.done; }).slice(0, 3);
+    box.innerHTML = '남은 액션 ' + open + '건<br>' + items.map(function (a) {
+      return '<span class="block truncate">· ' + esc(a.text || '할 일') + (a.who ? ' (' + esc(a.who) + ')' : '') + '</span>';
+    }).join('') + (open > 3 ? '<span class="block opacity-70">외 ' + (open - 3) + '건</span>' : '');
+  }
+  function renderEditor(opt) {
+    opt = opt || {};
+    if (!CUR) return;
+    $('inTitle').value = CUR.title;
+    $('inWhen').value = CUR.when || '';
+    $('inPlace').value = CUR.place || '';
+    $('docId').textContent = String(CUR.id).slice(-6).toUpperCase();
+    var t = tplByKey(CUR.tpl);
+    $('tplHint').textContent = t ? (t.name + ' 템플릿 · 안건 ' + CUR.agendas.length + '개') : '자유 형식 회의록';
+    renderAtt();
+    var list = $('agendaList');
+    list.innerHTML = CUR.agendas.map(agendaHTML).join('');
+    renderDecisions();
+    renderActions();
+    autosizeAll();
+    updateTimerUI();
+    freshStamp = null;
+    if (opt.note) {
+      var ta = list.querySelector('[data-note-text="' + opt.note + '"]');
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); var row = ta.closest('.note-row'); if (row) { row.classList.add('note-flash'); row.scrollIntoView({ block: 'nearest' }); } }
+    } else if (opt.agenda) {
+      var ti = list.querySelector('[data-afield="title"][data-aid="' + opt.agenda + '"]');
+      if (ti) { ti.focus(); ti.scrollIntoView({ block: 'center' }); }
+    } else if (opt.newNote) {
+      var ni = list.querySelector('[data-note-new="' + opt.newNote + '"]');
+      if (ni) ni.focus();
+    }
+  }
+  function updateTimerUI() {
+    if (!CUR) return;
+    var txt = fmtClock(elapsedSec(CUR));
+    if ($('timerText')) $('timerText').textContent = txt;
+    if ($('dockTimer')) $('dockTimer').textContent = txt;
+    var live = !!CUR.running;
+    if ($('timerBar')) $('timerBar').classList.toggle('timer-live', live);
+    if ($('timerState')) $('timerState').textContent = live ? '기록 중' : (elapsedSec(CUR) > 1 ? '일시정지' : '대기 중');
+    var lbl = live ? '일시정지' : (elapsedSec(CUR) > 1 ? '재개' : '시작');
+    each(document.querySelectorAll('[data-timer-label]'), function (el) { el.textContent = lbl; });
+    each(document.querySelectorAll('[data-timer-icon]'), function (el) { el.innerHTML = live ? PAUSE_ICO : PLAY_ICO; });
+    var dot = $('tabLiveDot');
+    if (dot) dot.style.opacity = live ? '1' : '0';
+  }
+
+  /* ================= note / action operations ================= */
+  function splitSpeaker(text) {
+    var m = /^@([^\s@]{1,14})\s+([\s\S]+)$/.exec(String(text || '').trim());
+    if (m) return { who: m[1], text: m[2] };
+    return { who: '', text: String(text || '').trim() };
+  }
+  function ensureTimer() {
+    if (!CUR) return;
+    if (!CUR.running && elapsedSec(CUR) < 1) { CUR.running = true; CUR.runFrom = Date.now(); }
+  }
+  function addNote(aid, text, at, who) {
+    var a = agendaById(aid) || CUR.agendas[CUR.agendas.length - 1];
+    if (!a) return null;
+    var n = { id: nid('n'), at: at || '', who: who || '', text: text || '' };
+    a.notes.push(n);
+    curAgenda = a.id;
+    touch(CUR);
+    return n;
+  }
+  function stampNow() {
+    if (!CUR) return;
+    var inp = (window.innerWidth >= 640 ? $('quickNote') : $('quickNoteM'));
+    var raw = inp ? inp.value : '';
+    var sp = splitSpeaker(raw);
+    ensureTimer();
+    var aid = curAgenda || (CUR.agendas[CUR.agendas.length - 1] || {}).id;
+    var n = addNote(aid, sp.text, stampClock(elapsedSec(CUR)), sp.who);
+    if (!n) return;
+    if (inp) inp.value = '';
+    freshStamp = n.id;
+    renderEditor({ note: n.id });
+    Lemon.hap(14);
+    if (sp.who) Lemon.toast(sp.who + ' 담당 기록을 추가했어요', 'ok');
+  }
+  function toggleTimer() {
+    if (!CUR) return;
+    if (CUR.running) {
+      CUR.elapsed = elapsedSec(CUR);
+      CUR.running = false;
+      CUR.runFrom = null;
+      Lemon.toast('타이머를 멈췄어요 (' + fmtClock(CUR.elapsed) + ')', 'info');
+    } else {
+      CUR.running = true;
+      CUR.runFrom = Date.now();
+      Lemon.hap(10);
+      Lemon.toast('회의 시간을 재기 시작했어요', 'ok');
+    }
+    touch(CUR);
+    updateTimerUI();
+  }
+  function detectCandidates() {
+    if (!CUR) return [];
+    var out = [], seen = {};
+    CUR.actions.forEach(function (a) { seen[(a.who + '|' + a.text).toLowerCase()] = 1; });
+    CUR.agendas.forEach(function (a) {
+      a.notes.forEach(function (n) {
+        if (!n.text || !n.text.trim()) return;
+        if (n.who) {
+          var key = (n.who + '|' + n.text).toLowerCase();
+          if (!seen[key]) { seen[key] = 1; out.push({ who: n.who, text: n.text, nid: n.id }); }
+        }
+        var re = /@([^\s@]{1,14})\s+([^\n]+)/g, m;
+        while ((m = re.exec(n.text))) {
+          var who = m[1], text = m[2].trim(), k2 = (who + '|' + text).toLowerCase();
+          if (!text || seen[k2]) continue;
+          seen[k2] = 1; out.push({ who: who, text: text, nid: n.id });
+        }
+      });
+    });
+    return out;
+  }
+  function extractActions() {
+    var cands = detectCandidates();
+    if (!cands.length) { Lemon.toast('본문에 @담당자로 적힌 줄이 없어요', 'info'); return; }
+    cands.forEach(function (c) {
+      CUR.actions.push({ id: nid('t'), text: c.text, who: c.who, due: '', done: false, src: 'auto' });
+    });
+    touch(CUR);
+    renderActions();
+    Lemon.hap(16);
+    Lemon.toast(cands.length + '건을 액션 아이템으로 추가했어요', 'ok');
+    if (CUR.actions.length === cands.length) Lemon.confetti(18);
+  }
+
+  /* ================= share ================= */
+  function sharePayload(m) {
+    return {
+      v: 1, t: m.title || '', w: m.when || '', pl: m.place || '',
+      a: m.att || [],
+      g: (m.agendas || []).map(function (a) {
+        return { t: a.title || '', n: a.notes.map(function (n) { return [n.at || '', n.who || '', n.text || '']; }) };
+      }),
+      d: (m.decisions || []).map(function (d) { return d.text; }),
+      x: (m.actions || []).map(function (a) { return { t: a.text || '', o: a.who || '', u: a.due || '', k: a.done ? 1 : 0 }; }),
+      e: Math.floor(elapsedSec(m)), c: m.created || Date.now()
+    };
+  }
+  function shareURL(m) {
+    var s = LZ.compressToEncodedURIComponent(JSON.stringify(sharePayload(m)));
+    return { url: location.origin + location.pathname + '#view=' + s, len: s.length };
+  }
+  function openShare(m) {
+    if (!m) return;
+    var r = shareURL(m);
+    $('shareUrlText').textContent = r.url;
+    $('btnOpenShareUrl').setAttribute('href', r.url);
+    $('shareLen').textContent = '링크 길이 ' + r.len.toLocaleString() + '자' + (r.len > 6000 ? ' · 너무 길면 일부 앱에서 잘릴 수 있어요' : '');
+    $('shareModal').classList.add('open');
+    window.__lastShare = r.url;
+  }
+  function closeShare() { $('shareModal').classList.remove('open'); }
+
+  /* ================= export ================= */
+  function docLines(m) {
+    var out = [];
+    out.push({ h1: m.title || '회의록' });
+    out.push({ meta: [['일시', whenLabel(m.when)], ['장소', m.place || '—'], ['참석', m.att.length ? m.att.join(', ') : '—'], ['소요', fmtClock(elapsedSec(m))]] });
+    return out;
+  }
+  function toMarkdown(m) {
+    var L = [];
+    L.push('# ' + (m.title || '회의록'));
+    L.push('');
+    L.push('| 항목 | 내용 |');
+    L.push('| --- | --- |');
+    L.push('| 일시 | ' + whenLabel(m.when) + ' |');
+    L.push('| 장소 | ' + (m.place || '—') + ' |');
+    L.push('| 참석 | ' + (m.att.length ? m.att.join(', ') : '—') + ' |');
+    L.push('| 소요 | ' + fmtClock(elapsedSec(m)) + ' |');
+    L.push('');
+    m.agendas.forEach(function (a, i) {
+      L.push('## ' + (i + 1) + '. ' + (a.title || '안건 ' + (i + 1)));
+      if (!a.notes.length) L.push('');
+      a.notes.forEach(function (n) {
+        var line = '- ';
+        if (n.at) line += '`[' + n.at + ']` ';
+        if (n.who) line += '**' + n.who + '** ';
+        line += (n.text || '');
+        L.push(line);
+      });
+      L.push('');
+    });
+    L.push('## 결정 사항');
+    if (!m.decisions.length) L.push('');
+    m.decisions.forEach(function (d, i) { L.push((i + 1) + '. ' + (d.text || '')); });
+    L.push('');
+    L.push('## 액션 아이템');
+    L.push('');
+    if (!m.actions.length) { L.push('_없음_'); }
+    else {
+      L.push('| 완료 | 담당 | 할 일 | 마감 |');
+      L.push('| --- | --- | --- | --- |');
+      m.actions.forEach(function (a) {
+        L.push('| ' + (a.done ? 'O' : '') + ' | ' + (a.who || '') + ' | ' + (a.text || '').replace(/\|/g, '/') + ' | ' + (a.due || '') + ' |');
+      });
+    }
+    L.push('');
+    L.push('---');
+    L.push('Lemon Minutes로 작성 · ' + whenLabel(m.when));
+    return L.join('\n');
+  }
+  function toTxt(m) {
+    var L = [];
+    var bar = '────────────────────────────';
+    L.push('[회의록] ' + (m.title || '제목 없음'));
+    L.push(bar);
+    L.push('일시 : ' + whenLabel(m.when));
+    if (m.place) L.push('장소 : ' + m.place);
+    L.push('참석 : ' + (m.att.length ? m.att.join(', ') : '—'));
+    L.push('소요 : ' + fmtClock(elapsedSec(m)));
+    L.push('');
+    m.agendas.forEach(function (a, i) {
+      L.push('[' + (i + 1) + '] ' + (a.title || '안건 ' + (i + 1)));
+      if (!a.notes.length) L.push('    (기록 없음)');
+      a.notes.forEach(function (n) {
+        var line = '    ';
+        if (n.at) line += '[' + n.at + '] ';
+        if (n.who) line += n.who + ' : ';
+        line += (n.text || '');
+        L.push(line);
+      });
+      L.push('');
+    });
+    L.push('결정 사항');
+    if (!m.decisions.length) L.push('    (없음)');
+    m.decisions.forEach(function (d, i) { L.push('    ' + (i + 1) + '. ' + (d.text || '')); });
+    L.push('');
+    L.push('액션 아이템');
+    if (!m.actions.length) L.push('    (없음)');
+    m.actions.forEach(function (a) {
+      L.push('    [' + (a.done ? '완료' : '    ') + '] ' + (a.text || '') + (a.who ? ' — ' + a.who : '') + (a.due ? ' (마감 ' + a.due + ')' : ''));
+    });
+    L.push('');
+    L.push(bar);
+    L.push('Lemon Minutes · 서버 없이 브라우저에서 작성');
+    return L.join('\n');
+  }
+  function safeName(s) {
+    return String(s || '회의록').replace(/[\\/:*?"<>|\n\r\t]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40) || '회의록';
+  }
+  function exportFile(m, kind) {
+    if (!m) return;
+    var base = safeName(m.title || '회의록') + '_' + String(m.when || '').slice(0, 10);
+    if (kind === 'md') Lemon.download(base + '.md', toMarkdown(m), 'text/markdown;charset=utf-8');
+    else if (kind === 'txt') Lemon.download(base + '.txt', toTxt(m), 'text/plain;charset=utf-8');
+    else Lemon.download(base + '.json', JSON.stringify(m, null, 2), 'application/json;charset=utf-8');
+    Lemon.toast(kind.toUpperCase() + ' 파일로 내보냈어요', 'ok');
+  }
+
+  /* ================= reader (shared) ================= */
+  function decodeShare() {
+    var h = location.hash || '';
+    if (h.indexOf('#view=') !== 0) return null;
+    try {
+      var raw = LZ.decompressFromEncodedURIComponent(h.slice(6));
+      if (!raw) return null;
+      var p = JSON.parse(raw);
+      return p && p.v === 1 ? p : null;
+    } catch (e) { return null; }
+  }
+  function readDocHTML(p) {
+    var agendas = (p.g || []).map(function (a, i) {
+      var notes = (a.n || []).map(function (n) {
+        var at = n[0] ? '<span class="time-chip">[' + esc(n[0]) + ']</span> ' : '';
+        var who = n[1] ? '<span class="speaker-chip">' + esc(n[1]) + '</span> ' : '';
+        return '<div class="flex items-start gap-1.5 py-0.5 text-[12.5px] leading-relaxed"><div class="min-w-0">' + at + who + '<span class="break-words">' + esc(n[2] || '') + '</span></div></div>';
+      }).join('');
+      return '<div class="flex gap-2">' +
+        '<div class="agenda-num">' + pad2(i + 1) + '</div>' +
+        '<div class="min-w-0 flex-1">' +
+        '<div class="mins-serif font-bold text-[14.5px]">' + esc(a.t || ('안건 ' + (i + 1))) + '</div>' +
+        '<div class="mt-1 space-y-0.5">' + (notes || '<div class="log-none">기록 없음</div>') + '</div></div></div>';
+    }).join('<div class="h-3"></div>');
+    var decs = (p.d || []).length ? (p.d || []).map(function (t, i) {
+      return '<div class="flex items-start gap-2 text-[12.5px] leading-relaxed"><span class="text-[10px] font-mono text-ink-400 w-4 shrink-0 pt-0.5">' + pad2(i + 1) + '</span><span class="break-words">' + esc(t) + '</span></div>';
+    }).join('') : '<div class="log-none">기록된 결정이 없습니다.</div>';
+    var acts = (p.x || []).length ? (p.x || []).map(function (a) {
+      return '<div class="act-row' + (a.k ? ' done' : '') + '">' +
+        '<span class="tick' + (a.k ? ' on' : '') + '">' + svg(ICO.check, 'w-3 h-3', 3.4) + '</span>' +
+        '<div class="min-w-0 flex-1"><div class="act-text text-[12.5px] leading-snug break-words">' + esc(a.t || '할 일') + '</div>' +
+        '<div class="flex flex-wrap items-center gap-1.5 mt-1 text-[10px] text-ink-500 dark:text-ink-400">' +
+        (a.o ? '<span class="speaker-chip !mt-0">' + esc(a.o) + '</span>' : '') +
+        (a.u ? '<span>' + esc(a.u) + '</span>' : '') +
+        '</div></div></div>';
+    }).join('') : '<div class="log-none">액션 아이템이 없습니다.</div>';
+    var att = (p.a || []).length ? (p.a || []).map(function (x) { return '<span class="att-chip">' + esc(x) + '</span>'; }).join('') : '<span class="log-none">—</span>';
+    return '<div class="sm:pl-10 space-y-4">' +
+      '<div class="flex items-center justify-between gap-2"><span class="eyebrow">Meeting Minutes</span><span class="time-chip">' + esc(fmtClock(p.e || 0)) + '</span></div>' +
+      '<h1 class="mins-serif text-[1.5rem] sm:text-[1.9rem] font-bold leading-tight break-words">' + esc(p.t || '회의록') + '</h1>' +
+      '<div class="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-[11.5px]">' +
+      '<div><div class="lemon-label mb-0.5">일시</div><div>' + esc(whenLabel(p.w)) + '</div></div>' +
+      '<div><div class="lemon-label mb-0.5">장소</div><div class="break-words">' + esc(p.pl || '—') + '</div></div>' +
+      '<div class="sm:col-span-2"><div class="lemon-label mb-1">참석자</div><div class="flex flex-wrap gap-1.5">' + att + '</div></div>' +
+      '</div>' +
+      '<div class="hair"></div>' +
+      '<div class="space-y-1">' + agendas + '</div>' +
+      '<div class="hair"></div>' +
+      '<div><div class="flex items-center gap-1.5 mb-1.5"><span class="eyebrow">Decisions</span><span class="text-[10px] font-mono text-ink-400">' + (p.d || []).length + '</span></div><div class="space-y-1">' + decs + '</div></div>' +
+      '<div><div class="flex items-center gap-1.5 mb-1.5"><span class="eyebrow">Action Items</span><span class="text-[10px] font-mono text-ink-400">' + (p.x || []).length + '</span></div><div class="space-y-1.5">' + acts + '</div></div>' +
+      '<div class="hair"></div>' +
+      '<div class="text-[10px] text-ink-400 dark:text-ink-500">Lemon Minutes로 만든 회의록 · ' + esc(whenLabel(p.w)) + ' · 읽기 전용 링크</div>' +
+      '</div>';
+  }
+  function showRead(p) {
+    shared = p;
+    $('readDoc').innerHTML = readDocHTML(p);
+    document.title = (p.t || '회의록') + ' — Lemon Minutes';
+    var nav = document.querySelector('.nav-tabs');
+    if (nav && nav.closest('.sticky')) nav.closest('.sticky').classList.add('hidden');
+    if ($('btnNewTop')) $('btnNewTop').classList.add('hidden');
+    if (go) go('read', true);
+    window.scrollTo(0, 0);
+  }
+
+  /* ================= navigation ================= */
+  var pendingEditor = false, navGuard = false;
+  function startMeeting(tplKey, silent) {
+    if (!hydrated) { Lemon.toast('저장된 회의록을 불러오는 중이에요', 'info'); return; }
+    flushSave();
+    var m = normMeeting(newMeeting(tplKey));
+    CUR = m;
+    curAgenda = m.agendas[0].id;
+    actFilter = 'all';
+    renderEditor(tplKey ? { agenda: m.agendas[0].id } : {});
+    setBadge('새 회의록 · 자동 저장', 'new');
+    if (!silent && go) { navGuard = true; go('editor'); navGuard = false; }
+    setTimeout(function () {
+      var t = $('inTitle');
+      if (t) { t.focus(); if (t.tagName === 'INPUT') t.setSelectionRange(t.value.length, t.value.length); }
+    }, 120);
+    renderHome();
+  }
+  function openMeeting(id) {
+    var m = MEETINGS[id];
+    if (!m) return;
+    flushSave();
+    CUR = m;
+    curAgenda = (m.agendas[0] || {}).id;
+    actFilter = 'all';
+    renderEditor();
+    updateTimerUI();
+    setBadge('자동 저장됨', 'saved');
+    navGuard = true; if (go) go('editor'); navGuard = false;
+  }
+  function endMeeting() {
+    if (!CUR) return;
+    if (CUR.running) { CUR.elapsed = elapsedSec(CUR); CUR.running = false; CUR.runFrom = null; }
+    CUR.endedAt = Date.now();
+    touch(CUR); flushSave();
+    var open = openActions(CUR).length;
+    Lemon.toast('회의를 마쳤어요 · ' + fmtClock(CUR.elapsed) + (open ? ' · 남은 액션 ' + open + '개' : ' · 액션 모두 완료'), 'ok');
+    Lemon.confetti(22);
+    go('archive');
+    renderArchive();
+  }
+  function deleteMeeting(id) {
+    var m = MEETINGS[id];
+    if (!m) return;
+    askConfirm('회의록을 삭제할까요?', '"' + (m.title || '제목 없는 회의록') + '" 기록과 액션 ' + m.actions.length + '개가 이 브라우저에서 지워집니다. 되돌릴 수 없습니다.', '삭제', function () {
+      Persist.del(id).then(function () {
+        delete MEETINGS[id];
+        if (CUR && CUR.id === id) { if (saveT) { clearTimeout(saveT); saveT = null; } CUR = null; }
+        renderHome(); renderArchive();
+        Lemon.toast('회의록을 삭제했어요', 'ok');
+        if (!CUR && !shared) go('archive');
+      });
+    });
+  }
+
+  /* ================= modals ================= */
+  var confirmCb = null;
+  function askConfirm(title, body, ok, cb) {
+    $('confirmTitle').textContent = title;
+    $('confirmBody').textContent = body;
+    $('confirmOk').textContent = ok || '삭제';
+    confirmCb = cb;
+    $('confirmModal').classList.add('open');
+  }
+  function closeConfirm() { $('confirmModal').classList.remove('open'); confirmCb = null; }
+  function closeShareModal() { $('shareModal').classList.remove('open'); }
+
+  /* ================= shared copy ================= */
+  function saveSharedCopy() {
+    if (!shared) return;
+    var now = Date.now();
+    var m = normMeeting({
+      id: nid('m'),
+      title: (shared.t || '회의록') + ' (공유)',
+      when: shared.w || localISO(new Date()),
+      place: shared.pl || '',
+      att: shared.a || [],
+      tpl: '',
+      agendas: (shared.g || []).map(function (a) {
+        return { id: nid('a'), title: a.t || '', notes: (a.n || []).map(function (n) { return { id: nid('n'), at: n[0] || '', who: n[1] || '', text: n[2] || '' }; }) };
+      }),
+      decisions: (shared.d || []).map(function (t) { return { id: nid('d'), text: t }; }),
+      actions: (shared.x || []).map(function (a) { return { id: nid('t'), text: a.t || '', who: a.o || '', due: a.u || '', done: !!a.k, src: 'manual' }; }),
+      elapsed: shared.e || 0,
+      created: now, updated: now
+    });
+    MEETINGS[m.id] = m;
+    CUR = m;
+    Persist.put(m).then(function () {
+      renderHome(); renderArchive();
+      try { history.replaceState(null, '', location.pathname + '#editor'); } catch (e) { }
+      var nav = document.querySelector('.nav-tabs');
+      if (nav && nav.closest('.sticky')) nav.closest('.sticky').classList.remove('hidden');
+      if ($('btnNewTop')) $('btnNewTop').classList.remove('hidden');
+      renderEditor();
+      go('editor');
+      Lemon.toast('내 보관함에 사본을 저장했어요', 'ok');
+    }, function () {
+      Lemon.toast('저장에 실패했어요. 공간을 확인해 주세요', 'err');
+    });
+  }
+
+  /* ================= events ================= */
+  function on(el, ev, fn) { if (el) el.addEventListener(ev, fn); }
+  function curGuard(fn) { return function (e) { if (!CUR) return; return fn.call(this, e); }; }
+  function findNote(id) {
+    if (!CUR) return null;
+    for (var i = 0; i < CUR.agendas.length; i++) {
+      var ns = CUR.agendas[i].notes;
+      for (var k = 0; k < ns.length; k++) if (ns[k].id === id) return ns[k];
+    }
+    return null;
+  }
+  function findAction(id) {
+    if (!CUR) return null;
+    for (var i = 0; i < CUR.actions.length; i++) if (CUR.actions[i].id === id) return CUR.actions[i];
+    return null;
+  }
+  function newNoteFrom(aid, value) {
+    var sp = splitSpeaker(value);
+    ensureTimer();
+    var n = addNote(aid, sp.text, stampClock(elapsedSec(CUR)), sp.who);
+    if (n) { freshStamp = n.id; renderEditor({ note: n.id }); }
+  }
+
+  function bindAll() {
+    /* header / home / archive entries */
+    on($('btnNewTop'), 'click', function () { startMeeting(null); });
+    on($('btnStartNew'), 'click', function () { startMeeting(null); });
+    on($('btnNewArch'), 'click', function () { startMeeting(null); });
+    on($('btnResume'), 'click', function () {
+      var last = recentSorted(1)[0];
+      if (last) openMeeting(last.id);
+      else { var g = $('tplGrid'); if (g) g.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    });
+    on($('btnPickTemplate'), 'click', function () {
+      var g = $('tplGrid'); if (g) g.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      Lemon.toast('마음에 드는 회의 유형을 골라 주세요', 'info');
+    });
+    on($('tplGrid'), 'click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-tpl]') : null;
+      if (b) startMeeting(b.getAttribute('data-tpl'));
+    });
+
+    /* document meta */
+    on($('inTitle'), 'input', curGuard(function () { CUR.title = this.value; touch(CUR); syncExtractLabel(); }));
+    on($('inWhen'), 'input', curGuard(function () { CUR.when = this.value; touch(CUR); }));
+    on($('inPlace'), 'input', curGuard(function () { CUR.place = this.value; touch(CUR); }));
+
+    /* attendees */
+    on($('attInput'), 'keydown', curGuard(function (e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        var v = this.value.replace(/,/g, '').trim();
+        if (!v) return;
+        if (v.charAt(0) === '@') v = v.slice(1);
+        if (CUR.att.indexOf(v) < 0) CUR.att.push(v);
+        this.value = '';
+        touch(CUR); renderAtt();
+      } else if (e.key === 'Backspace' && !this.value && CUR.att.length) {
+        CUR.att.pop(); touch(CUR); renderAtt();
+      }
+    }));
+    on($('attList'), 'click', curGuard(function (e) {
+      var b = e.target.closest ? e.target.closest('[data-att-del]') : null;
+      if (!b) return;
+      CUR.att.splice(Number(b.getAttribute('data-att-del')), 1);
+      touch(CUR); renderAtt();
+    }));
+
+    /* agendas */
+    on($('btnAddAgenda'), 'click', curGuard(function () {
+      var a = { id: nid('a'), title: '', notes: [] };
+      CUR.agendas.push(a);
+      curAgenda = a.id;
+      touch(CUR);
+      renderEditor({ agenda: a.id });
+    }));
+    on($('agendaList'), 'input', curGuard(function (e) {
+      var t = e.target;
+      if (t.getAttribute('data-afield') === 'title') {
+        var a = agendaById(t.getAttribute('data-aid'));
+        if (a) { a.title = t.value; touch(CUR); }
+      } else if (t.getAttribute('data-note-text')) {
+        var n = findNote(t.getAttribute('data-note-text'));
+        if (n) {
+          n.text = t.value;
+          t.style.height = 'auto';
+          t.style.height = Math.max(20, t.scrollHeight) + 'px';
+          curAgenda = t.getAttribute('data-aid');
+          touch(CUR);
+          syncExtractLabel();
+          renderRail();
+        }
+      }
+    }));
+    on($('agendaList'), 'focusin', curGuard(function (e) {
+      var aid = e.target.getAttribute && (e.target.getAttribute('data-aid') || e.target.getAttribute('data-note-new'));
+      if (aid) curAgenda = aid;
+    }));
+    on($('agendaList'), 'keydown', curGuard(function (e) {
+      var t = e.target;
+      if (e.key !== 'Enter' || e.isComposing) return;
+      if (t.getAttribute('data-note-new') !== null && t.hasAttribute('data-note-new')) {
+        e.preventDefault();
+        newNoteFrom(t.getAttribute('data-note-new'), t.value);
+      } else if (t.classList && t.classList.contains('note-text') && !e.shiftKey) {
+        e.preventDefault();
+        newNoteFrom(t.getAttribute('data-aid'), '');
+      }
+    }));
+    on($('agendaList'), 'click', curGuard(function (e) {
+      var del = e.target.closest ? e.target.closest('[data-note-del]') : null;
+      if (del) {
+        var nidv = del.getAttribute('data-note-del');
+        for (var i = 0; i < CUR.agendas.length; i++) {
+          var ns = CUR.agendas[i].notes;
+          for (var k = 0; k < ns.length; k++) if (ns[k].id === nidv) { ns.splice(k, 1); k = ns.length; i = CUR.agendas.length; }
+        }
+        touch(CUR); renderEditor(); return;
+      }
+      var ad = e.target.closest ? e.target.closest('[data-agenda-del]') : null;
+      if (ad) {
+        var aid = ad.getAttribute('data-agenda-del');
+        if (CUR.agendas.length <= 1) { Lemon.toast('안건은 최소 하나 필요해요', 'info'); return; }
+        var ag = agendaById(aid);
+        var drop = function () {
+          CUR.agendas = CUR.agendas.filter(function (x) { return x.id !== aid; });
+          touch(CUR); renderEditor();
+        };
+        if (ag && (ag.title.trim() || ag.notes.length)) {
+          askConfirm('안건을 삭제할까요?', '"' + (ag.title || '안건') + '" 의 기록 ' + ag.notes.length + '건이 함께 지워집니다.', '삭제', drop);
+        } else drop();
+      }
+    }));
+
+    /* decisions */
+    function addDecision(v) {
+      v = String(v || '').trim();
+      if (!v || !CUR) return;
+      CUR.decisions.push({ id: nid('d'), text: v });
+      touch(CUR); renderDecisions();
+    }
+    on($('decInput'), 'keydown', function (e) { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); addDecision(this.value); this.value = ''; } });
+    on($('btnAddDec'), 'click', function () { var i = $('decInput'); addDecision(i.value); i.value = ''; i.focus(); });
+    on($('decisionList'), 'input', curGuard(function (e) {
+      var id = e.target.getAttribute('data-dec');
+      if (!id) return;
+      for (var i = 0; i < CUR.decisions.length; i++) if (CUR.decisions[i].id === id) { CUR.decisions[i].text = e.target.value; touch(CUR); }
+    }));
+    on($('decisionList'), 'click', curGuard(function (e) {
+      var b = e.target.closest ? e.target.closest('[data-dec-del]') : null;
+      if (!b) return;
+      var id = b.getAttribute('data-dec-del');
+      CUR.decisions = CUR.decisions.filter(function (d) { return d.id !== id; });
+      touch(CUR); renderDecisions();
+    }));
+
+    /* actions */
+    function addAction() {
+      if (!CUR) return;
+      var t = $('actText'), o = $('actOwner'), d = $('actDue');
+      var text = t.value.trim();
+      if (!text) { t.focus(); Lemon.toast('할 일을 먼저 적어 주세요', 'info'); return; }
+      CUR.actions.push({ id: nid('t'), text: text, who: o.value.trim(), due: d.value || '', done: false, src: 'manual' });
+      t.value = ''; o.value = ''; d.value = '';
+      touch(CUR); renderActions(); t.focus();
+      Lemon.hap(10);
+    }
+    on($('btnAddAct'), 'click', addAction);
+    on($('actText'), 'keydown', function (e) { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); addAction(); } });
+    on($('actionList'), 'input', curGuard(function (e) {
+      var t = e.target;
+      var id = t.getAttribute('data-act-text') || t.getAttribute('data-act-who') || t.getAttribute('data-act-due');
+      if (!id) return;
+      var a = findAction(id);
+      if (!a) return;
+      if (t.hasAttribute('data-act-text')) a.text = t.value;
+      else if (t.hasAttribute('data-act-who')) a.who = t.value;
+      else a.due = t.value;
+      touch(CUR);
+    }));
+    on($('actionList'), 'click', curGuard(function (e) {
+      var tick = e.target.closest ? e.target.closest('[data-act-tick]') : null;
+      if (tick) {
+        var a = findAction(tick.getAttribute('data-act-tick'));
+        if (!a) return;
+        a.done = !a.done;
+        touch(CUR); renderActions();
+        if (a.done) {
+          Lemon.hap(14);
+          if (!openActions(CUR).length && CUR.actions.length) { Lemon.confetti(20); Lemon.toast('액션을 모두 끝냈어요', 'ok'); }
+        }
+        return;
+      }
+      var del = e.target.closest ? e.target.closest('[data-act-del]') : null;
+      if (del) {
+        var id = del.getAttribute('data-act-del');
+        CUR.actions = CUR.actions.filter(function (x) { return x.id !== id; });
+        touch(CUR); renderActions();
+      }
+    }));
+    on($('actFilter'), 'click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-af]') : null;
+      if (!b) return;
+      actFilter = b.getAttribute('data-af');
+      renderActions();
+    });
+    on($('btnExtract'), 'click', extractActions);
+
+    /* timer + quick record */
+    each(document.querySelectorAll('[data-timer-toggle]'), function (el) { el.addEventListener('click', function () { toggleTimer(); }); });
+    each(document.querySelectorAll('[data-stamp]'), function (el) { el.addEventListener('click', function () { stampNow(); }); });
+    each(document.querySelectorAll('[data-end]'), function (el) {
+      el.addEventListener('click', function () {
+        if (!CUR) return;
+        if (!CUR.title.trim() && !noteCount(CUR) && !CUR.actions.length) {
+          askConfirm('회의를 종료할까요?', '아직 기록이 거의 없어요. 빈 회의록으로 남길까요?', '종료', endMeeting);
+        } else endMeeting();
+      });
+    });
+    on($('dockRecord'), 'click', function () {
+      var i = $('quickNoteM') || $('quickNote');
+      if (i) { i.focus(); i.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    });
+    ['quickNote', 'quickNoteM'].forEach(function (id) {
+      on($(id), 'keydown', function (e) { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); stampNow(); } });
+    });
+
+    /* export / share / print */
+    document.addEventListener('click', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-export],[data-export-shared]') : null;
+      if (t) {
+        var kind = t.getAttribute('data-export') || t.getAttribute('data-export-shared');
+        if (t.hasAttribute('data-export-shared')) {
+          if (shared) Lemon.download(safeName(shared.t) + '.json', JSON.stringify(shared, null, 2), 'application/json;charset=utf-8');
+        } else exportFile(CUR, kind);
+      }
+    });
+    on($('btnCopyMd'), 'click', function () { if (CUR) Lemon.copy(toMarkdown(CUR), '마크다운을 복사했어요'); });
+    on($('btnShare'), 'click', function () { openShare(CUR); });
+    on($('btnShare2'), 'click', function () { openShare(CUR); });
+    on($('btnPrint'), 'click', function () { window.print(); });
+    on($('btnCopyShareUrl'), 'click', function () { Lemon.copy(window.__lastShare || location.href, '공유 링크를 복사했어요'); });
+    on($('shareModal'), 'click', function (e) {
+      if (e.target.closest && e.target.closest('[data-close-share]')) closeShareModal();
+    });
+    on($('confirmModal'), 'click', function (e) {
+      if (e.target.closest && e.target.closest('[data-close-confirm]')) closeConfirm();
+    });
+    on($('confirmOk'), 'click', function () { var cb = confirmCb; closeConfirm(); if (cb) cb(); });
+
+    /* archive */
+    var searchT = null;
+    on($('archSearch'), 'input', function () {
+      var v = this.value;
+      clearTimeout(searchT);
+      searchT = setTimeout(function () { archQuery = v.trim(); renderArchive(); }, 160);
+    });
+    on($('archFilter'), 'click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-af]') : null;
+      if (!b) return;
+      archFilter = b.getAttribute('data-af');
+      var btns = $('archFilter').querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i] === b);
+      renderArchive();
+    });
+    on($('btnArchSort'), 'click', function () {
+      archSort = archSort === 'updated' ? 'when' : (archSort === 'when' ? 'title' : 'updated');
+      renderArchive();
+    });
+    on($('btnRollupToggle'), 'click', function () {
+      rollupOpen = !rollupOpen;
+      $('rollupList').classList.toggle('hidden', !rollupOpen);
+      $('rollupToggleLabel').textContent = rollupOpen ? '접기' : '펼치기';
+    });
+    on($('rollupList'), 'click', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-rollup-tick]') : null;
+      if (!t) return;
+      var p = t.getAttribute('data-rollup-tick').split('|');
+      var m = MEETINGS[p[0]];
+      if (!m) return;
+      var a = (m.actions || []).filter(function (x) { return x.id === p[1]; })[0];
+      if (!a) return;
+      a.done = true;
+      m.updated = Date.now();
+      Persist.put(m);
+      Lemon.hap(12);
+      if (CUR && CUR.id === m.id) renderActions();
+      renderRollup(); renderHome();
+      Lemon.toast('액션을 완료했어요', 'ok');
+    });
+
+    /* global card actions */
+    document.addEventListener('click', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-open],[data-share],[data-md],[data-del],[data-new],[data-go]') : null;
+      if (!t) return;
+      if (t.hasAttribute('data-open')) { openMeeting(t.getAttribute('data-open')); return; }
+      if (t.hasAttribute('data-share')) { openShare(MEETINGS[t.getAttribute('data-share')]); return; }
+      if (t.hasAttribute('data-md')) { exportFile(MEETINGS[t.getAttribute('data-md')], 'md'); return; }
+      if (t.hasAttribute('data-del')) { deleteMeeting(t.getAttribute('data-del')); return; }
+      if (t.hasAttribute('data-new')) { startMeeting(null); return; }
+      if (t.hasAttribute('data-go')) { var v = t.getAttribute('data-go'); if (v === 'archive') { renderArchive(); go('archive'); } return; }
+    });
+
+    /* read view */
+    on($('btnCopyShared'), 'click', function () { Lemon.copy(location.href, '공유 링크를 복사했어요'); });
+    on($('btnPrintShared'), 'click', function () { window.print(); });
+    on($('btnSaveShared'), 'click', function () { saveSharedCopy(); });
+    on($('btnMine'), 'click', function () {
+      try { history.replaceState(null, '', location.pathname); } catch (e) { }
+      var nav = document.querySelector('.nav-tabs');
+      if (nav && nav.closest('.sticky')) nav.closest('.sticky').classList.remove('hidden');
+      if ($('btnNewTop')) $('btnNewTop').classList.remove('hidden');
+      document.title = 'Lemon Minutes — 회의록·액션 아이템 스튜디오';
+      shared = null;
+      go('home'); renderHome();
+    });
+
+    /* tab switches */
+    document.addEventListener('lemon:view', function (e) {
+      var v = e.detail && e.detail.view;
+      var dock = $('dockMinutes');
+      if (dock) dock.classList.toggle('show', v === 'editor');
+      if (v === 'archive') renderArchive();
+      if (v === 'home') renderHome();
+      if (v === 'editor') {
+        if (!hydrated) { pendingEditor = true; return; }
+        if (!CUR) {
+          var last = recentSorted(1)[0];
+          if (last) openMeeting(last.id); else startMeeting(null, true);
+        } else { renderEditor(); updateTimerUI(); }
+      }
+    });
+
+    /* shortcuts + persistence hooks */
+    document.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault(); flushSave(); Lemon.toast('저장했어요', 'ok');
+      }
+      if (e.key === 'Escape') { closeShareModal(); closeConfirm(); }
+      if ((e.altKey || e.ctrlKey) && e.key.toLowerCase() === 't' && CUR && !document.activeElement.closest('.lemon-modal')) {
+        e.preventDefault(); stampNow();
+      }
+    });
+    window.addEventListener('beforeunload', function () { if (CUR) { if (CUR.running) CUR.elapsed = elapsedSec(CUR); Persist.put(CUR); } });
+    window.addEventListener('hashchange', function () {
+      var p = decodeShare();
+      if (p) showRead(p);
+    });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushSave(); });
+  }
+
+  /* ================= boot ================= */
+  function afterHydrate() {
+    renderHome(); renderArchive();
+    if (shared) { showRead(shared); return; }
+    var last = recentSorted(1)[0];
+    if (last) { CUR = last; curAgenda = (last.agendas[0] || {}).id; renderEditor(); updateTimerUI(); setBadge('자동 저장됨', 'saved'); }
+    if (pendingEditor || (location.hash || '') === '#editor') {
+      if (!CUR) { if (last) openMeeting(last.id); else startMeeting(null, true); }
+    }
+  }
+
+  function boot() {
+    renderTemplates();
+    go = Lemon.initTabs('home');
+    bindAll();
+    shared = decodeShare();
+    setInterval(function () { if (CUR && CUR.running) updateTimerUI(); }, 500);
+    Persist.all().then(function (rows) {
+      (rows || []).forEach(function (r) { var m = normMeeting(r); MEETINGS[m.id] = m; });
+      hydrated = true;
+      afterHydrate();
+    }, function () {
+      hydrated = true;
+      afterHydrate();
+      Lemon.toast('브라우저 저장소를 열지 못해 이번 세션만 보관합니다', 'err');
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
