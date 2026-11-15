@@ -1,0 +1,2916 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Grade — 학점·내신·목표 점수 시뮬레이터 &amp; 성적 관리기</title>
+<meta name="description" content="대학 4.5·4.3 만점과 고교 9등급·성취도를 한 화면에서. 과목별 실시간 평점·전공 평점·이수학점 계산, 졸업 목표 평점 역산, 가정 시뮬레이션, 학기별 추이와 등급 분포 차트, IndexedDB 자동 저장과 성적 리포트 PNG. 서버 업로드 없이 브라우저에서만.">
+<meta name="theme-color" content="#f6f3e9">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t === 'dark'); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__gradeErrs = [];
+    addEventListener('error', function (e) { window.__gradeErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__gradeErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    ink: { 50: '#f6f6f2', 100: '#e8e8e0', 200: '#d3d4c8', 300: '#b0b3a3', 400: '#8b8f7d', 500: '#6b7062', 600: '#53584c', 700: '#3e4239', 800: '#282b25', 900: '#161814', 950: '#0a0c09' },
+    forest: { 50: '#eaf6f0', 100: '#cfead9', 200: '#a3d7bd', 300: '#6dbe9a', 400: '#3ea07b', 500: '#218364', 600: '#146b51', 700: '#0c5a44', 800: '#0a4937', 900: '#08392c', 950: '#04211a' },
+    brass: { 50: '#fbf5e5', 100: '#f5e8c4', 200: '#ecd28d', 300: '#dfb85a', 400: '#cfa236', 500: '#b8892c', 600: '#96701f', 700: '#75571a', 800: '#5b4418', 900: '#483716' }
+  } } }
+};
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c5a44'/%3E%3Cpath d='M9 21V11h6.4a3.3 3.3 0 0 1 0 6.6H9' fill='none' stroke='%23f3ecd8' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='23' cy='21' r='2.6' fill='none' stroke='%23dfb85a' stroke-width='1.9'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #0c5a44;
+    --brand-2: #14795c;
+    --brand-deep: #073a2c;
+    --paper: #f6f3e9;
+    --paper-2: #fffdf8;
+    --paper-3: #eee9da;
+    --ink: #14261f;
+    --ink-soft: #4f655c;
+    --ink-faint: #89998f;
+    --line: #ddd5c1;
+    --line-2: #cbbf9f;
+    --gold: #a8842c;
+    --gold-soft: #dcc48a;
+    --emerald: #0c5a44;
+    --emerald-2: #14795c;
+    --seal: #b8892f;
+    --tint: rgba(12, 90, 68, .06);
+    --tint-2: rgba(168, 132, 44, .10);
+    --shadow: 0 1px 0 rgba(20, 38, 31, .04), 0 14px 34px -26px rgba(20, 38, 31, .55);
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", "Noto Serif CJK KR", "Nanum Myeongjo", serif;
+  }
+  .dark {
+    --brand: #2b9e79;
+    --brand-2: #35b98e;
+    --brand-deep: #0c5a44;
+    --paper: #07110e;
+    --paper-2: #0c1a15;
+    --paper-3: #102019;
+    --ink: #e9e8de;
+    --ink-soft: #9bafa4;
+    --ink-faint: #6d827a;
+    --line: #1c2b25;
+    --line-2: #2c4038;
+    --gold: #d5ab55;
+    --gold-soft: #8d6f33;
+    --emerald: #35b98e;
+    --emerald-2: #6dd6b0;
+    --seal: #d5ab55;
+    --tint: rgba(53, 185, 142, .08);
+    --tint-2: rgba(213, 171, 85, .10);
+    --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 20px 40px -30px rgba(0, 0, 0, .9);
+  }
+
+  html, body { max-width: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Malgun Gothic", "Helvetica Neue", sans-serif;
+    letter-spacing: -0.012em;
+    background-color: var(--paper);
+    color: var(--ink);
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+  .serif { font-family: var(--serif); }
+  .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Mono", monospace; }
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+  .eyebrow {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); font-weight: 700;
+  }
+  .mono-label { font-family: ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+  .paper-grain {
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(circle at 12% 8%, var(--tint) 0%, transparent 42%),
+      radial-gradient(circle at 88% 4%, var(--tint-2) 0%, transparent 38%),
+      repeating-linear-gradient(0deg, transparent 0 27px, color-mix(in srgb, var(--line) 34%, transparent) 27px 28px);
+  }
+  .sheet {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    box-shadow: var(--shadow);
+  }
+  .sheet-quiet { background: color-mix(in srgb, var(--paper-2) 72%, var(--paper)); border: 1px solid var(--line); border-radius: 3px; }
+  .hairline { height: 1px; background: var(--line); border: 0; }
+  .gold-rule { display: flex; align-items: center; gap: .5rem; }
+  .gold-rule::before, .gold-rule::after { content: ""; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--gold-soft), transparent); }
+  .gold-rule span { width: 5px; height: 5px; transform: rotate(45deg); background: var(--gold); opacity: .75; }
+
+  /* ---------- header ---------- */
+  .brand-mark {
+    width: 2.4rem; height: 2.4rem; border-radius: 4px; flex-shrink: 0;
+    background: linear-gradient(160deg, var(--emerald), var(--brand-deep));
+    color: #f3ecd8; display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 0 1px rgba(243, 236, 216, .18), 0 6px 16px -10px rgba(7, 58, 44, .9);
+  }
+  .dark .brand-mark { background: linear-gradient(160deg, #14654c, #08241b); }
+  .tab-line { display: flex; align-items: center; gap: .15rem; overflow-x: auto; scrollbar-width: none; }
+  .tab-line::-webkit-scrollbar { display: none; }
+  .tab-line button {
+    position: relative; display: inline-flex; align-items: center; gap: .4rem;
+    padding: .5rem .7rem; font-size: .8rem; font-weight: 700; color: var(--ink-soft);
+    white-space: nowrap; border-radius: 2px; transition: color .18s ease, background-color .18s ease;
+  }
+  .tab-line button svg { width: 15px; height: 15px; }
+  .tab-line button:hover { color: var(--ink); background: var(--tint); }
+  .tab-line button.nav-on { color: var(--emerald); background: var(--tint); }
+  .tab-line button.nav-on::after {
+    content: ""; position: absolute; left: .5rem; right: .5rem; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, var(--gold), var(--emerald)); border-radius: 2px;
+    animation: tabSlide .4s cubic-bezier(.22, 1, .36, 1) both;
+  }
+  @keyframes tabSlide { from { transform: scaleX(.2); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ---------- buttons ---------- */
+  .btn-solid {
+    display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+    padding: .7rem 1.05rem; border-radius: 3px; font-size: .84rem; font-weight: 800; line-height: 1.1;
+    background: linear-gradient(155deg, var(--emerald-2), var(--brand-deep)); color: #f7f3e6;
+    box-shadow: 0 10px 24px -16px rgba(7, 58, 44, .95), inset 0 0 0 1px rgba(255, 255, 255, .10);
+    transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease, filter .2s ease;
+    position: relative; overflow: hidden;
+  }
+  .btn-solid:hover { transform: translateY(-1.5px); box-shadow: 0 16px 30px -18px rgba(7, 58, 44, .95), inset 0 0 0 1px rgba(255, 255, 255, .16); }
+  .btn-solid:active { transform: scale(.965); }
+  .btn-line {
+    display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+    padding: .66rem 1rem; border-radius: 3px; font-size: .82rem; font-weight: 800;
+    border: 1px solid var(--line-2); color: var(--ink); background: color-mix(in srgb, var(--paper-2) 80%, transparent);
+    transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), border-color .2s ease, color .2s ease, background-color .2s;
+  }
+  .btn-line:hover { border-color: var(--gold); color: var(--gold); transform: translateY(-1.5px); }
+  .btn-line:active { transform: scale(.965); }
+  .btn-line.on { border-color: var(--emerald); color: var(--emerald); background: var(--tint); }
+  .btn-mini {
+    display: inline-flex; align-items: center; justify-content: center; gap: .3rem;
+    padding: .36rem .55rem; border-radius: 2px; font-size: .7rem; font-weight: 800;
+    border: 1px solid var(--line); color: var(--ink-soft); background: transparent;
+    transition: color .16s, border-color .16s, background-color .16s;
+  }
+  .btn-mini:hover { color: var(--emerald); border-color: color-mix(in srgb, var(--emerald) 55%, var(--line)); background: var(--tint); }
+  .btn-mini.on { color: var(--emerald); border-color: var(--emerald); background: var(--tint); }
+  .btn-mini.danger:hover { color: #b23b3b; border-color: #b23b3b; background: rgba(178, 59, 59, .07); }
+  .icon-square {
+    width: 2rem; height: 2rem; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line-2); color: var(--ink-soft); background: color-mix(in srgb, var(--paper-2) 70%, transparent);
+    transition: color .16s, border-color .16s, transform .16s;
+  }
+  .icon-square:hover { color: var(--emerald); border-color: var(--emerald); transform: translateY(-1px); }
+
+  /* ---------- hero ---------- */
+  .hero-wrap { position: relative; overflow: hidden; }
+  .hero-wrap::before {
+    content: ""; position: absolute; inset: -20% -10% auto -10%; height: 70%;
+    background: radial-gradient(60% 100% at 20% 0%, color-mix(in srgb, var(--emerald) 16%, transparent), transparent 70%),
+                radial-gradient(50% 100% at 90% 10%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 72%);
+    pointer-events: none;
+  }
+  .hero-title { font-family: var(--serif); font-weight: 700; line-height: 1.06; letter-spacing: -.03em; }
+  .hero-title em { font-style: normal; color: var(--emerald); position: relative; }
+  .hero-title em::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: .04em; height: .28em;
+    background: color-mix(in srgb, var(--gold) 26%, transparent); z-index: -1;
+  }
+
+  /* ---------- transcript mock ---------- */
+  .transcript {
+    background: linear-gradient(180deg, var(--paper-2), color-mix(in srgb, var(--paper-2) 88%, var(--paper-3)));
+    border: 1px solid var(--line-2); border-radius: 2px; position: relative;
+    box-shadow: 0 30px 60px -40px rgba(7, 58, 44, .8), 0 2px 0 var(--line-2);
+    transition: transform .5s cubic-bezier(.22, 1, .36, 1), box-shadow .5s ease;
+  }
+  .transcript:hover { transform: translateY(-4px) rotate(-.4deg); box-shadow: 0 40px 70px -44px rgba(7, 58, 44, .85), 0 2px 0 var(--line-2); }
+  .transcript-hd { display: flex; align-items: flex-end; justify-content: space-between; gap: .5rem; }
+  .transcript-row { display: flex; align-items: baseline; gap: .4rem; font-size: .78rem; line-height: 1.9; }
+  .transcript-row .lead { flex: 1; border-bottom: 1px dotted var(--line-2); margin: 0 .25rem .28rem; }
+  .seal {
+    width: 4.6rem; height: 4.6rem; border-radius: 999px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: .05rem;
+    border: 1.5px solid var(--seal); color: var(--seal);
+    transform: rotate(-8deg); opacity: .92; flex-shrink: 0;
+    box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--paper-2) 70%, transparent), inset 0 0 0 4px var(--seal);
+    animation: sealIn 1s cubic-bezier(.22, 1, .36, 1) both;
+  }
+  .seal b { font-family: var(--serif); font-size: 1.15rem; line-height: 1; }
+  .seal span { font-size: 8px; letter-spacing: .16em; text-transform: uppercase; }
+  @keyframes sealIn { 0% { opacity: 0; transform: rotate(-24deg) scale(.7); } 100% { opacity: .92; transform: rotate(-8deg) scale(1); } }
+
+  /* ---------- cards ---------- */
+  .feature {
+    position: relative; padding: 1.15rem 1.1rem; border: 1px solid var(--line); border-radius: 3px;
+    background: var(--paper-2); transition: transform .3s cubic-bezier(.2, .8, .2, 1), border-color .3s, box-shadow .3s;
+    overflow: hidden;
+  }
+  .feature:hover { transform: translateY(-3px); border-color: var(--line-2); box-shadow: 0 18px 32px -28px rgba(7, 58, 44, .8); }
+  .feature .fnum { font-family: var(--serif); font-size: 1.5rem; color: color-mix(in srgb, var(--gold) 70%, var(--ink-faint)); line-height: 1; }
+  .feature::after {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+    background: linear-gradient(180deg, var(--emerald), var(--gold)); opacity: 0; transition: opacity .3s;
+  }
+  .feature:hover::after { opacity: 1; }
+  .mode-card {
+    text-align: left; width: 100%; padding: .85rem .8rem; border: 1px solid var(--line); border-radius: 3px;
+    background: var(--paper-2); transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), border-color .2s, background-color .2s;
+  }
+  .mode-card:hover { transform: translateY(-2px); border-color: var(--gold); }
+  .mode-card .mc-top { display: flex; align-items: center; justify-content: space-between; gap: .4rem; }
+  .mode-card .mc-num { font-family: var(--serif); font-size: 1.35rem; color: var(--emerald); line-height: 1; }
+  .mode-card .mc-num small { font-size: .62rem; color: var(--ink-faint); letter-spacing: .02em; }
+
+  /* ---------- studio ---------- */
+  .stat-big { font-family: var(--serif); font-weight: 700; letter-spacing: -.03em; line-height: .95; }
+  .gpa-hero { font-size: clamp(2.6rem, 7vw, 3.5rem); }
+  .delta-up { color: #17694f; }
+  .dark .delta-up { color: #5ed3a7; }
+  .delta-down { color: #a8462f; }
+  .dark .delta-down { color: #ef9377; }
+
+  .mode-strip { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .mode-strip button {
+    padding: .34rem .6rem; font-size: .72rem; font-weight: 800; border-radius: 2px;
+    border: 1px solid var(--line); color: var(--ink-soft); background: transparent;
+    transition: color .16s, border-color .16s, background-color .16s;
+  }
+  .mode-strip button:hover { color: var(--emerald); border-color: color-mix(in srgb, var(--emerald) 50%, var(--line)); }
+  .mode-strip button.on { color: #f7f3e6; background: linear-gradient(150deg, var(--emerald-2), var(--brand-deep)); border-color: var(--brand-deep); }
+  .dark .mode-strip button.on { color: #06140f; background: linear-gradient(150deg, var(--emerald), #0d5b45); border-color: transparent; }
+
+  .term-chip {
+    display: inline-flex; align-items: center; gap: .35rem; padding: .38rem .6rem .38rem .55rem;
+    border: 1px solid var(--line); border-radius: 2px; font-size: .75rem; font-weight: 700;
+    color: var(--ink-soft); background: transparent; white-space: nowrap;
+    transition: color .16s, border-color .16s, background-color .16s, transform .16s;
+  }
+  .term-chip:hover { border-color: var(--line-2); color: var(--ink); transform: translateY(-1px); }
+  .term-chip.on { color: var(--emerald); border-color: var(--emerald); background: var(--tint); box-shadow: inset 0 -2px 0 var(--gold); }
+  .term-chip .tc-n { font-family: ui-monospace, Menlo, monospace; font-size: .62rem; color: var(--ink-faint); }
+
+  .c-head, .c-row { display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.15fr) 4.4rem 5.6rem 2rem; gap: .45rem; align-items: center; }
+  .c-head.hs, .c-row.hs { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr) 3.9rem 5rem minmax(0, 1.9fr) 2rem; }
+  .c-head { padding: .1rem .55rem .45rem; border-bottom: 1px solid var(--line-2); }
+  .c-head span { font-family: ui-monospace, Menlo, monospace; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+  .c-row {
+    padding: .3rem .55rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    transition: background-color .18s ease; position: relative;
+  }
+  .c-row:hover { background: color-mix(in srgb, var(--tint) 60%, transparent); }
+  .c-row.sim { background: color-mix(in srgb, var(--gold) 9%, transparent); }
+  .c-row.sim::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--gold); }
+  .cell-input, .cell-select {
+    width: 100%; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 2px;
+    padding: .38rem .35rem; font-size: .82rem; color: var(--ink); font-weight: 600;
+    transition: border-color .15s, background-color .15s, box-shadow .15s;
+  }
+  .cell-input::placeholder { color: var(--ink-faint); font-weight: 500; }
+  .cell-input:hover, .cell-select:hover { border-color: var(--line); }
+  .cell-input:focus, .cell-select:focus { outline: none; border-color: var(--emerald); background: var(--paper-2); box-shadow: 0 0 0 3px color-mix(in srgb, var(--emerald) 12%, transparent); }
+  .cell-select { appearance: none; text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; background-image: none; }
+  .cell-select.grade-sel { font-weight: 800; color: var(--emerald); }
+  .cell-select.grade-sel[data-lvl="low"] { color: #a8462f; }
+  .dark .cell-select.grade-sel[data-lvl="low"] { color: #ef9377; }
+  .cell-select option { background: var(--paper-2); color: var(--ink); }
+  .c-raw { display: flex; gap: .18rem; min-width: 0; }
+  .c-raw .cell-input { padding: .34rem .18rem; font-size: .72rem; text-align: center; min-width: 0; }
+  .c-raw .cell-input::-webkit-outer-spin-button, .c-raw .cell-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .c-del { width: 1.55rem; height: 1.55rem; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-faint); border: 1px solid transparent; transition: color .15s, border-color .15s, background-color .15s; }
+  .c-del:hover { color: #b23b3b; border-color: color-mix(in srgb, #b23b3b 40%, transparent); background: rgba(178, 59, 59, .06); }
+  .cat-chip { font-size: .66rem; font-weight: 800; padding: .1rem .25rem; border-radius: 2px; }
+  .cat-major { color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); }
+  .cat-gen { color: var(--emerald); background: var(--tint); }
+  .cat-etc { color: var(--ink-faint); background: color-mix(in srgb, var(--ink-faint) 12%, transparent); }
+
+  .summary-card { position: relative; overflow: hidden; }
+  .summary-card::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: linear-gradient(90deg, var(--emerald), var(--gold), transparent);
+  }
+  .kpi { display: flex; flex-direction: column; gap: .12rem; padding: .5rem .1rem; }
+  .kpi .k { font-family: ui-monospace, Menlo, monospace; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+  .kpi .v { font-family: var(--serif); font-size: 1.3rem; font-weight: 700; line-height: 1.1; }
+  .meter { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--line) 80%, transparent); overflow: hidden; }
+  .meter > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--emerald), var(--gold)); transition: width .6s cubic-bezier(.22, 1, .36, 1); }
+  .legend-dot { width: .5rem; height: .5rem; border-radius: 1px; flex-shrink: 0; }
+
+  .chart-wrap { width: 100%; position: relative; }
+  .chart-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .trend-path { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: drawLine 1.3s .12s cubic-bezier(.4, 0, .2, 1) forwards; }
+  @keyframes drawLine { to { stroke-dashoffset: 0; } }
+  .trend-dot { opacity: 0; animation: dotIn .5s ease forwards; }
+  @keyframes dotIn { to { opacity: 1; } }
+  .bar-grow { transform-origin: bottom; animation: barIn .7s cubic-bezier(.22, 1, .36, 1) both; }
+  @keyframes barIn { from { transform: scaleY(0); opacity: .2; } to { transform: none; opacity: 1; } }
+  .donut-seg { transition: stroke-dasharray .8s cubic-bezier(.22, 1, .36, 1), stroke-width .2s ease; }
+  .donut-seg:hover { stroke-width: 20; }
+
+  .empty-slot {
+    border: 1px dashed var(--line-2); border-radius: 3px; padding: 2rem 1rem; text-align: center;
+    background: color-mix(in srgb, var(--paper-2) 60%, transparent);
+  }
+  .empty-slot svg { margin: 0 auto .6rem; color: var(--ink-faint); opacity: .7; }
+
+  .arch-card { background: var(--paper-2); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; transition: transform .26s cubic-bezier(.2, .8, .2, 1), box-shadow .26s ease, border-color .2s; }
+  .arch-card:hover { transform: translateY(-3px); box-shadow: 0 18px 36px -30px rgba(7, 58, 44, .8); border-color: var(--line-2); }
+  .arch-thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; object-position: top center; display: block; background: var(--paper-3); border-bottom: 1px solid var(--line); }
+
+  .pop {
+    position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center;
+    padding: 1rem; background: rgba(6, 20, 15, .55); backdrop-filter: blur(4px);
+    opacity: 0; pointer-events: none; transition: opacity .22s ease;
+  }
+  .pop.open { opacity: 1; pointer-events: auto; }
+  .pop-card {
+    width: 100%; max-width: 32rem; max-height: 88vh; overflow-y: auto; background: var(--paper-2);
+    border: 1px solid var(--line-2); border-radius: 3px; padding: 1.1rem 1.15rem;
+    transform: translateY(14px) scale(.98); transition: transform .26s cubic-bezier(.22, 1, .36, 1);
+    box-shadow: 0 40px 80px -40px rgba(0, 0, 0, .6);
+  }
+  .pop.open .pop-card { transform: none; }
+  .pop-card.wide { max-width: 40rem; }
+
+  .switch { position: relative; width: 2.5rem; height: 1.35rem; border-radius: 999px; background: color-mix(in srgb, var(--line-2) 80%, transparent); transition: background-color .22s ease; flex-shrink: 0; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.35rem - 4px); height: calc(1.35rem - 4px); border-radius: 999px; background: var(--paper-2); box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .26s cubic-bezier(.34, 1.56, .64, 1); }
+  .switch.on { background: var(--emerald); }
+  .switch.on::after { transform: translateX(calc(2.5rem - 1.35rem)); }
+
+  .lemon-toast { border-radius: 2px; }
+  .focus-ring:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .fade-in { animation: fadeIn .3s ease both; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .pulse-ring { animation: pulseRing 2.4s ease-in-out infinite; }
+  @keyframes pulseRing { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--emerald) 26%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--emerald) 0%, transparent); } }
+
+  @media (max-width: 767px) {
+    .c-head { display: none; }
+    .c-row, .c-row.hs {
+      grid-template-columns: minmax(0, 1fr) 4.2rem 4.9rem;
+      grid-template-areas: "name name del" "cat credit grade";
+      gap: .2rem .4rem; padding: .55rem .45rem .6rem;
+    }
+    .c-row.hs { grid-template-areas: "name name del" "cat credit grade" "raw raw raw"; }
+    .c-row .c-name { grid-area: name; }
+    .c-row .c-del { grid-area: del; justify-self: end; }
+    .c-row .c-cat { grid-area: cat; }
+    .c-row .c-credit { grid-area: credit; }
+    .c-row .c-grade { grid-area: grade; }
+    .c-row .c-raw { grid-area: raw; }
+    .cell-input, .cell-select { padding: .42rem .32rem; font-size: .84rem; }
+    .cell-input { border-color: color-mix(in srgb, var(--line) 75%, transparent); }
+    body.studio-mode footer { display: none; }
+    body.studio-view #mobileBar { display: flex !important; }
+    main[data-view="studio"] { padding-bottom: 4.6rem; }
+  }
+  @media (min-width: 768px) { #mobileBar { display: none !important; } }
+</style>
+</head>
+<body class="min-h-screen antialiased flex flex-col paper-grain">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10 12 3l8.5 7v9.5a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"></path></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a8.5 8.5 0 1 1 16 0"></path><path d="M12 18l4.2-5.4"></path><circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><path d="M3.5 7.5h17v12h-17z"></path><path d="M3 4.5h18v3H3z"></path><path d="M9.5 11.5h5"></path></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"></path></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M4 19h16"></path></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7.5 8.5 12 4l4.5 4.5M4 19h16"></path></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l5 5 10-11"></path></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"></path></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="4.6"></circle><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19.5V4.5M4 19.5h16"></path><path d="M7.5 15.5l3.5-4.5 3 2.5 4.5-6"></path></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="1.2"></rect><path d="M3.5 9.5h17M9 9.5v10M15 9.5v10"></path></symbol>
+    <symbol id="i-seal" viewBox="0 0 24 24"><path d="M12 3.2l2.3 1.6 2.8-.1.9 2.7 2.2 1.8-1 2.6 1 2.6-2.2 1.8-.9 2.7-2.8-.1L12 20.8l-2.3-1.6-2.8.1-.9-2.7L3.8 14.8l1-2.6-1-2.6 2.2-1.8.9-2.7 2.8.1z"></path><path d="M9 12l2.2 2.2L15.5 10"></path></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2 2 0 0 1 6 3.5h13v17H6a2 2 0 0 1-2-2z"></path><path d="M4 17.5h15"></path><path d="M8 7.5h7M8 11h5"></path></symbol>
+    <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1.6"></rect><path d="M8.5 7.5h7"></path><path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"></path></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="1.6"></rect><circle cx="8.5" cy="9.5" r="1.6"></circle><path d="M4 17l5-5 4 4 3-2.6 4 3.6"></path></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 8 4.5 12l4 4M15.5 8l4 4-4 4M13.5 5l-3 14"></path></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.5-5.8"></path><path d="M20 4v4.5h-4.5"></path></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"></path><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"></path></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6.5h12M8 12h12M8 17.5h12"></path><circle cx="4.2" cy="6.5" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="4.2" cy="12" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="4.2" cy="17.5" r="1.1" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"></path><path d="M8.5 4v5h7V4"></path><rect x="8.5" y="13" width="7" height="7" rx="1"></rect></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4l11-11a2.1 2.1 0 0 0-3-3L5 17z"></path><path d="M14.5 6.5l3 3"></path></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"></path></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 10.5V17"></path><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 3.5v17"></path><path d="M6 4.5h11l-2 3.5 2 3.5H6"></path></symbol>
+  </defs>
+</svg>
+
+<header class="sticky top-0 z-40 lemon-header border-b" style="border-color:var(--line);background:color-mix(in srgb, var(--paper) 88%, transparent);backdrop-filter:blur(10px)">
+  <div class="max-w-[92rem] mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-2">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="brand-mark">
+        <svg class="w-[19px] h-[19px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19V6h6.2a3.4 3.4 0 0 1 0 6.8H6"></path><circle cx="17.5" cy="19" r="2.2"></circle></svg>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="serif font-bold text-[16px] tracking-tight truncate">Lemon Grade</span>
+          <span class="hidden sm:inline mono-label" style="font-size:9px">NO. 57</span>
+        </div>
+        <p class="text-[10px] ink-faint truncate -mt-0.5" style="color:var(--ink-faint)">학점·내신 시뮬레이터 &amp; 성적 관리기</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-1.5">
+      <span id="saveBadge" class="hidden sm:inline-flex mono-label" style="font-size:9px;border:1px solid var(--line);border-radius:2px;padding:.22rem .4rem">자동 저장</span>
+      <button data-theme-toggle class="icon-square" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-moon"></use></svg>
+        <svg class="w-4 h-4 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:#d5ab55"><use href="#i-sun"></use></svg>
+      </button>
+      <button id="btnTopReport" class="btn-line hidden sm:inline-flex" style="padding:.5rem .7rem;font-size:.76rem">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-image"></use></svg>
+        리포트 PNG
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 border-b" style="border-color:var(--line);background:color-mix(in srgb, var(--paper) 92%, transparent);backdrop-filter:blur(10px)">
+  <div class="max-w-[92rem] mx-auto px-2 sm:px-5">
+    <div class="tab-line" role="tablist">
+      <button data-tab="home" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"></use></svg>
+        <span>홈</span>
+      </button>
+      <button data-tab="studio" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-gauge"></use></svg>
+        <span>시뮬레이터</span>
+        <span class="mono" id="tabGpa" style="font-size:10px;opacity:.8">—</span>
+      </button>
+      <button data-tab="archive" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"></use></svg>
+        <span>성적 보관함</span>
+        <span class="mono" id="tabArchCount" style="font-size:10px;opacity:.8">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= HOME ================= -->
+<main data-view="home" class="hidden flex-1 w-full max-w-[92rem] mx-auto px-3 sm:px-5 py-6 sm:py-10 space-y-8 sm:space-y-14">
+
+  <section class="hero-wrap grid lg:grid-cols-[1.05fr_.95fr] gap-7 lg:gap-12 items-center pt-2 pb-8">
+    <div class="space-y-5 fade-in">
+      <div class="flex items-center gap-2.5">
+        <span class="eyebrow">Academic Record</span>
+        <span style="flex:1;height:1px;background:linear-gradient(90deg,var(--gold-soft),transparent)"></span>
+      </div>
+      <h1 class="hero-title text-[2.15rem] sm:text-[2.9rem] lg:text-[3.35rem]">
+        성적표는 종이에,<br>계산은 <em>여기서</em>.
+      </h1>
+      <p class="text-[.92rem] sm:text-base leading-relaxed max-w-xl" style="color:var(--ink-soft)">
+        대학 4.5·4.3 만점과 고교 9등급·성취도를 한 화면에서 다룹니다. 과목 하나를 바꾸면 전체 평점·전공 평점·이수학점이 즉시 다시 계산되고,
+        <span style="color:var(--ink)">“졸업 목표 4.0, 남은 학점에 몇 점이 필요한가”</span>까지 거꾸로 풀어 줍니다. 입력한 성적은 브라우저 안에만 남습니다.
+      </p>
+      <div class="flex flex-wrap items-center gap-2.5 pt-1">
+        <button class="btn-solid" data-go="studio">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-gauge"></use></svg>
+          시뮬레이터 열기
+        </button>
+        <button class="btn-line" data-go="archive">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"></use></svg>
+          성적 보관함
+        </button>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1.5">
+        <span class="flex items-center gap-1.5 text-[11px]" style="color:var(--ink-faint)">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-shield"></use></svg>
+          서버 업로드 없음
+        </span>
+        <span class="flex items-center gap-1.5 text-[11px]" style="color:var(--ink-faint)">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-save"></use></svg>
+          IndexedDB 자동 저장
+        </span>
+        <span class="flex items-center gap-1.5 text-[11px]" style="color:var(--ink-faint)">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-bolt"></use></svg>
+          회원가입·설치 없이
+        </span>
+      </div>
+    </div>
+
+    <div class="relative fade-in" style="animation-delay:.12s">
+      <div class="transcript p-4 sm:p-6" id="heroSheet">
+        <div class="transcript-hd pb-3" style="border-bottom:1.5px solid var(--ink)">
+          <div>
+            <p class="eyebrow" style="color:var(--gold)">Lemon Grade · Transcript</p>
+            <p class="serif text-[1.05rem] font-bold leading-tight mt-0.5">학업 성적 기록부</p>
+          </div>
+          <div class="text-right">
+            <p class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.1em">SAMPLE</p>
+            <p class="mono num" style="font-size:9px;color:var(--ink-faint)">2026-1 / 2026-2</p>
+          </div>
+        </div>
+        <div class="pt-2.5 space-y-0.5">
+          <div class="transcript-row"><span class="mono" style="font-size:9px;color:var(--ink-faint);width:2.4rem;flex-shrink:0">전공</span><span>자료구조</span><span class="lead"></span><span class="mono" style="width:1.5rem;text-align:center">2</span><span class="serif font-bold" style="width:2rem;text-align:right">A+</span></div>
+          <div class="transcript-row"><span class="mono" style="font-size:9px;color:var(--ink-faint);width:2.4rem;flex-shrink:0">전공</span><span>회로이론</span><span class="lead"></span><span class="mono" style="width:1.5rem;text-align:center">3</span><span class="serif font-bold" style="width:2rem;text-align:right">A</span></div>
+          <div class="transcript-row"><span class="mono" style="font-size:9px;color:var(--ink-faint);width:2.4rem;flex-shrink:0">전공</span><span>공학수학 II</span><span class="lead"></span><span class="mono" style="width:1.5rem;text-align:center">3</span><span class="serif font-bold" style="width:2rem;text-align:right">B+</span></div>
+          <div class="transcript-row"><span class="mono" style="font-size:9px;color:var(--ink-faint);width:2.4rem;flex-shrink:0">교양</span><span>대학영어</span><span class="lead"></span><span class="mono" style="width:1.5rem;text-align:center">2</span><span class="serif font-bold" style="width:2rem;text-align:right">A+</span></div>
+          <div class="transcript-row"><span class="mono" style="font-size:9px;color:var(--ink-faint);width:2.4rem;flex-shrink:0">교양</span><span>과학기술과 사회</span><span class="lead"></span><span class="mono" style="width:1.5rem;text-align:center">3</span><span class="serif font-bold" style="width:2rem;text-align:right">A</span></div>
+        </div>
+        <div class="flex items-end justify-between gap-3 pt-3 mt-2" style="border-top:1px solid var(--line-2)">
+          <div class="space-y-1">
+            <p class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.1em">TERM GPA</p>
+            <p class="stat-big text-[2.1rem]" style="color:var(--emerald)">4.12<span class="mono" style="font-size:.7rem;color:var(--ink-faint);letter-spacing:0"> / 4.5</span></p>
+            <p class="text-[10.5px]" style="color:var(--ink-soft)">이수 13학점 · 전공 3.92 · 교양 4.40</p>
+          </div>
+          <div class="seal"><b>4.12</b><span>gpa</span></div>
+        </div>
+        <div class="pt-2.5 mt-2 flex items-center justify-between" style="border-top:1px dotted var(--line-2)">
+          <p class="mono" style="font-size:8.5px;color:var(--ink-faint);letter-spacing:.06em">LEMON SOFT · GRADE SIMULATOR</p>
+          <p class="mono" style="font-size:8.5px;color:var(--ink-faint)">SAMPLE DATA</p>
+        </div>
+      </div>
+      <div class="absolute px-2.5 py-1.5 sheet-quiet mono" style="bottom:-1.55rem;left:.5rem;z-index:6;font-size:9.5px;color:var(--ink-soft);letter-spacing:.04em;box-shadow:0 10px 24px -18px rgba(0,0,0,.5)">
+        목표 4.0 → 남은 30학점 평균 <b style="color:var(--emerald)">3.83</b> 필요
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <div class="flex items-end justify-between gap-3">
+      <div>
+        <p class="eyebrow">What it does</p>
+        <h2 class="serif text-[1.5rem] sm:text-[1.75rem] font-bold tracking-tight mt-1">세 가지를 한 장부에</h2>
+      </div>
+      <span class="mono hidden sm:block" style="font-size:10px;color:var(--ink-faint);letter-spacing:.12em">01 — 03</span>
+    </div>
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div class="feature card-lift">
+        <div class="flex items-start justify-between mb-2.5">
+          <div class="fnum">01</div>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-calc"></use></svg>
+        </div>
+        <h3 class="serif font-bold text-[1.02rem]">실시간 평점 장부</h3>
+        <p class="text-[.8rem] leading-relaxed mt-1.5" style="color:var(--ink-soft)">
+          과목·학점·등급을 적는 순간 전체 평점, 전공 평점, 이수학점, 백분율 환산이 함께 움직입니다. 4.5와 4.3, 9등급과 성취도를 오가도 기록은 그대로.
+        </p>
+      </div>
+      <div class="feature card-lift">
+        <div class="flex items-start justify-between mb-2.5">
+          <div class="fnum">02</div>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-target"></use></svg>
+        </div>
+        <h3 class="serif font-bold text-[1.02rem]">목표 역산 시뮬레이터</h3>
+        <p class="text-[.8rem] leading-relaxed mt-1.5" style="color:var(--ink-soft)">
+          “졸업 목표 4.0”을 적으면 남은 학점에 필요한 평균 평점을 역산하고, 슬라이더와 가정 모드로 점수를 바꿔 보며 최종 평점을 미리 확인합니다. 달성하면 축포가 터집니다.
+        </p>
+      </div>
+      <div class="feature card-lift">
+        <div class="flex items-start justify-between mb-2.5">
+          <div class="fnum">03</div>
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-seal"></use></svg>
+        </div>
+        <h3 class="serif font-bold text-[1.02rem]">기록과 리포트</h3>
+        <p class="text-[.8rem] leading-relaxed mt-1.5" style="color:var(--ink-soft)">
+          학기별 추이와 등급 분포 차트, 성적표 스타일 PNG 리포트, JSON 백업·복원. 학기 스냅샷은 보관함에 쌓여 언제든 다시 꺼내 비교할 수 있습니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-3.5">
+    <div class="flex items-end justify-between gap-3">
+      <div>
+        <p class="eyebrow">Four scales</p>
+        <h2 class="serif text-[1.5rem] sm:text-[1.75rem] font-bold tracking-tight mt-1">어느 학교의 성적표든</h2>
+      </div>
+      <button class="btn-mini" data-go="studio">바로 입력하기 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow-right"></use></svg></button>
+    </div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <button class="mode-card" data-mode-jump="u45">
+        <div class="mc-top"><span class="mc-num">4.5 <small>만점</small></span><span class="mono" style="font-size:9px;color:var(--gold)">A+ ~ F</span></div>
+        <p class="text-[.82rem] font-bold mt-1.5">대학 학점 · 4.5</p>
+        <p class="text-[.72rem] leading-snug mt-0.5" style="color:var(--ink-soft)">A+ 4.5, B+ 3.5 … 9단계</p>
+      </button>
+      <button class="mode-card" data-mode-jump="u43">
+        <div class="mc-top"><span class="mc-num">4.3 <small>만점</small></span><span class="mono" style="font-size:9px;color:var(--gold)">A+ ~ F</span></div>
+        <p class="text-[.82rem] font-bold mt-1.5">대학 학점 · 4.3</p>
+        <p class="text-[.72rem] leading-snug mt-0.5" style="color:var(--ink-soft)">± 등급 포함 13단계</p>
+      </button>
+      <button class="mode-card" data-mode-jump="hs9">
+        <div class="mc-top"><span class="mc-num">9 <small>등급</small></span><span class="mono" style="font-size:9px;color:var(--gold)">석차등급</span></div>
+        <p class="text-[.82rem] font-bold mt-1.5">고교 내신 · 9등급</p>
+        <p class="text-[.72rem] leading-snug mt-0.5" style="color:var(--ink-soft)">원점수로 등급 산출</p>
+      </button>
+      <button class="mode-card" data-mode-jump="hsA">
+        <div class="mc-top"><span class="mc-num">A <small>~ E</small></span><span class="mono" style="font-size:9px;color:var(--gold)">성취도</span></div>
+        <p class="text-[.82rem] font-bold mt-1.5">고교 · 성취도</p>
+        <p class="text-[.72rem] leading-snug mt-0.5" style="color:var(--ink-soft)">진로선택 A~E</p>
+      </button>
+    </div>
+  </section>
+
+  <section class="sheet p-5 sm:p-7 space-y-4">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="eyebrow">Also included</p>
+        <h2 class="serif text-[1.35rem] font-bold tracking-tight mt-1">곁들여 붙은 것들</h2>
+      </div>
+      <span class="mono" style="font-size:10px;color:var(--ink-faint)">전부 브라우저 안에서</span>
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1">
+      <div class="flex items-start gap-2.5 py-2" style="border-bottom:1px dotted var(--line-2)">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold)"><use href="#i-refresh"></use></svg>
+        <div><p class="text-[.83rem] font-bold">4.5 · 4.3 · 100점 · 4.0 환산</p><p class="text-[.73rem] mt-0.5" style="color:var(--ink-soft)">교환학생·대학원 지원서에 쓰는 환산표를 한 번에</p></div>
+      </div>
+      <div class="flex items-start gap-2.5 py-2" style="border-bottom:1px dotted var(--line-2)">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold)"><use href="#i-calc"></use></svg>
+        <div><p class="text-[.83rem] font-bold">원점수 → 석차등급 산출</p><p class="text-[.73rem] mt-0.5" style="color:var(--ink-soft)">평균·표준편차로 Z점수와 예상 등급을 계산</p></div>
+      </div>
+      <div class="flex items-start gap-2.5 py-2" style="border-bottom:1px dotted var(--line-2)">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold)"><use href="#i-chart"></use></svg>
+        <div><p class="text-[.83rem] font-bold">학기별 추이 · 등급 분포</p><p class="text-[.73rem] mt-0.5" style="color:var(--ink-soft)">꺾은선과 막대, 도넛으로 한눈에</p></div>
+      </div>
+      <div class="flex items-start gap-2.5 py-2" style="border-bottom:1px dotted var(--line-2)">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold)"><use href="#i-image"></use></svg>
+        <div><p class="text-[.83rem] font-bold">성적 리포트 PNG</p><p class="text-[.73rem] mt-0.5" style="color:var(--ink-soft)">성적표 서식 그대로 이미지로 저장</p></div>
+      </div>
+      <div class="flex items-start gap-2.5 py-2" style="border-bottom:1px dotted var(--line-2)">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold)"><use href="#i-code"></use></svg>
+        <div><p class="text-[.83rem] font-bold">JSON 백업·복원</p><p class="text-[.73rem] mt-0.5" style="color:var(--ink-soft)">기기를 옮겨도 기록이 따라옵니다</p></div>
+      </div>
+      <div class="flex items-start gap-2.5 py-2" style="border-bottom:1px dotted var(--line-2)">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold)"><use href="#i-spark"></use></svg>
+        <div><p class="text-[.83rem] font-bold">가정 모드</p><p class="text-[.73rem] mt-0.5" style="color:var(--ink-soft)">저장하지 않고 등급만 바꿔 최종 평점 미리보기</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid lg:grid-cols-[1.1fr_.9fr] gap-3">
+    <div class="sheet p-5 sm:p-6 flex flex-col justify-between gap-4" style="background:linear-gradient(150deg, color-mix(in srgb, var(--emerald) 7%, var(--paper-2)), var(--paper-2));border-color:var(--line-2)">
+      <div class="space-y-2">
+        <p class="eyebrow">Privacy</p>
+        <h2 class="serif text-[1.3rem] font-bold tracking-tight">성적은 나만 볼 수 있게</h2>
+        <p class="text-[.82rem] leading-relaxed" style="color:var(--ink-soft)">
+          입력한 과목과 성적은 <span class="mono" style="font-size:.75rem;color:var(--emerald)">lemon_grade_v1</span> IndexedDB에 저장되고 어디에도 전송되지 않습니다.
+          브라우저 데이터를 지우면 함께 사라지므로, 기기를 바꾸기 전에는 JSON으로 백업해 두세요.
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button class="btn-line" id="btnHomeBackup">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+          JSON 백업
+        </button>
+        <button class="btn-line" id="btnHomeRestore">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+          백업 복원
+        </button>
+      </div>
+    </div>
+    <div class="sheet p-5 sm:p-6 flex flex-col justify-between gap-4">
+      <div class="space-y-2">
+        <p class="eyebrow">Start here</p>
+        <h2 class="serif text-[1.3rem] font-bold tracking-tight">첫 학기부터 적어 보기</h2>
+        <p class="text-[.82rem] leading-relaxed" style="color:var(--ink-soft)">
+          학기를 만들고 과목을 한 줄씩 추가하면, 오른쪽 요약이 실시간으로 따라옵니다. 손으로 채워 보기 어렵다면 예시 성적을 불러와 감을 잡아도 좋습니다.
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button class="btn-solid" data-go="studio">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
+          학기 만들기
+        </button>
+        <button class="btn-line" id="btnHomeSample">예시로 채워보기</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================= STUDIO ================= -->
+<main data-view="studio" class="hidden flex-1 w-full max-w-[92rem] mx-auto px-3 sm:px-5 py-4 sm:py-6 space-y-3.5">
+
+  <section class="sheet p-3 sm:p-4 space-y-3">
+    <div class="flex flex-wrap items-center justify-between gap-2.5">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="eyebrow">Scale</span>
+        <div class="mode-strip" id="modeStrip">
+          <button data-mode="u45" class="on">대학 4.5</button>
+          <button data-mode="u43">대학 4.3</button>
+          <button data-mode="hs9">고교 9등급</button>
+          <button data-mode="hsA">성취도 A~E</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="btn-line" id="btnSimMode" aria-pressed="false" style="padding:.42rem .6rem;font-size:.74rem">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-spark"></use></svg>
+          가정 모드
+        </button>
+        <button class="btn-line" id="btnReport" style="padding:.42rem .6rem;font-size:.74rem">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-image"></use></svg>
+          리포트
+        </button>
+      </div>
+    </div>
+    <div class="hairline"></div>
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-1.5 overflow-x-auto" id="termChips" style="scrollbar-width:none"></div>
+      <button class="btn-mini" id="btnAddTerm">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
+        학기 추가
+      </button>
+      <span style="flex:1"></span>
+      <div class="flex items-center gap-1.5">
+        <input id="termName" class="cell-input" style="width:9rem;border-color:var(--line);padding:.34rem .45rem;font-size:.78rem" placeholder="학기 이름" aria-label="학기 이름">
+        <button class="icon-square" id="btnDupTerm" title="학기 복제" aria-label="학기 복제" style="width:1.8rem;height:1.8rem">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="1.6"></rect><path d="M15.5 8.5V5.5a1.5 1.5 0 0 0-1.5-1.5H5.5A1.5 1.5 0 0 0 4 5.5V14a1.5 1.5 0 0 0 1.5 1.5h3"></path></svg>
+        </button>
+        <button class="icon-square" id="btnDelTerm" title="학기 삭제" aria-label="학기 삭제" style="width:1.8rem;height:1.8rem">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid xl:grid-cols-[1.5fr_1fr] gap-3.5 items-start">
+    <div class="space-y-3.5 min-w-0">
+
+      <section class="sheet p-3 sm:p-4 space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-baseline gap-2">
+            <h2 class="serif text-[1.05rem] font-bold">과목 성적</h2>
+            <span class="mono" id="courseCount" style="font-size:10px;color:var(--ink-faint)">0과목</span>
+            <span id="simTag" class="mono hidden" style="font-size:9px;color:var(--gold);border:1px solid var(--gold);padding:.1rem .3rem;border-radius:2px;letter-spacing:.08em">SIMULATION</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button class="btn-mini hidden" id="btnFillGrades">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-calc"></use></svg>
+              원점수로 등급 산출
+            </button>
+            <button class="btn-mini" id="btnAddCourse">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
+              과목
+            </button>
+          </div>
+        </div>
+
+        <div class="c-head" id="courseHead">
+          <span>과목명</span>
+          <span>구분</span>
+          <span style="text-align:center" id="headCredit">학점</span>
+          <span style="text-align:center">성적</span>
+          <span></span>
+        </div>
+
+        <div id="courseList"></div>
+
+        <div id="courseEmpty" class="empty-slot" style="display:none">
+          <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-table"></use></svg>
+          <p class="text-[.86rem] font-bold">아직 과목이 없어요</p>
+          <p class="text-[.76rem] mt-1" style="color:var(--ink-soft)">과목을 한 줄 추가하고 과목명·학점·등급을 적으면 오른쪽 요약이 바로 움직입니다.</p>
+          <div class="flex justify-center gap-2 mt-3">
+            <button class="btn-solid" id="btnEmptyAdd" style="padding:.5rem .8rem;font-size:.78rem">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
+              첫 과목 추가
+            </button>
+            <button class="btn-line" id="btnEmptySample" style="padding:.5rem .8rem;font-size:.78rem">예시 불러오기</button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2" style="border-top:1px solid var(--line-2)">
+          <div class="flex items-center gap-3 flex-wrap">
+            <span class="mono" style="font-size:10px;color:var(--ink-faint)">합계</span>
+            <span class="text-[.78rem]" style="color:var(--ink-soft)"><b class="num" id="sumCredits" style="color:var(--ink)">0</b> <span id="sumCreditUnit">학점</span></span>
+            <span class="text-[.78rem]" style="color:var(--ink-soft)">과목 <b class="num" id="sumCourses" style="color:var(--ink)">0</b></span>
+            <span class="text-[.78rem]" style="color:var(--ink-soft)"><span id="sumMajorLabel">전공</span> <b class="num" id="sumMajor" style="color:var(--ink)">0</b></span>
+          </div>
+          <button class="btn-mini danger" id="btnClearCourses">전체 비우기</button>
+        </div>
+      </section>
+
+      <section class="sheet p-3 sm:p-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-baseline gap-2">
+            <h2 class="serif text-[1.05rem] font-bold">학기별 추이</h2>
+            <span class="mono" style="font-size:10px;color:var(--ink-faint)" id="trendHint">학기 평점 · 누적 평점</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button class="btn-mini on" data-trend="line">꺾은선</button>
+            <button class="btn-mini" data-trend="bar">막대</button>
+          </div>
+        </div>
+        <div class="chart-wrap" id="trendChart" style="min-height:150px"></div>
+      </section>
+
+      <section class="sheet p-3 sm:p-4 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h2 class="serif text-[1.05rem] font-bold">학기 비교</h2>
+          <span class="mono" style="font-size:10px;color:var(--ink-faint)">학기 · 이수 · 평점</span>
+        </div>
+        <div id="termTable" class="space-y-0"></div>
+      </section>
+
+    </div>
+
+    <aside class="space-y-3.5 min-w-0 xl:sticky xl:top-[8.6rem]">
+
+      <section class="sheet summary-card p-4 space-y-3">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="eyebrow" id="sumEyebrow">Cumulative GPA</p>
+            <p class="mono mt-0.5" style="font-size:9.5px;color:var(--ink-faint)">전체 학기 누적</p>
+          </div>
+          <span id="gpaBadge" class="mono" style="font-size:9px;padding:.14rem .34rem;border:1px solid var(--line-2);border-radius:2px;color:var(--ink-soft)">4.5 만점</span>
+        </div>
+        <div class="flex items-end gap-2">
+          <span class="stat-big gpa-hero num" id="gpaMain">—</span>
+          <span class="mono pb-1.5" id="gpaMax" style="font-size:.8rem;color:var(--ink-faint)">/ 4.5</span>
+          <span style="flex:1"></span>
+          <span id="gpaDelta" class="mono pb-2" style="font-size:10px"></span>
+        </div>
+        <div class="meter"><i id="gpaMeter" style="width:0%"></i></div>
+        <p class="text-[.74rem] leading-snug" id="gpaNote" style="color:var(--ink-soft)">과목을 추가하면 평점이 계산됩니다.</p>
+
+        <div class="hairline"></div>
+
+        <div class="grid grid-cols-2 gap-x-3">
+          <div class="kpi"><span class="k" id="kMajorLabel">전공 평점</span><span class="v num" id="kMajor">—</span></div>
+          <div class="kpi"><span class="k" id="kGenLabel">교양 평점</span><span class="v num" id="kGen">—</span></div>
+          <div class="kpi"><span class="k" id="kCreditLabel">이수 학점</span><span class="v num" id="kCredit">0</span></div>
+          <div class="kpi"><span class="k" id="kExtraLabel">과목 수</span><span class="v num" id="kExtra">0</span></div>
+        </div>
+
+        <div class="hairline"></div>
+
+        <div id="cvRow" class="flex items-center justify-between gap-2">
+          <span class="mono" style="font-size:9px;letter-spacing:.12em;color:var(--ink-faint)">환산</span>
+          <div class="flex items-center gap-2.5 flex-wrap justify-end">
+            <span class="text-[.72rem]" style="color:var(--ink-soft)">4.3 <b class="num" id="cv43" style="color:var(--ink)">—</b></span>
+            <span class="text-[.72rem]" style="color:var(--ink-soft)">100 <b class="num" id="cv100" style="color:var(--ink)">—</b></span>
+            <span class="text-[.72rem]" style="color:var(--ink-soft)">4.0 <b class="num" id="cv40" style="color:var(--ink)">—</b></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="sheet p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-target"></use></svg>
+            <h2 class="serif text-[1.02rem] font-bold">목표 역산</h2>
+          </div>
+          <span class="mono" style="font-size:9px;color:var(--ink-faint)">REVERSE</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block">
+            <span class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.08em" id="targetLabel">목표 평점</span>
+            <input id="inpTarget" type="number" step="0.01" min="0" class="cell-input num" style="border-color:var(--line-2);background:var(--paper);font-size:.95rem;font-weight:800;padding:.45rem .5rem" inputmode="decimal">
+          </label>
+          <label class="block">
+            <span class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.08em" id="remainLabel">남은 학점</span>
+            <input id="inpRemain" type="number" step="1" min="0" class="cell-input num" style="border-color:var(--line-2);background:var(--paper);font-size:.95rem;font-weight:800;padding:.45rem .5rem" inputmode="numeric">
+          </label>
+        </div>
+        <div class="flex items-center gap-1.5 flex-wrap" id="remainChips">
+          <span class="mono" style="font-size:9px;color:var(--ink-faint)">빠른 선택</span>
+          <button class="btn-mini" data-remain="15">+15</button>
+          <button class="btn-mini" data-remain="30">+30</button>
+          <button class="btn-mini" data-remain="45">+45</button>
+          <button class="btn-mini" data-remain="60">+60</button>
+        </div>
+
+        <div class="p-2.5" style="border:1px solid var(--line-2);border-radius:2px;background:color-mix(in srgb, var(--tint) 70%, transparent)">
+          <p class="mono" style="font-size:9px;letter-spacing:.1em;color:var(--gold)" id="reqLabel">남은 학점에 필요한 평균</p>
+          <div class="flex items-end gap-2 mt-1">
+            <span class="stat-big num" id="reqValue" style="font-size:1.85rem;color:var(--emerald)">—</span>
+            <span class="mono pb-1" id="reqSub" style="font-size:.7rem;color:var(--ink-faint)"></span>
+          </div>
+          <p class="text-[.75rem] leading-snug mt-1" id="reqNote" style="color:var(--ink-soft)">목표와 남은 학점을 적어 주세요.</p>
+        </div>
+
+        <div class="space-y-1.5 pt-0.5">
+          <div class="flex items-center justify-between">
+            <span class="mono" style="font-size:9px;letter-spacing:.1em;color:var(--ink-faint)">남은 학점 평균 가정</span>
+            <span class="mono num" id="simSliderVal" style="font-size:11px;color:var(--emerald);font-weight:700">—</span>
+          </div>
+          <input id="simSlider" type="range" class="lemon-range" min="0" max="4.5" step="0.05" value="4" style="width:100%">
+          <div class="flex items-center justify-between gap-2 pt-0.5">
+            <span class="text-[.72rem]" style="color:var(--ink-soft)">예상 최종 평점</span>
+            <span class="mono num" id="simProjected" style="font-size:.95rem;font-weight:800;color:var(--ink)">—</span>
+          </div>
+          <p class="text-[.71rem] leading-snug" id="simNote" style="color:var(--ink-faint)">슬라이더를 움직이면 목표 도달 여부가 바로 보입니다.</p>
+        </div>
+      </section>
+
+      <section class="sheet p-4 space-y-2">
+        <div class="flex items-center justify-between">
+          <h2 class="serif text-[1.02rem] font-bold">등급 분포</h2>
+          <span class="mono" style="font-size:10px;color:var(--ink-faint)" id="donutHint">—</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="chart-wrap" id="donutChart" style="width:44%;max-width:9.5rem;flex-shrink:0"></div>
+          <div class="flex-1 min-w-0 space-y-1" id="donutLegend"></div>
+        </div>
+      </section>
+
+      <section class="sheet p-3.5 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="serif text-[.95rem] font-bold">보관 · 백업</h2>
+          <span class="mono" style="font-size:9px;color:var(--ink-faint)">lemon_grade_v1</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button class="btn-line" id="btnSaveSnapshot" style="padding:.5rem .5rem;font-size:.74rem">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-save"></use></svg>
+            보관함에 저장
+          </button>
+          <button class="btn-line" id="btnExportJson" style="padding:.5rem .5rem;font-size:.74rem">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+            JSON 내보내기
+          </button>
+          <button class="btn-line" id="btnImportJson" style="padding:.5rem .5rem;font-size:.74rem">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+            JSON 가져오기
+          </button>
+          <button class="btn-line" id="btnNewSheet" style="padding:.5rem .5rem;font-size:.74rem">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"></use></svg>
+            새로 시작
+          </button>
+        </div>
+        <p class="text-[.68rem] leading-snug pt-0.5" style="color:var(--ink-faint)" id="saveNote">입력하는 대로 자동 저장됩니다.</p>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<!-- ================= ARCHIVE ================= -->
+<main data-view="archive" class="hidden flex-1 w-full max-w-[92rem] mx-auto px-3 sm:px-5 py-5 sm:py-8 space-y-4">
+  <section class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <p class="eyebrow">Records</p>
+      <h1 class="serif text-[1.7rem] sm:text-[2rem] font-bold tracking-tight mt-1">성적 보관함</h1>
+      <p class="text-[.82rem] mt-1" style="color:var(--ink-soft)">학기 말 성적표를 찍어 두면, 다음 학기 목표를 세울 때 꺼내 비교할 수 있습니다.</p>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button class="btn-line" id="btnArchSave" style="padding:.5rem .7rem;font-size:.76rem">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-save"></use></svg>
+        현재 성적 저장
+      </button>
+      <button class="btn-line" id="btnArchImport" style="padding:.5rem .7rem;font-size:.76rem">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+        JSON
+      </button>
+    </div>
+  </section>
+
+  <section class="grid sm:grid-cols-3 gap-2.5">
+    <div class="sheet p-3.5">
+      <p class="mono" style="font-size:9px;letter-spacing:.1em;color:var(--ink-faint)">보관된 기록</p>
+      <p class="stat-big num mt-1" id="archCount" style="font-size:1.7rem">0</p>
+    </div>
+    <div class="sheet p-3.5">
+      <p class="mono" style="font-size:9px;letter-spacing:.1em;color:var(--ink-faint)">최고 평점</p>
+      <p class="stat-big num mt-1" id="archBest" style="font-size:1.7rem">—</p>
+    </div>
+    <div class="sheet p-3.5">
+      <p class="mono" style="font-size:9px;letter-spacing:.1em;color:var(--ink-faint)">현재 장부</p>
+      <p class="stat-big num mt-1" id="archCurrent" style="font-size:1.7rem">—</p>
+    </div>
+  </section>
+
+  <section class="space-y-2.5">
+    <div class="flex items-center justify-between gap-2">
+      <h2 class="serif text-[1.05rem] font-bold">기록 목록</h2>
+      <div class="flex items-center gap-1.5">
+        <input id="archSearch" class="cell-input" placeholder="이름·학기 검색" style="width:10rem;border-color:var(--line);font-size:.76rem;padding:.34rem .45rem">
+      </div>
+    </div>
+    <div id="archGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5"></div>
+    <div id="archEmpty" class="empty-slot" style="display:none">
+      <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"></use></svg>
+      <p class="text-[.86rem] font-bold">보관된 기록이 없어요</p>
+      <p class="text-[.76rem] mt-1" style="color:var(--ink-soft)">시뮬레이터에서 성적을 적고 ‘보관함에 저장’을 누르면 이곳에 성적표가 쌓입니다.</p>
+      <button class="btn-solid mt-3" data-go="studio" style="padding:.5rem .8rem;font-size:.78rem">시뮬레이터로</button>
+    </div>
+  </section>
+
+  <section class="sheet p-4 sm:p-5 space-y-2">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:var(--emerald)"><use href="#i-info"></use></svg>
+      <h2 class="serif text-[1rem] font-bold">보관함은 어떻게 동작하나</h2>
+    </div>
+    <p class="text-[.78rem] leading-relaxed" style="color:var(--ink-soft)">
+      저장할 때의 학기·과목·평점을 통째로 찍어 두는 스냅샷입니다. 나중에 <b>불러오기</b>를 누르면 그 시점의 장부가 작업 화면으로 돌아오고, 지금 장부는 자동 저장본에 남습니다.
+      자동 저장(현재 작업)과 스냅샷(보관함)은 서로 다른 저장소에 들어가므로 지웠다 복구하는 일이 없습니다.
+    </p>
+  </section>
+</main>
+
+<footer class="mt-auto border-t" style="border-color:var(--line);background:color-mix(in srgb, var(--paper-2) 60%, transparent)">
+  <div class="max-w-[92rem] mx-auto px-4 sm:px-5 py-6 space-y-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="brand-mark" style="width:2rem;height:2rem">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19V6h6.2a3.4 3.4 0 0 1 0 6.8H6"></path><circle cx="17.5" cy="19" r="2.2"></circle></svg>
+        </div>
+        <div>
+          <p class="serif font-bold text-[.92rem]">Lemon Grade</p>
+          <p class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.1em">LEMON SOFT · NO.57</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="index.html" class="btn-mini">Lemon soft 허브</a>
+        <a href="table.html" class="btn-mini">Lemon Table</a>
+        <a href="wallpaper.html" class="btn-mini">Lemon Wallpaper</a>
+      </div>
+    </div>
+    <p class="text-[.7rem] leading-relaxed" style="color:var(--ink-faint)">
+      성적 데이터는 이 브라우저의 IndexedDB(lemon_grade_v1)에만 저장되며 어떤 서버로도 전송되지 않습니다. 브라우저 저장소를 지우면 함께 삭제되니 JSON 백업을 권장합니다.
+    </p>
+  </div>
+</footer>
+
+<div class="pop" id="popRoot" aria-hidden="true">
+  <div class="pop-card" id="popCard" role="dialog" aria-modal="true" aria-labelledby="popTitle">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="eyebrow" id="popEyebrow">Lemon Grade</p>
+        <h3 class="serif text-[1.1rem] font-bold mt-0.5" id="popTitle">제목</h3>
+      </div>
+      <button class="icon-square" id="popClose" aria-label="닫기" style="width:1.7rem;height:1.7rem">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <div id="popBody" class="pt-3 space-y-2.5"></div>
+    <div id="popActions" class="flex items-center justify-end gap-2 pt-3.5"></div>
+  </div>
+</div>
+
+<input type="file" id="fileJson" accept=".json,application/json" class="hidden" style="display:none">
+
+<div id="mobileBar" class="fixed left-0 right-0 bottom-0 z-40 border-t px-3 py-2 items-center justify-between gap-3" style="display:none;border-color:var(--line-2);background:color-mix(in srgb, var(--paper-2) 94%, transparent);backdrop-filter:blur(10px);padding-bottom:calc(.5rem + env(safe-area-inset-bottom))">
+  <div class="flex items-baseline gap-1.5">
+    <span class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.1em" id="mobLabel">GPA</span>
+    <span class="stat-big num" id="mobGpa" style="font-size:1.5rem;color:var(--emerald)">—</span>
+    <span class="mono" style="font-size:10px;color:var(--ink-faint)" id="mobSub">/ 4.5</span>
+  </div>
+  <div class="flex items-center gap-1.5">
+    <button class="btn-line" id="mobAdd" style="padding:.45rem .6rem;font-size:.74rem">+ 과목</button>
+    <button class="btn-solid" id="mobReport" style="padding:.45rem .7rem;font-size:.74rem">리포트</button>
+  </div>
+</div>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     Lemon Grade · 성적 장부 · 목표 역산 · 리포트
+     저장: IndexedDB lemon_grade_v1 (state / reports)
+     ============================================================ */
+
+  var DB_NAME = 'lemon_grade_v1';
+  var DB_VER = 1;
+  var ST_STATE = 'state';
+  var ST_REP = 'reports';
+  var LS_KEY = 'lemon_grade_v1_ls';
+
+  var MODES = {
+    u45: {
+      key: 'u45', kind: 'uni', max: 4.5, unit: '학점', maxLabel: '4.5 만점',
+      grades: [['A+', 4.5], ['A', 4.0], ['B+', 3.5], ['B', 3.0], ['C+', 2.5], ['C', 2.0], ['D+', 1.5], ['D', 1.0], ['F', 0]],
+      cats: [['major', '전공'], ['gen', '교양'], ['etc', '일반']]
+    },
+    u43: {
+      key: 'u43', kind: 'uni', max: 4.3, unit: '학점', maxLabel: '4.3 만점',
+      grades: [['A+', 4.3], ['A', 4.0], ['A-', 3.7], ['B+', 3.3], ['B', 3.0], ['B-', 2.7], ['C+', 2.3], ['C', 2.0], ['C-', 1.7], ['D+', 1.3], ['D', 1.0], ['D-', 0.7], ['F', 0]],
+      cats: [['major', '전공'], ['gen', '교양'], ['etc', '일반']]
+    },
+    hs9: {
+      key: 'hs9', kind: 'hs9', max: 9, unit: '단위', maxLabel: '석차등급',
+      grades: [['1', 1], ['2', 2], ['3', 3], ['4', 4], ['5', 5], ['6', 6], ['7', 7], ['8', 8], ['9', 9]],
+      cats: [['major', '공통'], ['gen', '일반'], ['etc', '진로']]
+    },
+    hsA: {
+      key: 'hsA', kind: 'hsA', max: 5, unit: '단위', maxLabel: '성취도 A~E',
+      grades: [['A', 5], ['B', 4], ['C', 3], ['D', 2], ['E', 1]],
+      cats: [['major', '공통'], ['gen', '일반'], ['etc', '진로']]
+    }
+  };
+
+  /* 석차등급 누적 백분율(상위 %) 경계 */
+  var HS_CUM = [4, 11, 23, 40, 60, 77, 89, 96, 100];
+  var HS_EST = { A: 1, B: 3, C: 5, D: 7, E: 9 };
+
+  var PALETTE = ['#0c5a44', '#2b9e79', '#a8842c', '#c9a25c', '#7d5a3c', '#a8462f', '#4f655c'];
+
+  var S = null;
+  var activeTermId = null;
+  var simOn = false;
+  var simGrades = {};
+  var trendMode = 'line';
+  var lastCalc = null;
+  var saveTimer = null;
+  var reps = [];
+  var repQuery = '';
+
+  /* ---------------- utils ---------------- */
+  function $(id) { return document.getElementById(id); }
+  function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function uid(p) { return (p || 'x') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  function num(v, d) { var n = Number(v); if (!isFinite(n)) return null; return d === undefined ? n : Number(n.toFixed(d)); }
+  function toast(msg, type) { if (window.Lemon) Lemon.toast(msg, type || 'ok'); }
+  function hap(ms) { if (window.Lemon) Lemon.hap(ms || 10); }
+  function mode() { return MODES[S.mode] || MODES.u45; }
+  function catLabel(key) { var list = mode().cats; for (var i = 0; i < list.length; i++) { if (list[i][0] === key) return list[i][1]; } return '일반'; }
+
+  /* 점수 척도: 값이 클수록 좋은 점수로 통일 (9등급은 10-등급) */
+  function gradeScore(g) {
+    var m = mode();
+    if (!g) return null;
+    if (m.kind === 'hs9') {
+      var n = Number(g);
+      return isFinite(n) && n >= 1 && n <= 9 ? (10 - n) : null;
+    }
+    for (var i = 0; i < m.grades.length; i++) { if (m.grades[i][0] === g) return m.grades[i][1]; }
+    return null;
+  }
+  function scoreLabel(v) {
+    var m = mode();
+    if (v === null || v === undefined || !isFinite(v)) return '—';
+    if (m.kind === 'hs9') return (10 - v).toFixed(2);
+    return v.toFixed(2);
+  }
+  function scoreUnit() { var m = mode(); return m.kind === 'hs9' ? '등급' : (m.kind === 'hsA' ? '/ 5.0' : '/ ' + m.max); }
+  /* 0~1 정규화 (차트 높이) */
+  function ratioOf(v) {
+    var m = mode();
+    if (v === null || v === undefined) return 0;
+    if (m.kind === 'hs9') return Math.max(0, Math.min(1, (v - 1) / 8));
+    return Math.max(0, Math.min(1, v / m.max));
+  }
+
+  /* ---------------- state ---------------- */
+  function blankTerm(name) {
+    return { id: uid('t'), name: name || nextTermName(), courses: [] };
+  }
+  function nextTermName() {
+    var d = new Date();
+    var y = d.getFullYear();
+    var seasons = ['1학기', '여름학기', '2학기', '겨울학기'];
+    var taken = S.terms.map(function (t) { return t.name; });
+    for (var i = 0; i < 24; i++) {
+      var yy = y + Math.floor(i / 4);
+      var nm = yy + '-' + seasons[i % 4];
+      if (taken.indexOf(nm) === -1) return nm;
+    }
+    return y + '-학기';
+  }
+  function blankCourse() {
+    return { id: uid('c'), name: '', cat: mode().cats[0][0], credits: mode().kind === 'uni' ? 3 : 3, grade: '', raw: '', mean: '', sd: '' };
+  }
+  function defaultState() {
+    return {
+      v: 1, mode: 'u45', terms: [], active: null,
+      target: {
+        uni: { gpa: 4.0, remain: 30 },
+        hs9: { grade: 2.0, remain: 12 },
+        hsA: { grade: 4.0, remain: 12 }
+      },
+      updated: Date.now()
+    };
+  }
+  function normalize(s) {
+    var d = defaultState();
+    if (!s || typeof s !== 'object') return d;
+    s.v = 1;
+    s.mode = MODES[s.mode] ? s.mode : 'u45';
+    if (!Array.isArray(s.terms)) s.terms = [];
+    s.terms = s.terms.map(function (t) {
+      return {
+        id: t.id || uid('t'), name: String(t.name || '학기'),
+        courses: (Array.isArray(t.courses) ? t.courses : []).map(function (c) {
+          return {
+            id: c.id || uid('c'), name: String(c.name || ''),
+            cat: c.cat || 'major',
+            credits: c.credits === '' || c.credits === null || c.credits === undefined ? '' : Number(c.credits),
+            grade: c.grade === null || c.grade === undefined ? '' : String(c.grade),
+            raw: c.raw === null || c.raw === undefined ? '' : String(c.raw),
+            mean: c.mean === null || c.mean === undefined ? '' : String(c.mean),
+            sd: c.sd === null || c.sd === undefined ? '' : String(c.sd),
+            gAlt: c.gAlt && typeof c.gAlt === 'object' ? c.gAlt : {}
+          };
+        })
+      };
+    });
+    if (!s.target || typeof s.target !== 'object') s.target = d.target;
+    ['uni', 'hs9', 'hsA'].forEach(function (k) {
+      if (!s.target[k]) s.target[k] = d.target[k];
+      if (!isFinite(Number(s.target[k].gpa)) && !isFinite(Number(s.target[k].grade))) { s.target[k] = d.target[k]; }
+    });
+    s.active = s.active && s.terms.some(function (t) { return t.id === s.active; }) ? s.active : (s.terms[0] ? s.terms[0].id : null);
+    return s;
+  }
+
+  /* ---------------- IndexedDB ---------------- */
+  var dbp = null;
+  function openDB() {
+    if (dbp) return dbp;
+    dbp = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('no-idb')); return; }
+      var rq;
+      try { rq = indexedDB.open(DB_NAME, DB_VER); } catch (e) { rej(e); return; }
+      rq.onupgradeneeded = function () {
+        var db = rq.result;
+        if (!db.objectStoreNames.contains(ST_STATE)) db.createObjectStore(ST_STATE, { keyPath: 'id' });
+        if (!db.objectStoreNames.contains(ST_REP)) db.createObjectStore(ST_REP, { keyPath: 'id' });
+      };
+      rq.onsuccess = function () { res(rq.result); };
+      rq.onerror = function () { rej(rq.error || new Error('idb-open')); };
+      rq.onblocked = function () { rej(new Error('idb-blocked')); };
+    });
+    return dbp;
+  }
+  function idbPut(store, rec) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(rec);
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error || new Error('idb-put')); };
+        tx.onabort = function () { rej(tx.error || new Error('idb-abort')); };
+      });
+    });
+  }
+  function idbGet(store, id) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(store, 'readonly');
+        var rq = tx.objectStore(store).get(id);
+        rq.onsuccess = function () { res(rq.result || null); };
+        rq.onerror = function () { rej(rq.error || new Error('idb-get')); };
+      });
+    });
+  }
+  function idbAll(store) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(store, 'readonly');
+        var rq = tx.objectStore(store).getAll();
+        rq.onsuccess = function () { res(rq.result || []); };
+        rq.onerror = function () { rej(rq.error || new Error('idb-all')); };
+      });
+    });
+  }
+  function idbDel(store, id) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(id);
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error || new Error('idb-del')); };
+      });
+    });
+  }
+  function idbClear(store) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).clear();
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error || new Error('idb-clear')); };
+      });
+    });
+  }
+
+  function lsSave(state) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); return true; } catch (e) { return false; }
+  }
+  function lsLoad() {
+    try { var raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+
+  function saveState(now) {
+    S.updated = Date.now();
+    var payload = JSON.parse(JSON.stringify(S));
+    payload.id = 'main';
+    var run = function () {
+      idbPut(ST_STATE, payload).then(function () {
+        setSaveNote('저장됨 ' + timeLabel());
+        lsSave(S);
+      }, function () {
+        var ok = lsSave(S);
+        setSaveNote(ok ? '브라우저 저장소에 저장됨' : '저장 공간이 부족합니다');
+        if (!ok) toast('저장 공간이 부족해 일부가 저장되지 않았어요', 'err');
+      });
+    };
+    if (now) { clearTimeout(saveTimer); run(); return; }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(run, 320);
+    setSaveNote('저장 중…');
+  }
+  function timeLabel() {
+    var d = new Date();
+    var h = d.getHours(), m = d.getMinutes();
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+  function setSaveNote(t) {
+    var el = $('saveNote');
+    if (el) el.textContent = t;
+    var badge = $('saveBadge');
+    if (badge) badge.textContent = t.indexOf('저장됨') === 0 ? t : '자동 저장';
+  }
+
+  /* ---------------- 계산 ---------------- */
+  function courseEff(c) {
+    var g = c.grade;
+    if (simOn && simGrades[c.id] !== undefined) g = simGrades[c.id];
+    return g;
+  }
+  function computeTerm(term) {
+    var w = 0, p = 0, cnt = 0, byCat = {}, dist = {};
+    term.courses.forEach(function (c) {
+      var g = courseEff(c);
+      var sc = gradeScore(g);
+      var cr = Number(c.credits);
+      if (!(cr > 0)) cr = 0;
+      if (sc === null || !(cr > 0)) return;
+      w += cr; p += sc * cr; cnt++;
+      var k = c.cat || 'etc';
+      if (!byCat[k]) byCat[k] = { w: 0, p: 0 };
+      byCat[k].w += cr; byCat[k].p += sc * cr;
+      var dk = distKey(g);
+      dist[dk] = (dist[dk] || 0) + 1;
+    });
+    return { w: w, p: p, score: w > 0 ? p / w : null, count: cnt, byCat: byCat, dist: dist };
+  }
+  function distKey(g) {
+    var m = mode();
+    if (m.kind === 'hs9') { var n = Number(g); return n <= 3 ? '1-3' : (n <= 6 ? '4-6' : '7-9'); }
+    if (m.kind === 'hsA') return g;
+    return g.charAt(0).toUpperCase() === 'F' ? 'F' : g.charAt(0).toUpperCase();
+  }
+  function computeAll() {
+    var res = { terms: [], totalW: 0, totalP: 0, count: 0, byCat: {}, dist: {}, best: null };
+    var cumW = 0, cumP = 0;
+    S.terms.forEach(function (t) {
+      var r = computeTerm(t);
+      res.terms.push({ id: t.id, name: t.name, w: r.w, p: r.p, score: r.score, count: r.count, byCat: r.byCat, dist: r.dist });
+      if (r.w > 0) {
+        res.totalW += r.w; res.totalP += r.p; res.count += r.count;
+        cumW += r.w; cumP += r.p;
+      }
+      Object.keys(r.byCat).forEach(function (k) {
+        if (!res.byCat[k]) res.byCat[k] = { w: 0, p: 0 };
+        res.byCat[k].w += r.byCat[k].w; res.byCat[k].p += r.byCat[k].p;
+      });
+      Object.keys(r.dist).forEach(function (k) { res.dist[k] = (res.dist[k] || 0) + r.dist[k]; });
+    });
+    res.score = res.totalW > 0 ? res.totalP / res.totalW : null;
+    res.cumulative = cumP > 0 ? cumP / cumW : null;
+    if (res.totalW > 0) {
+      var cw = 0, cp = 0;
+      res.terms.forEach(function (t) {
+        if (!t.w) return;
+        cw += t.w; cp += t.p;
+        t.cum = cp / cw;
+      });
+    }
+    return res;
+  }
+  function catScore(total, key) {
+    var b = total.byCat[key];
+    if (!b || !b.w) return null;
+    return b.p / b.w;
+  }
+  function pctOf(score) {
+    var m = mode();
+    if (score === null || score === undefined) return null;
+    if (m.kind === 'hs9') {
+      var grade = 10 - score;
+      var g = Math.max(1, Math.min(9, grade));
+      var lo = g <= 1 ? 0 : HS_CUM[Math.floor(g) - 2];
+      var hi = HS_CUM[Math.ceil(g) - 1];
+      var frac = g - Math.floor(g);
+      var v = lo + (hi - lo) * frac;
+      return Math.max(0.5, Math.min(100, v));
+    }
+    return score / m.max * 100;
+  }
+
+  /* 원점수 → 석차등급 (정규분포 근사) */
+  function erf(x) {
+    var s = x < 0 ? -1 : 1; x = Math.abs(x);
+    var t = 1 / (1 + 0.3275911 * x);
+    var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return s * y;
+  }
+  function normalCdf(z) { return 0.5 * (1 + erf(z / Math.SQRT2)); }
+  function estimateHsGrade(raw, mean, sd) {
+    if (!(sd > 0)) return null;
+    var z = (raw - mean) / sd;
+    var topPct = (1 - normalCdf(z)) * 100;
+    for (var i = 0; i < HS_CUM.length; i++) { if (topPct <= HS_CUM[i]) return i + 1; }
+    return 9;
+  }
+
+  /* ---------------- 저장소 UI ---------------- */
+  function currentTerm() {
+    for (var i = 0; i < S.terms.length; i++) { if (S.terms[i].id === activeTermId) return S.terms[i]; }
+    return null;
+  }
+  function ensureTerm() {
+    if (!S.terms.length) { var t = blankTerm(); S.terms.push(t); activeTermId = t.id; }
+    if (!currentTerm()) activeTermId = S.terms[0].id;
+    return currentTerm();
+  }
+
+  function renderTermChips() {
+    var box = $('termChips');
+    if (!box) return;
+    if (!S.terms.length) { box.innerHTML = '<span class="mono" style="font-size:10px;color:var(--ink-faint)">학기가 없습니다</span>'; return; }
+    box.innerHTML = S.terms.map(function (t, i) {
+      var r = computeTerm(t);
+      var on = t.id === activeTermId ? ' on' : '';
+      var v = r.score === null ? '—' : scoreLabel(r.score);
+      return '<button class="term-chip' + on + '" data-term="' + t.id + '"><span class="tc-n">' + (i + 1) + '</span>' + esc(t.name) + '<span class="mono num" style="font-size:9.5px;opacity:.85">' + v + '</span></button>';
+    }).join('');
+  }
+
+  function gradeOptions(sel) {
+    var out = '<option value="">—</option>';
+    mode().grades.forEach(function (g) {
+      out += '<option value="' + g[0] + '"' + (String(sel) === String(g[0]) ? ' selected' : '') + '>' + g[0] + '</option>';
+    });
+    return out;
+  }
+  function catOptions(sel) {
+    return mode().cats.map(function (c) {
+      return '<option value="' + c[0] + '"' + (c[0] === sel ? ' selected' : '') + '>' + c[1] + '</option>';
+    }).join('');
+  }
+
+  function renderCourses() {
+    var term = currentTerm();
+    var list = $('courseList');
+    var head = $('courseHead');
+    if (!list) return;
+    var isHs = mode().kind === 'hs9';
+    var isUnit = mode().kind !== 'uni';
+    if (head) {
+      head.className = 'c-head' + (isHs ? ' hs' : '');
+      head.innerHTML = '<span>과목명</span><span>구분</span>' +
+        '<span style="text-align:center">' + (isUnit ? '단위' : '학점') + '</span>' +
+        '<span style="text-align:center">성적</span>' +
+        (isHs ? '<span style="text-align:center">원점 · 평균 · 표준</span>' : '') +
+        '<span></span>';
+    }
+    $('btnFillGrades').classList.toggle('hidden', !isHs);
+    if (!term || !term.courses.length) {
+      list.innerHTML = '';
+      $('courseEmpty').style.display = '';
+      $('courseCount').textContent = '0과목';
+      return;
+    }
+    $('courseEmpty').style.display = 'none';
+    $('courseCount').textContent = term.courses.length + '과목';
+    list.innerHTML = term.courses.map(function (c) {
+      var simmed = simOn && simGrades[c.id] !== undefined;
+      var low = false;
+      var m = mode();
+      if (m.kind === 'uni' && c.grade) { var sc = gradeScore(c.grade); low = sc !== null && sc < m.max * 0.5; }
+      if (m.kind === 'hs9' && c.grade) { low = Number(c.grade) >= 6; }
+      if (m.kind === 'hsA' && c.grade) { low = c.grade === 'D' || c.grade === 'E'; }
+      return '<div class="c-row' + (isHs ? ' hs' : '') + (simmed ? ' sim' : '') + '" data-id="' + c.id + '">' +
+        '<div class="c-name"><input class="cell-input" data-f="name" placeholder="과목명" value="' + esc(c.name) + '" aria-label="과목명"></div>' +
+        '<select class="cell-select c-cat" data-f="cat" aria-label="구분">' + catOptions(c.cat) + '</select>' +
+        '<input class="cell-input c-credit num" data-f="credits" type="number" min="0" step="0.5" inputmode="decimal" placeholder="3" value="' + (c.credits === '' ? '' : c.credits) + '" aria-label="' + (isUnit ? '단위수' : '학점') + '">' +
+        '<select class="cell-select c-grade grade-sel" data-f="grade" data-lvl="' + (low ? 'low' : 'ok') + '" aria-label="성적">' + gradeOptions(c.grade) + '</select>' +
+        (isHs ? '<div class="c-raw"><input class="cell-input num" data-f="raw" type="number" inputmode="decimal" placeholder="원점" value="' + esc(c.raw) + '" aria-label="원점수"><input class="cell-input num" data-f="mean" type="number" inputmode="decimal" placeholder="평균" value="' + esc(c.mean) + '" aria-label="평균"><input class="cell-input num" data-f="sd" type="number" inputmode="decimal" placeholder="표준" value="' + esc(c.sd) + '" aria-label="표준편차"><button class="btn-mini" data-act="calc-row" title="원점수로 등급 산출" style="padding:.3rem .3rem">계산</button></div>' : '') +
+        '<button class="c-del" data-act="del" aria-label="과목 삭제"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg></button>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ---------------- 요약 ---------------- */
+  function animateNumber(el, to, fmt) {
+    if (!el) return;
+    var fromRaw = el.getAttribute('data-v');
+    var from = fromRaw === null ? null : Number(fromRaw);
+    el.setAttribute('data-v', String(to === null ? '' : to));
+    if (to === null || !isFinite(to)) { el.textContent = '—'; return; }
+    if (from === null || !isFinite(from) || Math.abs(from - to) < 0.0001) { el.textContent = fmt(to); return; }
+    var t0 = performance.now(), dur = 520;
+    function step(now) {
+      var k = Math.min(1, (now - t0) / dur);
+      var e = 1 - Math.pow(1 - k, 3);
+      el.textContent = fmt(from + (to - from) * e);
+      if (k < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderSummary() {
+    var m = mode();
+    var total = computeAll();
+    lastCalc = total;
+    var score = total.score;
+    var lbl = scoreLabel;
+
+    $('gpaMain').setAttribute('data-v', score === null ? '' : score);
+    if (score === null) { $('gpaMain').textContent = '—'; }
+    else { animateNumber($('gpaMain'), score, function (v) { return m.kind === 'hs9' ? (10 - v).toFixed(2) : v.toFixed(2); }); }
+    $('gpaMax').textContent = scoreUnit();
+
+    var badge = $('gpaBadge');
+    badge.textContent = m.maxLabel;
+
+    var note = $('gpaNote');
+    if (!total.totalW) {
+      note.textContent = '과목에 학점(단위)과 성적을 적으면 평점이 계산됩니다.';
+    } else if (m.kind === 'hs9') {
+      var p = pctOf(score);
+      note.innerHTML = '석차등급 평균 <b style="color:var(--ink)">' + lbl(score) + '등급</b> · 상위 약 <b style="color:var(--ink)">' + p.toFixed(1) + '%</b> · 이수 ' + total.totalW + '단위';
+    } else if (m.kind === 'hsA') {
+      var est = estGradeFromScore(score);
+      note.innerHTML = '성취도 평균 <b style="color:var(--ink)">' + lbl(score) + ' / 5.0</b> · 환산 등급 약 <b style="color:var(--ink)">' + est.toFixed(1) + '등급</b>';
+    } else {
+      var pct = pctOf(score);
+      note.innerHTML = '백분율 환산 <b style="color:var(--ink)">' + pct.toFixed(1) + '점</b> · 이수 ' + total.totalW + '학점 · F 포함';
+    }
+
+    // KPI
+    if (m.kind === 'uni') {
+      $('kMajorLabel').textContent = '전공 평점';
+      $('kGenLabel').textContent = '교양 평점';
+      $('kCreditLabel').textContent = '이수 학점';
+      $('kExtraLabel').textContent = '과목 수';
+      setNum($('kMajor'), catScore(total, 'major'), 2);
+      setNum($('kGen'), catScore(total, 'gen'), 2);
+      $('kCredit').textContent = total.totalW || 0;
+      $('kExtra').textContent = total.count || 0;
+    } else if (m.kind === 'hs9') {
+      $('kMajorLabel').textContent = '공통 평균';
+      $('kGenLabel').textContent = '예상 백분위';
+      $('kCreditLabel').textContent = '이수 단위';
+      $('kExtraLabel').textContent = '과목 수';
+      var mc = catScore(total, 'major');
+      $('kMajor').textContent = mc === null ? '—' : (10 - mc).toFixed(2) + '등급';
+      var pp = pctOf(score);
+      $('kGen').textContent = pp === null ? '—' : '상위 ' + pp.toFixed(1) + '%';
+      $('kCredit').textContent = total.totalW || 0;
+      $('kExtra').textContent = total.count || 0;
+    } else {
+      $('kMajorLabel').textContent = '공통 성취';
+      $('kGenLabel').textContent = '환산 등급';
+      $('kCreditLabel').textContent = '이수 단위';
+      $('kExtraLabel').textContent = '과목 수';
+      var mc2 = catScore(total, 'major');
+      $('kMajor').textContent = mc2 === null ? '—' : mc2.toFixed(2);
+      $('kGen').textContent = score === null ? '—' : estGradeFromScore(score).toFixed(1) + '등급';
+      $('kCredit').textContent = total.totalW || 0;
+      $('kExtra').textContent = total.count || 0;
+    }
+
+    // 환산
+    var cvRow = $('cvRow');
+    if (m.kind === 'uni') {
+      cvRow.style.display = '';
+      var pctv = pctOf(score);
+      $('cv43').textContent = pctv === null ? '—' : (pctv / 100 * 4.3).toFixed(2);
+      $('cv100').textContent = pctv === null ? '—' : pctv.toFixed(1);
+      $('cv40').textContent = pctv === null ? '—' : (pctv / 100 * 4.0).toFixed(2);
+    } else {
+      cvRow.style.display = 'none';
+    }
+    // gauge
+    var ratio = score === null ? 0 : ratioOf(score);
+    $('gpaMeter').style.width = (ratio * 100).toFixed(1) + '%';
+
+    // 탭 표시
+    var tab = $('tabGpa');
+    if (tab) tab.textContent = score === null ? '—' : (m.kind === 'hs9' ? (10 - score).toFixed(2) + '등급' : score.toFixed(2));
+
+    // 합계 줄
+    $('sumCredits').textContent = total.totalW || 0;
+    $('sumCreditUnit').textContent = m.unit;
+    $('sumCourses').textContent = total.count || 0;
+    $('sumMajor').textContent = total.count ? countCat('major') : 0;
+    var sml = $('sumMajorLabel');
+    if (sml) sml.textContent = m.cats[0][1];
+
+    // 델타 (선택 학기 vs 누적)
+    var t = currentTerm();
+    var tr = t ? total.terms.filter(function (x) { return x.id === t.id; })[0] : null;
+    var deltaEl = $('gpaDelta');
+    if (tr && tr.score !== null && total.score !== null && S.terms.length > 1) {
+      var d = tr.score - total.score;
+      var shownD = (m.kind === 'hs9' ? -d : d);
+      if (Math.abs(shownD) < 0.005) { deltaEl.textContent = ''; }
+      else {
+        deltaEl.innerHTML = '<span class="' + (shownD > 0 ? 'delta-up' : 'delta-down') + '">' + (shownD > 0 ? '+' : '') + shownD.toFixed(2) + ' <span style="opacity:.65">이번 학기</span></span>';
+      }
+    } else { deltaEl.textContent = ''; }
+
+    // 휴대폰 바
+    $('mobGpa').textContent = score === null ? '—' : (m.kind === 'hs9' ? (10 - score).toFixed(2) : score.toFixed(2));
+    $('mobSub').textContent = scoreUnit();
+    $('mobLabel').textContent = m.kind === 'hs9' ? 'GRADE' : (m.kind === 'hsA' ? 'ACHV' : 'GPA');
+
+    renderTarget(total);
+    renderDonut(total);
+    renderSim();
+    $('archCurrent').textContent = score === null ? '—' : (m.kind === 'hs9' ? (10 - score).toFixed(2) : score.toFixed(2));
+  }
+
+  function countCat(key) {
+    var t = currentTerm();
+    if (!t) return 0;
+    return t.courses.filter(function (c) { return (c.cat || 'etc') === key && Number(c.credits) > 0 && courseEff(c); }).length;
+  }
+  function setNum(el, v, d) {
+    if (!el) return;
+    if (v === null || v === undefined) { el.textContent = '—'; return; }
+    animateNumber(el, v, function (x) { return x.toFixed(d); });
+  }
+  function estGradeFromScore(score) {
+    /* 성취도 A~E → 환산 등급(일부 대학 기준 A=1, B=3, C=5, D=7, E=9) 가중 평균 */
+    var termless = [];
+    S.terms.forEach(function (t) { t.courses.forEach(function (c) { termless.push(c); }); });
+    var w = 0, s = 0;
+    termless.forEach(function (c) {
+      var g = courseEff(c);
+      var cr = Number(c.credits);
+      if (!g || !(cr > 0) || HS_EST[g] === undefined) return;
+      w += cr; s += HS_EST[g] * cr;
+    });
+    if (!w) return 0;
+    return s / w;
+  }
+
+  /* ---------------- 목표 역산 ---------------- */
+  function targetValues() {
+    var m = mode();
+    var k = m.kind === 'uni' ? 'uni' : (m.kind === 'hs9' ? 'hs9' : 'hsA');
+    var t = S.target[k];
+    return {
+      key: k,
+      target: m.kind === 'hs9' ? (10 - Number(t.grade)) : Number(t.gpa !== undefined ? t.gpa : t.grade),
+      remain: Number(t.remain)
+    };
+  }
+  function setTargetValues(targetScore, remain) {
+    var m = mode();
+    var k = m.kind === 'uni' ? 'uni' : (m.kind === 'hs9' ? 'hs9' : 'hsA');
+    if (m.kind === 'hs9') S.target[k] = { grade: 10 - targetScore, remain: remain };
+    else S.target[k] = { gpa: targetScore, remain: remain };
+  }
+  function renderTarget(total) {
+    var m = mode();
+    var tv = targetValues();
+    var T = tv.target, R = tv.remain;
+    var isHs9 = m.kind === 'hs9';
+
+    $('targetLabel').textContent = isHs9 ? '목표 평균 등급' : (m.kind === 'hsA' ? '목표 성취 점수' : '목표 평점');
+    $('remainLabel').textContent = isHs9 ? '남은 단위' : (m.kind === 'uni' ? '남은 학점' : '남은 단위');
+
+    var inp = $('inpTarget');
+    if (document.activeElement !== inp) inp.value = isHs9 ? (10 - T).toFixed(2) : T.toFixed(2);
+    inp.max = m.kind === 'uni' ? m.max : (isHs9 ? 9 : 5);
+    inp.min = isHs9 ? 1 : 0;
+    inp.step = 0.05;
+    var inpR = $('inpRemain');
+    if (document.activeElement !== inpR) inpR.value = R;
+
+    var E = total.totalW || 0, P = total.totalP || 0;
+    var max = m.max;
+    var reqEl = $('reqValue'), noteEl = $('reqNote'), subEl = $('reqSub');
+    var req = null, feasible = true;
+
+    if (R > 0) {
+      req = (T * (E + R) - P) / R;
+      if (!isFinite(req)) req = null;
+    }
+
+    if (!R || R <= 0) {
+      reqEl.textContent = '—';
+      reqEl.style.color = 'var(--emerald)';
+      subEl.textContent = '';
+      noteEl.textContent = '남은 학점(단위)을 적으면 필요한 평균을 역산합니다.';
+      feasible = null;
+    } else if (req !== null && req > max + 0.0001) {
+      feasible = false;
+      var maxFinal = (P + R * max) / (E + R);
+      reqEl.textContent = isHs9 ? (10 - max) + '등급' : max.toFixed(2);
+      reqEl.style.color = 'var(--ink-faint)';
+      subEl.textContent = '필요 ' + (isHs9 ? (10 - req).toFixed(2) + '등급' : req.toFixed(2));
+      noteEl.innerHTML = '남은 ' + R + m.unit + '을 모두 만점(' + (isHs9 ? '1등급' : max.toFixed(1)) + ')으로 받아도 목표에 닿지 않습니다. 이대로면 최종 ' + (isHs9 ? (10 - maxFinal).toFixed(2) + '등급' : maxFinal.toFixed(2)) + '까지 가능합니다.';
+    } else if (req !== null && req <= 0) {
+      feasible = true;
+      reqEl.textContent = isHs9 ? '9.00등급' : '0.00';
+      reqEl.style.color = 'var(--emerald)';
+      subEl.textContent = '';
+      noteEl.innerHTML = '이미 목표를 넘어섰습니다. 남은 ' + R + m.unit + '은 ' + (isHs9 ? '9등급' : '0.00') + '만 넘기면 목표가 유지됩니다.';
+    } else if (req !== null) {
+      feasible = true;
+      reqEl.textContent = isHs9 ? (10 - req).toFixed(2) + '등급' : req.toFixed(2);
+      reqEl.style.color = 'var(--emerald)';
+      subEl.textContent = isHs9 ? '' : '/ ' + max.toFixed(1);
+      var hint = gradeHint(req);
+      noteEl.innerHTML = '남은 ' + R + m.unit + '에서 평균 <b style="color:var(--ink)">' + (isHs9 ? (10 - req).toFixed(2) + '등급' : req.toFixed(2)) + '</b>이 필요합니다. ' + hint;
+    }
+
+    // 슬라이더
+    var sl = $('simSlider');
+    sl.min = isHs9 ? 1 : 0;
+    sl.max = m.kind === 'uni' ? m.max : (isHs9 ? 9 : 5);
+    sl.step = 0.05;
+    if (!sliderDirty) {
+      var idealScore = req === null ? m.max : Math.max(0, Math.min(m.max, req));
+      sl.value = isHs9 ? (10 - idealScore) : idealScore;
+    }
+    if (window.Lemon) Lemon.refreshRange(sl);
+
+    renderSim(total);
+  }
+
+  function gradeHint(score) {
+    var m = mode();
+    if (m.kind === 'hs9') {
+      var g = 10 - score;
+      var n = Math.round(g);
+      return '대략 ' + n + '등급대(' + (g < n ? (n - 1) + '~' + n : n + '~' + (n + 1)) + '등급)에 해당합니다.';
+    }
+    if (m.kind === 'hsA') return 'A~E 중 ' + achvOf(score) + ' 수준입니다.';
+    var sorted = m.grades.slice().sort(function (a, b) { return b[1] - a[1]; });
+    var hi = null, lo = null;
+    for (var i = 0; i < sorted.length; i++) {
+      if (sorted[i][1] >= score) hi = sorted[i];
+      if (sorted[i][1] <= score) { lo = sorted[i]; break; }
+    }
+    if (hi && lo && hi[0] === lo[0]) return '평균 ' + hi[0] + '(' + hi[1].toFixed(1) + ') 정도입니다.';
+    if (hi && lo) return '평균 ' + lo[0] + '(' + lo[1].toFixed(1) + ')와 ' + hi[0] + '(' + hi[1].toFixed(1) + ') 사이입니다.';
+    return '';
+  }
+  function achvOf(score) {
+    if (score >= 4.5) return 'A';
+    if (score >= 3.5) return 'B';
+    if (score >= 2.5) return 'C';
+    if (score >= 1.5) return 'D';
+    return 'E';
+  }
+
+  function renderSim(total) {
+    if (!total) total = computeAll();
+    var m = mode();
+    var sl = $('simSlider');
+    if (!sl) return;
+    var v = Number(sl.value);
+    var isHs9 = m.kind === 'hs9';
+    var simScore = isHs9 ? (10 - v) : v;
+    var tv = targetValues();
+    var E = total.totalW || 0, P = total.totalP || 0, R = tv.remain || 0;
+
+    $('simSliderVal').textContent = isHs9 ? v.toFixed(2) + '등급' : v.toFixed(2);
+
+    if (!R || R <= 0) {
+      $('simProjected').textContent = '—';
+      $('simNote').textContent = '남은 학점(단위)을 적으면 가정 결과가 계산됩니다.';
+      return;
+    }
+    var proj = (P + R * simScore) / (E + R);
+    var shown = isHs9 ? (10 - proj) : proj;
+    $('simProjected').textContent = shown.toFixed(2) + (isHs9 ? '등급' : '');
+    var targetShown = isHs9 ? (10 - tv.target) : tv.target;
+    var gap = shown - targetShown;
+    var reached = isHs9 ? proj >= tv.target : proj >= tv.target;
+    var el = $('simNote');
+    if (reached) {
+      if (!el.getAttribute('data-hit')) {
+        el.setAttribute('data-hit', '1');
+        if (window.Lemon) Lemon.confetti();
+        hap(24);
+      }
+      el.innerHTML = '<span style="color:var(--emerald)">목표 ' + targetShown.toFixed(2) + (isHs9 ? '등급' : '') + ' 도달</span> · 목표보다 ' + Math.abs(gap).toFixed(2) + ' ' + (isHs9 ? '낮은 등급' : '높음');
+    } else {
+      el.removeAttribute('data-hit');
+      el.innerHTML = '목표까지 <b style="color:var(--ink)">' + Math.abs(gap).toFixed(2) + '</b> ' + (isHs9 ? '등급 차이' : '부족');
+    }
+  }
+
+  /* ---------------- 차트 ---------------- */
+  function chartDomain(vals) {
+    var m = mode();
+    var clean = vals.filter(function (v) { return v !== null && isFinite(v); });
+    if (!clean.length) clean = [0];
+    var mn = Math.min.apply(null, clean), mx = Math.max.apply(null, clean);
+    if (m.kind === 'hs9') {
+      var lo = Math.max(1, Math.min(mn - 0.4, 8));
+      var hi = Math.min(9, Math.max(mx + 0.5, lo + 1));
+      return { lo: lo, hi: hi, inv: true };
+    }
+    var span = Math.max(0.5, mx - mn);
+    var lo2 = Math.max(0, mn - span * 0.5);
+    var hi2 = Math.min(m.max, Math.max(mx + span * 0.22, lo2 + 0.6));
+    if (hi2 - lo2 < 0.4) hi2 = Math.min(m.max, lo2 + 0.4);
+    return { lo: lo2, hi: hi2, inv: false };
+  }
+  function niceTicks(lo, hi, n) {
+    var span = Math.max(0.001, hi - lo);
+    var raw = span / (n || 4);
+    var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    var norm = raw / mag;
+    var step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    var out = [];
+    for (var pass = 0; pass < 4; pass++) {
+      var a = Math.floor(lo / step) * step;
+      var b = Math.ceil(hi / step) * step;
+      out = [];
+      for (var v = a; v <= b + step / 2; v += step) out.push(Number(v.toFixed(6)));
+      if (out.length <= 6) break;
+      step *= 2;
+    }
+    return { ticks: out, step: step };
+  }
+  function chartY(v, dom, T, ih) {
+    var r = dom.inv ? (dom.hi - v) / (dom.hi - dom.lo) : (v - dom.lo) / (dom.hi - dom.lo);
+    r = Math.max(0, Math.min(1, r));
+    return T + ih * (1 - r);
+  }
+  function renderTrend() {
+    var box = $('trendChart');
+    if (!box) return;
+    var m = mode();
+    var total = computeAll();
+    var pts = total.terms.filter(function (t) { return t.score !== null; });
+    if (!pts.length) {
+      box.innerHTML = '<div class="empty-slot" style="padding:1.4rem .8rem"><p class="text-[.78rem]" style="color:var(--ink-soft)">과목을 입력하면 학기별 추이가 그려집니다.</p></div>';
+      $('trendHint').textContent = '학기 평점 · 누적 평점';
+      return;
+    }
+    $('trendHint').textContent = m.kind === 'hs9' ? '학기 평균등급 · 누적' : (m.kind === 'hsA' ? '학기 성취 · 누적' : '학기 평점 · 누적 평점');
+
+    var disp = function (s) { return m.kind === 'hs9' ? (10 - s) : s; };
+    var vals = pts.map(function (t) { return disp(t.score); });
+    var cums = pts.map(function (t) { return t.cum === undefined ? null : disp(t.cum); });
+    var dom = chartDomain(vals.concat(cums));
+    var valFmt = function (v) { return m.kind === 'uni' ? v.toFixed(2) : v.toFixed(2); };
+
+    var W = 400, H = 176, L = 36, Rp = 10, T = 24, B = 26;
+    var iw = W - L - Rp, ih = H - T - B;
+    var n = pts.length;
+    var xs = function (i) { return L + (n === 1 ? iw / 2 : iw * i / (n - 1)); };
+    var g = [];
+    g.push('<defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + PALETTE[0] + '" stop-opacity="0.24"/><stop offset="1" stop-color="' + PALETTE[0] + '" stop-opacity="0"/></linearGradient></defs>');
+
+    var tk = niceTicks(dom.lo, dom.hi, 4);
+    dom.lo = tk.ticks[0];
+    dom.hi = tk.ticks[tk.ticks.length - 1];
+    var dec = tk.step < 0.1 ? 2 : 1;
+    tk.ticks.forEach(function (tv, k) {
+      var yy = chartY(tv, dom, T, ih);
+      g.push('<line x1="' + L + '" x2="' + (W - Rp) + '" y1="' + yy.toFixed(1) + '" y2="' + yy.toFixed(1) + '" stroke="currentColor" stroke-width="0.5" opacity="' + (k === 0 || k === tk.ticks.length - 1 ? '0.26' : '0.10') + '"/>');
+      g.push('<text x="' + (L - 6) + '" y="' + (yy + 3).toFixed(1) + '" text-anchor="end" font-size="8" fill="currentColor" opacity="0.45" font-family="ui-monospace,monospace">' + tv.toFixed(dec) + '</text>');
+    });
+
+    if (trendMode === 'bar') {
+      var bw = Math.min(24, iw / Math.max(1, n) * 0.44);
+      pts.forEach(function (t, i) {
+        var top = chartY(vals[i], dom, T, ih);
+        var h = Math.max(1.2, (T + ih) - top);
+        g.push('<rect class="bar-grow" x="' + (xs(i) - bw / 2).toFixed(1) + '" y="' + (T + ih - h).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="1" fill="' + PALETTE[0] + '" opacity="0.85" style="animation-delay:' + (i * 55) + 'ms"/>');
+      });
+    } else {
+      var d = pts.map(function (t, i) { return (i ? 'L' : 'M') + xs(i).toFixed(1) + ' ' + chartY(vals[i], dom, T, ih).toFixed(1); }).join(' ');
+      var area = d + ' L' + xs(n - 1).toFixed(1) + ' ' + (T + ih) + ' L' + xs(0).toFixed(1) + ' ' + (T + ih) + ' Z';
+      g.push('<path d="' + area + '" fill="url(#tg)"/>');
+      g.push('<path class="trend-path" d="' + d + '" fill="none" stroke="' + PALETTE[0] + '" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>');
+      pts.forEach(function (t, i) {
+        g.push('<circle class="trend-dot" cx="' + xs(i).toFixed(1) + '" cy="' + chartY(vals[i], dom, T, ih).toFixed(1) + '" r="3" fill="' + PALETTE[0] + '" stroke="currentColor" stroke-width="1.4" style="animation-delay:' + (320 + i * 60) + 'ms"/>');
+      });
+    }
+
+    var cumIdx = [];
+    pts.forEach(function (t, i) { if (cums[i] !== null) cumIdx.push(i); });
+    if (cumIdx.length > 1) {
+      var cd = cumIdx.map(function (i, j) { return (j ? 'L' : 'M') + xs(i).toFixed(1) + ' ' + chartY(cums[i], dom, T, ih).toFixed(1); }).join(' ');
+      g.push('<path d="' + cd + '" fill="none" stroke="' + PALETTE[2] + '" stroke-width="1.3" stroke-dasharray="4 3" stroke-linecap="round" opacity="0.85"/>');
+    }
+
+    var step = n > 6 ? Math.ceil(n / 6) : 1;
+    pts.forEach(function (t, i) {
+      var name = String(t.name).length > 9 ? String(t.name).slice(0, 8) + '…' : String(t.name);
+      if (i % step === 0 || i === n - 1) {
+        g.push('<text x="' + xs(i).toFixed(1) + '" y="' + (H - 7) + '" text-anchor="middle" font-size="7.8" fill="currentColor" opacity="0.5" font-family="ui-monospace,monospace">' + esc(name) + '</text>');
+      }
+    });
+
+    if (trendMode !== 'bar') {
+      pts.forEach(function (t, i) {
+        if (n > 7 && i % step !== 0 && i !== n - 1) return;
+        var y0 = chartY(vals[i], dom, T, ih);
+        var above = y0 - T > 16;
+        g.push('<text x="' + xs(i).toFixed(1) + '" y="' + (y0 + (above ? -7 : 12)).toFixed(1) + '" text-anchor="middle" font-size="8.6" font-weight="700" fill="' + PALETTE[0] + '" font-family="ui-monospace,monospace">' + valFmt(vals[i]) + '</text>');
+      });
+    }
+    box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="학기별 평점 추이">' + g.join('') + '</svg>';
+  }
+
+  function renderDonut(total) {
+    var box = $('donutChart'), leg = $('donutLegend');
+    if (!box) return;
+    if (!total) total = computeAll();
+    var m = mode();
+    var order, labels, colors;
+    if (m.kind === 'hs9') { order = ['1-3', '4-6', '7-9']; labels = { '1-3': '1~3등급', '4-6': '4~6등급', '7-9': '7~9등급' }; colors = [PALETTE[0], PALETTE[2], PALETTE[5]]; }
+    else if (m.kind === 'hsA') { order = ['A', 'B', 'C', 'D', 'E']; labels = { A: 'A', B: 'B', C: 'C', D: 'D', E: 'E' }; colors = [PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[4], PALETTE[5]]; }
+    else { order = ['A', 'B', 'C', 'D', 'F']; labels = { A: 'A 계열', B: 'B 계열', C: 'C 계열', D: 'D 계열', F: 'F' }; colors = [PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[4], PALETTE[5]]; }
+    var counts = order.map(function (k) { return total.dist[k] || 0; });
+    var sum = counts.reduce(function (a, b) { return a + b; }, 0);
+    var R = 42, C = 2 * Math.PI * R;
+    var g = [];
+    g.push('<svg viewBox="0 0 110 110" role="img" aria-label="성적 분포"><g transform="rotate(-90 55 55)">');
+    g.push('<circle cx="55" cy="55" r="' + R + '" fill="none" stroke="currentColor" stroke-width="13" opacity="0.09"/>');
+    var off = 0;
+    if (sum) {
+      counts.forEach(function (c, i) {
+        if (!c) return;
+        var len = C * c / sum;
+        g.push('<circle class="donut-seg" cx="55" cy="55" r="' + R + '" fill="none" stroke="' + colors[i] + '" stroke-width="13" stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '"/>');
+        off += len;
+      });
+    }
+    g.push('</g>');
+    var mainTxt = m.kind === 'hs9' ? (total.score === null ? '—' : (10 - total.score).toFixed(2)) : (total.score === null ? '—' : total.score.toFixed(2));
+    g.push('<text x="55" y="53" text-anchor="middle" font-size="17" font-weight="700" fill="currentColor" font-family="Georgia,serif">' + mainTxt + '</text>');
+    g.push('<text x="55" y="66" text-anchor="middle" font-size="7.5" fill="currentColor" opacity="0.5" font-family="ui-monospace,monospace" letter-spacing="1.2">' + (m.kind === 'hs9' ? 'GRADE' : (m.kind === 'hsA' ? 'ACHV' : 'GPA')) + '</text>');
+    g.push('</svg>');
+    box.innerHTML = g.join('');
+    $('donutHint').textContent = sum ? sum + '과목' : '—';
+    leg.innerHTML = order.map(function (k, i) {
+      var c = total.dist[k] || 0;
+      var pct = sum ? Math.round(c / sum * 100) : 0;
+      return '<div class="flex items-center gap-1.5">' +
+        '<span class="legend-dot" style="background:' + colors[i] + '"></span>' +
+        '<span class="text-[.7rem]" style="color:var(--ink-soft);flex:1">' + labels[k] + '</span>' +
+        '<span class="mono num text-[.7rem]" style="color:var(--ink)">' + c + '</span>' +
+        '<span class="mono text-[.62rem]" style="color:var(--ink-faint);width:2rem;text-align:right">' + pct + '%</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderTermTable() {
+    var box = $('termTable');
+    if (!box) return;
+    var m = mode();
+    var total = computeAll();
+    if (!total.terms.length) {
+      box.innerHTML = '<p class="text-[.78rem] py-3" style="color:var(--ink-faint)">학기를 추가하면 이곳에 학기별 요약이 쌓입니다.</p>';
+      return;
+    }
+    var scored = total.terms.filter(function (t) { return t.score !== null; });
+    var tdom = scored.length ? chartDomain(scored.map(function (t) { return m.kind === 'hs9' ? (10 - t.score) : t.score; })) : null;
+    box.innerHTML = total.terms.map(function (t) {
+      var pct = t.score === null || !tdom ? 0 : (function () {
+        var v = m.kind === 'hs9' ? (10 - t.score) : t.score;
+        var r = tdom.inv ? (tdom.hi - v) / (tdom.hi - tdom.lo) : (v - tdom.lo) / (tdom.hi - tdom.lo);
+        return Math.max(2, Math.min(100, r * 100));
+      })();
+      var on = t.id === activeTermId;
+      return '<div class="flex items-center gap-2.5 py-1.5" style="border-bottom:1px dotted var(--line-2);' + (on ? 'background:color-mix(in srgb, var(--tint) 60%, transparent)' : '') + '">' +
+        '<button class="text-[.78rem] font-bold truncate" data-term="' + t.id + '" style="max-width:9rem;text-align:left;' + (on ? 'color:var(--emerald)' : '') + '">' + esc(t.name) + '</button>' +
+        '<div class="meter" style="flex:1;height:5px"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+        '<span class="mono num text-[.72rem]" style="color:var(--ink-faint);width:3rem;text-align:right">' + (t.count ? t.count + '과목' : '—') + '</span>' +
+        '<span class="mono num text-[.74rem] font-bold" style="width:3.6rem;text-align:right">' + (t.score === null ? '—' : scoreLabel(t.score)) + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ---------------- 전체 렌더 ---------------- */
+  function renderAll() {
+    renderModeStrip();
+    renderTermChips();
+    renderCourses();
+    renderSummary();
+    renderTrend();
+    renderTermTable();
+    renderArchiveMeta();
+    var t = currentTerm();
+    var nameEl = $('termName');
+    if (nameEl && document.activeElement !== nameEl) nameEl.value = t ? t.name : '';
+    $('btnSimMode').classList.toggle('on', simOn);
+    $('btnSimMode').setAttribute('aria-pressed', simOn ? 'true' : 'false');
+    $('simTag').classList.toggle('hidden', !simOn);
+    document.body.classList.toggle('sim-on', simOn);
+  }
+  function renderModeStrip() {
+    qsa('#modeStrip button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-mode') === S.mode);
+    });
+  }
+
+  /* ---------------- 팝업 ---------------- */
+  function openPop(o) {
+    $('popEyebrow').textContent = o.eyebrow || 'Lemon Grade';
+    $('popTitle').textContent = o.title || '';
+    $('popBody').innerHTML = o.body || '';
+    var acts = $('popActions');
+    acts.innerHTML = '';
+    (o.actions || []).forEach(function (a) {
+      var b = document.createElement('button');
+      b.className = a.kind === 'solid' ? 'btn-solid' : (a.kind === 'danger' ? 'btn-mini danger' : 'btn-line');
+      if (a.kind === 'solid' || a.kind === 'line') { b.style.padding = '.5rem .8rem'; b.style.fontSize = '.78rem'; }
+      b.textContent = a.label;
+      b.addEventListener('click', function () {
+        if (a.onClick) a.onClick();
+        if (a.close !== false) closePop();
+      });
+      acts.appendChild(b);
+    });
+    $('popCard').classList.toggle('wide', !!o.wide);
+    $('popRoot').classList.add('open');
+    $('popRoot').setAttribute('aria-hidden', 'false');
+    if (o.onMount) o.onMount($('popBody'));
+    return $('popBody');
+  }
+  function closePop() {
+    $('popRoot').classList.remove('open');
+    $('popRoot').setAttribute('aria-hidden', 'true');
+  }
+  function confirmPop(title, msg, okLabel) {
+    return new Promise(function (res) {
+      openPop({
+        eyebrow: '확인', title: title,
+        body: '<p class="text-[.84rem] leading-relaxed" style="color:var(--ink-soft)">' + msg + '</p>',
+        actions: [
+          { label: '취소', onClick: function () { res(false); } },
+          { label: okLabel || '확인', kind: 'solid', onClick: function () { res(true); } }
+        ]
+      });
+    });
+  }
+  function askText(title, label, value) {
+    return new Promise(function (res) {
+      openPop({
+        eyebrow: '이름', title: title,
+        body: '<label class="block"><span class="mono" style="font-size:9px;color:var(--ink-faint);letter-spacing:.08em">' + esc(label) + '</span>' +
+          '<input id="popInput" class="cell-input" style="border-color:var(--line-2);background:var(--paper);font-size:.92rem;padding:.5rem .55rem;margin-top:.25rem" value="' + esc(value || '') + '"></label>',
+        actions: [
+          { label: '취소', onClick: function () { res(null); } },
+          {
+            label: '저장', kind: 'solid',
+            onClick: function () { var v = ($('popInput').value || '').trim(); res(v || null); }
+          }
+        ],
+        onMount: function (body) {
+          var i = body.querySelector('#popInput');
+          if (i) { i.focus(); i.select(); }
+        }
+      });
+    });
+  }
+
+  /* ---------------- 과목 조작 ---------------- */
+  function addCourse(focus) {
+    var t = ensureTerm();
+    if (simOn) { toast('가정 모드에서는 과목을 추가할 수 없어요', 'info'); return; }
+    var c = blankCourse();
+    t.courses.push(c);
+    renderAll();
+    if (focus !== false) {
+      var row = document.querySelector('.c-row[data-id="' + c.id + '"]');
+      if (row) { var inp = row.querySelector('input[data-f="name"]'); if (inp) inp.focus(); }
+    }
+    hap(8);
+    saveState();
+  }
+  function delCourse(id) {
+    var t = currentTerm();
+    if (!t) return;
+    t.courses = t.courses.filter(function (c) { return c.id !== id; });
+    delete simGrades[id];
+    renderAll();
+    saveState();
+  }
+  function updateCourse(id, field, val) {
+    var t = currentTerm();
+    if (!t) return;
+    var c = t.courses.filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    if (simOn && field === 'grade') {
+      simGrades[id] = val;
+      var row = document.querySelector('.c-row[data-id="' + id + '"]');
+      if (row) row.classList.toggle('sim', !!val);
+      renderSummary(); renderTrend(); renderTermTable();
+      return;
+    }
+    if (field === 'credits') {
+      var n = val === '' ? '' : Number(val);
+      c.credits = n === '' || !isFinite(n) ? '' : Math.max(0, n);
+    } else {
+      c[field] = val;
+      if (field === 'grade') { if (!c.gAlt || typeof c.gAlt !== 'object') c.gAlt = {}; c.gAlt[S.mode] = val; }
+    }
+    renderSummary();
+    renderTrend();
+    renderTermTable();
+    saveState();
+    if (field === 'grade' || field === 'credits') { hap(6); }
+  }
+
+  /* ---------------- 리포트 캔버스 ---------------- */
+  function buildReport() {
+    var m = mode();
+    var total = computeAll();
+    var W = 1200, H = 1600;
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var g = c.getContext('2d');
+    var INK = '#14261f', SOFT = '#4f655c', FAINT = '#8a9a90', LINE = '#d8cfb8', GOLD = '#a8842c', GREEN = '#0c5a44';
+    var SER = '"Noto Serif CJK KR", Georgia, "Times New Roman", serif';
+    var SAN = '"Noto Sans CJK KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+    var MONO = '"Noto Sans Mono CJK KR", ui-monospace, Menlo, monospace';
+
+    g.fillStyle = '#fbf8ef'; g.fillRect(0, 0, W, H);
+    // 종이 질감 그라데이션
+    var bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, 'rgba(12,90,68,0.045)');
+    bg.addColorStop(.5, 'rgba(168,132,44,0.03)');
+    bg.addColorStop(1, 'rgba(12,90,68,0.05)');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+
+    // 테두리
+    g.strokeStyle = LINE; g.lineWidth = 2; g.strokeRect(40, 40, W - 80, H - 80);
+    g.strokeStyle = 'rgba(168,132,44,0.55)'; g.lineWidth = 1; g.strokeRect(50, 50, W - 100, H - 100);
+
+    var X = 88, XR = W - 88;
+    // 헤더
+    g.fillStyle = GOLD; g.font = '700 15px ' + MONO; g.textAlign = 'left';
+    g.fillText('LEMON GRADE · TRANSCRIPT', X, 118);
+    g.fillStyle = INK; g.font = '700 44px ' + SER;
+    g.fillText('학업 성적 기록부', X, 176);
+    g.fillStyle = FAINT; g.font = '400 17px ' + MONO; g.textAlign = 'right';
+    g.fillText(stampDate(), XR, 120);
+    g.fillText(m.maxLabel + ' · ' + termCountText(), XR, 148);
+    g.textAlign = 'left';
+    g.strokeStyle = INK; g.lineWidth = 2; g.beginPath(); g.moveTo(X, 200); g.lineTo(XR, 200); g.stroke();
+    g.strokeStyle = GOLD; g.lineWidth = 1; g.beginPath(); g.moveTo(X, 205); g.lineTo(XR, 205); g.stroke();
+
+    // 평점 블록
+    var scoreTxt = total.score === null ? '—' : (m.kind === 'hs9' ? (10 - total.score).toFixed(2) : total.score.toFixed(2));
+    g.fillStyle = GREEN; g.font = '700 116px ' + SER;
+    g.fillText(scoreTxt, X, 340);
+    var wScore = g.measureText(scoreTxt).width;
+    g.fillStyle = FAINT; g.font = '400 26px ' + MONO;
+    g.fillText(m.kind === 'hs9' ? '등급' : '/ ' + m.max.toFixed(1), X + wScore + 14, 336);
+    g.fillStyle = SOFT; g.font = '400 18px ' + SAN;
+    g.fillText(m.kind === 'hs9' ? '석차등급 가중 평균' : (m.kind === 'hsA' ? '성취도 가중 평균' : '전체 학기 누적 평점'), X, 376);
+
+    // KPI 3종
+    var kx = X, ky = 430;
+    var kpis = [];
+    if (m.kind === 'uni') {
+      kpis = [['전공 평점', fmt(catScore(total, 'major'), 2)], ['교양 평점', fmt(catScore(total, 'gen'), 2)], ['이수 학점', String(total.totalW || 0)]];
+    } else if (m.kind === 'hs9') {
+      var mc = catScore(total, 'major');
+      kpis = [['공통 평균', mc === null ? '—' : (10 - mc).toFixed(2) + '등급'], ['예상 백분위', total.score === null ? '—' : '상위 ' + pctOf(total.score).toFixed(1) + '%'], ['이수 단위', String(total.totalW || 0)]];
+    } else {
+      var mc2 = catScore(total, 'major');
+      kpis = [['공통 성취', fmt(mc2, 2)], ['환산 등급', total.score === null ? '—' : estGradeFromScore(total.score).toFixed(1) + '등급'], ['이수 단위', String(total.totalW || 0)]];
+    }
+    kpis.forEach(function (k, i) {
+      var x = kx + i * 232;
+      g.fillStyle = FAINT; g.font = '700 13px ' + MONO;
+      g.fillText(k[0], x, ky);
+      g.fillStyle = INK; g.font = '700 40px ' + SER;
+      g.fillText(k[1], x, ky + 46);
+    });
+
+    // 인장
+    var sx = XR - 92, sy = 330, sr = 78;
+    g.save();
+    g.translate(sx, sy);
+    g.rotate(-8 * Math.PI / 180);
+    g.strokeStyle = 'rgba(168,132,44,0.85)'; g.lineWidth = 2.5;
+    g.beginPath(); g.arc(0, 0, sr, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 1; g.beginPath(); g.arc(0, 0, sr - 7, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = GOLD; g.textAlign = 'center';
+    g.font = '700 40px ' + SER;
+    g.fillText(scoreTxt, 0, 4);
+    g.font = '700 13px ' + MONO;
+    g.fillText('GPA', 0, 30);
+    g.restore();
+    g.textAlign = 'left';
+
+    // 학기별 기록
+    var y = 540;
+    g.fillStyle = GOLD; g.font = '700 14px ' + MONO;
+    g.fillText('COURSE RECORD', X, y);
+    y += 12;
+    g.strokeStyle = LINE; g.lineWidth = 1; g.beginPath(); g.moveTo(X, y); g.lineTo(XR, y); g.stroke();
+    y += 34;
+
+    g.fillStyle = FAINT; g.font = '700 12px ' + MONO;
+    g.fillText('과목', X, y); g.fillText('구분', X + 640, y); g.fillText(m.unit === '학점' ? '학점' : '단위', X + 780, y); g.fillText('성적', X + 900, y);
+    y += 10; g.beginPath(); g.moveTo(X, y); g.lineTo(XR, y); g.stroke();
+    y += 26;
+
+    var maxRows = 16, printed = 0;
+    for (var ti = 0; ti < S.terms.length && printed < maxRows; ti++) {
+      var t = S.terms[ti];
+      if (!t.courses.length) continue;
+      g.fillStyle = GREEN; g.font = '700 19px ' + SAN;
+      g.fillText(t.name, X, y);
+      var tr = total.terms[ti];
+      g.textAlign = 'right'; g.fillStyle = SOFT; g.font = '700 16px ' + MONO;
+      g.fillText(tr.score === null ? '—' : scoreLabel(tr.score), XR, y);
+      g.textAlign = 'left';
+      y += 9;
+      g.strokeStyle = 'rgba(168,132,44,0.35)'; g.beginPath(); g.moveTo(X, y); g.lineTo(XR, y); g.stroke();
+      y += 24;
+      for (var ci = 0; ci < t.courses.length && printed < maxRows; ci++) {
+        var co = t.courses[ci];
+        g.fillStyle = INK; g.font = '400 17px ' + SAN;
+        g.fillText(clip(co.name || '이름 없음', 30), X, y);
+        g.fillStyle = SOFT; g.font = '400 15px ' + SAN;
+        g.fillText(catLabel(co.cat), X + 640, y);
+        g.textAlign = 'center'; g.font = '400 16px ' + MONO;
+        g.fillText(String(co.credits === '' ? '—' : co.credits), X + 800, y);
+        g.fillStyle = GREEN; g.font = '700 18px ' + SER;
+        g.fillText(co.grade || '—', X + 918, y);
+        g.textAlign = 'left';
+        y += 28;
+        printed++;
+      }
+      y += 10;
+    }
+    if (!printed) {
+      g.fillStyle = FAINT; g.font = '400 18px ' + SAN;
+      g.fillText('기록된 과목이 없습니다.', X, y);
+      y += 30;
+    }
+    if (printed >= maxRows) {
+      g.fillStyle = FAINT; g.font = '400 14px ' + MONO;
+      g.fillText('이하 생략 (' + (S.terms.reduce(function (a, t) { return a + t.courses.length; }, 0) - maxRows) + '개 과목)', X, y);
+      y += 24;
+    }
+
+    // 학기 요약
+    y = y + 48;
+    var summ = total.terms.filter(function (t) { return t.w > 0; });
+    if (summ.length && y < 1120) {
+      g.fillStyle = GOLD; g.font = '700 14px ' + MONO;
+      g.fillText('TERM SUMMARY', X, y);
+      y += 12;
+      g.strokeStyle = LINE; g.lineWidth = 1; g.beginPath(); g.moveTo(X, y); g.lineTo(XR, y); g.stroke();
+      y += 30;
+      var barX = X + 262, barW = XR - barX - 190;
+      summ.forEach(function (t) {
+        var yy = y;
+        g.fillStyle = INK; g.font = '700 16px ' + SAN;
+        g.fillText(clip(t.name, 22), X, yy + 12);
+        g.fillStyle = 'rgba(20,38,31,0.07)';
+        g.fillRect(barX, yy, barW, 12);
+        g.fillStyle = GREEN;
+        g.fillRect(barX, yy, Math.max(2, barW * ratioOf(t.score)), 12);
+        g.fillStyle = SOFT; g.textAlign = 'right'; g.font = '700 14px ' + MONO;
+        g.fillText(t.w + (m.kind === 'uni' ? '학점' : '단위') + '   ' + (t.score === null ? '—' : scoreLabel(t.score)), XR, yy + 12);
+        g.textAlign = 'left';
+        y += 34;
+      });
+      y += 26;
+    }
+    // 분포
+    y = Math.max(y, 1180);
+    g.fillStyle = GOLD; g.font = '700 14px ' + MONO;
+    g.fillText('DISTRIBUTION', X, y);
+    y += 12;
+    g.strokeStyle = LINE; g.beginPath(); g.moveTo(X, y); g.lineTo(XR, y); g.stroke();
+    y += 30;
+    var dist = distBands(total);
+    var bx = X, bw = XR - X;
+    dist.forEach(function (d, i) {
+      var yy = y + i * 34;
+      g.fillStyle = FAINT; g.font = '400 14px ' + MONO;
+      g.fillText(d.label, bx, yy + 12);
+      var barX = bx + 108, barW = bw - 178;
+      g.fillStyle = 'rgba(20,38,31,0.07)';
+      g.fillRect(barX, yy, barW, 12);
+      g.fillStyle = d.color;
+      g.fillRect(barX, yy, Math.max(0, barW * d.pct / 100), 12);
+      g.fillStyle = SOFT; g.textAlign = 'right'; g.font = '700 13px ' + MONO;
+      g.fillText(d.count + '  ' + Math.round(d.pct) + '%', XR, yy + 12);
+      g.textAlign = 'left';
+    });
+
+    // 푸터
+    g.strokeStyle = LINE; g.beginPath(); g.moveTo(X, H - 128); g.lineTo(XR, H - 128); g.stroke();
+    g.fillStyle = SOFT; g.font = '400 15px ' + SAN;
+    g.fillText('이 리포트는 사용자의 브라우저에서 생성되었습니다. 서버로 전송된 성적 정보는 없습니다.', X, H - 96);
+    g.fillStyle = FAINT; g.font = '700 13px ' + MONO;
+    g.fillText('LEMON GRADE · LEMON SOFT · No.57', X, H - 66);
+    g.textAlign = 'right';
+    g.fillText(stampDate(), XR, H - 66);
+    g.textAlign = 'left';
+    return c;
+  }
+  function clip(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+  function fmt(v, d) { return v === null || v === undefined ? '—' : Number(v).toFixed(d); }
+  function stampDate() {
+    var d = new Date();
+    return d.getFullYear() + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + ('0' + d.getDate()).slice(-2);
+  }
+  function termCountText() {
+    var n = S.terms.length;
+    return n ? n + '개 학기' : '학기 없음';
+  }
+  function distBands(total) {
+    var m = mode();
+    if (m.kind === 'hs9') {
+      return [
+        { label: '1~3등급', count: total.dist['1-3'] || 0, color: PALETTE[0] },
+        { label: '4~6등급', count: total.dist['4-6'] || 0, color: PALETTE[2] },
+        { label: '7~9등급', count: total.dist['7-9'] || 0, color: PALETTE[5] }
+      ].map(function (d) { d.pct = total.count ? d.count / total.count * 100 : 0; return d; });
+    }
+    var keys = m.kind === 'hsA' ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D', 'F'];
+    return keys.map(function (k, i) {
+      var cnt = total.dist[k] || 0;
+      return { label: k + '계열', count: cnt, pct: total.count ? cnt / total.count * 100 : 0, color: PALETTE[i === 3 ? 4 : (i === 4 ? 5 : i)] };
+    });
+  }
+
+  function reportBlob(cb) {
+    var c = buildReport();
+    if (c.toBlob) c.toBlob(function (b) { cb(b, c); }, 'image/png');
+    else { var d = c.toDataURL('image/png'); cb(null, c, d); }
+  }
+  function downloadReport() {
+    var m = mode();
+    reportBlob(function (blob, canvas, dataUrl) {
+      var name = 'lemon-grade-' + stampDate().replace(/\./g, '') + '.png';
+      if (blob) { if (window.Lemon) Lemon.downloadBlob(name, blob); }
+      else if (dataUrl) { var a = document.createElement('a'); a.href = dataUrl; a.download = name; a.click(); }
+      toast('성적 리포트 PNG를 내려받았어요', 'ok');
+    });
+  }
+  function showReport() {
+    var m = mode();
+    var total = computeAll();
+    if (!total.count) { toast('먼저 과목 성적을 입력해 주세요', 'info'); return; }
+    reportBlob(function (blob, canvas, dataUrl) {
+      var url = dataUrl || URL.createObjectURL(blob);
+      openPop({
+        eyebrow: 'Report', title: '성적 리포트 미리보기', wide: true,
+        body: '<div style="border:1px solid var(--line-2);border-radius:2px;overflow:hidden;background:#fbf8ef">' +
+          '<img id="repImg" alt="성적 리포트 미리보기" style="width:100%;display:block" src="' + url + '"></div>' +
+          '<p class="text-[.72rem] leading-snug" style="color:var(--ink-faint)">이미지에는 입력한 과목명·성적이 그대로 담깁니다. 공유 전에 한 번 확인해 주세요.</p>',
+        actions: [
+          { label: '닫기' },
+          {
+            label: '보관함에 저장', close: false,
+            onClick: function () { closePop(); setTimeout(function () { saveSnapshot(canvas); }, 140); }
+          },
+          { label: 'PNG 내려받기', kind: 'solid', onClick: function () { downloadReport(); } }
+        ]
+      });
+    });
+  }
+
+  /* ---------------- 보관함 ---------------- */
+  function thumbFrom(canvas) {
+    try {
+      var w = 420, h = Math.round(canvas.height * (w / canvas.width));
+      var c2 = document.createElement('canvas');
+      c2.width = w; c2.height = h;
+      var g2 = c2.getContext('2d');
+      g2.drawImage(canvas, 0, 0, w, h);
+      return c2.toDataURL('image/jpeg', 0.62);
+    } catch (e) { return ''; }
+  }
+  function saveSnapshot(canvas) {
+    var total = computeAll();
+    if (!total.count) { toast('저장할 과목이 없어요', 'info'); return; }
+    var m = mode();
+    var defName = (currentTerm() && currentTerm().name ? currentTerm().name : stampDate()) + ' 성적';
+    askText('보관함에 저장', '기록 이름', defName).then(function (name) {
+      if (!name) return;
+      var sheet = canvas || buildReport();
+      var rec = {
+        id: uid('r'), name: name, ts: Date.now(), mode: S.mode,
+        thumb: thumbFrom(sheet),
+        summary: {
+          score: total.score, credits: total.totalW, count: total.count,
+          label: total.score === null ? '—' : (m.kind === 'hs9' ? (10 - total.score).toFixed(2) + '등급' : total.score.toFixed(2)),
+          unit: m.maxLabel
+        },
+        state: JSON.parse(JSON.stringify(S))
+      };
+      idbPut(ST_REP, rec).then(function () {
+        reps.unshift(rec);
+        renderArchive();
+        renderArchiveMeta();
+        toast('보관함에 저장했어요', 'ok');
+        hap(14);
+      }, function () {
+        toast('저장에 실패했어요. 공간을 확인해 주세요', 'err');
+      });
+    });
+  }
+  function loadSnapshot(rec) {
+    confirmPop('이 기록을 불러올까요?', '지금 작업 중인 장부는 자동 저장본에 남아 있고, 불러온 기록이 작업 화면으로 열립니다.', '불러오기').then(function (ok) {
+      if (!ok) return;
+      saveState(true);
+      S = normalize(JSON.parse(JSON.stringify(rec.state)));
+      S.mode = rec.mode || S.mode;
+      simOn = false; simGrades = {};
+      activeTermId = S.active || (S.terms[0] ? S.terms[0].id : null);
+      renderAll();
+      saveState(true);
+      go('studio');
+      toast('기록을 불러왔어요', 'ok');
+    });
+  }
+  function deleteSnapshot(rec) {
+    confirmPop('기록을 지울까요?', '“' + esc(rec.name) + '” 스냅샷이 보관함에서 삭제됩니다. 되돌릴 수 없습니다.', '삭제').then(function (ok) {
+      if (!ok) return;
+      idbDel(ST_REP, rec.id).then(function () {
+        reps = reps.filter(function (r) { return r.id !== rec.id; });
+        renderArchive(); renderArchiveMeta();
+        toast('삭제했어요', 'info');
+      }, function () { toast('삭제에 실패했어요', 'err'); });
+    });
+  }
+  function renameSnapshot(rec) {
+    askText('이름 바꾸기', '기록 이름', rec.name).then(function (name) {
+      if (!name) return;
+      rec.name = name;
+      idbPut(ST_REP, rec).then(function () { renderArchive(); toast('이름을 바꿨어요', 'ok'); });
+    });
+  }
+  function exportSnapshot(rec) {
+    var payload = { app: 'lemon-grade', kind: 'snapshot', v: 1, name: rec.name, mode: rec.mode, state: rec.state, exportedAt: new Date().toISOString() };
+    if (window.Lemon) Lemon.download(safeName(rec.name) + '.lemon.json', JSON.stringify(payload, null, 2), 'application/json');
+  }
+  function safeName(s) { return String(s || 'lemon-grade').replace(/[\\/:*?"<>|]/g, ' ').trim() || 'lemon-grade'; }
+
+  function renderArchiveMeta() {
+    $('archCount').textContent = reps.length;
+    var best = null;
+    reps.forEach(function (r) {
+      if (r.summary && r.summary.score !== null && r.summary.score !== undefined) {
+        if (best === null || r.summary.score > best) best = r.summary.score;
+      }
+    });
+    var m = mode();
+    $('archBest').textContent = best === null ? '—' : (m.kind === 'hs9' ? (10 - best).toFixed(2) : best.toFixed(2));
+    var total = computeAll();
+    $('archCurrent').textContent = total.score === null ? '—' : (m.kind === 'hs9' ? (10 - total.score).toFixed(2) : total.score.toFixed(2));
+    var tab = $('tabArchCount');
+    if (tab) tab.textContent = reps.length;
+  }
+  function renderArchive() {
+    var grid = $('archGrid'), empty = $('archEmpty');
+    if (!grid) return;
+    var q = (repQuery || '').trim().toLowerCase();
+    var list = reps.filter(function (r) {
+      if (!q) return true;
+      return String(r.name).toLowerCase().indexOf(q) > -1;
+    });
+    if (!reps.length) {
+      grid.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.innerHTML = list.map(function (r) {
+      var modeInfo = MODES[r.mode] || MODES.u45;
+      return '<div class="arch-card" data-rep="' + r.id + '">' +
+        (r.thumb ? '<img class="arch-thumb" alt="' + esc(r.name) + ' 미리보기" src="' + r.thumb + '" loading="lazy">' : '<div class="arch-thumb"></div>') +
+        '<div class="p-2.5 space-y-1.5">' +
+        '<div class="flex items-start justify-between gap-1.5">' +
+        '<div class="min-w-0"><p class="text-[.82rem] font-bold truncate">' + esc(r.name) + '</p>' +
+        '<p class="mono" style="font-size:9px;color:var(--ink-faint)">' + (window.Lemon ? Lemon.fmtDateTime(r.ts) : '') + ' · ' + modeInfo.maxLabel + '</p></div>' +
+        '<span class="mono num" style="font-size:.8rem;font-weight:700;color:var(--emerald);white-space:nowrap">' + esc(r.summary ? r.summary.label : '—') + '</span>' +
+        '</div>' +
+        '<p class="mono" style="font-size:9px;color:var(--ink-faint)">' + (r.summary ? r.summary.count + '과목 · ' + r.summary.credits + (modeInfo.kind === 'uni' ? '학점' : '단위') : '') + '</p>' +
+        '<div class="flex items-center gap-1 pt-0.5">' +
+        '<button class="btn-mini" data-act="load" data-id="' + r.id + '">불러오기</button>' +
+        '<button class="btn-mini" data-act="json" data-id="' + r.id + '">JSON</button>' +
+        '<button class="btn-mini" data-act="rename" data-id="' + r.id + '">이름</button>' +
+        '<span style="flex:1"></span>' +
+        '<button class="btn-mini danger" data-act="del" data-id="' + r.id + '">삭제</button>' +
+        '</div></div></div>';
+    }).join('');
+  }
+  function repById(id) { return reps.filter(function (r) { return r.id === id; })[0]; }
+
+  /* ---------------- 가져오기 / 내보내기 ---------------- */
+  function exportState() {
+    var payload = { app: 'lemon-grade', kind: 'sheet', v: 1, exportedAt: new Date().toISOString(), state: S };
+    if (window.Lemon) Lemon.download('lemon-grade-' + stampDate().replace(/\./g, '') + '.lemon.json', JSON.stringify(payload, null, 2), 'application/json');
+    toast('JSON 백업 파일을 내려받았어요', 'ok');
+  }
+  function handleFile(file) {
+    if (!file) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      var data;
+      try { data = JSON.parse(String(rd.result)); } catch (e) { toast('JSON을 읽을 수 없어요', 'err'); return; }
+      var st = data && data.state ? data.state : (data && data.terms ? data : null);
+      if (!st || !Array.isArray(st.terms)) { toast('Lemon Grade 백업 파일이 아니에요', 'err'); return; }
+      var kind = data.kind === 'snapshot' ? '보관함 기록' : '백업';
+      confirmPop(kind + '을 불러올까요?', '지금 장부(' + (lastCalc && lastCalc.count ? lastCalc.count : 0) + '과목)를 덮어쓰고 가져온 기록으로 바꿉니다. 현재 장부는 먼저 보관함에 저장해 둘 수 있어요.', '가져오기').then(function (ok) {
+        if (!ok) return;
+        S = normalize(st);
+        simOn = false; simGrades = {};
+        activeTermId = S.active || (S.terms[0] ? S.terms[0].id : null);
+        renderAll();
+        saveState(true);
+        go('studio');
+        toast(kind + '을 불러왔어요', 'ok');
+      });
+    };
+    rd.readAsText(file);
+  }
+
+  /* ---------------- 예시 데이터 ---------------- */
+  function sampleData(kindKey) {
+    var k = kindKey || S.mode;
+    var m = MODES[k] || MODES.u45;
+    function mk(name, cat, cred, grade, raw, mean, sd) {
+      return { id: uid('c'), name: name, cat: cat, credits: cred, grade: grade, raw: raw || '', mean: mean || '', sd: sd || '' };
+    }
+    if (m.kind === 'uni') {
+      var a = m.key === 'u43' ? { ap: 'A+', b: 'A-', bp: 'B+' } : { ap: 'A+', b: 'A', bp: 'B+' };
+      return {
+        mode: k,
+        terms: [
+          { id: uid('t'), name: '1학기', courses: [mk('자료구조', 'major', 3, a.ap), mk('공학수학 I', 'major', 3, a.b), mk('대학영어', 'gen', 2, a.ap), mk('과학기술과 사회', 'gen', 3, a.b), mk('창의설계', 'etc', 1, a.bp)] },
+          { id: uid('t'), name: '2학기', courses: [mk('운영체제', 'major', 3, a.b), mk('회로이론', 'major', 3, a.bp), mk('글쓰기', 'gen', 2, a.ap), mk('통계학개론', 'gen', 3, a.b), mk('동아리활동', 'etc', 1, a.ap)] }
+        ]
+      };
+    }
+    if (m.kind === 'hs9') {
+      return {
+        mode: k,
+        terms: [
+          { id: uid('t'), name: '1학년 1학기', courses: [mk('국어', 'major', 4, '2', 88, 76, 12), mk('수학', 'major', 4, '1', 95, 71, 14), mk('영어', 'major', 4, '2', 90, 74, 13), mk('통합사회', 'gen', 3, '3', '', '', ''), mk('과학탐구실험', 'gen', 2, '2', '', '', '')] },
+          { id: uid('t'), name: '1학년 2학기', courses: [mk('국어', 'major', 4, '2', 86, 75, 11), mk('수학', 'major', 4, '2', 89, 70, 15), mk('영어', 'major', 4, '3', 84, 73, 12), mk('한국사', 'gen', 3, '2', '', '', ''), mk('기술가정', 'gen', 3, '3', '', '', '')] }
+        ]
+      };
+    }
+    return {
+      mode: k,
+      terms: [
+        { id: uid('t'), name: '1학년 1학기', courses: [mk('국어', 'major', 4, 'A'), mk('수학', 'major', 4, 'B'), mk('영어', 'major', 4, 'A'), mk('통합과학', 'gen', 3, 'B'), mk('체육', 'gen', 2, 'A')] },
+        { id: uid('t'), name: '1학년 2학기', courses: [mk('국어', 'major', 4, 'A'), mk('수학', 'major', 4, 'A'), mk('영어', 'major', 4, 'B'), mk('진로와 직업', 'etc', 2, 'C'), mk('음악', 'gen', 2, 'A')] }
+      ]
+    };
+  }
+  function loadSample() {
+    confirmPop('예시 성적을 불러올까요?', '지금 장부가 있으면 지워지고 예시 2개 학기가 들어갑니다. 예시는 언제든 지우고 직접 입력할 수 있습니다.', '불러오기').then(function (ok) {
+      if (!ok) return;
+      var d = sampleData(S.mode);
+      S.terms = d.terms;
+      simOn = false; simGrades = {};
+      activeTermId = S.terms[0].id;
+      renderAll();
+      saveState(true);
+      go('studio');
+      toast('예시 성적을 채웠어요', 'ok');
+    });
+  }
+
+  /* ---------------- 탭 ---------------- */
+  var go = function (id) {
+    qsa('[data-view]').forEach(function (p) { p.classList.toggle('hidden', p.getAttribute('data-view') !== id); });
+    qsa('[data-tab]').forEach(function (b) { b.classList.toggle('nav-on', b.getAttribute('data-tab') === id); });
+  };
+
+  /* ---------------- 이벤트 ---------------- */
+  function bindEvents() {
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      var goBtn = t.closest ? t.closest('[data-go]') : null;
+      if (goBtn) { e.preventDefault(); go(goBtn.getAttribute('data-go')); return; }
+      var modeJump = t.closest ? t.closest('[data-mode-jump]') : null;
+      if (modeJump) {
+        setMode(modeJump.getAttribute('data-mode-jump'));
+        go('studio');
+        return;
+      }
+      var termBtn = t.closest ? t.closest('[data-term]') : null;
+      if (termBtn) {
+        activeTermId = termBtn.getAttribute('data-term');
+        renderAll();
+        saveState();
+        hap(8);
+        return;
+      }
+      var rowAct = t.closest ? t.closest('[data-act]') : null;
+      if (rowAct) {
+        var act = rowAct.getAttribute('data-act');
+        if (act === 'del') {
+          var rid = rowAct.closest('.c-row');
+          if (rid) delCourse(rid.getAttribute('data-id'));
+        } else if (act === 'calc-row') {
+          var row = rowAct.closest('.c-row');
+          if (row) calcRowGrade(row.getAttribute('data-id'));
+        }
+        return;
+      }
+      var repAct = t.closest ? t.closest('[data-act][data-id]') : null;
+      if (repAct) {
+        var rec = repById(repAct.getAttribute('data-id'));
+        if (!rec) return;
+        var a2 = repAct.getAttribute('data-act');
+        if (a2 === 'load') loadSnapshot(rec);
+        else if (a2 === 'del') deleteSnapshot(rec);
+        else if (a2 === 'rename') renameSnapshot(rec);
+        else if (a2 === 'json') exportSnapshot(rec);
+        return;
+      }
+      var trendBtn = t.closest ? t.closest('[data-trend]') : null;
+      if (trendBtn) {
+        trendMode = trendBtn.getAttribute('data-trend');
+        qsa('[data-trend]').forEach(function (b) { b.classList.toggle('on', b === trendBtn); });
+        renderTrend();
+        return;
+      }
+      var remainBtn = t.closest ? t.closest('[data-remain]') : null;
+      if (remainBtn) {
+        var cur = Number($('inpRemain').value) || 0;
+        $('inpRemain').value = cur + Number(remainBtn.getAttribute('data-remain'));
+        applyTargetInputs();
+        return;
+      }
+    });
+
+    $('modeStrip').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-mode]');
+      if (!b) return;
+      setMode(b.getAttribute('data-mode'));
+    });
+
+    $('termName').addEventListener('input', function () {
+      var t = currentTerm();
+      if (!t) return;
+      t.name = this.value;
+      renderTermChips();
+      saveState();
+    });
+    $('btnAddTerm').addEventListener('click', function () {
+      var t = blankTerm();
+      S.terms.push(t);
+      activeTermId = t.id;
+      renderAll();
+      if (!t.courses.length) t.courses.push(blankCourse());
+      renderAll();
+      go('studio');
+      saveState(true);
+      toast('새 학기를 만들었어요', 'ok');
+      hap(10);
+    });
+    $('btnDupTerm').addEventListener('click', function () {
+      var t = currentTerm();
+      if (!t) { toast('복제할 학기가 없어요', 'info'); return; }
+      var copy = { id: uid('t'), name: t.name + ' 복사', courses: t.courses.map(function (c) { return Object.assign({}, c, { id: uid('c') }); }) };
+      S.terms.push(copy); activeTermId = copy.id;
+      renderAll(); saveState(true);
+      toast('학기를 복제했어요', 'ok');
+    });
+    $('btnDelTerm').addEventListener('click', function () {
+      var t = currentTerm();
+      if (!t) return;
+      confirmPop('학기를 지울까요?', '“' + esc(t.name) + '”과 그 안의 과목 ' + t.courses.length + '개가 삭제됩니다.', '삭제').then(function (ok) {
+        if (!ok) return;
+        S.terms = S.terms.filter(function (x) { return x.id !== t.id; });
+        activeTermId = S.terms[0] ? S.terms[0].id : null;
+        renderAll(); saveState(true);
+        toast('학기를 지웠어요', 'info');
+      });
+    });
+
+    $('btnAddCourse').addEventListener('click', function () { addCourse(true); });
+    $('btnEmptyAdd').addEventListener('click', function () { addCourse(true); });
+    $('btnEmptySample').addEventListener('click', function () { loadSample(); });
+    $('mobAdd').addEventListener('click', function () { addCourse(true); });
+
+    $('courseList').addEventListener('input', function (e) {
+      var el = e.target;
+      var f = el.getAttribute('data-f');
+      if (!f) return;
+      if (f === 'grade' || f === 'cat') return;
+      var row = el.closest('.c-row');
+      if (!row) return;
+      updateCourse(row.getAttribute('data-id'), f, el.value);
+    });
+    $('courseList').addEventListener('change', function (e) {
+      var el = e.target;
+      var f = el.getAttribute('data-f');
+      if (!f || (f !== 'grade' && f !== 'cat')) return;
+      var row = el.closest('.c-row');
+      if (!row) return;
+      if (f === 'grade') {
+        var m = mode(), low = false;
+        if (m.kind === 'uni' && el.value) { var sc = gradeScore(el.value); low = sc !== null && sc < m.max * 0.5; }
+        if (m.kind === 'hs9' && el.value) low = Number(el.value) >= 6;
+        if (m.kind === 'hsA' && el.value) low = el.value === 'D' || el.value === 'E';
+        el.setAttribute('data-lvl', low ? 'low' : 'ok');
+      }
+      updateCourse(row.getAttribute('data-id'), f, el.value);
+      if (f === 'grade') hap(10);
+    });
+
+    $('btnFillGrades').addEventListener('click', function () {
+      var t = currentTerm();
+      if (!t) return;
+      var done = 0, miss = 0;
+      t.courses.forEach(function (c) {
+        var est = estimateHsGrade(Number(c.raw), Number(c.mean), Number(c.sd));
+        if (est) { c.grade = String(est); done++; } else { miss++; }
+      });
+      if (!done) { toast('원점수·평균·표준편차를 먼저 적어 주세요', 'info'); return; }
+      renderAll(); saveState(true);
+      toast(done + '개 과목의 등급을 산출했어요' + (miss ? ' (' + miss + '개는 값 부족)' : ''), 'ok');
+      hap(16);
+    });
+    $('btnClearCourses').addEventListener('click', function () {
+      var t = currentTerm();
+      if (!t || !t.courses.length) return;
+      confirmPop('과목을 모두 비울까요?', '“' + esc(t.name) + '”의 과목 ' + t.courses.length + '개가 지워집니다.', '비우기').then(function (ok) {
+        if (!ok) return;
+        t.courses = []; simGrades = {};
+        renderAll(); saveState(true);
+        toast('비웠어요', 'info');
+      });
+    });
+
+    $('btnSimMode').addEventListener('click', function () {
+      simOn = !simOn;
+      if (!simOn) simGrades = {};
+      renderAll();
+      toast(simOn ? '가정 모드 — 등급을 바꿔도 저장되지 않습니다' : '가정 모드를 끝냈어요', 'info');
+      hap(12);
+    });
+
+    $('inpTarget').addEventListener('input', applyTargetInputs);
+    $('inpRemain').addEventListener('input', applyTargetInputs);
+    $('simSlider').addEventListener('input', function () {
+      sliderDirty = true;
+      renderSim();
+    });
+
+    $('btnReport').addEventListener('click', showReport);
+    $('btnTopReport').addEventListener('click', showReport);
+    $('mobReport').addEventListener('click', showReport);
+    $('btnSaveSnapshot').addEventListener('click', function () {
+      if (!computeAll().count) { toast('저장할 성적이 없어요', 'info'); return; }
+      saveSnapshot(buildReport());
+    });
+    $('btnArchSave').addEventListener('click', function () {
+      if (!computeAll().count) { toast('시뮬레이터에 성적을 먼저 입력해 주세요', 'info'); return; }
+      saveSnapshot(buildReport());
+    });
+    $('btnExportJson').addEventListener('click', exportState);
+    $('btnHomeBackup').addEventListener('click', exportState);
+    $('btnImportJson').addEventListener('click', function () { $('fileJson').click(); });
+    $('btnArchImport').addEventListener('click', function () { $('fileJson').click(); });
+    $('btnHomeRestore').addEventListener('click', function () { $('fileJson').click(); });
+    $('btnHomeSample').addEventListener('click', function () { loadSample(); });
+    $('fileJson').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      this.value = '';
+      handleFile(f);
+    });
+    $('btnNewSheet').addEventListener('click', function () {
+      confirmPop('새로 시작할까요?', '현재 장부를 지우고 빈 학기 하나로 시작합니다. 남겨야 한다면 먼저 보관함에 저장하거나 JSON으로 내려받으세요.', '새로 시작').then(function (ok) {
+        if (!ok) return;
+        S = defaultState();
+        var t = blankTerm(); S.terms.push(t); activeTermId = t.id;
+        simOn = false; simGrades = {};
+        renderAll(); saveState(true);
+        toast('새 장부를 열었어요', 'ok');
+      });
+    });
+
+    $('archSearch').addEventListener('input', function () { repQuery = this.value; renderArchive(); });
+
+    $('popClose').addEventListener('click', closePop);
+    $('popRoot').addEventListener('click', function (e) { if (e.target === this) closePop(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && $('popRoot').classList.contains('open')) closePop();
+    });
+
+    document.addEventListener('lemon:view', function (e) {
+      var v = e.detail && e.detail.view;
+      document.body.classList.toggle('studio-mode', v === 'studio');
+      document.body.classList.toggle('studio-view', v === 'studio');
+    });
+    window.addEventListener('beforeunload', function () { if (S) saveState(true); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden' && S) saveState(true);
+    });
+  }
+
+  var sliderDirty = false;
+  function applyTargetInputs() {
+    var m = mode();
+    var tv = targetValues();
+    var rawT = Number($('inpTarget').value);
+    var rawR = Number($('inpRemain').value);
+    if (!isFinite(rawT)) rawT = m.kind === 'hs9' ? 2 : m.max;
+    if (!isFinite(rawR)) rawR = tv.remain;
+    rawR = Math.max(0, Math.round(rawR));
+    if (m.kind === 'hs9') rawT = Math.max(1, Math.min(9, rawT));
+    else rawT = Math.max(0, Math.min(m.max, rawT));
+    setTargetValues(m.kind === 'hs9' ? (10 - rawT) : rawT, rawR);
+    sliderDirty = false;
+    renderSummary();
+    saveState();
+  }
+  function setMode(k) {
+    if (!MODES[k] || S.mode === k) { if (S.mode === k) go('studio'); return; }
+    var old = S.mode;
+    S.mode = k;
+    simOn = false; simGrades = {};
+    /* 새 모드에 없는 등급은 모드별 보관함(gAlt)에 넣어 두고, 돌아오면 복원한다 */
+    var valid = {};
+    MODES[k].grades.forEach(function (g) { valid[g[0]] = true; });
+    var restored = 0;
+    S.terms.forEach(function (t) {
+      t.courses.forEach(function (c) {
+        if (!c.gAlt || typeof c.gAlt !== 'object') c.gAlt = {};
+        if (c.grade && !valid[c.grade]) { c.gAlt[old] = c.grade; c.grade = ''; }
+        if (!c.grade && c.gAlt[k]) { c.grade = c.gAlt[k]; restored++; }
+        if (!MODES[k].cats.some(function (x) { return x[0] === c.cat; })) c.cat = MODES[k].cats[0][0];
+      });
+    });
+    renderAll();
+    saveState(true);
+    toast(MODES[k].maxLabel + ' 모드로 전환' + (restored ? ' · 이 모드에 적어 둔 ' + restored + '개 과목 성적을 되살렸어요' : ''), 'info');
+    hap(12);
+  }
+  function calcRowGrade(id) {
+    var t = currentTerm();
+    if (!t) return;
+    var c = t.courses.filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    var est = estimateHsGrade(Number(c.raw), Number(c.mean), Number(c.sd));
+    if (!est) { toast('원점수·평균·표준편차를 모두 적어 주세요', 'info'); return; }
+    c.grade = String(est);
+    renderAll();
+    saveState(true);
+    toast('예상 ' + est + '등급으로 채웠어요', 'ok');
+    hap(12);
+  }
+
+  /* ---------------- 부팅 ---------------- */
+  function boot() {
+    S = defaultState();
+    renderAll();
+    if (window.Lemon && Lemon.initTabs) {
+      go = Lemon.initTabs('home');
+      document.body.classList.toggle('studio-mode', false);
+    }
+    bindEvents();
+
+    var loaded = false;
+    idbGet(ST_STATE, 'main').then(function (rec) {
+      if (rec) { S = normalize(rec); loaded = true; }
+      return idbAll(ST_REP);
+    }).then(function (list) {
+      if (Array.isArray(list)) reps = list.sort(function (a, b) { return b.ts - a.ts; });
+      afterLoad(loaded);
+    }, function () {
+      var s = lsLoad();
+      if (s) { S = normalize(s); loaded = true; }
+      afterLoad(loaded);
+    });
+  }
+  function afterLoad(loaded) {
+    if (!activeTermId || !S.terms.some(function (t) { return t.id === activeTermId; })) {
+      activeTermId = S.active || (S.terms[0] ? S.terms[0].id : null);
+    }
+    renderAll();
+    renderArchive();
+    if (!loaded) setSaveNote('새 장부');
+    var hash = (location.hash || '').replace('#', '');
+    if (hash === 'studio' || hash === 'archive') go(hash);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
