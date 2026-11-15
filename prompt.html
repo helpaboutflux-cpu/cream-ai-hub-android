@@ -1,0 +1,2263 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Prompt — AI 프롬프트 라이브러리 &amp; 변수 템플릿 스튜디오</title>
+<meta name="description" content="프롬프트 본문에 변수를 넣으면 입력 폼이 자동으로 생기고, 값을 채우는 즉시 완성된 프롬프트가 조합됩니다. 카테고리·태그·버전 히스토리·원클릭 복사·IndexedDB 보관과 JSON 백업까지 브라우저 안에서만 동작하는 프롬프트 스튜디오.">
+<meta name="theme-color" content="#6a4dff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%236a4dff'/%3E%3Cpath d='M7 8.2 10.6 12 7 15.8' fill='none' stroke='%23eafffb' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M13 16h5' stroke='%2312e0c8' stroke-width='1.9' stroke-linecap='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#080a12', 900: '#0e1119', 850: '#141824', 800: '#1e2333', 700: '#333a4d', 200: '#e4e5ed', 100: '#f1f2f7' },
+    brand: { 50: '#f1eeff', 100: '#e2dbff', 200: '#c9bcff', 300: '#a898ff', 400: '#8b74ff', 500: '#6a4dff', 600: '#5738f0', 700: '#4728d4', 800: '#3a21ab', 900: '#2f1d87', 950: '#1c1160' },
+    aqua: { 50: '#e6fffb', 100: '#c3fff4', 200: '#8bffe9', 300: '#4cf5dc', 400: '#20e6cb', 500: '#12e0c8', 600: '#04b8a3', 700: '#069184', 800: '#0a736b', 900: '#0d5f59' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #6a4dff; --brand-2: #12e0c8; --brand-deep: #4a2ed0; }
+
+  .mono { font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace; }
+  body { background-color: #f6f7fb; }
+  .dark body { background-color: #080a12; }
+
+  /* hero terminal */
+  .term {
+    position: relative;
+    border-radius: 1.1rem;
+    border: 1px solid rgba(255,255,255,.10);
+    background: linear-gradient(160deg, #12141f 0%, #0b0d16 60%, #0a0c14 100%);
+    box-shadow: 0 30px 60px -34px rgba(8, 6, 30, .9), inset 0 1px 0 rgba(255,255,255,.05);
+    overflow: hidden;
+  }
+  .term-bar { display: flex; align-items: center; gap: .38rem; padding: .55rem .8rem; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .term-dot { width: .48rem; height: .48rem; border-radius: 9999px; background: rgba(255,255,255,.16); }
+  .term-dot.b { background: #6a4dff; }
+  .term-dot.a { background: #12e0c8; }
+  .term-body { padding: .85rem .95rem 1rem; font-size: 12.4px; line-height: 1.85; color: #d7d9e6; }
+  .term-line { display: flex; gap: .5rem; }
+  .term-num { color: #4d5470; user-select: none; min-width: 1.1rem; text-align: right; }
+
+  /* variable token */
+  .tok {
+    display: inline;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .92em;
+    font-weight: 700;
+    color: #8b74ff;
+    background: rgba(106, 77, 255, .13);
+    border-bottom: 1px dashed rgba(106, 77, 255, .55);
+    border-radius: .28rem;
+    padding: 0 .22rem;
+    white-space: nowrap;
+  }
+  .term .tok { color: #a898ff; background: rgba(106, 77, 255, .16); border-bottom-color: rgba(168,152,255,.6); }
+  .tok.filled { color: #04a89a; background: rgba(18, 224, 200, .14); border-bottom-style: solid; border-bottom-color: rgba(18,224,200,.5); }
+  .dark .tok.filled { color: #4cf5dc; }
+
+  /* demo chips */
+  .demo-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .26rem .55rem; border-radius: .55rem;
+    font-size: 10.5px; font-weight: 800;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.05);
+    color: #9aa1bb;
+    transition: color .3s ease, border-color .3s ease, background-color .3s ease, transform .3s ease;
+  }
+  .demo-chip b { color: #12e0c8; font-weight: 800; }
+  .demo-chip.hot { color: #fff; border-color: rgba(106,77,255,.65); background: rgba(106,77,255,.22); transform: translateY(-2px); }
+  .demo-chip.hot b { color: #eafffb; }
+
+  /* category tiles */
+  .cat-tile {
+    position: relative; display: flex; align-items: center; gap: .7rem;
+    padding: .8rem .85rem; border-radius: 1.05rem;
+    border: 1px solid #e6e7ef; background: #fff;
+    transition: transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s ease, border-color .2s ease;
+    overflow: hidden; text-align: left; width: 100%;
+  }
+  .dark .cat-tile { border-color: #1e2333; background: #0e1119; }
+  .cat-tile::after {
+    content: ''; position: absolute; inset: 0; opacity: 0;
+    background: radial-gradient(120% 120% at 12% 0%, var(--cc, #6a4dff) 0%, transparent 62%);
+    transition: opacity .28s ease; pointer-events: none;
+  }
+  @media (hover: hover) {
+    .cat-tile:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--cc, #6a4dff) 42%, transparent); box-shadow: 0 18px 34px -24px color-mix(in srgb, var(--cc, #6a4dff) 70%, transparent); }
+    .cat-tile:hover::after { opacity: .10; }
+  }
+  .cat-ico {
+    width: 2.1rem; height: 2.1rem; border-radius: .72rem; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; background-image: linear-gradient(140deg, var(--cc, #6a4dff), color-mix(in srgb, var(--cc, #6a4dff) 55%, #12e0c8));
+    box-shadow: 0 8px 18px -12px color-mix(in srgb, var(--cc, #6a4dff) 90%, transparent);
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .cat-tile:hover .cat-ico { transform: rotate(-6deg) scale(1.06); }
+
+  /* prompt cards */
+  .p-card {
+    position: relative;
+    border-radius: 1.1rem; border: 1px solid #e6e7ef; background: #fff;
+    transition: transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s ease, border-color .2s ease;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .dark .p-card { border-color: #1e2333; background: #0e1119; }
+  @media (hover: hover) {
+    .p-card:hover { transform: translateY(-4px); border-color: rgba(106,77,255,.45); box-shadow: 0 22px 44px -30px rgba(58,33,171,.55); }
+  }
+  .p-card .body-preview {
+    font-size: 11.5px; line-height: 1.72; color: #6b7185;
+    max-height: 4.6rem; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .dark .p-card .body-preview { color: #8d94ab; }
+
+  .cat-badge {
+    display: inline-flex; align-items: center; gap: .28rem;
+    padding: .18rem .5rem; border-radius: 9999px;
+    font-size: 10px; font-weight: 800; white-space: nowrap;
+    color: color-mix(in srgb, var(--cc, #6a4dff) 88%, black);
+    background: color-mix(in srgb, var(--cc, #6a4dff) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--cc, #6a4dff) 28%, transparent);
+  }
+  .dark .cat-badge { color: color-mix(in srgb, var(--cc, #6a4dff) 55%, white); }
+
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: .22rem;
+    padding: .12rem .42rem; border-radius: .4rem;
+    font-size: 10px; font-weight: 700;
+    color: #7a7f93; background: rgba(120,125,150,.10); border: 1px solid rgba(120,125,150,.14);
+  }
+  .dark .tag-chip { color: #9aa1b8; background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.08); }
+
+  /* studio */
+  .editor-wrap { position: relative; }
+  .editor-wrap textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.8px; line-height: 1.85; tab-size: 2;
+  }
+  .var-field { border-radius: .85rem; border: 1px solid #e6e7ef; background: #fbfbfe; padding: .55rem .65rem; }
+  .dark .var-field { border-color: #232a3d; background: rgba(20,24,36,.7); }
+  .var-field label { display: block; font-size: 10.5px; font-weight: 800; color: #6a4dff; margin-bottom: .3rem; letter-spacing: .01em; }
+  .dark .var-field label { color: #a898ff; }
+  .var-field .lemon-input, .var-field .lemon-select, .var-field .lemon-textarea { border: none; background: transparent; padding: 0; font-size: 12.6px; box-shadow: none !important; }
+  .var-field .lemon-input:focus, .var-field .lemon-select:focus, .var-field .lemon-textarea:focus { box-shadow: none; }
+
+  .preview-pane {
+    border-radius: 1rem;
+    border: 1px solid #e6e7ef;
+    background:
+      radial-gradient(120% 100% at 100% 0%, rgba(106,77,255,.07), transparent 60%),
+      #fbfbfe;
+    padding: .9rem 1rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.6px; line-height: 1.9;
+    white-space: pre-wrap; word-break: break-word;
+    overflow-wrap: anywhere;
+    max-height: 46vh; overflow-y: auto;
+    color: #2b3040;
+    min-height: 6.5rem;
+  }
+  .copy-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+    font-size: 11px; font-weight: 800; padding: .42rem .55rem; border-radius: .8rem;
+    color: color-mix(in srgb, var(--brand) 92%, black);
+    background: color-mix(in srgb, var(--brand) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand) 24%, transparent);
+    transition: background-color .18s ease, border-color .18s ease, transform .14s cubic-bezier(.34,1.56,.64,1);
+    white-space: nowrap;
+  }
+  .copy-btn:hover { background: color-mix(in srgb, var(--brand) 16%, transparent); border-color: color-mix(in srgb, var(--brand) 42%, transparent); }
+  .copy-btn:active { transform: scale(.95); }
+  .dark .copy-btn { color: #d5ccff; background: color-mix(in srgb, var(--brand) 20%, transparent); border-color: color-mix(in srgb, var(--brand) 34%, transparent); }
+  .dark .copy-btn:hover { background: color-mix(in srgb, var(--brand) 30%, transparent); }
+  .dark .preview-pane {
+    border-color: #232a3d; color: #d7d9e6;
+    background:
+      radial-gradient(120% 100% at 100% 0%, rgba(106,77,255,.16), transparent 60%),
+      #0b0d16;
+  }
+
+  .ver-item {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .5rem .6rem; border-radius: .7rem;
+    border: 1px solid transparent; transition: background .18s ease, border-color .18s ease;
+    text-align: left; width: 100%;
+  }
+  .ver-item:hover { background: rgba(106,77,255,.07); border-color: rgba(106,77,255,.22); }
+
+  /* sheet / modal */
+  .sheet-back { position: fixed; inset: 0; z-index: 70; background: rgba(4,6,12,.62); backdrop-filter: blur(6px); opacity: 0; pointer-events: none; transition: opacity .24s ease; }
+  .sheet-back.on { opacity: 1; pointer-events: auto; }
+  .sheet-panel {
+    position: fixed; z-index: 71; left: 50%; bottom: 0; transform: translate(-50%, 100%);
+    width: min(100%, 46rem); max-height: 92vh; overflow-y: auto;
+    border-radius: 1.5rem 1.5rem 0 0; background: #fff; border: 1px solid #e6e7ef;
+    box-shadow: 0 -30px 80px -40px rgba(0,0,0,.7);
+    transition: transform .32s cubic-bezier(.22,1,.36,1), opacity .24s ease;
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .dark .sheet-panel { background: #0e1119; border-color: #232a3d; }
+  .sheet-panel.on { transform: translate(-50%, 0); pointer-events: auto; visibility: visible; }
+  @media (min-width: 640px) {
+    .sheet-panel { top: 50%; bottom: auto; border-radius: 1.5rem; transform: translate(-50%, -46%) scale(.97); opacity: 0; }
+    .sheet-panel.on { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  }
+
+  /* diff */
+  .diff-line { display: flex; gap: .5rem; padding: .12rem .5rem; border-radius: .3rem; line-height: 1.75; word-break: break-word; }
+  .diff-line.add { background: rgba(18, 224, 200, .13); }
+  .diff-line.del { background: rgba(244, 63, 94, .13); color: #b93a52; }
+  .dark .diff-line.del { color: #f7a9b8; }
+  .diff-mark { flex-shrink: 0; width: .8rem; font-weight: 900; }
+  .diff-line.add .diff-mark { color: #04a89a; }
+  .diff-line.del .diff-mark { color: #e11d48; }
+  .diff-line.eq { color: #8d94ab; }
+  .dark .diff-line.add { color: #8ef7e6; }
+
+  /* misc */
+  .soft-divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(120,125,150,.22), transparent); }
+  .stat-num { font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .kbd {
+    font-family: ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 700;
+    padding: .1rem .3rem; border-radius: .3rem; border: 1px solid rgba(120,125,150,.3);
+    background: rgba(120,125,150,.08); color: #7a7f93;
+  }
+  .dark .kbd { color: #9aa1b8; border-color: rgba(255,255,255,.14); background: rgba(255,255,255,.06); }
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: rgba(120,125,150,.35); border-radius: 9999px; }
+  .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  .typing-dot { display: inline-block; width: .32rem; height: .32rem; border-radius: 9999px; background: #12e0c8; margin-left: .12rem; animation: typingBlink 1.1s steps(2, end) infinite; }
+  @keyframes typingBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .15; } }
+
+  .float-slow { animation: floatSlow 7s ease-in-out infinite; }
+  @keyframes floatSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+  .glow-ring { position: relative; }
+  .glow-ring::before {
+    content: ''; position: absolute; inset: -1px; border-radius: inherit; padding: 1px;
+    background: linear-gradient(135deg, rgba(106,77,255,.7), rgba(18,224,200,.55), transparent 70%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+  }
+
+  .step-num {
+    width: 1.6rem; height: 1.6rem; border-radius: 9999px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 900; color: #fff;
+    background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+  }
+
+  .fav-on { color: #f59e0b; }
+  .fav-on svg { fill: currentColor; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .float-slow, .ambient-orb, .btn-shimmer::after, .term-dot.a { animation: none !important; }
+  }
+</style>
+</head>
+<body class="text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-24 opacity-20"></div>
+<div class="ambient-orb o2 w-80 h-80 top-1/3 -right-28 opacity-[.14]" style="background:#12e0c8"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/80 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 7.5 10.8 12 6.5 16.5"></path><path d="M13 16.5h4.5"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Prompt</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-900/30 font-bold">STUDIO</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">프롬프트 라이브러리 &amp; 변수 템플릿</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+      <button id="btnNew" class="primary-btn btn-tap !px-3 !py-2 !text-[11.5px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span class="hidden sm:inline">새 프롬프트</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div id="navWrap" class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.6"></rect><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"></path><path d="M10 13h4"></path></svg>
+        <span>보관함</span>
+        <span id="tabCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+
+    <div class="hero-shell p-6 sm:p-10">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <div class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M17.7 6.3l-2.8 2.8M9.1 14.9l-2.8 2.8"></path></svg>
+            변수 치환 프롬프트 빌더
+          </div>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.16] tracking-tight">
+            프롬프트를 <span class="brand-text">변수</span>로<br class="hidden sm:block"> 조립하세요
+          </h1>
+          <p class="text-[13px] sm:text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-lg">
+            본문에 <span class="tok">{{주제}}</span> <span class="tok">{{톤}}</span> 처럼 변수를 적어 두면 입력 폼이 자동으로 생깁니다.
+            값을 채우는 순간 완성된 프롬프트가 조합되고, 버전·태그·즐겨찾기로 다시 꺼내 쓸 수 있습니다.
+            서버에 아무것도 보내지 않고 브라우저 안에서만 저장됩니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button data-go="studio" class="primary-btn btn-tap">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+              스튜디오 열기
+            </button>
+            <button data-scroll="homePresets" class="ghost-btn btn-tap">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M3 10h18"></path><path d="M8 4v16"></path></svg>
+              프리셋 둘러보기
+            </button>
+          </div>
+          <div class="grid grid-cols-3 gap-2.5 max-w-md pt-1">
+            <div class="panel-soft px-3 py-2.5">
+              <p class="stat-num text-xl font-black" id="statPrompts">0</p>
+              <p class="text-[10px] text-neutral-500 dark:text-neutral-400 font-semibold mt-0.5">내 프롬프트</p>
+            </div>
+            <div class="panel-soft px-3 py-2.5">
+              <p class="stat-num text-xl font-black" id="statFav">0</p>
+              <p class="text-[10px] text-neutral-500 dark:text-neutral-400 font-semibold mt-0.5">즐겨찾기</p>
+            </div>
+            <div class="panel-soft px-3 py-2.5">
+              <p class="stat-num text-xl font-black" id="statCopies">0</p>
+              <p class="text-[10px] text-neutral-500 dark:text-neutral-400 font-semibold mt-0.5">복사한 횟수</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="float-slow">
+          <div class="term">
+            <div class="term-bar">
+              <span class="term-dot b"></span><span class="term-dot a"></span><span class="term-dot"></span>
+              <span class="ml-2 text-[10px] font-mono text-neutral-500 dark:text-neutral-500">prompt.md</span>
+              <span class="ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded border border-white/10 text-[#12e0c8]">live</span>
+            </div>
+            <div class="term-body" id="demoTemplate">
+              <div class="term-line"><span class="term-num">1</span><span><span class="tok">{{주제}}</span>에 대한 블로그 글을 써줘.</span></div>
+              <div class="term-line"><span class="term-num">2</span><span>독자는 <span class="tok">{{독자}}</span>, 톤은 <span class="tok">{{톤}}</span>.</span></div>
+              <div class="term-line"><span class="term-num">3</span><span><span class="tok">{{분량}}</span> 분량으로, 소제목 3개와 마무리 문장을 포함해.<span class="typing-dot"></span></span></div>
+            </div>
+            <div class="px-3 pb-3 pt-1 border-t border-white/[.06]">
+              <p class="text-[9.5px] font-mono text-neutral-500 mb-1.5">VARIABLES</p>
+              <div class="flex flex-wrap gap-1.5" id="demoChips">
+                <span class="demo-chip" data-i="0">주제 <b>AI 학습법</b></span>
+                <span class="demo-chip" data-i="1">독자 <b>대학생</b></span>
+                <span class="demo-chip" data-i="2">톤 <b>친근한</b></span>
+                <span class="demo-chip" data-i="3">분량 <b>800자</b></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-bold tracking-tight">카테고리</h2>
+        <span class="text-[11px] text-neutral-500 dark:text-neutral-400">8개 분류 · 프리셋 자동 지급</span>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 stagger" id="homeCats"></div>
+    </div>
+
+    <div class="space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-base font-bold tracking-tight">바로 쓰는 실전 프리셋</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">그대로 복사해도 되고, 변수만 바꿔도 됩니다.</p>
+        </div>
+        <button data-go="archive" class="pill-btn btn-tap !text-[11px] shrink-0">
+          전체 보기
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" id="homePresets"></div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M4 12h10"></path><path d="M4 17h6"></path><path d="M17 12l3 3-3 3"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">변수 자동 폼</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">중괄호 두 개로 변수를 적으면 입력칸·선택 목록이 저절로 만들어집니다.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">버전 히스토리</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">저장할 때마다 이전 본문이 남고, 줄 단위로 무엇이 바뀌었는지 비교합니다.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.4"></rect><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6.5A2.5 2.5 0 0 0 4 5.5v6A2.5 2.5 0 0 0 6.5 14"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">원클릭 복사</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">보관함 카드에서 한 번 누르면 완성본이 클립보드로 들어갑니다.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"></ellipse><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"></path><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-bold">내 브라우저에 영구 보관</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">IndexedDB에 저장하고 JSON으로 내보내 다른 기기로 옮길 수 있습니다.</p>
+      </div>
+    </div>
+
+    <div class="panel p-5 sm:p-6">
+      <h2 class="text-base font-bold tracking-tight mb-4">이렇게 동작합니다</h2>
+      <div class="grid sm:grid-cols-3 gap-4">
+        <div class="flex gap-3">
+          <span class="step-num">1</span>
+          <div>
+            <p class="text-[12.5px] font-bold">템플릿에 변수 표시</p>
+            <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-0.5">본문 아무 곳에나 <span class="tok">{{변수}}</span> 를 넣습니다. 선택지는 <span class="tok">{{톤|친근한|전문적}}</span> 처럼 적습니다.</p>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <span class="step-num">2</span>
+          <div>
+            <p class="text-[12.5px] font-bold">값을 채우면 즉시 조합</p>
+            <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-0.5">오른쪽 미리보기에서 빈칸이 모두 채워진 완성 프롬프트를 바로 확인합니다.</p>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <span class="step-num">3</span>
+          <div>
+            <p class="text-[12.5px] font-bold">복사·공유·보관</p>
+            <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-0.5">한 번 누르면 복사, 링크로는 상대방도 변수를 채워 쓸 수 있게 건넵니다.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-3">
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex flex-wrap items-center gap-2 justify-between">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-[10px] font-mono font-bold px-2 py-1 rounded-lg brand-grad text-white shrink-0">PROMPT</span>
+          <input id="fTitle" type="text" maxlength="80" placeholder="프롬프트 제목" class="lemon-input !border-0 !bg-transparent !px-0 !text-[15px] !font-bold flex-1 min-w-0 focus:!shadow-none">
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <span id="saveBadge" class="as-badge">저장 대기</span>
+          <button id="btnFav" class="icon-btn" aria-label="즐겨찾기" title="즐겨찾기">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.6l2.6 5.3 5.8.85-4.2 4.1 1 5.8-5.2-2.75L6.8 19.65l1-5.8-4.2-4.1 5.8-.85z"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-[minmax(0,12rem)_1fr] gap-2">
+        <div>
+          <label class="lemon-label" for="fCat">카테고리</label>
+          <select id="fCat" class="lemon-select mt-1"></select>
+        </div>
+        <div>
+          <label class="lemon-label" for="tagInput">태그 <span class="normal-case font-semibold text-neutral-400">(Enter로 추가)</span></label>
+          <div class="mt-1 flex flex-wrap items-center gap-1.5 px-2 py-1.5 rounded-[.9rem] border border-neutral-200 dark:border-neutral-700 bg-white/90 dark:bg-neutral-900/85 focus-within:border-brand-400 min-h-[2.35rem]">
+            <div id="tagList" class="flex flex-wrap items-center gap-1"></div>
+            <input id="tagInput" type="text" maxlength="18" placeholder="태그 입력" class="flex-1 min-w-[5rem] bg-transparent outline-none text-[12px] placeholder:text-neutral-400">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[1.04fr_.96fr] gap-3 items-start">
+
+      <div class="panel p-4 sm:p-5 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <label class="lemon-label" for="fBody">템플릿 본문</label>
+          <div class="flex items-center gap-1.5">
+            <button id="btnInsertVar" class="pill-btn btn-tap !py-1 !px-2 !text-[10.5px]" title="커서 위치에 변수를 넣습니다">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8"></path><path d="M8 20h8"></path><path d="M12 4v16"></path><path d="M16.5 9.5 20 12l-3.5 2.5"></path></svg>
+              변수
+            </button>
+            <button id="btnInsertOpt" class="pill-btn btn-tap !py-1 !px-2 !text-[10.5px]" title="선택지가 있는 변수를 넣습니다">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14"></path><path d="M5 12h9"></path><path d="M5 17h5"></path><path d="M17 12l2.5 2.5L17 17"></path></svg>
+              선택지
+            </button>
+            <button id="btnClearBody" class="icon-btn !w-7 !h-7 !rounded-lg" aria-label="본문 비우기" title="본문 비우기">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M6 7l1 13h10l1-13"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="editor-wrap">
+          <textarea id="fBody" rows="10" spellcheck="false" class="lemon-textarea thin-scroll w-full !rounded-[1.05rem] !px-3.5 !py-3 bg-[#fbfbfe] dark:bg-[#0b0d16]" placeholder="예)&#10;{{주제}}에 대한 블로그 글을 써줘.&#10;독자는 {{독자}}, 톤은 {{톤|친근한|전문적인|유머러스}}이고 분량은 {{분량=800자}}로 맞춰줘."></textarea>
+        </div>
+
+        <div class="flex items-center justify-between text-[10.5px] text-neutral-500 dark:text-neutral-400">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span id="bodyMeta" class="font-mono">0자 · 변수 0개</span>
+            <span class="kbd hidden sm:inline">Ctrl</span><span class="hidden sm:inline">+</span>
+            <span class="kbd hidden sm:inline">S</span><span class="hidden sm:inline">저장</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button id="btnDownloadTxt" class="pill-btn btn-tap !py-1 !px-2 !text-[10.5px]">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 11.5 12 16l4.5-4.5"></path><path d="M5 20h14"></path></svg>
+              TXT
+            </button>
+          </div>
+        </div>
+
+        <div class="soft-divider"></div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-[12.5px] font-bold flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M4 12h10"></path><path d="M4 17h6"></path></svg>
+              변수 입력
+            </h3>
+            <span id="varFill" class="text-[10.5px] font-mono text-neutral-500 dark:text-neutral-400">—</span>
+          </div>
+          <div id="varChips" class="flex flex-wrap gap-1.5"></div>
+          <div id="varForm" class="grid sm:grid-cols-2 gap-2"></div>
+        </div>
+
+        <div class="soft-divider"></div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-[12.5px] font-bold flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+              버전 히스토리
+            </h3>
+            <span id="verCount" class="text-[10.5px] font-mono text-neutral-500 dark:text-neutral-400">0</span>
+          </div>
+          <div id="verList" class="space-y-1 max-h-52 overflow-y-auto thin-scroll pr-1"></div>
+        </div>
+      </div>
+
+      <div class="space-y-3 lg:sticky lg:top-[8.5rem]">
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <h3 class="text-[12.5px] font-bold flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full" style="background:var(--brand-2)"></span>
+              완성 프롬프트
+            </h3>
+            <span id="outMeta" class="text-[10.5px] font-mono text-neutral-500 dark:text-neutral-400">0자</span>
+          </div>
+          <div id="outPreview" class="preview-pane thin-scroll">왼쪽에서 템플릿을 쓰면 여기에 실시간으로 조합됩니다.</div>
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <button id="btnCopy" class="primary-btn btn-tap">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.4"></rect><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6.5A2.5 2.5 0 0 0 4 5.5v6A2.5 2.5 0 0 0 6.5 14"></path></svg>
+              복사
+            </button>
+            <button id="btnSave" class="ghost-btn btn-tap">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h12l2 2v14H5z"></path><path d="M8 4v5h7V4"></path><path d="M8 20v-6h8v6"></path></svg>
+              저장
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <button id="btnShare" class="pill-btn btn-tap !text-[11px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5.5" r="2.5"></circle><circle cx="6" cy="12" r="2.5"></circle><circle cx="18" cy="18.5" r="2.5"></circle><path d="M8.2 10.8 15.8 6.8"></path><path d="M8.2 13.2l7.6 4"></path></svg>
+              공유 링크
+            </button>
+            <button id="btnNewInStudio" class="pill-btn btn-tap !text-[11px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              새로 작성
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-soft p-3.5">
+          <p class="text-[10px] font-mono text-neutral-500 mb-1.5">SYNTAX</p>
+          <ul class="text-[11px] text-neutral-600 dark:text-neutral-400 space-y-1 leading-relaxed">
+            <li><span class="tok">{{주제}}</span> — 빈칸 입력</li>
+            <li><span class="tok">{{분량=800자}}</span> — 기본값</li>
+            <li><span class="tok">{{톤|친근한|전문적}}</span> — 선택 목록</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-3">
+
+    <div class="panel p-4 sm:p-5 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="text-[15px] font-black tracking-tight">내 보관함</h2>
+          <p id="archStats" class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">—</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btnExport" class="pill-btn btn-tap !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 11.5 12 16l4.5-4.5"></path><path d="M5 20h14"></path></svg>
+            내보내기
+          </button>
+          <button id="btnImport" class="pill-btn btn-tap !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5"></path><path d="M7.5 9.5 12 5l4.5 4.5"></path><path d="M5 20h14"></path></svg>
+            가져오기
+          </button>
+          <button id="btnSeed" class="icon-btn" aria-label="기본 프리셋 복원" title="기본 프리셋 복원">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          </button>
+          <input id="fileImport" type="file" accept="application/json,.json" class="hidden">
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative flex-1 min-w-[10rem]">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M16.5 16.5 21 21"></path></svg>
+          <input id="q" type="search" placeholder="제목·본문·태그 검색" class="lemon-input !pl-9">
+        </div>
+        <select id="sortSel" class="lemon-select !w-auto !text-[11.5px]">
+          <option value="updated">최근 수정순</option>
+          <option value="created">만든 순서</option>
+          <option value="used">많이 쓴 순</option>
+          <option value="name">이름순</option>
+        </select>
+        <button id="btnFavFilter" class="pill-btn btn-tap !text-[11px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.6l2.6 5.3 5.8.85-4.2 4.1 1 5.8-5.2-2.75L6.8 19.65l1-5.8-4.2-4.1 5.8-.85z"></path></svg>
+          즐겨찾기
+        </button>
+      </div>
+
+      <div class="flex flex-wrap gap-1.5" id="catFilter"></div>
+    </div>
+
+    <div id="promptGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+
+    <div id="archEmpty" class="hidden panel p-10 text-center">
+      <div class="w-12 h-12 rounded-2xl brand-grad-soft mx-auto flex items-center justify-center mb-3">
+        <svg class="w-5 h-5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M8 10h8"></path><path d="M8 14h5"></path></svg>
+      </div>
+      <p class="text-[13px] font-bold">조건에 맞는 프롬프트가 없습니다</p>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">검색어를 지우거나 새 프롬프트를 만들어 보세요.</p>
+      <button data-go="studio" class="primary-btn btn-tap mt-4 mx-auto">스튜디오에서 만들기</button>
+    </div>
+  </section>
+
+  <!-- ================= SHARE VIEW (#view=) ================= -->
+  <section id="sharePage" class="hidden">
+    <div class="mb-3 flex items-center gap-2">
+      <span class="text-[10px] font-mono font-bold px-2 py-1 rounded-lg brand-grad text-white">SHARED</span>
+      <span class="text-[11px] text-neutral-500 dark:text-neutral-400">공유된 프롬프트 · 읽기 전용</span>
+      <button id="shareGoStudio" class="pill-btn btn-tap !ml-auto !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        내 스튜디오로
+      </button>
+    </div>
+
+    <div class="panel p-5 sm:p-6 space-y-4">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="shareCat" class="cat-badge"></span>
+          <div id="shareTags" class="flex flex-wrap gap-1"></div>
+        </div>
+        <h1 id="shareTitle" class="text-[20px] sm:text-2xl font-black tracking-tight break-words"></h1>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-3 items-stretch">
+        <div class="space-y-2 flex flex-col">
+          <p class="lemon-label">템플릿</p>
+          <div id="shareBody" class="preview-pane thin-scroll !max-h-[60vh] flex-1"></div>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <p class="lemon-label">변수 입력</p>
+            <span id="shareFill" class="text-[10.5px] font-mono text-neutral-500 dark:text-neutral-400">—</span>
+          </div>
+          <div id="shareForm" class="grid sm:grid-cols-2 gap-2"></div>
+          <p class="lemon-label pt-1">완성 프롬프트</p>
+          <div id="shareOut" class="preview-pane thin-scroll"></div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="shareCopy" class="primary-btn btn-tap">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.4"></rect><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6.5A2.5 2.5 0 0 0 4 5.5v6A2.5 2.5 0 0 0 6.5 14"></path></svg>
+              복사
+            </button>
+            <button id="shareDup" class="ghost-btn btn-tap">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+              내 보관함에 추가
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 mt-2 text-center text-[11px] text-neutral-500">
+  <div class="max-w-6xl mx-auto px-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+    <span class="font-semibold text-neutral-900 dark:text-white">Lemon Prompt</span>
+    <span>—</span>
+    <span>Lemon soft가 만든 서비스</span>
+    <a href="index.html" class="ml-2 underline decoration-dotted hover:text-brand-600 dark:hover:text-brand-300">Developer Hub</a>
+  </div>
+</footer>
+
+<div id="sheetBack" class="sheet-back"></div>
+<div id="sheetPanel" class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-3.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur border-b border-neutral-200/80 dark:border-neutral-800/80">
+    <h3 id="sheetTitle" class="text-[13.5px] font-bold truncate">상세</h3>
+    <button id="sheetClose" class="icon-btn !w-8 !h-8" aria-label="닫기">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
+    </button>
+  </div>
+  <div id="sheetBody" class="px-5 py-4"></div>
+</div>
+
+<script src="vendor/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     Lemon Prompt · 변수 치환 프롬프트 스튜디오
+     100% 브라우저 동작 · IndexedDB(lemon_prompt_v1) · 무서버
+     ============================================================ */
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function uid() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function timeHM(ts) { var d = new Date(ts || Date.now()); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  function timeAgo(ts) {
+    if (!ts) return '-';
+    var diff = Date.now() - ts;
+    if (diff < 60000) return '방금 전';
+    if (diff < 3600000) return Math.floor(diff / 60000) + '분 전';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + '시간 전';
+    if (diff < 604800000) return Math.floor(diff / 86400000) + '일 전';
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+  }
+  function debounce(fn, ms) {
+    var t = null;
+    return function () {
+      var args = arguments, self = this;
+      clearTimeout(t);
+      t = setTimeout(function () { fn.apply(self, args); }, ms);
+    };
+  }
+
+  /* ---------------- icons ---------------- */
+  var ICONS = {
+    pen: '<path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path>',
+    code: '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>',
+    layers: '<polygon points="12 2.5 21.5 8 12 13.5 2.5 8 12 2.5"></polygon><polyline points="2.5 14 12 19.5 21.5 14"></polyline>',
+    image: '<rect x="3" y="3.5" width="18" height="17" rx="2.4"></rect><circle cx="8.6" cy="9" r="1.6"></circle><polyline points="20.5 16 15.5 10.5 5 20"></polyline>',
+    book: '<path d="M4 19.2A2.4 2.4 0 0 1 6.4 16.8H20"></path><path d="M6.4 3H20v18H6.4A2.4 2.4 0 0 1 4 18.6V5.4A2.4 2.4 0 0 1 6.4 3z"></path>',
+    globe: '<circle cx="12" cy="12" r="8.8"></circle><path d="M3.4 12h17.2"></path><path d="M12 3.2a14 14 0 0 1 0 17.6 14 14 0 0 1 0-17.6z"></path>',
+    briefcase: '<rect x="3" y="7.2" width="18" height="12.6" rx="2.2"></rect><path d="M8.2 7.2V5.4A1.8 1.8 0 0 1 10 3.6h4a1.8 1.8 0 0 1 1.8 1.8v1.8"></path><path d="M3 12.4h18"></path>',
+    coffee: '<path d="M4 8.4h12V14a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"></path><path d="M16 9.4h2.2a2.4 2.4 0 0 1 0 4.8H16"></path><path d="M5 21h12"></path>',
+    star: '<path d="M12 3.6l2.6 5.3 5.8.85-4.2 4.1 1 5.8-5.2-2.75L6.8 19.65l1-5.8-4.2-4.1 5.8-.85z"></path>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2.4"></rect><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6.5A2.5 2.5 0 0 0 4 5.5v6A2.5 2.5 0 0 0 6.5 14"></path>',
+    edit: '<path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path>',
+    share: '<circle cx="18" cy="5.5" r="2.5"></circle><circle cx="6" cy="12" r="2.5"></circle><circle cx="18" cy="18.5" r="2.5"></circle><path d="M8.2 10.8 15.8 6.8"></path><path d="M8.2 13.2l7.6 4"></path>',
+    trash: '<path d="M4 7h16"></path><path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"></path><path d="M6 7l1 13h10l1-13"></path>',
+    history: '<path d="M4 12a8 8 0 1 0 2.4-5.7"></path><polyline points="4 4 4 8.4 8.4 8.4"></polyline><path d="M12 8.2V12l2.8 1.7"></path>',
+    diff: '<path d="M6 4v16"></path><path d="M18 4v16"></path><path d="M2.5 9h7"></path><path d="M14.5 15h7"></path>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>',
+    arrow: '<path d="M5 12h13"></path><path d="M13 6.5 18.5 12 13 17.5"></path>'
+  };
+  function ic(name, cls) {
+    return '<svg class="' + (cls || 'w-4 h-4') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
+  }
+
+  /* ---------------- categories ---------------- */
+  var CATS = [
+    { id: 'writing', name: '글쓰기', color: '#6a4dff', icon: 'pen' },
+    { id: 'coding', name: '코딩', color: '#0ea36b', icon: 'code' },
+    { id: 'planning', name: '기획', color: '#e08a0b', icon: 'layers' },
+    { id: 'image', name: '이미지 생성', color: '#e0468f', icon: 'image' },
+    { id: 'study', name: '학습', color: '#0b8bd4', icon: 'book' },
+    { id: 'translate', name: '번역·교정', color: '#0e9c93', icon: 'globe' },
+    { id: 'business', name: '비즈니스', color: '#4f6ae8', icon: 'briefcase' },
+    { id: 'daily', name: '일상', color: '#e2495f', icon: 'coffee' }
+  ];
+  function catOf(id) {
+    for (var i = 0; i < CATS.length; i++) if (CATS[i].id === id) return CATS[i];
+    return CATS[0];
+  }
+  function catBadge(catId) {
+    var c = catOf(catId);
+    return '<span class="cat-badge" style="--cc:' + c.color + '">' + ic(c.icon, 'w-3 h-3') + esc(c.name) + '</span>';
+  }
+
+  /* ---------------- presets ---------------- */
+  var PRESETS = [
+    {
+      k: 'blog', cat: 'writing', tags: ['블로그', '콘텐츠'], desc: '소제목·예시·행동 제안까지 갖춘 블로그 원고',
+      title: '블로그 글 작성',
+      body: '당신은 10년 차 콘텐츠 에디터입니다. 아래 주제로 블로그 글을 작성해 주세요.\n\n주제: {{주제}}\n독자: {{독자=20~30대 직장인}}\n톤: {{톤|친근한|전문적인|유머러스|담백한}}\n분량: {{분량=1000자}}\n\n작성 규칙\n1. 첫 문단에서 독자의 문제를 한 문장으로 짚고 바로 시작합니다.\n2. 소제목 3개로 나누고, 소제목마다 구체적인 예시나 숫자를 하나씩 넣습니다.\n3. 마지막에 오늘 바로 해볼 수 있는 행동 1가지를 제안합니다.\n4. 같은 말을 반복하지 말고, 어려운 용어는 쉬운 말로 바꿉니다.\n5. 문단은 3문장을 넘기지 않습니다.\n\n출력 형식: 제목 / 본문(소제목 포함) 순서로, 마크다운 기호 없이 일반 텍스트로 씁니다.'
+    },
+    {
+      k: 'codereview', cat: 'coding', tags: ['리뷰', '리팩터링'], desc: '심각도 순서로 짚는 코드 리뷰와 개선 코드',
+      title: '코드 리뷰',
+      body: '당신은 시니어 {{언어=JavaScript}} 개발자입니다. 아래 코드를 리뷰해 주세요.\n\n[코드]\n{{코드}}\n\n[중점 기준]\n{{기준|가독성|성능|보안|테스트 용이성}}\n\n리뷰 방식\n1. 먼저 이 코드가 하는 일을 두 문장으로 요약합니다.\n2. 문제를 심각도 높은 순서로 나열하고, 각 항목에 "현재 코드 → 개선 코드"를 함께 보여 줍니다.\n3. 각 지적에는 왜 문제인지 한 문장 근거를 붙입니다.\n4. 마지막에 잘한 점 2가지를 짚습니다.\n5. 인사나 칭찬 같은 군더더기 없이 본론부터 씁니다.'
+    },
+    {
+      k: 'bug', cat: 'coding', tags: ['디버깅', '트러블슈팅'], desc: '원인 후보·재현 방법·패치까지 한 번에',
+      title: '버그 원인 추적',
+      body: '아래 증상의 원인을 추적해 주세요.\n\n증상: {{증상}}\n에러 메시지: {{에러메시지=없음}}\n환경: {{환경=Chrome 최신, macOS}}\n관련 코드: {{코드=없음}}\n\n진행 순서\n1. 가능한 원인을 확률 높은 순서로 3개 제시하고, 각각의 근거를 적습니다.\n2. 각 원인을 확인할 수 있는 가장 짧은 재현 절차나 확인 명령을 적습니다.\n3. 1번 원인부터 순서대로 고치는 패치를 제안합니다.\n4. 같은 문제가 재발하지 않도록 추가할 테스트나 로그를 제안합니다.\n\n추측과 확인된 사실을 구분해서 표시해 주세요.'
+    },
+    {
+      k: 'prd', cat: 'planning', tags: ['기획서', 'PRD'], desc: '1페이지로 정리하는 서비스 기획서',
+      title: '서비스 기획서 (PRD)',
+      body: '당신은 프로덕트 매니저입니다. 아래 아이디어를 1페이지 기획서로 정리해 주세요.\n\n서비스: {{서비스명}}\n해결하려는 문제: {{문제}}\n타겟 사용자: {{타겟=20대 대학생}}\n목표: {{목표=초기 사용자 100명 확보}}\n\n포함할 항목\n1. 한 줄 정의 (누구의 어떤 문제를 어떻게 푸는가)\n2. 핵심 사용자 시나리오 3단계\n3. 반드시 있어야 할 기능 5개 (P0/P1 우선순위 표시)\n4. 이번 버전에서 하지 않을 것 3가지\n5. 성공 판단 지표 2개와 측정 방법\n6. 가장 큰 리스크 1개와 대응책\n\n문장은 짧게, 목록과 표 위주로 정리해 주세요.'
+    },
+    {
+      k: 'email', cat: 'business', tags: ['이메일', '커뮤니케이션'], desc: '정중한 버전과 간결한 버전을 함께',
+      title: '이메일 정중하게 다듬기',
+      body: '아래 이메일 초안을 정중하고 명확하게 다듬어 주세요.\n\n수신자: {{수신자=거래처 담당자}}\n목적: {{목적=일정 변경 요청}}\n원문:\n{{원문}}\n\n규칙\n1. 인사 → 용건 → 다음 행동 순서로 재배치합니다.\n2. 요청은 한 문장으로 분명하게, 기한은 날짜로 적습니다.\n3. 감정적인 표현과 중복 설명은 걷어냅니다.\n4. 원문에 없는 약속이나 숫자는 절대 만들지 않습니다.\n\n출력: 제목 / 본문 / 서명 순서로 쓰고, 정중한 버전과 간결한 버전을 함께 주세요.'
+    },
+    {
+      k: 'summary', cat: 'study', tags: ['요약', '독해'], desc: '원문에 없는 내용 없이 압축하는 요약',
+      title: '글 요약 (3단 길이)',
+      body: '아래 글을 요약해 주세요.\n\n[원문]\n{{원문}}\n\n[요약 길이]\n{{길이|한 문장|3줄|5개 불릿}}\n\n규칙\n1. 원문에 없는 내용은 넣지 않습니다.\n2. 숫자와 고유명사는 그대로 유지합니다.\n3. 결론과 근거가 드러나게 씁니다.\n4. 요약문만 출력하고 부연 설명은 붙이지 않습니다.'
+    },
+    {
+      k: 'image', cat: 'image', tags: ['Midjourney', '프롬프트'], desc: '영문 프롬프트·키워드·네거티브까지',
+      title: '이미지 생성 프롬프트',
+      body: '당신은 이미지 생성 프롬프트 전문가입니다. 아래 조건으로 {{도구|Midjourney|DALL·E|Stable Diffusion}}에 넣을 영문 프롬프트를 만들어 주세요.\n\n피사체: {{피사체}}\n분위기: {{분위기=따뜻하고 고요한}}\n스타일: {{스타일|시네마틱 사진|일러스트|3D 렌더|수채화}}\n비율: {{비율|16:9|1:1|9:16}}\n\n출력\n1. 영문 프롬프트 1개 (쉼표로 구분된 구문, 60단어 이내)\n2. 카메라·렌즈·조명·색감을 명시한 보조 키워드 5개\n3. 네거티브 프롬프트 5개\n4. 위 프롬프트를 한국어로 옮긴 설명 두 문장'
+    },
+    {
+      k: 'translate', cat: 'translate', tags: ['번역', '톤'], desc: '직역이 아닌 자연스러운 번역과 뉘앙스',
+      title: '번역 + 톤 조정',
+      body: '아래 문장을 {{목표언어=영어}}로 번역해 주세요.\n\n[원문]\n{{원문}}\n\n[톤]\n{{톤|격식 있는 비즈니스|자연스러운 일상|마케팅 카피}}\n\n규칙\n1. 직역이 아니라 해당 언어에서 자연스럽게 읽히도록 옮깁니다.\n2. 고유명사와 제품명은 원문 표기를 유지합니다.\n3. 원문에 없는 내용을 더하지 않습니다.\n4. 애매한 부분은 가장 자연스러운 해석 하나를 골라 옮깁니다.\n\n출력: 번역문 → 핵심 단어 3개의 뉘앙스 설명 순서로.'
+    },
+    {
+      k: 'concept', cat: 'study', tags: ['설명', '파인만'], desc: '비유·예시·오해 교정으로 개념 설명',
+      title: '개념 쉽게 설명하기',
+      body: '나는 {{개념}}을 처음 배우는 {{수준|중학생|대학생|비전공 직장인}}입니다. 아래 순서로 설명해 주세요.\n\n1. 한 문장 정의 (비유 없이)\n2. 일상 속 비유 하나 (한 문단)\n3. 왜 필요한지, 없으면 어떤 문제가 생기는지\n4. 실제 예시 2개 (하나는 성공, 하나는 실패)\n5. 자주 하는 오해 2가지와 바로잡기\n6. 스스로 확인할 수 있는 질문 3개 (답은 맨 마지막에)\n\n전문 용어는 처음 나올 때 괄호로 짧게 풀어 주세요.'
+    },
+    {
+      k: 'interview', cat: 'business', tags: ['면접', '취업'], desc: '꼬리 질문과 되묻는 질문까지 준비',
+      title: '면접 예상 질문',
+      body: '아래 조건으로 면접 예상 질문을 만들어 주세요.\n\n직무: {{직무}}\n경력: {{경력=신입}}\n회사·산업: {{회사=스타트업}}\n\n구성\n1. 지원 동기·직무 적합성 질문 4개\n2. 경험을 파고드는 꼬리 질문 4개 (앞선 답을 가정한 후속 질문)\n3. 압박·상황 질문 3개\n4. 마지막에 물어볼 좋은 질문 3개\n\n각 질문마다 "면접관이 확인하려는 것"을 한 줄로 붙여 주세요.'
+    },
+    {
+      k: 'minutes', cat: 'business', tags: ['회의록', '할 일'], desc: '결정·미결·할 일로 나누는 회의 정리',
+      title: '회의록 정리',
+      body: '아래 회의 내용을 정리해 주세요.\n\n[참석자] {{참석자}}\n[메모]\n{{회의내용}}\n\n출력 형식\n1. 한 줄 요약\n2. 결정된 사항 (항목 / 내용 / 담당 / 기한)\n3. 결정되지 않은 안건과 다음에 정할 것\n4. 할 일 목록 (담당자별로 묶어 체크박스 형태로)\n5. 다시 확인해야 할 숫자나 일정\n\n메모에 없는 담당자나 기한은 "미정"으로 표시해 주세요.'
+    },
+    {
+      k: 'sheet', cat: 'daily', tags: ['엑셀', '수식'], desc: '붙여 넣으면 되는 스프레드시트 수식',
+      title: '스프레드시트 수식 도우미',
+      body: '엑셀·구글 스프레드시트 수식 도우미 역할을 해 주세요.\n\n상황: {{상황}}\n표 구조: {{표구조=예) A열 날짜, B열 이름, C열 금액}}\n원하는 결과: {{원하는결과}}\n\n규칙\n1. 먼저 어떤 함수를 쓸지 한 줄로 설명합니다.\n2. 실제로 붙여 넣을 수 있는 수식을 하나만 주세요 (셀 범위는 예시로 표시).\n3. 초보자용 대안 수식도 하나 더 제안합니다.\n4. 자주 나는 오류와 해결법을 2개 적습니다.'
+    },
+    {
+      k: 'youtube', cat: 'writing', tags: ['영상', '스크립트'], desc: '후킹부터 예고까지 숏폼·일반 영상 대본',
+      title: '유튜브 스크립트',
+      body: '유튜브 {{길이|숏폼 60초|일반 8분}} 영상 스크립트를 써 주세요.\n\n주제: {{주제}}\n채널 성격: {{채널톤=정보 전달, 차분한 진행}}\n시청자: {{시청자}}\n\n구성\n1. 0~5초 후킹 (결과나 질문으로 시작)\n2. 문제 제기와 이 영상에서 얻을 것 (10초 이내 예고)\n3. 본문 3개 챕터 — 챕터마다 화면에 띄울 자막 한 줄 포함\n4. 마무리 요약 20초와 다음 영상 예고\n5. 영상 제목 후보 5개와 썸네일 문구 3개\n\n말은 입으로 읽었을 때 자연스럽게, 한 문장 20자 안팎으로 써 주세요.'
+    },
+    {
+      k: 'sns', cat: 'daily', tags: ['SNS', '캡션'], desc: '각도가 다른 캡션 5개와 해시태그',
+      title: 'SNS 캡션 5종',
+      body: '{{플랫폼|인스타그램|X|링크드인}}에 올릴 캡션을 5개 써 주세요.\n\n소재: {{소재}}\n타겟: {{타겟=20대 직장인}}\n목적: {{목적|정보 공유|구매 유도|공감 유도}}\n\n규칙\n1. 각 캡션은 첫 줄에서 시선을 끄는 한 문장으로 시작합니다.\n2. 길이는 2~4문장, 해시태그는 캡션마다 5개 이내.\n3. 플랫폼 말투에 맞춥니다 (X는 짧게, 링크드인은 담백하게).\n4. 이모지와 과장된 감탄사는 쓰지 않습니다.\n5. 다섯 개는 서로 다른 각도여야 합니다 (질문형, 수치형, 비교형, 경험담, 반전).'
+    },
+    {
+      k: 'landing', cat: 'business', tags: ['카피', '랜딩'], desc: '헤드라인·서브·CTA로 만드는 랜딩 카피',
+      title: '랜딩페이지 카피',
+      body: '랜딩페이지 카피를 만들어 주세요.\n\n제품: {{제품}}\n핵심 혜택: {{혜택}}\n타겟: {{타겟}}\n\n출력\n1. 헤드라인 5개 (각 12자 안팎, 혜택이 먼저)\n2. 서브 문구 3개 (헤드라인을 보완하는 한 문장)\n3. CTA 버튼 문구 5개\n4. 첫 화면에 넣을 신뢰 요소 3가지 (숫자·후기·인증 중)\n5. 자주 묻는 질문 3개와 답변\n\n과장된 최상급 표현(최고, 완벽한)은 쓰지 말고 구체적인 숫자로 대체해 주세요.'
+    },
+    {
+      k: 'cover', cat: 'business', tags: ['자기소개서', '취업'], desc: 'STAR 구조로 쓰는 자소서 문항 답변',
+      title: '자기소개서 문항 답변',
+      body: '자기소개서 문항 답변을 써 주세요.\n\n문항: {{문항}}\n나의 경험: {{경험}}\n지원 직무: {{직무}}\n\n규칙\n1. STAR 구조(상황-과제-행동-결과)로 문단을 나눕니다.\n2. 결과는 숫자나 비교로 보여 줍니다 (경험에 숫자가 없으면 "숫자 없음"으로 표시).\n3. "열심히", "최선을" 같은 추상어 대신 구체적인 행동을 씁니다.\n4. 첫 문장에 답의 결론을 먼저 씁니다.\n5. 분량은 {{글자수=700}}자 안팎.'
+    },
+    {
+      k: 'data', cat: 'study', tags: ['데이터', '분석'], desc: '답할 수 있는 질문부터 가르는 데이터 분석',
+      title: '데이터 분석 프레임',
+      body: '아래 데이터를 분석해 주세요.\n\n[데이터 설명]\n{{데이터설명}}\n[알고 싶은 것]\n{{목표}}\n\n진행\n1. 이 데이터로 답할 수 있는 질문과 없는 질문을 구분합니다.\n2. 분석 순서를 4단계로 제안합니다 (단계마다 필요한 계산·차트).\n3. 결과를 해석할 때 주의할 점(표본 편향, 상관과 인과)을 짚습니다.\n4. 결론 문장 3개를 숫자와 함께 제시합니다.\n\n데이터에 없는 값은 추정하지 말고 "데이터 없음"이라고 적어 주세요.'
+    },
+    {
+      k: 'system', cat: 'planning', tags: ['시스템 프롬프트', '페르소나'], desc: '규칙·금지사항·출력형식을 갖춘 페르소나',
+      title: 'AI 페르소나 시스템 프롬프트',
+      body: '아래 역할의 AI 비서 시스템 프롬프트를 설계해 주세요.\n\n역할: {{역할}}\n사용자: {{사용자}}\n반드시 지킬 규칙: {{규칙}}\n출력 형식: {{출력형식=짧은 답변 + 다음 행동 제안}}\n\n출력\n1. 시스템 프롬프트 초안 (역할·목표·말투·금지사항·출력 형식 순)\n2. 애매한 요청이 들어왔을 때의 처리 규칙 3가지\n3. 절대 하지 말아야 할 행동 3가지\n4. 이 프롬프트를 시험할 예시 대화 2턴\n5. 함께 쓰면 좋은 보조 지시문 2개\n\n말투는 {{말투|정중한 반말|격식체}}로 지정해 주세요.'
+    },
+    {
+      k: 'product', cat: 'image', tags: ['제품 사진', '커머스'], desc: '상세페이지용 제품 사진 컨셉 3안',
+      title: '제품 사진 컨셉',
+      body: '제품 사진 촬영·생성 컨셉을 잡아 주세요.\n\n제품: {{제품}}\n촬영 목적: {{목적|상세페이지|SNS 광고|브랜드 이미지}}\n분위기: {{분위기=미니멀하고 고급스러운}}\n\n출력\n1. 컨셉 3안 (배경·소품·조명·구도를 한 줄씩)\n2. 각 컨셉의 영문 이미지 프롬프트\n3. 상세페이지에 넣을 컷 리스트 5개 (용도 표시)\n4. 피해야 할 표현 3가지 (저작권·오해 소지)'
+    },
+    {
+      k: 'character', cat: 'image', tags: ['캐릭터', '일관성'], desc: '같은 캐릭터를 여러 장면에 고정하는 프롬프트',
+      title: '캐릭터 일관성 프롬프트',
+      body: '같은 캐릭터를 여러 장면에 재사용할 수 있게 프롬프트를 고정해 주세요.\n\n캐릭터: {{캐릭터설명}}\n원하는 장면: {{장면}}\n\n출력\n1. 캐릭터 고정 설명문 (얼굴·체형·의상·색을 변하지 않게 서술, 영문)\n2. 장면별 프롬프트 3개 (고정 설명문 + 장면 설명)\n3. 일관성을 유지하는 팁 3가지 (시드, 참조 이미지, 네거티브)'
+    }
+  ];
+
+  /* ---------------- storage : IndexedDB lemon_prompt_v1 ---------------- */
+  var DB = (function () {
+    var NAME = 'lemon_prompt_v1', VER = 1, STORE = 'prompts', META = 'meta';
+    var LS_LIST = 'lemon_prompt_fallback_v1';
+    var dbp = null, warned = false;
+
+    function open() {
+      if (dbp) return dbp;
+      dbp = new Promise(function (res, rej) {
+        if (!window.indexedDB) { rej(new Error('no-indexeddb')); return; }
+        var rq;
+        try { rq = indexedDB.open(NAME, VER); } catch (e) { rej(e); return; }
+        rq.onupgradeneeded = function () {
+          var d = rq.result;
+          if (!d.objectStoreNames.contains(STORE)) {
+            var s = d.createObjectStore(STORE, { keyPath: 'id' });
+            s.createIndex('updatedAt', 'updatedAt');
+            s.createIndex('category', 'category');
+          }
+          if (!d.objectStoreNames.contains(META)) d.createObjectStore(META, { keyPath: 'k' });
+        };
+        rq.onsuccess = function () { res(rq.result); };
+        rq.onerror = function () { rej(rq.error || new Error('idb-error')); };
+        rq.onblocked = function () { rej(new Error('idb-blocked')); };
+      });
+      return dbp;
+    }
+    function noteFallback() {
+      if (warned) return;
+      warned = true;
+      try { Lemon.toast('이 브라우저에서는 저장소를 열 수 없어 임시 저장으로 전환했습니다', 'err'); } catch (e) { }
+    }
+    function lsAll() {
+      try { var v = JSON.parse(localStorage.getItem(LS_LIST) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+    }
+    function lsPut(rec) {
+      var list = lsAll().filter(function (x) { return x.id !== rec.id; });
+      list.push(rec);
+      try { localStorage.setItem(LS_LIST, JSON.stringify(list)); } catch (e) { }
+      return rec;
+    }
+    function store(mode) {
+      return open().then(function (d) { return d.transaction(STORE, mode).objectStore(STORE); });
+    }
+    return {
+      name: NAME,
+      all: function () {
+        return store('readonly').then(function (os) {
+          return new Promise(function (res, rej) {
+            var r = os.getAll();
+            r.onsuccess = function () { res(r.result || []); };
+            r.onerror = function () { rej(r.error); };
+          });
+        }).catch(function () { noteFallback(); return lsAll(); });
+      },
+      put: function (rec) {
+        return store('readwrite').then(function (os) {
+          return new Promise(function (res, rej) {
+            var r = os.put(rec);
+            r.onsuccess = function () { res(rec); };
+            r.onerror = function () { rej(r.error); };
+          });
+        }).catch(function () { noteFallback(); return lsPut(rec); });
+      },
+      del: function (id) {
+        return store('readwrite').then(function (os) {
+          return new Promise(function (res, rej) {
+            var r = os.delete(id);
+            r.onsuccess = function () { res(true); };
+            r.onerror = function () { rej(r.error); };
+          });
+        }).catch(function () {
+          try { localStorage.setItem(LS_LIST, JSON.stringify(lsAll().filter(function (x) { return x.id !== id; }))); } catch (e) { }
+          return true;
+        });
+      },
+      clearLocal: function () { try { localStorage.removeItem(LS_LIST); } catch (e) { } }
+    };
+  })();
+
+  var PREFS_KEY = 'lemon_prompt_prefs_v1';
+  var DRAFT_KEY = 'lemon_prompt_draft_v1';
+  var SEED_KEY = 'lemon_prompt_seeded_v1';
+  function prefs() {
+    try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch (e) { } }
+  function bumpCopies() {
+    var p = prefs();
+    p.copies = (p.copies || 0) + 1;
+    savePrefs(p);
+    countUp($('#statCopies'), p.copies);
+  }
+  function seededAlready() { try { return localStorage.getItem(SEED_KEY) === '1'; } catch (e) { return false; } }
+
+  /* ---------------- variable engine ---------------- */
+  function splitVar(raw) {
+    var name = String(raw || '').trim(), opts = null, def = '';
+    if (name.indexOf('|') > -1) {
+      var parts = name.split('|');
+      name = (parts.shift() || '').trim();
+      opts = parts.map(function (s) { return s.trim(); }).filter(Boolean);
+    } else if (name.indexOf('=') > -1) {
+      var i = name.indexOf('=');
+      def = name.slice(i + 1).trim();
+      name = name.slice(0, i).trim();
+    }
+    return { name: name, opts: opts && opts.length ? opts : null, def: def };
+  }
+  function isMulti(name) {
+    return /(원문|본문|내용|코드|문장|경험|대화|텍스트|자료|데이터|메모|설명)/.test(name);
+  }
+  function parseVars(body) {
+    var re = /\{\{\s*([^{}]+?)\s*\}\}/g, seen = {}, out = [], m;
+    body = String(body || '');
+    while ((m = re.exec(body))) {
+      var v = splitVar(m[1]);
+      if (!v.name || seen[v.name]) continue;
+      seen[v.name] = true;
+      v.multi = isMulti(v.name);
+      out.push(v);
+    }
+    return out;
+  }
+  function compose(body, values) {
+    values = values || {};
+    return String(body || '').replace(/\{\{\s*([^{}]+?)\s*\}\}/g, function (m, raw) {
+      var v = splitVar(raw);
+      var val = values[v.name];
+      if (val !== undefined && val !== null && String(val) !== '') return String(val);
+      if (v.def) return v.def;
+      return m;
+    });
+  }
+  function htmlTokens(text) {
+    return esc(text).replace(/\{\{([^{}]+?)\}\}/g, function (m) {
+      return '<span class="tok">' + m + '</span>';
+    });
+  }
+  function plainPreview(body, max) {
+    var t = String(body || '').replace(/\{\{\s*([^{}]+?)\s*\}\}/g, function (m, raw) {
+      return '[' + splitVar(raw).name + ']';
+    }).replace(/\n{2,}/g, '\n');
+    if (max && t.length > max) t = t.slice(0, max) + '…';
+    return esc(t);
+  }
+  function fillStats(body, values) {
+    var vars = parseVars(body), filled = 0;
+    vars.forEach(function (v) {
+      var val = values[v.name];
+      if ((val !== undefined && String(val) !== '') || v.def) filled++;
+    });
+    return { total: vars.length, filled: filled };
+  }
+
+  /* ---------------- state ---------------- */
+  var S = {
+    all: [],
+    view: 'home',
+    vars: [],
+    filters: { q: '', cat: 'all', fav: false, sort: 'updated' },
+    edit: { id: null, cat: 'writing', tags: [], favorite: false, values: {}, versions: [], createdAt: 0, origin: 'user', uses: 0 },
+    share: null
+  };
+  var go = null;
+
+  function reload() {
+    return DB.all().then(function (list) {
+      S.all = (list || []).filter(function (r) { return r && r.id; });
+      var t = $('#tabCount');
+      if (t) t.textContent = S.all.length;
+      return S.all;
+    });
+  }
+
+  /* ============================================================
+     HOME
+     ============================================================ */
+  function countUp(el, to) {
+    if (!el) return;
+    var from = parseInt(el.textContent || '0', 10) || 0;
+    if (from === to) { el.textContent = to; return; }
+    var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    function step() {
+      var now = (window.performance && performance.now) ? performance.now() : Date.now();
+      var k = Math.min(1, (now - t0) / 560);
+      el.textContent = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderHome() {
+    var p = prefs();
+    countUp($('#statPrompts'), S.all.length);
+    countUp($('#statFav'), S.all.filter(function (r) { return r.favorite; }).length);
+    countUp($('#statCopies'), p.copies || 0);
+
+    var grid = $('#homeCats');
+    if (grid) {
+      grid.innerHTML = CATS.map(function (c) {
+        var n = S.all.filter(function (r) { return r.category === c.id; }).length;
+        return '<button class="cat-tile" data-cat="' + c.id + '" style="--cc:' + c.color + '">' +
+          '<span class="cat-ico">' + ic(c.icon) + '</span>' +
+          '<span class="min-w-0 text-left">' +
+            '<span class="block text-[12.5px] font-bold truncate">' + esc(c.name) + '</span>' +
+            '<span class="block text-[10px] text-neutral-500 dark:text-neutral-400">' + n + '개 프롬프트</span>' +
+          '</span>' +
+          '<span class="ml-auto text-neutral-400">' + ic('arrow', 'w-3.5 h-3.5') + '</span>' +
+        '</button>';
+      }).join('');
+      $$('#homeCats .cat-tile').forEach(function (b) {
+        b.addEventListener('click', function () {
+          S.filters.cat = b.getAttribute('data-cat');
+          S.filters.q = '';
+          if ($('#q')) $('#q').value = '';
+          renderFilters();
+          renderArchive();
+          if (go) go('archive');
+        });
+      });
+    }
+
+    var wrap = $('#homePresets');
+    if (wrap) {
+      wrap.innerHTML = PRESETS.slice(0, 6).map(function (p) {
+        return '<article class="p-card" data-preset="' + p.k + '">' +
+          '<div class="p-3.5 space-y-2 flex-1">' +
+            '<div class="flex items-center justify-between gap-2">' + catBadge(p.cat) +
+              '<span class="text-[10px] font-mono text-neutral-400">' + (parseVars(p.body).length) + ' 변수</span></div>' +
+            '<h3 class="text-[13px] font-bold leading-snug">' + esc(p.title) + '</h3>' +
+            '<p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed">' + esc(p.desc) + '</p>' +
+          '</div>' +
+          '<div class="px-3.5 pb-3"><button class="pill-btn btn-tap w-full !text-[11px]" data-use="' + p.k + '">' +
+            ic('pen', 'w-3.5 h-3.5') + '스튜디오에서 열기</button></div>' +
+        '</article>';
+      }).join('');
+      $$('#homePresets [data-use]').forEach(function (b) {
+        b.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var p = PRESETS.filter(function (x) { return x.k === b.getAttribute('data-use'); })[0];
+          if (p) openInStudio(presetRecord(p, true), true);
+        });
+      });
+    }
+  }
+
+  function presetRecord(p, isCopy) {
+    if (!isCopy) {
+      var found = S.all.filter(function (r) { return r.presetKey === p.k; })[0];
+      if (found) return found;
+    }
+    return {
+      id: null, title: p.title, body: p.body, category: p.cat,
+      tags: (p.tags || []).slice(), favorite: false, origin: 'preset', presetKey: p.k,
+      versions: [], values: {}, uses: 0, createdAt: 0, updatedAt: 0
+    };
+  }
+
+  /* demo animation */
+  var DEMO = [
+    ['AI 학습법', '대학생', '친근한', '800자'],
+    ['첫 이직 준비', '30대 개발자', '전문적인', '1200자'],
+    ['주말 등산 코스', '초보 등산객', '담백한', '3문단'],
+    ['카페 창업 비용', '예비 창업자', '유머러스', '5개 불릿']
+  ];
+  function startDemo() {
+    var box = $('#demoChips');
+    if (!box) return;
+    var i = 0;
+    box.querySelectorAll('.demo-chip').forEach(function (c) { c.classList.add('hot'); });
+    setInterval(function () {
+      i = (i + 1) % DEMO.length;
+      var chips = $$('#demoChips .demo-chip');
+      var toks = $$('#demoTemplate .tok');
+      chips.forEach(function (c, idx) {
+        var b = c.querySelector('b');
+        if (b) b.textContent = DEMO[i][idx];
+        c.classList.remove('hot');
+        setTimeout(function () { c.classList.add('hot'); }, idx * 110);
+      });
+      toks.forEach(function (t, idx) {
+        if (idx >= DEMO[i].length) return;
+        if (!t.getAttribute('data-name')) t.setAttribute('data-name', t.textContent.replace(/[{}]/g, '').trim());
+        t.classList.add('filled');
+        t.textContent = DEMO[i][idx];
+        setTimeout(function () {
+          t.classList.remove('filled');
+          t.textContent = '{{' + t.getAttribute('data-name') + '}}';
+        }, 1500);
+      });
+    }, 2800);
+  }
+
+  /* ============================================================
+     STUDIO
+     ============================================================ */
+  function buildCatSelect() {
+    var sel = $('#fCat');
+    if (!sel || sel.options.length) return;
+    sel.innerHTML = CATS.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
+  }
+
+  function setBadge(text, state) {
+    var b = $('#saveBadge');
+    if (!b) return;
+    b.textContent = text;
+    b.setAttribute('data-state', state || 'idle');
+    b.classList.toggle('!text-brand-600', state === 'saved');
+  }
+
+  function renderTagList() {
+    var list = $('#tagList');
+    if (!list) return;
+    list.innerHTML = S.edit.tags.map(function (t, i) {
+      return '<span class="tag-chip">#' + esc(t) +
+        '<button data-tagdel="' + i + '" class="ml-0.5 opacity-60 hover:opacity-100" aria-label="태그 삭제">' +
+        '<svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg></button></span>';
+    }).join('');
+    $$('#tagList [data-tagdel]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        S.edit.tags.splice(parseInt(b.getAttribute('data-tagdel'), 10), 1);
+        renderTagList();
+        touchDraft();
+      });
+    });
+  }
+
+  function renderVarForm(target, body, values, onChange) {
+    var form = typeof target === 'string' ? $(target) : target;
+    if (!form) return;
+    var vars = parseVars(body);
+    if (!vars.length) {
+      form.innerHTML = '<p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 sm:col-span-2 leading-relaxed">' +
+        '본문에 <span class="tok">{{변수}}</span> 를 넣으면 여기에 입력 폼이 자동으로 생깁니다.</p>';
+      return;
+    }
+    form.innerHTML = vars.map(function (v, i) {
+      var cur = values[v.name];
+      if (cur === undefined) cur = v.def || '';
+      var inner;
+      if (v.opts) {
+        inner = '<select class="lemon-select" data-var="' + esc(v.name) + '">' +
+          (v.def ? '' : '<option value="">선택하세요</option>') +
+          v.opts.map(function (o) {
+            return '<option value="' + esc(o) + '"' + (String(o) === String(cur) ? ' selected' : '') + '>' + esc(o) + '</option>';
+          }).join('') + '</select>';
+      } else if (v.multi) {
+        inner = '<textarea rows="2" class="lemon-textarea" data-var="' + esc(v.name) + '" placeholder="' + esc(v.def || v.name) + '">' + esc(cur) + '</textarea>';
+      } else {
+        inner = '<input type="text" class="lemon-input" data-var="' + esc(v.name) + '" value="' + esc(cur) + '" placeholder="' + esc(v.def || v.name) + '">';
+      }
+      return '<div class="var-field"><label for="vf' + i + '">' + esc(v.name) +
+        (v.opts ? '<span class="ml-1 font-semibold opacity-55">· 선택</span>' : '') + '</label>' + inner + '</div>';
+    }).join('');
+    $$('[data-var]', form).forEach(function (el) {
+      el.addEventListener('input', function () {
+        values[el.getAttribute('data-var')] = el.value;
+        onChange();
+      });
+      el.addEventListener('change', function () {
+        values[el.getAttribute('data-var')] = el.value;
+        onChange();
+      });
+    });
+  }
+
+  function renderVarChips(body, values) {
+    var box = $('#varChips');
+    if (!box) return;
+    var vars = parseVars(body);
+    if (!vars.length) {
+      box.innerHTML = '<span class="tag-chip">변수 없음 · 일반 프롬프트</span>';
+      return;
+    }
+    box.innerHTML = vars.map(function (v) {
+      var done = (values[v.name] !== undefined && String(values[v.name]) !== '') || !!v.def;
+      return '<button class="tag-chip" data-goto="' + esc(v.name) + '" title="입력란으로 이동" style="' +
+        (done ? 'color:#0e9c93;border-color:rgba(14,156,147,.35);background:rgba(14,156,147,.10)' : '') + '">' +
+        esc(v.name) + (v.opts ? ' · ' + v.opts.length + '택1' : '') + '</button>';
+    }).join('');
+    $$('#varChips [data-goto]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = $('#varForm [data-var="' + b.getAttribute('data-goto') + '"]');
+        if (el) { el.focus(); if (el.select) el.select(); }
+      });
+    });
+  }
+
+  function updatePreview() {
+    var body = $('#fBody') ? $('#fBody').value : '';
+    var out = compose(body, S.edit.values);
+    var pane = $('#outPreview');
+    if (pane) {
+      pane.innerHTML = body.trim() ? htmlTokens(out) : '<span class="opacity-60">왼쪽에서 템플릿을 쓰면 여기에 실시간으로 조합됩니다.</span>';
+    }
+    var st = fillStats(body, S.edit.values);
+    var vf = $('#varFill');
+    if (vf) vf.textContent = st.total ? st.filled + '/' + st.total + ' 입력됨' : '변수 없음';
+    var meta = $('#outMeta');
+    if (meta) {
+      var chars = out.trim().length;
+      var words = out.trim() ? out.trim().split(/\s+/).length : 0;
+      meta.textContent = chars + '자 · ' + words + '단어';
+    }
+    var fm = $('#bodyMeta');
+    if (fm) fm.textContent = body.length + '자 · 변수 ' + st.total + '개';
+    renderVarChips(body, S.edit.values);
+  }
+
+  function syncVars() {
+    var body = $('#fBody') ? $('#fBody').value : '';
+    S.vars = parseVars(body);
+    renderVarForm('#varForm', body, S.edit.values, function () {
+      updatePreview();
+      touchDraft();
+    });
+    updatePreview();
+  }
+
+  var draftTimer = null;
+  function cancelDraft() { clearTimeout(draftTimer); draftTimer = null; }
+  function touchDraft() {
+    if (S.view !== 'studio') return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(writeDraft, 700);
+  }
+  function writeDraft() {
+    draftTimer = null;
+    if (S.view !== 'studio') return;
+    var d = {
+      id: S.edit.id,
+      title: $('#fTitle') ? $('#fTitle').value : '',
+      body: $('#fBody') ? $('#fBody').value : '',
+      cat: S.edit.cat,
+      tags: S.edit.tags,
+      favorite: S.edit.favorite,
+      values: S.edit.values,
+      ts: Date.now()
+    };
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch (e) { }
+    if (S.edit.id && Date.now() - (S.lastSavedAt || 0) > 1500) setBadge('자동 저장 ' + timeHM(), 'idle');
+  }
+
+  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) { } }
+
+  function applyDraft() {
+    var d = null;
+    try { d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) { return false; }
+    if (!d || !d.body || S.edit.id) return false;
+    S.edit.id = d.id || null;
+    S.edit.cat = d.cat || 'writing';
+    S.edit.tags = Array.isArray(d.tags) ? d.tags : [];
+    S.edit.favorite = !!d.favorite;
+    S.edit.values = d.values || {};
+    $('#fTitle').value = d.title || '';
+    $('#fBody').value = d.body;
+    $('#fCat').value = S.edit.cat;
+    renderTagList();
+    syncVars();
+    setBadge('초안 복원됨', 'idle');
+    return true;
+  }
+
+  function renderFavBtn() {
+    var b = $('#btnFav');
+    if (!b) return;
+    b.classList.toggle('fav-on', !!S.edit.favorite);
+    b.setAttribute('aria-pressed', S.edit.favorite ? 'true' : 'false');
+  }
+
+  function openInStudio(rec, asCopy) {
+    if (!rec) { newPrompt(); return; }
+    var useId = asCopy ? null : rec.id;
+    S.edit = {
+      id: useId,
+      cat: rec.category || 'writing',
+      tags: (rec.tags || []).slice(),
+      favorite: !!rec.favorite,
+      values: Object.assign({}, rec.values || {}),
+      versions: (rec.versions || []).slice(),
+      createdAt: rec.createdAt || 0,
+      origin: rec.origin || 'user',
+      uses: rec.uses || 0
+    };
+    $('#fTitle').value = rec.title || '';
+    $('#fBody').value = rec.body || '';
+    $('#fCat').value = S.edit.cat;
+    $('#tagInput').value = '';
+    renderTagList();
+    renderFavBtn();
+    renderVersions();
+    syncVars();
+    setBadge(useId ? '저장됨' : (asCopy ? '새 사본으로 작성' : '새 프롬프트'), 'idle');
+    if (go) go('studio');
+    setTimeout(function () { if ($('#fTitle')) $('#fTitle').focus(); }, 180);
+  }
+
+  function blankEdit() {
+    S.edit = { id: null, cat: 'writing', tags: [], favorite: false, values: {}, versions: [], createdAt: 0, origin: 'user', uses: 0 };
+    if ($('#fTitle')) $('#fTitle').value = '';
+    if ($('#fBody')) $('#fBody').value = '';
+    if ($('#fCat')) $('#fCat').value = 'writing';
+    if ($('#tagInput')) $('#tagInput').value = '';
+    clearDraft();
+    renderTagList();
+    renderFavBtn();
+    renderVersions();
+    syncVars();
+    setBadge('새 프롬프트', 'idle');
+  }
+
+  function newPrompt() {
+    blankEdit();
+    if (go) go('studio');
+    setTimeout(function () { if ($('#fTitle')) $('#fTitle').focus(); }, 160);
+  }
+
+  function renderVersions() {
+    var list = $('#verList');
+    if (!list) return;
+    var rec = S.all.filter(function (r) { return r.id === S.edit.id; })[0];
+    var versions = (rec && rec.versions) || S.edit.versions || [];
+    var cnt = $('#verCount');
+    if (cnt) cnt.textContent = versions.length + '개';
+    if (!versions.length) {
+      list.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed px-1 py-1.5">저장할 때마다 직전 본문이 이곳에 쌓입니다. 위에서 편집하고 저장해 보세요.</p>';
+      return;
+    }
+    list.innerHTML = versions.map(function (v, i) {
+      return '<div class="ver-item">' +
+        '<span class="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 shrink-0">v' + (versions.length - i) + '</span>' +
+        '<span class="flex-1 min-w-0"><span class="block text-[11.5px] font-semibold truncate">' + esc(v.title || '제목 없음') + '</span>' +
+        '<span class="block text-[10px] text-neutral-500 dark:text-neutral-400">' + timeAgo(v.ts) + ' · ' + String(v.body || '').length + '자</span></span>' +
+        '<button class="icon-btn !w-7 !h-7 !rounded-lg" data-verdiff="' + i + '" title="현재와 비교" aria-label="현재와 비교">' + ic('diff', 'w-3.5 h-3.5') + '</button>' +
+        '<button class="icon-btn !w-7 !h-7 !rounded-lg" data-verrestore="' + i + '" title="이 버전 복원" aria-label="이 버전 복원">' + ic('history', 'w-3.5 h-3.5') + '</button>' +
+      '</div>';
+    }).join('');
+    $$('#verList [data-verdiff]').forEach(function (b) {
+      b.addEventListener('click', function () { openDiff(versions[parseInt(b.getAttribute('data-verdiff'), 10)]); });
+    });
+    $$('#verList [data-verrestore]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var v = versions[parseInt(b.getAttribute('data-verrestore'), 10)];
+        if (!v) return;
+        $('#fBody').value = v.body || '';
+        if (v.title) $('#fTitle').value = v.title;
+        renderTagList();
+        syncVars();
+        setBadge('복원됨 · 저장하면 새 버전으로 기록', 'idle');
+        Lemon.toast('버전을 편집기에 불러왔습니다. 저장을 눌러 확정하세요', 'info');
+      });
+    });
+  }
+
+  function insertAtCursor(text) {
+    var ta = $('#fBody');
+    if (!ta) return;
+    var start = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+    var end = ta.selectionEnd == null ? ta.value.length : ta.selectionEnd;
+    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+    ta.focus();
+    var pos = start + text.length;
+    try { ta.setSelectionRange(pos, pos); } catch (e) { }
+    syncVars();
+    touchDraft();
+  }
+
+  function savePrompt(opts) {
+    opts = opts || {};
+    var title = ($('#fTitle').value || '').trim() || '제목 없는 프롬프트';
+    var body = $('#fBody').value;
+    if (!body.trim()) {
+      Lemon.toast('본문을 먼저 작성해 주세요', 'err');
+      $('#fBody').focus();
+      return Promise.resolve(null);
+    }
+    var now = Date.now();
+    var prev = S.all.filter(function (r) { return r.id === S.edit.id; })[0] || null;
+    var versions = (prev && Array.isArray(prev.versions)) ? prev.versions.slice() : [];
+    if (prev && (prev.body !== body || prev.title !== title)) {
+      versions.unshift({
+        ts: prev.updatedAt || now, title: prev.title, body: prev.body,
+        category: prev.category, tags: (prev.tags || []).slice(), note: '이전 저장본'
+      });
+      versions = versions.slice(0, 20);
+    }
+    var rec = {
+      id: (prev && prev.id) || uid(),
+      title: title,
+      body: body,
+      category: S.edit.cat,
+      tags: S.edit.tags.slice(),
+      favorite: !!S.edit.favorite,
+      origin: (prev && prev.origin) || 'user',
+      presetKey: (prev && prev.presetKey) || null,
+      versions: versions,
+      values: Object.assign({}, S.edit.values),
+      uses: (prev && prev.uses) || 0,
+      lastUsed: (prev && prev.lastUsed) || 0,
+      createdAt: (prev && prev.createdAt) || now,
+      updatedAt: now
+    };
+    return DB.put(rec).then(function () {
+      S.edit.id = rec.id;
+      S.edit.createdAt = rec.createdAt;
+      S.edit.versions = versions;
+      S.edit.origin = rec.origin;
+      return reload();
+    }).then(function () {
+      cancelDraft();
+      clearDraft();
+      S.lastSavedAt = now;
+      setBadge('저장됨 ' + timeHM(now), 'saved');
+      renderVersions();
+      renderHome();
+      renderArchive();
+      if (!opts.silent) {
+        Lemon.toast(versions.length ? '저장했습니다 · 이전 버전 ' + versions.length + '개 보관' : '프롬프트를 저장했습니다', 'ok');
+        Lemon.confetti(16);
+      }
+      return rec;
+    }).catch(function (e) {
+      Lemon.toast('저장에 실패했습니다', 'err');
+      return null;
+    });
+  }
+
+  function copyComposed() {
+    var body = $('#fBody') ? $('#fBody').value : '';
+    var out = compose(body, S.edit.values);
+    if (!out.trim()) { Lemon.toast('복사할 내용이 없습니다', 'err'); return; }
+    Lemon.copy(out, '완성 프롬프트 ' + out.trim().length + '자를 복사했습니다');
+    bumpCopies();
+    if (S.edit.id) {
+      var rec = S.all.filter(function (r) { return r.id === S.edit.id; })[0];
+      if (rec) {
+        rec.uses = (rec.uses || 0) + 1;
+        rec.lastUsed = Date.now();
+        DB.put(rec).then(reload);
+      }
+    }
+  }
+
+  /* ---------------- share ---------------- */
+  function encodeShare(rec) {
+    var payload = { v: 1, t: rec.title || '', b: rec.body || '', c: rec.category || 'writing', g: (rec.tags || []).slice(0, 8), p: rec.values || {} };
+    var json = JSON.stringify(payload);
+    try {
+      if (window.LZString) return LZString.compressToEncodedURIComponent(json);
+    } catch (e) { }
+    return 'b64:' + btoa(unescape(encodeURIComponent(json)));
+  }
+  function decodeShare(code) {
+    var json;
+    if (code.indexOf('b64:') === 0) json = decodeURIComponent(escape(atob(code.slice(4))));
+    else json = LZString.decompressFromEncodedURIComponent(code);
+    return JSON.parse(json);
+  }
+  function shareRecord(rec) {
+    if (!rec || !rec.body) { Lemon.toast('공유할 프롬프트가 없습니다', 'err'); return; }
+    var code = encodeShare(rec);
+    var url = location.origin + location.pathname + '#view=' + code;
+    if (url.length > 8000) Lemon.toast('프롬프트가 길어 일부 환경에서 링크가 잘릴 수 있습니다', 'err');
+    Lemon.copy(url, '공유 링크를 복사했습니다 · ' + url.length + '자');
+  }
+
+  function renderShare() {
+    var d = S.share;
+    if (!d) return;
+    var cat = catOf(d.cat);
+    $('#shareCat').outerHTML = '<span id="shareCat" class="cat-badge" style="--cc:' + cat.color + '">' + ic(cat.icon, 'w-3 h-3') + esc(cat.name) + '</span>';
+    $('#shareTags').innerHTML = (d.tags || []).map(function (t) { return '<span class="tag-chip">#' + esc(t) + '</span>'; }).join('');
+    $('#shareTitle').textContent = d.title;
+    $('#shareBody').innerHTML = htmlTokens(d.body);
+    var values = d.values || {};
+    renderVarForm('#shareForm', d.body, values, function () { sharePreview(); });
+    sharePreview();
+    function sharePreview() {
+      var out = compose(d.body, values);
+      $('#shareOut').innerHTML = htmlTokens(out);
+      var st = fillStats(d.body, values);
+      $('#shareFill').textContent = st.total ? st.filled + '/' + st.total + ' 입력됨' : '변수 없음';
+    }
+    $('#shareCopy').onclick = function () {
+      var out = compose(d.body, values);
+      Lemon.copy(out, '완성 프롬프트를 복사했습니다');
+    };
+    $('#shareDup').onclick = function () {
+      var now = Date.now();
+      var rec = {
+        id: uid(), title: d.title + ' (공유본)', body: d.body, category: d.cat,
+        tags: (d.tags || []).slice(), favorite: false, origin: 'shared', presetKey: null,
+        versions: [], values: Object.assign({}, values), uses: 0, createdAt: now, updatedAt: now
+      };
+      DB.put(rec).then(reload).then(function () {
+        renderHome(); renderArchive();
+        Lemon.toast('내 보관함에 추가했습니다', 'ok');
+        leaveShare();
+        openInStudio(rec, false);
+      });
+    };
+  }
+
+  function leaveShare() {
+    S.share = null;
+    $('#sharePage').classList.add('hidden');
+    $('#navWrap').classList.remove('hidden');
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+    if (go) go('home', true);
+  }
+
+  function bootShare() {
+    var m = (location.hash || '').match(/^#view=(.+)$/);
+    if (!m) return false;
+    var data;
+    try { data = decodeShare(m[1]); } catch (e) { return false; }
+    if (!data || !data.b) return false;
+    S.share = { title: data.t || '공유된 프롬프트', body: data.b, cat: data.c || 'writing', tags: data.g || [], values: data.p || {} };
+    $('#navWrap').classList.add('hidden');
+    $$('main > section[data-view]').forEach(function (el) { el.classList.add('hidden'); });
+    $('#sharePage').classList.remove('hidden');
+    document.title = S.share.title + ' — Lemon Prompt';
+    renderShare();
+    $('#shareGoStudio').addEventListener('click', leaveShare);
+    return true;
+  }
+
+  /* ============================================================
+     ARCHIVE
+     ============================================================ */
+  function renderFilters() {
+    var box = $('#catFilter');
+    if (!box) return;
+    var total = S.all.length;
+    var items = [{ id: 'all', name: '전체', color: '#6a4dff', icon: 'layers', n: total }].concat(CATS.map(function (c) {
+      return { id: c.id, name: c.name, color: c.color, icon: c.icon, n: S.all.filter(function (r) { return r.category === c.id; }).length };
+    }));
+    box.innerHTML = items.map(function (c) {
+      var on = S.filters.cat === c.id;
+      return '<button class="pill-btn btn-tap !py-1.5 !px-2.5 !text-[11px]' + (on ? ' on' : '') + '" data-f="' + c.id + '">' +
+        ic(c.icon, 'w-3.5 h-3.5') + esc(c.name) + '<span class="opacity-60 font-mono text-[10px]">' + c.n + '</span></button>';
+    }).join('');
+    $$('#catFilter [data-f]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        S.filters.cat = b.getAttribute('data-f');
+        renderFilters();
+        renderArchive();
+      });
+    });
+    var favBtn = $('#btnFavFilter');
+    if (favBtn) favBtn.classList.toggle('on', !!S.filters.fav);
+  }
+
+  function visibleList() {
+    var list = S.all.slice(), f = S.filters;
+    if (f.cat !== 'all') list = list.filter(function (r) { return r.category === f.cat; });
+    if (f.fav) list = list.filter(function (r) { return r.favorite; });
+    if (f.q) {
+      var q = f.q.toLowerCase();
+      list = list.filter(function (r) {
+        var vals = r.values ? Object.keys(r.values).map(function (k) { return r.values[k]; }).join(' ') : '';
+        return ((r.title || '') + ' ' + (r.body || '') + ' ' + (r.tags || []).join(' ') + ' ' + vals).toLowerCase().indexOf(q) > -1;
+      });
+    }
+    if (f.sort === 'name') list.sort(function (a, b) { return String(a.title || '').localeCompare(String(b.title || ''), 'ko'); });
+    else if (f.sort === 'created') list.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    else if (f.sort === 'used') list.sort(function (a, b) { return (b.uses || 0) - (a.uses || 0) || (b.updatedAt || 0) - (a.updatedAt || 0); });
+    else list.sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+    return list;
+  }
+
+  function renderArchive() {
+    var grid = $('#promptGrid');
+    if (!grid) return;
+    var list = visibleList();
+    var favs = S.all.filter(function (r) { return r.favorite; }).length;
+    var st = $('#archStats');
+    if (st) st.textContent = '전체 ' + S.all.length + '개 · 즐겨찾기 ' + favs + ' · 지금 보기 ' + list.length + '개';
+
+    grid.innerHTML = list.map(function (r) {
+      var vars = parseVars(r.body);
+      var st2 = fillStats(r.body, r.values || {});
+      return '<article class="p-card" data-open="' + esc(r.id) + '">' +
+        '<div class="p-3.5 space-y-2 flex-1">' +
+          '<div class="flex items-center justify-between gap-2">' + catBadge(r.category) +
+            '<button class="icon-btn !w-7 !h-7 !rounded-lg' + (r.favorite ? ' fav-on' : '') + '" data-fav="' + esc(r.id) + '" aria-label="즐겨찾기" title="즐겨찾기">' + ic('star', 'w-3.5 h-3.5') + '</button>' +
+          '</div>' +
+          '<h3 class="text-[13px] font-bold leading-snug break-words">' + esc(r.title || '제목 없음') + '</h3>' +
+          '<p class="body-preview">' + plainPreview(r.body, 190) + '</p>' +
+          '<div class="flex flex-wrap items-center gap-1 pt-0.5">' +
+            (r.tags || []).slice(0, 3).map(function (t) { return '<span class="tag-chip">#' + esc(t) + '</span>'; }).join('') +
+            (vars.length ? '<span class="tag-chip" title="변수">' + vars.length + ' 변수 · ' + st2.filled + ' 입력</span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="px-3 pb-3 flex items-center gap-1.5">' +
+          '<button class="copy-btn flex-1" data-copy="' + esc(r.id) + '">' + ic('copy', 'w-3.5 h-3.5') + '복사</button>' +
+          '<button class="pill-btn btn-tap !p-1.5" data-edit="'  + esc(r.id) + '" title="편집" aria-label="편집">' + ic('edit', 'w-3.5 h-3.5') + '</button>' +
+          '<button class="pill-btn btn-tap !p-1.5" data-share="' + esc(r.id) + '" title="공유" aria-label="공유">' + ic('share', 'w-3.5 h-3.5') + '</button>' +
+          '<button class="pill-btn btn-tap !p-1.5" data-del="' + esc(r.id) + '" title="삭제" aria-label="삭제">' + ic('trash', 'w-3.5 h-3.5') + '</button>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+
+    var empty = $('#archEmpty');
+    if (empty) empty.classList.toggle('hidden', list.length > 0);
+
+    $$('#promptGrid [data-copy]').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.stopPropagation(); copyRecord(b.getAttribute('data-copy')); });
+    });
+    $$('#promptGrid [data-edit]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rec = S.all.filter(function (r) { return r.id === b.getAttribute('data-edit'); })[0];
+        if (rec) openInStudio(rec, false);
+      });
+    });
+    $$('#promptGrid [data-share]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rec = S.all.filter(function (r) { return r.id === b.getAttribute('data-share'); })[0];
+        if (rec) shareRecord(rec);
+      });
+    });
+    $$('#promptGrid [data-del]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var id = b.getAttribute('data-del');
+        if (b.getAttribute('data-confirm') === '1') {
+          removeRecord(id);
+        } else {
+          b.setAttribute('data-confirm', '1');
+          b.classList.add('!text-rose-500');
+          b.innerHTML = '<span class="text-[10px] font-bold px-1">삭제?</span>';
+          setTimeout(function () {
+            if (!document.body.contains(b)) return;
+            b.removeAttribute('data-confirm');
+            b.classList.remove('!text-rose-500');
+            b.innerHTML = ic('trash', 'w-3.5 h-3.5');
+          }, 3200);
+        }
+      });
+    });
+    $$('#promptGrid [data-fav]').forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleFav(b.getAttribute('data-fav'));
+      });
+    });
+    $$('#promptGrid [data-open]').forEach(function (card) {
+      card.addEventListener('click', function () {
+        var rec = S.all.filter(function (r) { return r.id === card.getAttribute('data-open'); })[0];
+        if (rec) openDetail(rec);
+      });
+    });
+  }
+
+  function toggleFav(id) {
+    var rec = S.all.filter(function (r) { return r.id === id; })[0];
+    if (!rec) return;
+    rec.favorite = !rec.favorite;
+    DB.put(rec).then(reload).then(function () {
+      renderArchive(); renderHome();
+      if (S.edit.id === id) { S.edit.favorite = rec.favorite; renderFavBtn(); }
+      Lemon.toast(rec.favorite ? '즐겨찾기에 추가했습니다' : '즐겨찾기에서 뺐습니다', 'ok');
+    });
+  }
+
+  function removeRecord(id) {
+    DB.del(id).then(reload).then(function () {
+      if (S.edit.id === id) { S.edit.id = null; S.edit.versions = []; }
+      closeSheet();
+      renderArchive(); renderHome(); renderVersions();
+      Lemon.toast('삭제했습니다', 'info');
+    });
+  }
+
+  function copyRecord(id) {
+    var rec = S.all.filter(function (r) { return r.id === id; })[0];
+    if (!rec) return;
+    var st = fillStats(rec.body, rec.values || {});
+    var out = compose(rec.body, rec.values || {});
+    var missing = st.total - st.filled;
+    Lemon.copy(out, missing > 0 ? '복사했습니다 · 빈 변수 ' + missing + '개는 그대로 남았습니다' : '완성 프롬프트를 복사했습니다');
+    rec.uses = (rec.uses || 0) + 1;
+    rec.lastUsed = Date.now();
+    DB.put(rec).then(reload);
+    bumpCopies();
+  }
+
+  /* ---------------- detail sheet ---------------- */
+  function openSheet(title, html) {
+    $('#sheetTitle').textContent = title;
+    $('#sheetBody').innerHTML = html;
+    $('#sheetBack').classList.add('on');
+    $('#sheetPanel').classList.add('on');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSheet() {
+    $('#sheetBack').classList.remove('on');
+    $('#sheetPanel').classList.remove('on');
+    document.body.style.overflow = '';
+  }
+
+  function openDetail(rec) {
+    var vars = parseVars(rec.body);
+    var values = Object.assign({}, rec.values || {});
+    openSheet(rec.title || '프롬프트', [
+      '<div class="space-y-3">',
+      '  <div class="flex flex-wrap items-center gap-1.5">', catBadge(rec.category),
+      (rec.tags || []).map(function (t) { return '<span class="tag-chip">#' + esc(t) + '</span>'; }).join(''),
+      '    <span class="ml-auto text-[10px] font-mono text-neutral-500">' + timeAgo(rec.updatedAt) + ' · ' + (rec.uses || 0) + '회 사용</span>',
+      '  </div>',
+      '  <div><p class="lemon-label mb-1">템플릿</p><div class="preview-pane thin-scroll">' + htmlTokens(rec.body) + '</div></div>',
+      '  <div><div class="flex items-center justify-between"><p class="lemon-label mb-1">변수</p><span id="dFill" class="text-[10px] font-mono text-neutral-500"></span></div>',
+      '    <div id="dForm" class="grid sm:grid-cols-2 gap-2"></div></div>',
+      '  <div><p class="lemon-label mb-1">완성 프롬프트</p><div id="dOut" class="preview-pane thin-scroll"></div></div>',
+      '  <div class="grid grid-cols-2 gap-2">',
+      '    <button id="dCopy" class="primary-btn btn-tap !py-2 !text-[11.5px] sm:col-span-2">' + ic('copy', 'w-4 h-4') + '복사</button>',
+      '    <button id="dEdit" class="ghost-btn btn-tap !py-2 !text-[11.5px]">' + ic('edit', 'w-4 h-4') + '편집</button>',
+      '    <button id="dShare" class="ghost-btn btn-tap !py-2 !text-[11.5px]">' + ic('share', 'w-4 h-4') + '공유</button>',
+      '  </div>',
+      (rec.versions && rec.versions.length ? '  <button id="dDiff" class="pill-btn btn-tap w-full !text-[11px]">' + ic('history', 'w-3.5 h-3.5') + '버전 ' + rec.versions.length + '개 · 비교하기</button>' : ''),
+      '  <button id="dDel" class="w-full text-[11px] font-bold text-rose-500 hover:text-rose-600 py-1.5">이 프롬프트 삭제</button>',
+      '</div>'
+    ].join(''));
+
+    function paint() {
+      var out = compose(rec.body, values);
+      $('#dOut').innerHTML = htmlTokens(out);
+      var st = fillStats(rec.body, values);
+      $('#dFill').textContent = st.total ? st.filled + '/' + st.total + ' 입력됨' : '변수 없음';
+    }
+    renderVarForm('#dForm', rec.body, values, paint);
+    paint();
+
+    $('#dCopy').addEventListener('click', function () {
+      var out = compose(rec.body, values);
+      rec.values = Object.assign({}, values);
+      rec.uses = (rec.uses || 0) + 1;
+      rec.lastUsed = Date.now();
+      DB.put(rec).then(reload);
+      Lemon.copy(out, '완성 프롬프트를 복사했습니다');
+      bumpCopies();
+    });
+    $('#dEdit').addEventListener('click', function () { closeSheet(); openInStudio(rec, false); });
+    $('#dShare').addEventListener('click', function () {
+      var copy = Object.assign({}, rec, { values: Object.assign({}, values) });
+      shareRecord(copy);
+    });
+    var dDiff = $('#dDiff');
+    if (dDiff) dDiff.addEventListener('click', function () { openDiff(rec.versions[0], rec.body, rec.title); });
+    $('#dDel').addEventListener('click', function () {
+      var b = this;
+      if (b.getAttribute('data-confirm') === '1') { removeRecord(rec.id); return; }
+      b.setAttribute('data-confirm', '1');
+      b.textContent = '정말 삭제할까요? 다시 누르면 삭제됩니다';
+    });
+  }
+
+  /* ---------------- diff ---------------- */
+  function diffLines(a, b) {
+    var A = String(a || '').split('\n'), B = String(b || '').split('\n');
+    var n = A.length, m = B.length;
+    var dp = [];
+    for (var i = 0; i <= n; i++) { dp.push(new Array(m + 1).fill(0)); }
+    for (i = n - 1; i >= 0; i--) {
+      for (var j = m - 1; j >= 0; j--) {
+        dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    var out = [], x = 0, y = 0;
+    while (x < n && y < m) {
+      if (A[x] === B[y]) { out.push({ t: 'eq', s: A[x] }); x++; y++; }
+      else if (dp[x + 1][y] >= dp[x][y + 1]) { out.push({ t: 'del', s: A[x] }); x++; }
+      else { out.push({ t: 'add', s: B[y] }); y++; }
+    }
+    while (x < n) { out.push({ t: 'del', s: A[x] }); x++; }
+    while (y < m) { out.push({ t: 'add', s: B[y] }); y++; }
+    return out;
+  }
+
+  function openDiff(version, currentBody, currentTitle) {
+    if (!version) return;
+    var body = currentBody !== undefined ? currentBody : $('#fBody').value;
+    var title = currentTitle !== undefined ? currentTitle : $('#fTitle').value;
+    var rows = diffLines(version.body, body);
+    var add = rows.filter(function (r) { return r.t === 'add'; }).length;
+    var del = rows.filter(function (r) { return r.t === 'del'; }).length;
+    openSheet('버전 비교', [
+      '<div class="space-y-2.5">',
+      '  <div class="flex flex-wrap items-center gap-1.5 text-[10.5px]">',
+      '    <span class="tag-chip">' + esc(version.title || '제목 없음') + ' · ' + timeAgo(version.ts) + '</span>',
+      '    <span class="text-neutral-400">→</span>',
+      '    <span class="tag-chip">지금 편집 중</span>',
+      '    <span class="ml-auto font-mono text-emerald-600 dark:text-emerald-400">+' + add + '</span>',
+      '    <span class="font-mono text-rose-500">-' + del + '</span>',
+      '  </div>',
+      (version.title !== title ? '  <p class="text-[11px] text-neutral-500">제목: ' + esc(version.title || '(없음)') + ' → ' + esc(title || '(없음)') + '</p>' : ''),
+      '  <div class="preview-pane thin-scroll !text-[11.5px]">' + rows.map(function (r) {
+        return '<div class="diff-line ' + r.t + '"><span class="diff-mark">' + (r.t === 'add' ? '+' : (r.t === 'del' ? '-' : '·')) + '</span><span>' + (r.s ? esc(r.s) : '&nbsp;') + '</span></div>';
+      }).join('') + '</div>',
+      '  <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400">+ 지금 편집 중인 줄 · - 이전 버전에만 있던 줄</p>',
+      '</div>'
+    ].join(''));
+  }
+
+  /* ---------------- export / import / seed ---------------- */
+  function exportJson() {
+    var data = { app: 'lemon-prompt', schema: 1, exportedAt: new Date().toISOString(), count: S.all.length, prompts: S.all };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var d = new Date();
+    var name = 'lemon-prompt-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '.json';
+    Lemon.downloadBlob(name, blob);
+    Lemon.toast(S.all.length + '개 프롬프트를 JSON으로 내보냈습니다', 'ok');
+  }
+
+  function importJson(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var data;
+      try { data = JSON.parse(String(reader.result || '')); } catch (e) { Lemon.toast('JSON 파일을 읽을 수 없습니다', 'err'); return; }
+      var arr = Array.isArray(data) ? data : (data && Array.isArray(data.prompts) ? data.prompts : null);
+      if (!arr) { Lemon.toast('프롬프트 목록이 없는 파일입니다', 'err'); return; }
+      var now = Date.now(), n = 0;
+      var chain = Promise.resolve();
+      arr.forEach(function (raw, idx) {
+        if (!raw || typeof raw !== 'object' || !raw.body) return;
+        chain = chain.then(function () {
+          var rec = {
+            id: raw.id && typeof raw.id === 'string' ? raw.id : uid(),
+            title: String(raw.title || '가져온 프롬프트'),
+            body: String(raw.body),
+            category: catOf(raw.category).id,
+            tags: Array.isArray(raw.tags) ? raw.tags.slice(0, 8).map(String) : [],
+            favorite: !!raw.favorite,
+            origin: raw.origin === 'preset' ? 'preset' : 'imported',
+            presetKey: raw.presetKey || null,
+            versions: Array.isArray(raw.versions) ? raw.versions.slice(0, 20) : [],
+            values: raw.values && typeof raw.values === 'object' ? raw.values : {},
+            uses: raw.uses || 0,
+            lastUsed: raw.lastUsed || 0,
+            createdAt: raw.createdAt || now - idx,
+            updatedAt: raw.updatedAt || now - idx
+          };
+          n++;
+          return DB.put(rec);
+        });
+      });
+      chain.then(reload).then(function () {
+        renderHome(); renderArchive();
+        Lemon.toast(n + '개 프롬프트를 가져왔습니다', 'ok');
+      }).catch(function () { Lemon.toast('가져오기에 실패했습니다', 'err'); });
+    };
+    reader.readAsText(file);
+  }
+
+  function seedPresets(force) {
+    if (seededAlready() && !force) return Promise.resolve(0);
+    var have = {};
+    S.all.forEach(function (r) { if (r.presetKey) have[r.presetKey] = true; });
+    var now = Date.now(), n = 0;
+    var chain = Promise.resolve();
+    PRESETS.forEach(function (p, i) {
+      if (have[p.k]) return;
+      chain = chain.then(function () {
+        n++;
+        return DB.put({
+          id: 'pr_' + p.k,
+          title: p.title,
+          body: p.body,
+          category: p.cat,
+          tags: (p.tags || []).slice(),
+          favorite: false,
+          origin: 'preset',
+          presetKey: p.k,
+          versions: [],
+          values: {},
+          uses: 0,
+          createdAt: now - (PRESETS.length - i) * 1000,
+          updatedAt: now - (PRESETS.length - i) * 1000
+        });
+      });
+    });
+    return chain.then(function () {
+      try { localStorage.setItem(SEED_KEY, '1'); } catch (e) { }
+      return reload().then(function () { return n; });
+    });
+  }
+
+  /* ============================================================
+     BINDINGS
+     ============================================================ */
+  function bindUI() {
+    buildCatSelect();
+
+    $('#btnNew').addEventListener('click', function () {
+      if (S.share) leaveShare();
+      newPrompt();
+    });
+    $$('[data-go]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var v = b.getAttribute('data-go');
+        if (S.share) leaveShare();
+        if (v === 'studio' && S.view === 'studio') { if ($('#fTitle')) $('#fTitle').focus(); return; }
+        if (go) go(v);
+        if (v === 'archive') renderArchive();
+      });
+    });
+    $$('[data-scroll]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var el = document.getElementById(b.getAttribute('data-scroll'));
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    $('#fBody').addEventListener('input', function () { syncVars(); touchDraft(); });
+    $('#fTitle').addEventListener('input', function () { touchDraft(); });
+    $('#fCat').addEventListener('change', function () {
+      S.edit.cat = $('#fCat').value;
+      touchDraft();
+    });
+    $('#btnInsertVar').addEventListener('click', function () { insertAtCursor('{{변수}}'); });
+    $('#btnInsertOpt').addEventListener('click', function () { insertAtCursor('{{톤|친근한|전문적인|유머러스}}'); });
+    $('#btnClearBody').addEventListener('click', function () {
+      if (!$('#fBody').value.trim()) return;
+      if (this.getAttribute('data-confirm') === '1') {
+        $('#fBody').value = '';
+        this.removeAttribute('data-confirm');
+        this.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M6 7l1 13h10l1-13"></path></svg>';
+        syncVars(); touchDraft();
+      } else {
+        this.setAttribute('data-confirm', '1');
+        this.innerHTML = '<span class="text-[10px] font-bold px-1">비우기?</span>';
+        var self = this;
+        setTimeout(function () {
+          if (!document.body.contains(self)) return;
+          self.removeAttribute('data-confirm');
+          self.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M6 7l1 13h10l1-13"></path></svg>';
+        }, 3000);
+      }
+    });
+
+    $('#tagInput').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ',') return;
+      e.preventDefault();
+      var v = this.value.trim().replace(/^#/, '').slice(0, 18);
+      if (!v) return;
+      if (S.edit.tags.indexOf(v) === -1 && S.edit.tags.length < 8) S.edit.tags.push(v);
+      this.value = '';
+      renderTagList();
+      touchDraft();
+    });
+    $('#tagInput').addEventListener('blur', function () {
+      var v = this.value.trim().replace(/^#/, '').slice(0, 18);
+      if (!v) return;
+      if (S.edit.tags.indexOf(v) === -1 && S.edit.tags.length < 8) S.edit.tags.push(v);
+      this.value = '';
+      renderTagList();
+      touchDraft();
+    });
+
+    $('#btnFav').addEventListener('click', function () {
+      S.edit.favorite = !S.edit.favorite;
+      renderFavBtn();
+      Lemon.hap(8);
+      if (S.edit.id) {
+        var rec = S.all.filter(function (r) { return r.id === S.edit.id; })[0];
+        if (rec) { rec.favorite = S.edit.favorite; DB.put(rec).then(reload).then(function () { renderArchive(); renderHome(); }); }
+      }
+      touchDraft();
+    });
+
+    $('#btnSave').addEventListener('click', function () { savePrompt(); });
+    $('#btnCopy').addEventListener('click', copyComposed);
+    $('#btnShare').addEventListener('click', function () {
+      var body = $('#fBody').value;
+      if (!body.trim()) { Lemon.toast('공유할 본문이 없습니다', 'err'); return; }
+      shareRecord({
+        title: ($('#fTitle').value || '').trim() || '제목 없는 프롬프트',
+        body: body,
+        category: S.edit.cat,
+        tags: S.edit.tags,
+        values: S.edit.values
+      });
+    });
+    $('#btnNewInStudio').addEventListener('click', function () {
+      if ($('#fBody').value.trim() && !$('#fTitle').value.trim()) {
+        // 내용이 있으면 한 번 더 확인
+        if (this.getAttribute('data-confirm') !== '1') {
+          this.setAttribute('data-confirm', '1');
+          this.innerHTML = '<span class="text-[11px] font-bold">한 번 더 누르면 새로 시작</span>';
+          var self = this;
+          setTimeout(function () {
+            if (!document.body.contains(self)) return;
+            self.removeAttribute('data-confirm');
+            self.innerHTML = ic('plus', 'w-3.5 h-3.5') + '새로 작성';
+          }, 3200);
+          return;
+        }
+      }
+      newPrompt();
+    });
+    $('#btnDownloadTxt').addEventListener('click', function () {
+      var out = compose($('#fBody').value, S.edit.values);
+      if (!out.trim()) { Lemon.toast('내려받을 내용이 없습니다', 'err'); return; }
+      var name = (($('#fTitle').value || 'prompt').replace(/[\\/:*?"<>|]/g, '').slice(0, 40) || 'prompt') + '.txt';
+      Lemon.download(name, out, 'text/plain;charset=utf-8');
+      Lemon.toast('TXT로 내려받았습니다', 'ok');
+    });
+
+    $('#q').addEventListener('input', debounce(function () {
+      S.filters.q = this.value.trim();
+      renderArchive();
+    }, 160));
+    $('#sortSel').addEventListener('change', function () {
+      S.filters.sort = this.value;
+      renderArchive();
+    });
+    $('#btnFavFilter').addEventListener('click', function () {
+      S.filters.fav = !S.filters.fav;
+      renderFilters();
+      renderArchive();
+    });
+    $('#btnExport').addEventListener('click', exportJson);
+    $('#btnImport').addEventListener('click', function () { $('#fileImport').click(); });
+    $('#fileImport').addEventListener('change', function () {
+      if (this.files && this.files[0]) importJson(this.files[0]);
+      this.value = '';
+    });
+    $('#btnSeed').addEventListener('click', function () {
+      seedPresets(true).then(function (n) {
+        renderHome(); renderArchive();
+        Lemon.toast(n ? '기본 프리셋 ' + n + '개를 복원했습니다' : '이미 모든 프리셋이 있습니다', n ? 'ok' : 'info');
+      });
+    });
+
+    $('#sheetBack').addEventListener('click', closeSheet);
+    $('#sheetClose').addEventListener('click', closeSheet);
+    $('#shareGoStudio').addEventListener('click', leaveShare);
+
+    document.addEventListener('lemon:view', function (e) {
+      S.view = e.detail.view;
+      if (S.view === 'home') renderHome();
+      if (S.view === 'archive') { renderFilters(); renderArchive(); }
+      if (S.view === 'studio') { renderVersions(); updatePreview(); }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      var k = (e.key || '').toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === 's') {
+        e.preventDefault();
+        if (S.view === 'studio') savePrompt();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (S.view === 'studio') { e.preventDefault(); copyComposed(); }
+      }
+      if (e.key === 'Escape') closeSheet();
+    });
+
+    // scroll reveal for home sections
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+      }, { threshold: 0.08 });
+      $$('.fade-up').forEach(function (el) { io.observe(el); });
+    }
+
+    // tilt on home preset cards
+    if (window.matchMedia && window.matchMedia('(hover: hover)').matches) {
+      $$('#homePresets .p-card').forEach(function (c) { if (Lemon.tilt) Lemon.tilt(c, 5); });
+    }
+  }
+
+  /* ============================================================
+     BOOT
+     ============================================================ */
+  function boot() {
+    buildCatSelect();
+    bindUI();
+    go = Lemon.initTabs('home');
+    renderFilters();
+
+    reload().then(function () {
+      return seedPresets(false);
+    }).then(function (added) {
+      renderHome();
+      renderArchive();
+      renderVersions();
+      syncVars();
+      var restored = applyDraft();
+      var shared = bootShare();
+      if (!shared) {
+        if (restored) Lemon.toast('작성 중이던 초안을 불러왔습니다', 'info');
+        else if (added) Lemon.toast('실전 프리셋 ' + added + '개를 준비했습니다', 'info');
+        startDemo();
+      }
+    }).catch(function () {
+      renderHome();
+      renderArchive();
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  // 테스트/디버그용 최소 노출
+  window.LemonPrompt = {
+    all: function () { return S.all; },
+    compose: compose,
+    parseVars: parseVars,
+    shareUrl: function () { return encodeShare({ title: 't', body: 'b', category: 'writing', tags: [], values: {} }); },
+    dbName: DB.name
+  };
+})();
+</script>
+</body>
+</html>
