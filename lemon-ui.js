@@ -9,6 +9,12 @@
   var root = doc.documentElement;
 
   /* ---------------- storage ---------------- */
+  var lastStoreError = null;
+  function isQuotaError(e) {
+    if (!e) return false;
+    return e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      e.code === 22 || e.code === 1014 || /quota/i.test(String(e.message || ''));
+  }
   var store = {
     get: function (key, fallback) {
       try {
@@ -17,17 +23,132 @@
         return JSON.parse(raw);
       } catch (e) { return fallback; }
     },
+    /* Never truncates or overwrites on failure: returns false and keeps the old value. */
     set: function (key, value) {
-      try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-      catch (e) { return false; }
+      try { localStorage.setItem(key, JSON.stringify(value)); lastStoreError = null; return true; }
+      catch (e) {
+        lastStoreError = e;
+        if (isQuotaError(e)) storageWarn({ key: key });
+        return false;
+      }
     },
     raw: function (key, fallback) {
       try { var v = localStorage.getItem(key); return v === null ? fallback : v; } catch (e) { return fallback; }
     },
     rawSet: function (key, value) {
-      try { localStorage.setItem(key, value); return true; } catch (e) { return false; }
-    }
+      try { localStorage.setItem(key, value); lastStoreError = null; return true; }
+      catch (e) {
+        lastStoreError = e;
+        if (isQuotaError(e)) storageWarn({ key: key });
+        return false;
+      }
+    },
+    lastError: function () { return lastStoreError; },
+    isQuotaError: isQuotaError
   };
+
+  /* ---------------- storage-full warning ---------------- */
+  /* Shown instead of silently deleting data. Cooldown + closeable so it never nags. */
+  var WARN_COOLDOWN = 45000;
+  var warnEl = null, warnAt = 0;
+
+  function kitStyle() {
+    if (doc.getElementById('lemonKitStyle')) return;
+    var st = doc.createElement('style');
+    st.id = 'lemonKitStyle';
+    st.textContent = [
+      '.as-badge[data-state="full"]{color:#e11d48;border-color:rgba(225,29,72,.42);background:rgba(225,29,72,.10)}',
+      '.dark .as-badge[data-state="full"]{color:#fb7185;border-color:rgba(251,113,133,.42);background:rgba(225,29,72,.16)}',
+      '.as-badge[data-state="full"]::before{opacity:1;animation:pulseSoft 1.4s ease-in-out infinite}',
+      '.lemon-storage-warn{position:fixed;top:.75rem;left:50%;z-index:88;width:min(96vw,34rem);',
+      'transform:translate(-50%,-150%);opacity:0;pointer-events:none;',
+      'display:flex;align-items:flex-start;gap:.7rem;padding:.8rem .85rem;border-radius:1.1rem;',
+      'background:rgba(255,255,255,.97);border:1px solid #fecdd3;',
+      'box-shadow:0 24px 60px -26px rgba(225,29,72,.55),0 2px 6px rgba(16,16,20,.06);',
+      'transition:transform .38s cubic-bezier(.22,1,.36,1),opacity .28s ease;}',
+      '.dark .lemon-storage-warn{background:rgba(22,16,19,.97);border-color:rgba(225,29,72,.45);',
+      'box-shadow:0 26px 64px -28px rgba(0,0,0,.9),0 0 0 1px rgba(225,29,72,.16);}',
+      '.lemon-storage-warn.show{transform:translate(-50%,0);opacity:1;pointer-events:auto;}',
+      '.lemon-storage-warn .lsw-ico{width:2rem;height:2rem;border-radius:.7rem;flex-shrink:0;',
+      'display:inline-flex;align-items:center;justify-content:center;color:#fff;',
+      'background:linear-gradient(135deg,#f43f5e,#e11d48);box-shadow:0 8px 18px -10px rgba(225,29,72,.9)}',
+      '.lemon-storage-warn .lsw-ico svg{width:1.05rem;height:1.05rem}',
+      '.lemon-storage-warn .lsw-body{min-width:0;flex:1}',
+      '.lemon-storage-warn .lsw-title{margin:0;font-size:.78rem;font-weight:800;color:#111114;letter-spacing:-.01em}',
+      '.dark .lemon-storage-warn .lsw-title{color:#fafafa}',
+      '.lemon-storage-warn .lsw-text{margin:.15rem 0 0;font-size:.7rem;line-height:1.55;color:#52525b}',
+      '.dark .lemon-storage-warn .lsw-text{color:#a1a1aa}',
+      '.lemon-storage-warn .lsw-act{display:flex;align-items:center;gap:.3rem;flex-shrink:0;padding-top:.05rem}',
+      '.lemon-storage-warn .lsw-open{display:inline-flex;align-items:center;gap:.28rem;padding:.42rem .6rem;border-radius:.7rem;',
+      'font-size:.68rem;font-weight:800;color:#fff;white-space:nowrap;',
+      'background:linear-gradient(135deg,#e11d48,#be123c);box-shadow:0 8px 18px -12px rgba(225,29,72,.9);',
+      'transition:transform .14s ease,filter .2s ease}',
+      '.lemon-storage-warn .lsw-open:hover{filter:brightness(1.06);transform:translateY(-1px)}',
+      '.lemon-storage-warn .lsw-open:active{transform:scale(.95)}',
+      '.lemon-storage-warn .lsw-open svg{width:.8rem;height:.8rem}',
+      '.lemon-storage-warn .lsw-close{width:1.6rem;height:1.6rem;border-radius:.55rem;display:inline-flex;',
+      'align-items:center;justify-content:center;color:#71717a;border:1px solid transparent;transition:background .18s,color .18s}',
+      '.lemon-storage-warn .lsw-close:hover{background:rgba(0,0,0,.06);color:#18181b}',
+      '.dark .lemon-storage-warn .lsw-close:hover{background:rgba(255,255,255,.10);color:#fff}',
+      '.lemon-storage-warn .lsw-close svg{width:.8rem;height:.8rem}',
+      '@media (max-width:420px){.lemon-storage-warn{width:calc(100vw - 1rem);padding:.7rem;gap:.55rem;',
+      'flex-wrap:wrap}.lemon-storage-warn .lsw-act{width:100%;justify-content:flex-end}}'
+    ].join('');
+    (doc.head || doc.documentElement).appendChild(st);
+  }
+
+  function managerHref() {
+    try { return new URL('manager.html', location.href).href; } catch (e) { return 'manager.html'; }
+  }
+
+  function closeStorageWarn() {
+    if (!warnEl) return;
+    var el = warnEl;
+    warnEl = null;
+    el.classList.remove('show');
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 360);
+  }
+
+  function storageWarn(opts) {
+    opts = opts || {};
+    kitStyle();
+    if (warnEl) { warnEl.classList.add('show'); return warnEl; }
+    var now = Date.now();
+    if (!opts.force && now - warnAt < WARN_COOLDOWN) return null;
+    warnAt = now;
+
+    var el = doc.createElement('div');
+    el.id = 'lemonStorageWarn';
+    el.className = 'lemon-storage-warn';
+    el.setAttribute('role', 'alert');
+    el.innerHTML =
+      '<span class="lsw-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path>' +
+      '<line x1="12" y1="9" x2="12" y2="13.6"></line><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"></circle></svg></span>' +
+      '<div class="lsw-body">' +
+      '<p class="lsw-title">저장 공간이 부족해요</p>' +
+      '<p class="lsw-text">저장 공간(LocalStorage)이 부족해 변경 사항을 저장하지 못했어요. 기존 데이터는 삭제되지 않았습니다. Lemon Manager에서 용량을 확인하고 불필요한 데이터를 정리해 주세요.</p>' +
+      '</div>' +
+      '<div class="lsw-act">' +
+      '<a class="lsw-open" href="' + managerHref() + '">Lemon Manager 열기' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"></path><path d="M9 7h8v8"></path></svg></a>' +
+      '<button class="lsw-close" type="button" aria-label="경고 닫기">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button>' +
+      '</div>';
+    doc.body.appendChild(el);
+    el.querySelector('.lsw-close').addEventListener('click', closeStorageWarn);
+    void el.offsetWidth;
+    el.classList.add('show');
+    warnEl = el;
+    try {
+      doc.dispatchEvent(new CustomEvent('lemon:storage-full', { detail: { key: opts.key || null, error: lastStoreError } }));
+    } catch (e) { }
+    return el;
+  }
+
+  doc.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && warnEl) closeStorageWarn();
+  });
 
   /* ---------------- haptics ---------------- */
   function hap(ms) {
@@ -210,14 +331,11 @@
       var list = store.get(key, []);
       return Array.isArray(list) ? list : [];
     }
+    /* On failure nothing is trimmed, nothing is overwritten: the previous value stays intact. */
+    var saveOk = true;
     function save(list) {
-      var ok = store.set(key, list);
-      if (!ok) {
-        var half = Math.max(1, Math.floor(list.length / 2));
-        ok = store.set(key, list.slice(0, half));
-        if (ok) toast('저장 공간이 부족해 오래된 항목을 정리했어요', 'info');
-      }
-      return ok;
+      saveOk = store.set(key, list);
+      return saveOk;
     }
     return {
       key: key,
@@ -247,7 +365,8 @@
         return null;
       },
       save: save,
-      clear: function () { store.set(key, []); },
+      saveOk: function () { return saveOk; },
+      clear: function () { return store.set(key, []); },
       count: function () { return all().length; }
     };
   }
@@ -277,11 +396,15 @@
       var id = currentId();
       var rec = id ? arch.update(id, Object.assign({}, payload, { auto: true })) : null;
       if (!rec) rec = arch.add(Object.assign({}, payload, { auto: true }));
-      if (rec) {
+      if (rec && arch.saveOk()) {
         store.rawSet(ACTIVE, rec.id);
         setBadge('자동 저장됨 ' + stamp(), 'saved');
+        return rec;
       }
-      return rec;
+      /* Storage is full: keep what the user has, say so plainly. */
+      setBadge('저장 공간 부족', 'full');
+      storageWarn();
+      return null;
     }
     var api = {
       archive: arch,
@@ -415,6 +538,7 @@
 
   /* ---------------- boot ---------------- */
   doc.addEventListener('DOMContentLoaded', function () {
+    kitStyle();
     bindTheme();
     bindRipple();
     bindRanges();
@@ -423,6 +547,8 @@
 
   window.Lemon = {
     store: store,
+    storageWarn: storageWarn,
+    closeStorageWarn: closeStorageWarn,
     toast: toast,
     copy: copy,
     download: download,
