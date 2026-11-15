@@ -1,0 +1,1623 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Map — 나만의 맛집·플레이스 비밀 지도</title>
+<meta name="description" content="지도를 누르거나 검색해서 핀을 꽂고, 카테고리·별점·한줄평·사진으로 나만의 장소를 모읍니다. 압축된 공유 링크 하나로 친구의 지도에서 바로 구경할 수 있습니다.">
+<meta name="theme-color" content="#0d9488">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230d9488'/%3E%3Cpath d='M16 6c-3.6 0-6.5 2.9-6.5 6.5 0 4.8 6.5 12 6.5 12s6.5-7.2 6.5-12C22.5 8.9 19.6 6 16 6z' fill='white'/%3E%3Ccircle cx='16' cy='12.4' r='2.4' fill='%230d9488'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+        brand: { DEFAULT: '#0d9488', light: '#34d399', deep: '#065f46', 50: '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0', 300: '#6ee7b7', 400: '#34d399', 500: '#10b981', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a', 950: '#042f2e' }
+      }
+    }
+  }
+};
+</script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0d9488; --brand-2: #34d399; --brand-deep: #065f46; }
+
+  body { background-color: #f6fbfa; }
+  .dark body { background-color: #070b0b; }
+
+  /* 애니메이션이 끝난 뒤 transform을 잠그지 않도록 (호버 리프트 유지) */
+  .pop-in, .slide-in-y, .pop-scale { animation-fill-mode: backwards; }
+
+  /* ---------- tab glider ---------- */
+  .tabbar { position: relative; display: flex; align-items: center; gap: .25rem; overflow-x: auto; padding: .375rem 0; scrollbar-width: none; }
+  .tabbar::-webkit-scrollbar { display: none; }
+  .tab-glider {
+    position: absolute; top: .5rem; bottom: .5rem; left: 0; width: 0;
+    border-radius: .85rem; z-index: 0; opacity: 0;
+    background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+    box-shadow: 0 8px 22px -10px color-mix(in srgb, var(--brand) 85%, transparent);
+    transition: transform .44s cubic-bezier(.22, 1.36, .36, 1), width .44s cubic-bezier(.22, 1.36, .36, 1), opacity .2s ease;
+  }
+  .tab-glider.ready { opacity: 1; }
+  .tabbar .nav-tab { position: relative; z-index: 1; }
+  .tabbar .nav-tab.nav-on { background-image: none; background-color: transparent; box-shadow: none; color: #fff !important; }
+
+  /* ---------- surfaces ---------- */
+  .glass-card {
+    background: rgba(255, 255, 255, .8);
+    border: 1px solid rgba(226, 232, 235, .95);
+    border-radius: 1.35rem;
+    box-shadow: 0 2px 4px rgba(16, 20, 20, .03), 0 24px 50px -40px rgba(9, 40, 40, .55);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+  }
+  .dark .glass-card { background: rgba(13, 20, 20, .72); border-color: rgba(38, 50, 50, .9); box-shadow: 0 1px 2px rgba(0,0,0,.5), 0 26px 60px -44px rgba(0,0,0,.95); }
+  .hero-tint { background-image: linear-gradient(150deg, color-mix(in srgb, var(--brand) 12%, transparent), transparent 58%); }
+  .dark .hero-tint { background-image: linear-gradient(150deg, color-mix(in srgb, var(--brand) 26%, transparent), transparent 62%); }
+
+  .map-shell { position: relative; border-radius: 1.35rem; overflow: hidden; border: 1px solid rgba(226, 232, 235, .95); box-shadow: 0 18px 44px -34px rgba(6, 40, 40, .8); background: #e8f1ef; }
+  .dark .map-shell { border-color: rgba(38, 50, 50, .95); background: #0b1414; box-shadow: 0 20px 50px -34px rgba(0,0,0,.9); }
+  #map { position: relative; z-index: 0; isolation: isolate; width: 100%; height: 100%; background: #e8f1ef; }
+  .dark #map { background: #0b1414; }
+  .leaflet-container { font-family: inherit; background: transparent; }
+  #map .leaflet-tile-pane { transition: filter .4s ease; will-change: filter; }
+  #map[data-tiles="light"] { background: #eaf0ee; }
+  #map[data-tiles="light"] .leaflet-tile-pane { filter: saturate(.58) brightness(1.05) contrast(.95); }
+  #map[data-tiles="color"] { background: #eaf0ee; }
+  #map[data-tiles="color"] .leaflet-tile-pane { filter: saturate(1.06) contrast(1.02); }
+  #map[data-tiles="dark"] { background: #0d1114; }
+  #map[data-tiles="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(1.02) contrast(1.12) saturate(.55) grayscale(.12); }
+  .leaflet-control-attribution { font-size: 9px !important; background: rgba(255,255,255,.72) !important; color: #3f4a48 !important; border-radius: 6px 0 0 0; }
+  .dark .leaflet-control-attribution { background: rgba(10,16,16,.72) !important; color: #9fb2ae !important; }
+  .dark .leaflet-control-attribution a { color: #7fd6c4 !important; }
+  .leaflet-bar { border: none !important; box-shadow: 0 8px 20px -12px rgba(0,0,0,.45) !important; border-radius: .7rem !important; overflow: hidden; }
+  .leaflet-bar a { background: rgba(255,255,255,.94) !important; color: #0f2825 !important; border-bottom-color: rgba(0,0,0,.06) !important; }
+  .dark .leaflet-bar a { background: rgba(16,24,24,.94) !important; color: #d9f2ec !important; border-bottom-color: rgba(255,255,255,.08) !important; }
+  .leaflet-bar a:hover { background: #d9f5ee !important; color: var(--brand-deep) !important; }
+  .dark .leaflet-bar a:hover { background: #143f38 !important; color: #fff !important; }
+
+  /* popup */
+  .leaflet-popup-content-wrapper { border-radius: 1rem !important; padding: 0 !important; box-shadow: 0 22px 50px -22px rgba(0,0,0,.5) !important; border: 1px solid rgba(226,232,235,.9); background: #fff; }
+  .dark .leaflet-popup-content-wrapper { background: #101919; border-color: #263333; }
+  .leaflet-popup-content { margin: 0 !important; width: 232px !important; }
+  .leaflet-popup-tip { background: #fff !important; }
+  .dark .leaflet-popup-tip { background: #101919 !important; }
+  .leaflet-popup-close-button { width: 26px !important; height: 26px !important; font-size: 18px !important; color: #6b7b78 !important; }
+  .leaflet-popup-close-button:hover { color: var(--brand) !important; }
+
+  .lm-pop { padding: .7rem .8rem .75rem; }
+  .lm-pop h4 { font-size: 13px; font-weight: 800; letter-spacing: -.01em; line-height: 1.25; }
+  .lm-pop .lm-cat { font-size: 9px; font-weight: 800; padding: .16rem .42rem; border-radius: 9999px; }
+  .lm-pop .lm-photo { width: 100%; height: 84px; object-fit: cover; border-radius: .6rem; margin-top: .45rem; }
+  .lm-pop .lm-acts { display: flex; gap: .3rem; margin-top: .55rem; }
+  .lm-pop .lm-acts button {
+    flex: 1; font-size: 10px; font-weight: 800; padding: .34rem .2rem; border-radius: .5rem;
+    border: 1px solid rgba(226,232,235,.9); color: #3f4a48; background: #fff;
+    transition: transform .14s ease, color .18s ease, border-color .18s ease, background-color .18s ease;
+  }
+  .dark .lm-pop .lm-acts button { background: #16211f; border-color: #2a3a37; color: #d5e6e2; }
+  .lm-pop .lm-acts button:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+  .lm-pop .lm-acts button:active { transform: scale(.94); }
+
+  /* markers */
+  .map-pin { filter: drop-shadow(0 7px 7px rgba(4, 30, 28, .38)); transition: transform .22s cubic-bezier(.34, 1.56, .64, 1); transform-origin: 50% 100%; animation: pinDrop .5s cubic-bezier(.22, 1.36, .36, 1) both; }
+  .map-pin svg { display: block; width: 30px; height: 38px; }
+  .map-pin.is-active { transform: scale(1.16) translateY(-1px); filter: drop-shadow(0 10px 12px rgba(4, 30, 28, .5)); }
+  .map-pin.is-dim { opacity: .42; filter: saturate(.4) drop-shadow(0 4px 5px rgba(4,30,28,.22)); }
+  @keyframes pinDrop {
+    0% { opacity: 0; transform: translateY(-18px) scale(.55); }
+    62% { opacity: 1; transform: translateY(0) scale(1.1); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .pin-pulse { position: absolute; inset: auto 0 0 0; height: 8px; border-radius: 9999px; }
+
+  /* list rows */
+  .pin-row {
+    display: flex; align-items: center; gap: .6rem; width: 100%;
+    padding: .55rem .6rem; border-radius: .9rem; text-align: left;
+    border: 1px solid transparent;
+    transition: transform .18s cubic-bezier(.2,.8,.2,1), background-color .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .pin-row:hover { background: rgba(13, 148, 136, .06); border-color: color-mix(in srgb, var(--brand) 28%, transparent); transform: translateX(2px); }
+  .dark .pin-row:hover { background: rgba(52, 211, 153, .08); }
+  .pin-row.is-active { background: color-mix(in srgb, var(--brand) 12%, transparent); border-color: color-mix(in srgb, var(--brand) 45%, transparent); box-shadow: 0 10px 24px -18px color-mix(in srgb, var(--brand) 80%, transparent); }
+  .pin-thumb { width: 2.5rem; height: 2.5rem; border-radius: .7rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .pin-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .pin-thumb svg { width: 1.05rem; height: 1.05rem; }
+
+  /* category chips */
+  .cat-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .4rem .62rem; border-radius: .75rem;
+    font-size: .7rem; font-weight: 800; white-space: nowrap;
+    border: 1px solid rgb(228 228 231); color: rgb(82 82 91);
+    background: rgba(255,255,255,.72);
+    transition: transform .16s cubic-bezier(.34,1.56,.64,1), color .2s, border-color .2s, background-color .2s, box-shadow .2s;
+  }
+  .dark .cat-chip { background: rgba(18,26,26,.8); border-color: rgb(44 52 52); color: rgb(170 185 182); }
+  .cat-chip svg { width: .85rem; height: .85rem; }
+  .cat-chip:hover { transform: translateY(-1.5px); border-color: color-mix(in srgb, var(--brand) 50%, transparent); color: var(--brand); }
+  .cat-chip:active { transform: scale(.94); }
+  .cat-chip.on { color: #fff; border-color: transparent; box-shadow: 0 10px 22px -14px color-mix(in srgb, var(--brand) 85%, transparent); }
+
+  /* star buttons */
+  .star-btn { color: #d7dadd; transition: transform .16s cubic-bezier(.34,1.56,.64,1), color .2s; }
+  .dark .star-btn { color: #3c4644; }
+  .star-btn svg { width: 1.15rem; height: 1.15rem; }
+  .star-btn.on { color: #f59e0b; }
+  .star-btn:hover { transform: scale(1.16); }
+
+  /* search results */
+  .search-panel {
+    position: absolute; left: 0; right: 0; top: calc(100% + .35rem); z-index: 30;
+    border-radius: .95rem; overflow: hidden;
+    background: rgba(255,255,255,.97); border: 1px solid rgba(226,232,235,.95);
+    box-shadow: 0 26px 50px -26px rgba(4, 30, 28, .55);
+    backdrop-filter: blur(16px);
+    animation: slideUp .22s cubic-bezier(.22,1,.36,1) both;
+  }
+  .dark .search-panel { background: rgba(12,20,20,.97); border-color: #26332f; }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .sr-item { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .5rem .65rem; text-align: left; font-size: 11.5px; transition: background-color .16s; border-top: 1px solid rgba(0,0,0,.045); }
+  .dark .sr-item { border-top-color: rgba(255,255,255,.06); }
+  .sr-item:first-child { border-top: none; }
+  .sr-item:hover { background: color-mix(in srgb, var(--brand) 9%, transparent); }
+
+  /* map floating toolbar */
+  .map-fab {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .45rem .6rem; border-radius: .7rem; font-size: 10.5px; font-weight: 800;
+    background: rgba(255,255,255,.92); color: #14322e; border: 1px solid rgba(226,232,235,.95);
+    box-shadow: 0 10px 22px -14px rgba(4,30,28,.6);
+    backdrop-filter: blur(10px);
+    transition: transform .16s ease, color .2s, background-color .2s;
+  }
+  .dark .map-fab { background: rgba(14,22,21,.9); color: #d8ece7; border-color: #2a3a36; }
+  .map-fab:hover { color: var(--brand); transform: translateY(-1.5px); }
+  .map-fab:active { transform: scale(.94); }
+  .map-fab svg { width: .9rem; height: .9rem; }
+
+  .share-banner {
+    position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
+    width: min(94vw, 30rem); z-index: 60;
+    animation: bannerIn .5s cubic-bezier(.22,1.36,.36,1) both;
+  }
+  @keyframes bannerIn { from { opacity: 0; transform: translate(-50%, 22px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+  .preset-card { transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .2s; }
+  @media (hover: hover) {
+    .preset-card:hover { transform: translateY(-5px); box-shadow: 0 24px 44px -30px rgba(9,60,55,.55); }
+  }
+  .preset-mini { position: relative; height: 84px; border-radius: .8rem; overflow: hidden; background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 60%), #eaf4f2; }
+  .dark .preset-mini { background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--brand) 34%, transparent), transparent 60%), #0d1917; }
+  .preset-mini span { position: absolute; width: 7px; height: 7px; border-radius: 9999px; background: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 24%, transparent); }
+
+  .photo-drop { border: 1px dashed color-mix(in srgb, var(--brand) 42%, transparent); border-radius: .8rem; padding: .5rem; transition: border-color .2s, background-color .2s; }
+  .photo-drop:hover { background: color-mix(in srgb, var(--brand) 7%, transparent); }
+
+  .info-tile { border-radius: 1rem; border: 1px solid rgba(226,232,235,.9); background: rgba(255,255,255,.7); transition: transform .24s cubic-bezier(.2,.8,.2,1), border-color .2s, box-shadow .24s; }
+  .dark .info-tile { border-color: #232f2d; background: rgba(14,22,21,.7); }
+  @media (hover: hover) { .info-tile:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--brand) 38%, transparent); box-shadow: 0 20px 40px -30px rgba(6,60,54,.7); } }
+
+  .no-drag { -webkit-user-select: none; user-select: none; }
+  .primary-btn:active, .pill-btn:active, .ghost-btn:active, .map-fab:active { transform: scale(.93); }
+</style>
+</head>
+<body class="min-h-screen antialiased flex flex-col text-neutral-900 dark:text-neutral-100">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-28 -left-24 opacity-25"></div>
+<div class="ambient-orb brand-grad w-80 h-80 top-1/3 -right-32 o2 opacity-20"></div>
+
+<!-- ============ HEADER ============ -->
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 21s6.5-6.1 6.5-11A6.5 6.5 0 0 0 5.5 10c0 4.9 6.5 11 6.5 11z"></path>
+            <circle cx="12" cy="10" r="2.4"></circle>
+          </svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Map</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">SECRET ATLAS</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">나만의 맛집·플레이스 비밀 지도</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="saveBadge" class="hidden sm:inline-flex as-badge">자동 저장 대기</span>
+      <button id="quickShare" class="icon-btn" aria-label="지도 공유" title="지도 공유">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"></circle><circle cx="6" cy="12" r="2.6"></circle><circle cx="18" cy="19" r="2.6"></circle><path d="M8.3 10.7 15.7 6.3M8.3 13.3l7.4 4.4"></path></svg>
+      </button>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ TABS ============ -->
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="tabbar" role="tablist">
+      <div class="tab-glider" id="tabGlider"></div>
+      <button class="nav-tab" data-tab="home" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="map" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5z"></path><path d="M9 4v13M15 6.5v13"></path></svg>
+        <span>내 지도</span>
+        <span id="mapPinCount" class="text-[10px] font-mono px-1.5 rounded-full bg-black/5 dark:bg-white/10">0</span>
+      </button>
+      <button class="nav-tab" data-tab="archive" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-black/5 dark:bg-white/10">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-5 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="4"></circle></svg>
+            비밀 지도 · 공유 링크 하나로 통째로
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            아무도 모르는<br>
+            <span class="brand-text">나만의 장소</span>를 지도에.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            지도를 한 번 누르면 핀이 꽂힙니다. 카테고리, 별점, 한줄평, 사진까지 붙여 두고 필요할 때 꺼내 보세요. 완성한 지도는 압축 링크 하나로 친구에게 건네면 친구도 그 자리에서 지도를 구경합니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5 pt-1">
+            <button class="primary-btn btn-shimmer" data-goto="map">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6.5-6.1 6.5-11A6.5 6.5 0 0 0 5.5 10c0 4.9 6.5 11 6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>
+              내 지도 열기
+            </button>
+            <button class="ghost-btn" data-preset="seongsu">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V7l8-3 8 3v12"></path><path d="M4 19h16M9 19v-5h6v5"></path></svg>
+              샘플 코스로 시작
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="4 12 9 17 20 6"></polyline></svg>가입 없이 로컬 저장</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v18M5 10l7-7 7 7"></path></svg>OpenStreetMap 지도</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l2.6-2.6a4.5 4.5 0 1 0-6.4-6.4L11.4 6.2"></path><path d="M14 10a4.5 4.5 0 0 0-6.4 0L5 12.6a4.5 4.5 0 1 0 6.4 6.4l1.2-1.2"></path></svg>URL 압축 공유</span>
+          </div>
+        </div>
+
+        <!-- hero map mock -->
+        <div class="relative">
+          <div class="rounded-[1.4rem] overflow-hidden border border-neutral-200/80 dark:border-neutral-800 shadow-xl bg-[#e9f3f1] dark:bg-[#0c1615] h-[240px] sm:h-[290px] relative">
+            <div class="absolute inset-0 opacity-70" style="background-image:linear-gradient(to right,rgba(13,148,136,.14) 1px,transparent 1px),linear-gradient(to bottom,rgba(13,148,136,.14) 1px,transparent 1px);background-size:38px 38px"></div>
+            <div class="absolute -left-10 top-6 w-40 h-40 rounded-full" style="background:radial-gradient(circle,color-mix(in srgb,var(--brand) 30%,transparent),transparent 68%)"></div>
+            <div class="absolute right-4 bottom-6 w-32 h-32 rounded-full" style="background:radial-gradient(circle,color-mix(in srgb,var(--brand-2) 30%,transparent),transparent 68%)"></div>
+            <svg class="absolute inset-0 w-full h-full" viewBox="0 0 400 300" preserveAspectRatio="none" fill="none">
+              <path d="M-10 210 C 60 180, 90 230, 160 196 S 280 150, 420 176" stroke="color-mix(in srgb,var(--brand) 30%,transparent)" stroke-width="16" stroke-linecap="round"></path>
+              <path d="M120 -10 C 140 70, 96 120, 128 200 S 150 260, 132 320" stroke="color-mix(in srgb,var(--brand) 18%,transparent)" stroke-width="11" stroke-linecap="round"></path>
+            </svg>
+            <div class="absolute left-[22%] top-[34%] float-y"><span class="block w-3 h-3 rounded-full" style="background:var(--brand);box-shadow:0 0 0 5px color-mix(in srgb,var(--brand) 22%,transparent)"></span></div>
+            <div class="absolute left-[62%] top-[58%] float-y" style="animation-delay:.6s"><span class="block w-3 h-3 rounded-full bg-rose-500" style="box-shadow:0 0 0 5px rgba(244,63,94,.2)"></span></div>
+            <div class="absolute left-[44%] top-[24%] float-y" style="animation-delay:1.1s"><span class="block w-2.5 h-2.5 rounded-full bg-amber-500" style="box-shadow:0 0 0 4px rgba(245,158,11,.22)"></span></div>
+            <div class="absolute left-4 bottom-4 right-4 flex items-center gap-2 rounded-xl px-2.5 py-2 bg-white/85 dark:bg-neutral-900/85 backdrop-blur border border-neutral-200/70 dark:border-neutral-800">
+              <svg class="w-3.5 h-3.5 shrink-0" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 21l-4.3-4.3"></path><circle cx="11" cy="11" r="6.5"></circle></svg>
+              <span class="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 truncate">성수동 어니언 · 카페 · 5.0</span>
+              <span class="ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300">가본 곳</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- features -->
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div class="info-tile p-4">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6.5-6.1 6.5-11A6.5 6.5 0 0 0 5.5 10c0 4.9 6.5 11 6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>
+        </div>
+        <h3 class="text-[13px] font-extrabold tracking-tight">클릭 한 번에 핀</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">지도 아무 곳이나 눌러 위치를 잡고, 검색으로 장소를 찾아 바로 꽂습니다. 핀은 목록과 양방향으로 묶여 있습니다.</p>
+      </div>
+      <div class="info-tile p-4">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 16.9 6.4 20l1.3-6.2L3 9.5l6.3-.7z"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-extrabold tracking-tight">별점·한줄평·사진</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">가본 곳과 가고 싶은 곳을 나눠 담고, 사진은 기기에서 자동으로 줄여 저장 공간을 아낍니다.</p>
+      </div>
+      <div class="info-tile p-4">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l2.6-2.6a4.5 4.5 0 1 0-6.4-6.4L11.4 6.2"></path><path d="M14 10a4.5 4.5 0 0 0-6.4 0L5 12.6a4.5 4.5 0 1 0 6.4 6.4l1.2-1.2"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-extrabold tracking-tight">링크 하나로 공유</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">핀과 평점을 압축해 주소에 담습니다. 서버도 로그인도 없이 친구가 지도 위에서 바로 봅니다.</p>
+      </div>
+    </div>
+
+    <!-- presets -->
+    <div class="space-y-3">
+      <div class="flex items-end justify-between gap-2">
+        <div>
+          <h2 class="text-[15px] font-black tracking-tight">추천 코스 프리셋</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400">샘플 핀을 그대로 쓰거나, 지우고 내 장소로 채우세요.</p>
+        </div>
+        <span class="chip">3개 코스</span>
+      </div>
+      <div class="grid sm:grid-cols-3 gap-3" id="presetGrid"></div>
+    </div>
+
+    <!-- share explainer -->
+    <div class="glass-card hero-tint p-5 sm:p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+        <div class="flex-1">
+          <span class="chip mb-2">공유 처리 방식</span>
+          <h3 class="text-[15px] font-black tracking-tight">내 지도는 URL 안에 통째로 들어갑니다</h3>
+          <p class="text-[11.5px] text-neutral-600 dark:text-neutral-400 leading-relaxed mt-1.5">
+            핀 이름·카테고리·별점·한줄평·방문 여부·좌표를 JSON으로 묶어 LZ-String으로 압축합니다. 데이터베이스가 없으니 누구도 내 지도를 들여다볼 수 없고, 링크를 받은 사람은 "내 지도에 복사"로 자기 지도에 옮길 수 있습니다.
+          </p>
+        </div>
+        <div class="shrink-0 w-full sm:w-64 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 p-3">
+          <div class="text-[9px] font-mono text-neutral-500 break-all leading-relaxed">map.html#view=N4IgzgLg...</div>
+          <div class="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="4 12 9 17 20 6"></polyline></svg>
+            서버 저장 0바이트
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MAP STUDIO ================= -->
+  <section data-view="map" class="hidden">
+    <div class="grid lg:grid-cols-[350px_1fr] gap-4 items-start">
+
+      <!-- sidebar -->
+      <aside class="order-2 lg:order-1 space-y-3">
+        <div class="glass-card p-3.5 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <label class="lemon-label" for="projName">지도 이름</label>
+              <input id="projName" class="lemon-input mt-1 !py-1.5 !text-[13px] font-bold" value="나의 비밀 지도" maxlength="30" placeholder="지도 이름">
+            </div>
+            <button id="newProjectBtn" class="ghost-btn !px-2.5 !py-2 shrink-0" title="새 지도">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span class="hidden sm:inline text-[11px]">새 지도</span>
+            </button>
+          </div>
+
+          <div class="relative">
+            <div class="flex gap-1.5">
+              <div class="relative flex-1">
+                <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 21l-4.3-4.3"></path><circle cx="11" cy="11" r="6.5"></circle></svg>
+                <input id="searchInput" class="lemon-input !pl-8 !py-1.5" placeholder="지역·장소 검색 (예: 성수동 카페)" autocomplete="off">
+              </div>
+              <button id="searchBtn" class="primary-btn !px-3 !py-1.5 !text-[11px] shrink-0">검색</button>
+            </div>
+            <div id="searchPanel" class="search-panel hidden"></div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400" id="listSummary">핀 0곳</span>
+            <div class="seg" id="visitFilter">
+              <button class="on" data-v="all">전체</button>
+              <button data-v="1">가본 곳</button>
+              <button data-v="0">가고 싶은</button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5" id="catFilters"></div>
+        </div>
+
+        <div class="glass-card p-2.5 lg:max-h-[calc(100vh-330px)] lg:overflow-y-auto no-scrollbar">
+          <div id="pinList" class="space-y-0.5"></div>
+          <div id="emptyList" class="hidden text-center py-8 px-4">
+            <div class="w-12 h-12 mx-auto rounded-2xl brand-grad-soft flex items-center justify-center mb-3 float-y">
+              <svg class="w-5 h-5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6.5-6.1 6.5-11A6.5 6.5 0 0 0 5.5 10c0 4.9 6.5 11 6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>
+            </div>
+            <p class="text-[12px] font-bold">아직 꽂힌 핀이 없어요</p>
+            <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">지도를 누르거나 왼쪽 위 검색으로<br>첫 장소를 찾아보세요.</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- map -->
+      <div class="order-1 lg:order-2 lg:sticky lg:top-[7.4rem] z-10">
+        <div class="map-shell h-[46vh] min-h-[300px] lg:h-[calc(100vh-9rem)]">
+          <div id="map"></div>
+
+          <div class="absolute left-3 top-3 z-20 flex items-center gap-1.5 flex-wrap max-w-[calc(100%-1.5rem)]">
+            <button id="addHereBtn" class="map-fab btn-shake">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              여기에 핀
+            </button>
+            <button id="fitBtn" class="map-fab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"></path></svg>
+              전체 보기
+            </button>
+            <button id="locBtn" class="map-fab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 2v3.4M12 18.6V22M2 12h3.4M18.6 12H22"></path></svg>
+              내 위치
+            </button>
+          </div>
+
+          <div class="absolute left-3 bottom-9 sm:left-auto sm:right-3 sm:top-3 sm:bottom-auto z-20">
+            <div class="seg !bg-white/85 dark:!bg-neutral-900/85 backdrop-blur" id="styleSeg">
+              <button data-style="auto" class="on">자동</button>
+              <button data-style="light">밝게</button>
+              <button data-style="color">컬러</button>
+              <button data-style="dark">어둡게</button>
+            </div>
+          </div>
+
+          <div id="pickHint" class="hidden absolute left-1/2 -translate-x-1/2 bottom-4 z-20 px-3 py-2 rounded-xl bg-neutral-900/90 text-white text-[11px] font-bold shadow-xl">
+            지도를 눌러 위치를 지정하세요
+            <button id="pickCancel" class="ml-2 underline decoration-white/40">취소</button>
+          </div>
+        </div>
+        <p class="text-[9.5px] text-neutral-400 dark:text-neutral-500 mt-1.5 px-1">지도를 눌러 핀을 꽂고, 핀을 눌러 목록과 함께 확인하세요. 지도 데이터 © OpenStreetMap 기여자</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between gap-2">
+      <div>
+        <h2 class="text-[17px] font-black tracking-tight">보관함</h2>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400">작업하던 지도가 자동으로 남습니다. 최근 12개까지 보관합니다.</p>
+      </div>
+      <button id="newFromArchive" class="primary-btn !text-[11px] !py-2">새 지도 만들기</button>
+    </div>
+    <div id="archiveList" class="grid sm:grid-cols-2 gap-3"></div>
+    <div id="archiveEmpty" class="hidden glass-card p-10 text-center">
+      <div class="w-12 h-12 mx-auto rounded-2xl brand-grad-soft flex items-center justify-center mb-3 float-y">
+        <svg class="w-5 h-5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+      </div>
+      <p class="text-[13px] font-bold">보관함이 비어 있어요</p>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">지도를 만들고 핀을 하나라도 꽂으면 여기에 저장됩니다.</p>
+      <button class="ghost-btn mt-4" data-goto="map">지도로 가기</button>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2">
+      <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Map</span>
+      <span class="opacity-40">·</span>
+      <span>Lemon soft 독립 웹 프로덕트</span>
+    </div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="trip.html" class="hover:text-brand-600 dark:hover:text-brand-400">Trip</a>
+      <a href="shelf.html" class="hover:text-brand-600 dark:hover:text-brand-400">Shelf</a>
+      <a href="docs.html" class="hover:text-brand-600 dark:hover:text-brand-400">Docs</a>
+      <a href="money.html" class="hover:text-brand-600 dark:hover:text-brand-400">Money</a>
+      <a href="news.html" class="hover:text-brand-600 dark:hover:text-brand-400">News</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<!-- ============ PIN MODAL ============ -->
+<div id="pinModal" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="pinModalTitle">
+  <div class="lm-backdrop" data-modal-close></div>
+  <div class="lm-card p-5 w-full" style="max-width:min(94vw,25rem)">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg brand-grad flex items-center justify-center text-white">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6.5-6.1 6.5-11A6.5 6.5 0 0 0 5.5 10c0 4.9 6.5 11 6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>
+        </div>
+        <h3 id="pinModalTitle" class="text-[13.5px] font-extrabold">핀 추가</h3>
+      </div>
+      <button class="icon-btn !w-8 !h-8" data-modal-close aria-label="닫기">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <div class="space-y-3">
+      <div>
+        <label class="lemon-label" for="pinName">장소명</label>
+        <input id="pinName" class="lemon-input mt-1" maxlength="40" placeholder="예: 성수동 어니언">
+      </div>
+      <div>
+        <span class="lemon-label">카테고리</span>
+        <div id="pinCats" class="flex flex-wrap gap-1.5 mt-1.5"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div>
+          <span class="lemon-label">별점</span>
+          <div id="pinStars" class="flex items-center gap-0.5 mt-1.5"></div>
+        </div>
+        <div>
+          <span class="lemon-label">방문 여부</span>
+          <div class="seg mt-1.5 w-full" id="pinVisit">
+            <button type="button" data-v="1" class="flex-1 !text-[10px]">가본 곳</button>
+            <button type="button" data-v="0" class="flex-1 !text-[10px]">가고 싶은</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label class="lemon-label" for="pinMemo">한줄평</label>
+        <input id="pinMemo" class="lemon-input mt-1" maxlength="80" placeholder="한 줄로 남겨두세요">
+      </div>
+      <div>
+        <span class="lemon-label">사진</span>
+        <div class="photo-drop mt-1.5 flex items-center gap-2.5">
+          <div id="pinPhotoPrev" class="w-12 h-12 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
+            <svg class="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15.5 16 10.5 5 21"></path></svg>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex gap-1.5">
+              <button id="pinPhotoBtn" class="pill-btn !text-[10.5px] !py-1.5">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"></path><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path></svg>
+                올리기
+              </button>
+              <button id="pinPhotoDel" class="pill-btn !text-[10.5px] !py-1.5 hidden">지우기</button>
+            </div>
+            <p class="text-[9px] text-neutral-400 mt-1 leading-tight">기기에서 480px로 줄여 저장 · 최대 1장</p>
+          </div>
+          <input type="file" id="pinPhotoInput" accept="image/*" class="hidden">
+        </div>
+      </div>
+      <div class="flex items-center justify-between gap-2 pt-0.5">
+        <span id="pinCoord" class="text-[9.5px] font-mono text-neutral-400"></span>
+        <button id="pinPickBtn" class="text-[10px] font-bold hover:underline" style="color:var(--brand)">지도에서 위치 변경</button>
+      </div>
+    </div>
+
+    <div class="flex gap-2 mt-4">
+      <button id="pinDelete" class="ghost-btn flex-1 !text-[11.5px] hidden">삭제</button>
+      <button id="pinSave" class="primary-btn flex-1 !text-[11.5px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg>
+        저장
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SHARE MODAL ============ -->
+<div id="shareModal" class="lemon-modal" role="dialog" aria-modal="true">
+  <div class="lm-backdrop" data-modal-close></div>
+  <div class="lm-card p-5 w-full" style="max-width:min(94vw,26rem)">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg brand-grad flex items-center justify-center text-white">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.4"></circle><circle cx="6" cy="12" r="2.4"></circle><circle cx="18" cy="19" r="2.4"></circle><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"></path></svg>
+        </div>
+        <h3 class="text-[13.5px] font-extrabold">내 지도 공유</h3>
+      </div>
+      <button class="icon-btn !w-8 !h-8" data-modal-close aria-label="닫기">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+    <div id="shareSummary" class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mb-2.5"></div>
+    <div class="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/70 p-2.5">
+      <p id="shareLink" class="text-[10px] font-mono break-all leading-relaxed text-neutral-600 dark:text-neutral-300 max-h-24 overflow-y-auto"></p>
+    </div>
+    <div class="text-[9.5px] text-neutral-400 mt-1.5" id="shareMeta"></div>
+    <div class="flex flex-wrap gap-1.5 mt-3.5">
+      <button id="shareCopy" class="primary-btn flex-1 !text-[11.5px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
+        링크 복사
+      </button>
+      <button id="shareNative" class="ghost-btn !text-[11.5px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"></path><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path></svg>
+        다른 앱
+      </button>
+      <button id="shareOpen" class="ghost-btn !text-[11.5px]">미리보기</button>
+    </div>
+    <p class="text-[9.5px] text-neutral-400 mt-2.5 leading-relaxed">사진은 용량 때문에 링크에 담기지 않습니다. 이름·카테고리·별점·한줄평·좌표가 담깁니다.</p>
+  </div>
+</div>
+
+<!-- ============ SHARE VIEW BANNER ============ -->
+<div id="shareBanner" class="share-banner hidden">
+  <div class="glass-card p-3 flex items-center gap-3 border-brand-200/70 dark:border-brand-800/70" style="border-color:color-mix(in srgb,var(--brand) 34%,transparent)">
+    <div class="w-8 h-8 rounded-xl brand-grad flex items-center justify-center text-white shrink-0">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6.5-6.1 6.5-11A6.5 6.5 0 0 0 5.5 10c0 4.9 6.5 11 6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>
+    </div>
+    <div class="min-w-0 flex-1">
+      <p class="text-[11.5px] font-extrabold truncate" id="shareBannerTitle">공유된 지도</p>
+      <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate" id="shareBannerSub">읽기 전용</p>
+    </div>
+    <button id="copyToMine" class="primary-btn !text-[10.5px] !px-3 !py-1.5 shrink-0">내 지도에 복사</button>
+    <button id="closeBanner" class="icon-btn !w-7 !h-7 shrink-0" aria-label="닫기">
+      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+    </button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="vendor/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = Lemon.esc;
+
+  /* ---------------- categories ---------------- */
+  var CATS = [
+    { k: 'food', label: '맛집', color: '#f43f5e', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v8a2.5 2.5 0 0 0 5 0V3"></path><path d="M8.5 11v10"></path><path d="M17 3c-1.7 1.2-2.5 3.2-2.5 5.5S15.3 12.6 17 13v8"></path></svg>' },
+    { k: 'cafe', label: '카페', color: '#f59e0b', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"></path><path d="M17 9h2a2.5 2.5 0 0 1 0 5h-2"></path><path d="M4 21h13"></path></svg>' },
+    { k: 'sight', label: '명소', color: '#0ea5e9', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18M5 20V9l7-5 7 5v11"></path><path d="M9.5 20v-5h5v5"></path></svg>' },
+    { k: 'shop', label: '쇼핑', color: '#8b5cf6', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16l-1.4 11a1.5 1.5 0 0 1-1.5 1.3H6.9A1.5 1.5 0 0 1 5.4 19z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path></svg>' },
+    { k: 'secret', label: '비밀장소', color: '#10b981', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 7.5v9L12 21l7.5-4.5v-9z"></path><circle cx="12" cy="12" r="2.4"></circle></svg>' }
+  ];
+  var CAT = {};
+  CATS.forEach(function (c) { CAT[c.k] = c; });
+
+  var TILE_STYLES = {
+    light: 'light',
+    color: 'color',
+    dark: 'dark'
+  };
+
+  /* ---------------- presets ---------------- */
+  var PRESETS = [
+    {
+      key: 'seongsu', title: '서울 성수', sub: '창고 카페와 한강 산책', tag: '힙한 동네',
+      center: [37.5445, 127.0557], zoom: 15,
+      pins: [
+        { name: '대림창고', cat: 'cafe', rating: 5, memo: '붉은 벽돌 창고 안, 천장이 높아 말소리가 좋다', visited: 1, lat: 37.5445, lng: 127.0557 },
+        { name: '어니언 성수', cat: 'cafe', rating: 5, memo: '아침 8시 오픈, 루프탑에서 성수 골목이 한눈에', visited: 1, lat: 37.5446, lng: 127.0562 },
+        { name: '서울숲', cat: 'sight', rating: 4, memo: '해질 무렵 사슴방사장 앞 벤치', visited: 1, lat: 37.5444, lng: 127.0374 },
+        { name: '수제화거리', cat: 'shop', rating: 4, memo: '주문제작 가죽화, 사이즈 상담 20분', visited: 0, lat: 37.5443, lng: 127.0538 },
+        { name: '뚝섬한강공원', cat: 'sight', rating: 4, memo: '자전거 타고 편의점 라면', visited: 1, lat: 37.5299, lng: 127.0669 },
+        { name: '옥상 비밀 정원', cat: 'secret', rating: 5, memo: '건물 계단 4층, 저녁 7시 노을 자리', visited: 1, lat: 37.5462, lng: 127.0521 }
+      ]
+    },
+    {
+      key: 'yeonnam', title: '서울 연남', sub: '골목 산책과 커피', tag: '주말 산책',
+      center: [37.5607, 126.9252], zoom: 15,
+      pins: [
+        { name: '경의선숲길', cat: 'sight', rating: 5, memo: '홍대입구에서 연남까지 걷기 좋은 길', visited: 1, lat: 37.5607, lng: 126.9252 },
+        { name: '동진시장', cat: 'food', rating: 4, memo: '칼국수 한 그릇 6천원, 오전에 가야 줄이 짧다', visited: 1, lat: 37.5612, lng: 126.9252 },
+        { name: '앤트러사이트 연남', cat: 'cafe', rating: 5, memo: '핸드드립 산미 좋아하는 사람에게', visited: 1, lat: 37.5623, lng: 126.925 },
+        { name: '연남 골목 책방', cat: 'shop', rating: 4, memo: '절판본 코너가 있다', visited: 0, lat: 37.5597, lng: 126.9271 },
+        { name: '연트럴파크 잔디밭', cat: 'secret', rating: 4, memo: '돗자리 펴기 좋은 구석, 오후 4시 그늘', visited: 1, lat: 37.5601, lng: 126.926 }
+      ]
+    },
+    {
+      key: 'gangnam', title: '서울 강남', sub: '가로수길과 코엑스', tag: '약속 장소',
+      center: [37.5215, 127.0231], zoom: 14,
+      pins: [
+        { name: '가로수길', cat: 'shop', rating: 4, memo: '주말 낮보다 평일 저녁이 한적', visited: 1, lat: 37.5210, lng: 127.0230 },
+        { name: '코엑스 별마당도서관', cat: 'sight', rating: 5, memo: '13m 서가, 사진은 오전이 깔끔', visited: 1, lat: 37.5118, lng: 127.0595 },
+        { name: '봉은사', cat: 'sight', rating: 4, memo: '도심 속 사찰, 아침 예불 소리', visited: 1, lat: 37.5150, lng: 127.0570 },
+        { name: '압구정로데오', cat: 'shop', rating: 3, memo: '편집숍 구경용', visited: 0, lat: 37.5270, lng: 127.0400 },
+        { name: '신사동 국수집', cat: 'food', rating: 5, memo: '잔치국수 5천원, 11시 오픈런', visited: 1, lat: 37.5215, lng: 127.0210 }
+      ]
+    }
+  ];
+
+  /* ---------------- state ---------------- */
+  var KEY = 'lemon_map_project_v2';
+  var prj = Lemon.project(KEY, { max: 12, delay: 900 });
+  var state = {
+    title: '나의 비밀 지도',
+    pins: [],
+    center: [37.5665, 126.978],
+    zoom: 12,
+    style: 'auto',
+    selected: null,
+    filter: 'all',
+    visit: 'all',
+    draft: null,
+    readOnly: false
+  };
+  var map = null;
+  var tileLayer = null;
+  var markers = {};
+  var pickMode = false;
+
+  /* ---------------- helpers ---------------- */
+  function uid() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+  function stars(n) {
+    var out = '';
+    for (var i = 1; i <= 5; i++) {
+      out += '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="' + (i <= n ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.8" style="color:' + (i <= n ? '#f59e0b' : '#c7ccd1') + '"><path d="m12 3 2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 16.9 6.4 20l1.3-6.2L3 9.5l6.3-.7z"></path></svg>';
+    }
+    return out;
+  }
+  function payload() {
+    return {
+      name: state.title,
+      pins: state.pins.map(function (p) {
+        return { i: p.id, n: p.name, c: p.cat, r: p.rating, m: p.memo, v: p.visited, la: p.lat, ln: p.lng, ph: p.photo || null, ts: p.ts };
+      }),
+      center: state.center,
+      zoom: state.zoom,
+      style: state.style
+    };
+  }
+  function saveSoon() {
+    if (state.readOnly) return;
+    prj.touch(payload);
+    refreshArcCount();
+  }
+  function saveNow() {
+    if (state.readOnly) return;
+    prj.flushNow(payload);
+    refreshArcCount();
+  }
+  function refreshArcCount() {
+    var n = prj.archive.count();
+    $('#arcCount').textContent = n;
+    $('#mapPinCount').textContent = state.pins.length;
+  }
+
+  /* ---------------- map ---------------- */
+  function tileFor(style) {
+    var dark = document.documentElement.classList.contains('dark');
+    var s = style === 'auto' ? (dark ? 'dark' : 'light') : style;
+    return TILE_STYLES[s] ? s : 'light';
+  }
+  function applyTiles() {
+    if (!map) return;
+    var t = tileFor(state.style);
+    var mapEl = document.getElementById('map');
+    if (mapEl) mapEl.setAttribute('data-tiles', t);
+    if (tileLayer) map.removeLayer(tileLayer);
+    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      subdomains: 'abc', maxZoom: 19, minZoom: 3,
+      attribution: '지도 데이터 &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 기여자',
+      crossOrigin: true
+    }).addTo(map);
+    tileLayer.setZIndex(0);
+  }
+
+  function initMap() {
+    if (map || !window.L) return;
+    map = L.map('map', {
+      center: state.center, zoom: state.zoom,
+      zoomControl: false, attributionControl: true,
+      zoomSnap: 0.5, wheelPxPerZoomLevel: 90,
+      preferCanvas: true
+    });
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    applyTiles();
+    map.on('click', function (e) {
+      if (state.readOnly) return;
+      if (pickMode) {
+        pickMode = false;
+        $('#pickHint').classList.add('hidden');
+        if (state.draft) {
+          state.draft.lat = +e.latlng.lat.toFixed(6);
+          state.draft.lng = +e.latlng.lng.toFixed(6);
+          openPinModal(state.draft, !!state.draft.id);
+        }
+        return;
+      }
+      openPinModal({ id: null, name: '', cat: 'food', rating: 0, memo: '', visited: 0, lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6), photo: null }, false);
+    });
+    map.on('moveend', function () {
+      if (!map) return;
+      var c = map.getCenter();
+      state.center = [+c.lat.toFixed(5), +c.lng.toFixed(5)];
+      state.zoom = map.getZoom();
+      saveSoon();
+    });
+    renderAll();
+  }
+
+  function markerEl(p) {
+    var c = CAT[p.cat] || CATS[0];
+    return '<div class="map-pin" data-pid="' + p.id + '">' +
+      '<svg viewBox="0 0 30 38" fill="none">' +
+      '<path d="M15 36.5S3 24.6 3 14.8C3 8.3 8.4 3 15 3s12 5.3 12 11.8c0 9.8-12 21.7-12 21.7z" fill="' + c.color + '" stroke="rgba(255,255,255,.85)" stroke-width="1.6"/>' +
+      '<circle cx="15" cy="14.6" r="5.1" fill="rgba(255,255,255,.94)"/>' +
+      '<circle cx="15" cy="14.6" r="2.1" fill="' + c.color + '"/>' +
+      '</svg></div>';
+  }
+
+  function visiblePins() {
+    return state.pins.filter(function (p) {
+      var okCat = state.filter === 'all' || p.cat === state.filter;
+      var okVisit = state.visit === 'all' || String(p.visited) === state.visit;
+      return okCat && okVisit;
+    });
+  }
+
+  function renderMarkers() {
+    if (!map) return;
+    Object.keys(markers).forEach(function (id) { map.removeLayer(markers[id]); });
+    markers = {};
+    visiblePins().forEach(function (p) {
+      var c = CAT[p.cat] || CATS[0];
+      var icon = L.divIcon({
+        className: 'pin-shell', html: markerEl(p),
+        iconSize: [30, 38], iconAnchor: [15, 36], popupAnchor: [0, -30]
+      });
+      var m = L.marker([p.lat, p.lng], { icon: icon, title: p.name, riseOnHover: true });
+      m.on('click', function () { selectPin(p.id, { fly: false, fromMarker: true }); });
+      m.addTo(map);
+      markers[p.id] = m;
+    });
+    updateMarkerStates();
+  }
+
+  function updateMarkerStates() {
+    var vis = {};
+    visiblePins().forEach(function (p) { vis[p.id] = 1; });
+    Object.keys(markers).forEach(function (id) {
+      var el = markers[id].getElement && markers[id].getElement();
+      if (!el) return;
+      var pin = el.querySelector('.map-pin');
+      if (!pin) return;
+      pin.classList.toggle('is-active', state.selected === id);
+      pin.classList.toggle('is-dim', !vis[id]);
+    });
+  }
+
+  function popupHtml(p) {
+    var c = CAT[p.cat] || CATS[0];
+    var html = '<div class="lm-pop" data-pop="' + p.id + '">' +
+      '<div class="flex items-center gap-1.5"><h4 class="flex-1 truncate">' + esc(p.name) + '</h4>' +
+      '<span class="lm-cat" style="background:' + c.color + '1f;color:' + c.color + '">' + esc(c.label) + '</span></div>';
+    if (p.rating) html += '<div class="flex items-center gap-0.5 mt-1">' + stars(p.rating) + '<span class="text-[9px] font-bold text-neutral-400 ml-1">' + p.rating.toFixed(1) + '</span></div>';
+    if (p.memo) html += '<p class="text-[10.5px] leading-snug mt-1 text-neutral-600 dark:text-neutral-300">' + esc(p.memo) + '</p>';
+    if (p.photo) html += '<img src="' + p.photo + '" class="lm-photo" alt="">';
+    if (!state.readOnly) {
+      html += '<div class="lm-acts"><button data-pop-act="edit" data-id="' + p.id + '">수정</button>' +
+        '<button data-pop-act="del" data-id="' + p.id + '">삭제</button>' +
+        '<button data-pop-act="route" data-id="' + p.id + '">길찾기</button></div>';
+    }
+    return html + '</div>';
+  }
+
+  function selectPin(id, opts) {
+    opts = opts || {};
+    state.selected = id;
+    var p = state.pins.filter(function (x) { return x.id === id; })[0];
+    updateMarkerStates();
+    renderList();
+    if (!p || !map) return;
+    if (opts.fly !== false) {
+      var z = Math.max(map.getZoom(), 15);
+      map.flyTo([p.lat, p.lng], z, { duration: .7 });
+    }
+    var m = markers[id];
+    if (m) {
+      m.closePopup();
+      m.bindPopup(popupHtml(p), { closeButton: true, maxWidth: 250, minWidth: 232, offset: [0, -2] });
+      m.openPopup();
+    }
+    var row = $('.pin-row[data-id="' + id + '"]');
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  /* ---------------- list ---------------- */
+  function renderList() {
+    var list = $('#pinList');
+    var vis = visiblePins();
+    list.innerHTML = '';
+    vis.forEach(function (p, idx) {
+      var c = CAT[p.cat] || CATS[0];
+      var btn = document.createElement('button');
+      btn.className = 'pin-row' + (state.selected === p.id ? ' is-active' : '') + ' slide-in-y';
+      btn.setAttribute('data-id', p.id);
+      btn.style.animationDelay = Math.min(idx * 28, 260) + 'ms';
+      btn.innerHTML =
+        '<span class="pin-thumb" style="background:' + c.color + '1a;color:' + c.color + '">' +
+        (p.photo ? '<img src="' + p.photo + '" alt="">' : c.icon) + '</span>' +
+        '<span class="min-w-0 flex-1">' +
+        '<span class="flex items-center gap-1.5"><span class="font-bold text-[12.5px] truncate">' + esc(p.name) + '</span>' +
+        '<span class="text-[8.5px] font-extrabold px-1.5 py-[1px] rounded-full shrink-0" style="background:' + c.color + '1a;color:' + c.color + '">' + esc(c.label) + '</span></span>' +
+        '<span class="block text-[10.5px] text-neutral-500 dark:text-neutral-400 truncate mt-[1px]">' + (p.memo ? esc(p.memo) : '한줄평 없음') + '</span>' +
+        '<span class="flex items-center gap-1.5 mt-1"><span class="flex items-center gap-[1px]">' + stars(p.rating) + '</span>' +
+        '<span class="text-[8.5px] font-bold px-1.5 py-[1px] rounded-full ' + (p.visited ? 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400' : 'bg-neutral-500/10 text-neutral-500 dark:text-neutral-400') + '">' + (p.visited ? '가본 곳' : '가고 싶은') + '</span></span>' +
+        '</span>';
+      btn.addEventListener('click', function () { selectPin(p.id); });
+      list.appendChild(btn);
+    });
+    var empty = vis.length === 0;
+    $('#emptyList').classList.toggle('hidden', !empty);
+    $('#listSummary').textContent = '핀 ' + vis.length + '곳' + (vis.length !== state.pins.length ? ' / 전체 ' + state.pins.length + '곳' : '');
+    $('#mapPinCount').textContent = state.pins.length;
+  }
+
+  function renderCatFilters() {
+    var wrap = $('#catFilters');
+    wrap.innerHTML = '';
+    var all = document.createElement('button');
+    all.className = 'cat-chip' + (state.filter === 'all' ? ' on' : '');
+    all.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="8"></circle><path d="M4 12h16"></path></svg>전체';
+    if (state.filter === 'all') all.style.backgroundImage = 'linear-gradient(135deg,var(--brand),var(--brand-2))';
+    all.addEventListener('click', function () {
+      if (state.filter === 'all') return;
+      state.filter = 'all';
+      if (map) map.closePopup();
+      renderCatFilters(); renderMarkers(); renderList();
+    });
+    wrap.appendChild(all);
+    CATS.forEach(function (c) {
+      var b = document.createElement('button');
+      var on = state.filter === c.k;
+      b.className = 'cat-chip' + (on ? ' on' : '');
+      b.innerHTML = c.icon + esc(c.label);
+      if (on) b.style.backgroundImage = 'linear-gradient(135deg,' + c.color + ',' + c.color + 'c8)';
+      b.addEventListener('click', function () {
+        if (state.filter === c.k) return;
+        state.filter = c.k;
+        if (map) map.closePopup();
+        renderCatFilters(); renderMarkers(); renderList();
+      });
+      wrap.appendChild(b);
+    });
+  }
+  function renderAll() {
+    renderMarkers();
+    renderCatFilters();
+    renderList();
+    refreshArcCount();
+  }
+
+  /* ---------------- modal ---------------- */
+  function catPickers(selected) {
+    var wrap = $('#pinCats');
+    wrap.innerHTML = '';
+    CATS.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      var on = selected === c.k;
+      b.className = 'cat-chip' + (on ? ' on' : '');
+      b.innerHTML = c.icon + esc(c.label);
+      if (on) b.style.backgroundImage = 'linear-gradient(135deg,' + c.color + ',' + c.color + 'c8)';
+      b.addEventListener('click', function () { state.draft.cat = c.k; catPickers(c.k); });
+      wrap.appendChild(b);
+    });
+  }
+  function starPicker(rating) {
+    var wrap = $('#pinStars');
+    wrap.innerHTML = '';
+    for (var i = 1; i <= 5; i++) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'star-btn' + (i <= rating ? ' on' : '');
+      b.innerHTML = '<svg viewBox="0 0 24 24" fill="' + (i <= rating ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.8"><path d="m12 3 2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 16.9 6.4 20l1.3-6.2L3 9.5l6.3-.7z"></path></svg>';
+      b.setAttribute('data-v', i);
+      b.addEventListener('click', function (e) {
+        var v = +e.currentTarget.getAttribute('data-v');
+        state.draft.rating = (state.draft.rating === v && v === 1) ? 0 : v;
+        starPicker(state.draft.rating);
+      });
+      wrap.appendChild(b);
+    }
+  }
+  function visitPicker(v) {
+    $$('#pinVisit button').forEach(function (b) {
+      b.classList.toggle('on', String(v) === b.getAttribute('data-v'));
+    });
+  }
+  function setPhotoPreview(url) {
+    var box = $('#pinPhotoPrev');
+    if (url) {
+      box.innerHTML = '<img src="' + url + '" class="w-full h-full object-cover" alt="">';
+      $('#pinPhotoDel').classList.remove('hidden');
+    } else {
+      box.innerHTML = '<svg class="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15.5 16 10.5 5 21"></path></svg>';
+      $('#pinPhotoDel').classList.add('hidden');
+    }
+  }
+
+  function openPinModal(draft, editing) {
+    state.draft = Object.assign({}, draft);
+    state.draft._edit = !!editing;
+    $('#pinModalTitle').textContent = editing ? '핀 수정' : '핀 추가';
+    $('#pinName').value = draft.name || '';
+    $('#pinMemo').value = draft.memo || '';
+    $('#pinDelete').classList.toggle('hidden', !editing);
+    catPickers(draft.cat || 'food');
+    starPicker(draft.rating || 0);
+    visitPicker(draft.visited ? 1 : 0);
+    setPhotoPreview(draft.photo || null);
+    $('#pinCoord').textContent = draft.lat.toFixed(5) + ', ' + draft.lng.toFixed(5);
+    var m = $('#pinModal');
+    m.classList.add('open');
+    setTimeout(function () { $('#pinName').focus({ preventScroll: true }); }, 240);
+  }
+  function closePinModal() {
+    $('#pinModal').classList.remove('open');
+    state.draft = null;
+  }
+
+  $('#pinVisit').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-v]');
+    if (!b || !state.draft) return;
+    state.draft.visited = +b.getAttribute('data-v');
+    visitPicker(state.draft.visited);
+    Lemon.hap(8);
+  });
+  $('#pinPhotoBtn').addEventListener('click', function () { $('#pinPhotoInput').click(); });
+  $('#pinPhotoInput').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { Lemon.toast('이미지 파일을 골라주세요', 'err'); return; }
+    resizeImage(f, 480, 0.62, function (dataUrl) {
+      if (!state.draft) return;
+      state.draft.photo = dataUrl;
+      setPhotoPreview(dataUrl);
+      Lemon.toast('사진을 지도 크기에 맞춰 줄였어요', 'ok');
+    });
+    e.target.value = '';
+  });
+  $('#pinPhotoDel').addEventListener('click', function () {
+    if (!state.draft) return;
+    state.draft.photo = null;
+    setPhotoPreview(null);
+  });
+  $('#pinPickBtn').addEventListener('click', function () {
+    if (!state.draft) return;
+    var d = Object.assign({}, state.draft);
+    closePinModal();
+    state.draft = d;
+    pickMode = true;
+    $('#pickHint').classList.remove('hidden');
+    go('map');
+    Lemon.toast('지도를 눌러 새 위치를 지정하세요', 'info');
+  });
+  $('#pickCancel').addEventListener('click', function (e) {
+    e.stopPropagation();
+    pickMode = false;
+    $('#pickHint').classList.add('hidden');
+    if (state.draft) openPinModal(state.draft, !!state.draft.id);
+  });
+
+  $('#pinSave').addEventListener('click', function () {
+    var d = state.draft;
+    if (!d) return;
+    var name = ($('#pinName').value || '').trim();
+    if (!name) {
+      $('#pinName').classList.add('shake');
+      setTimeout(function () { $('#pinName').classList.remove('shake'); }, 460);
+      $('#pinName').focus();
+      Lemon.toast('장소명을 입력해 주세요', 'err');
+      return;
+    }
+    var memo = ($('#pinMemo').value || '').trim();
+    if (d._edit && d.id) {
+      var t = state.pins.filter(function (x) { return x.id === d.id; })[0];
+      if (t) { t.name = name; t.cat = d.cat; t.rating = d.rating; t.memo = memo; t.visited = d.visited; t.photo = d.photo; t.lat = d.lat; t.lng = d.lng; t.ts = Date.now(); }
+      Lemon.toast('핀을 고쳤어요', 'ok');
+    } else {
+      var rec = { id: uid(), name: name, cat: d.cat, rating: d.rating, memo: memo, visited: d.visited, photo: d.photo || null, lat: d.lat, lng: d.lng, ts: Date.now() };
+      state.pins.push(rec);
+      state.selected = rec.id;
+      Lemon.toast('핀을 꽂았어요 · ' + name, 'ok');
+      Lemon.hap(18);
+    }
+    closePinModal();
+    renderAll();
+    saveSoon();
+  });
+
+  $('#pinDelete').addEventListener('click', function () {
+    var d = state.draft;
+    if (!d || !d.id) return;
+    state.pins = state.pins.filter(function (x) { return x.id !== d.id; });
+    if (state.selected === d.id) state.selected = null;
+    closePinModal();
+    renderAll();
+    saveSoon();
+    Lemon.toast('핀을 지웠어요', 'info');
+  });
+
+  $$('[data-modal-close]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      if ($('#pinModal').classList.contains('open')) closePinModal();
+      else $('#shareModal').classList.remove('open');
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closePinModal();
+      $('#shareModal').classList.remove('open');
+      $('#searchPanel').classList.add('hidden');
+    }
+  });
+
+  function resizeImage(file, maxSide, quality, cb) {
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height;
+        var scale = Math.min(1, maxSide / Math.max(w, h));
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(w * scale);
+        cv.height = Math.round(h * scale);
+        var ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        try { cb(cv.toDataURL('image/jpeg', quality)); } catch (err) { cb(null); }
+      };
+      img.onerror = function () { cb(null); };
+      img.src = ev.target.result;
+    };
+    reader.onerror = function () { cb(null); };
+    reader.readAsDataURL(file);
+  }
+
+  /* ---------------- search ---------------- */
+  var searchTimer = null, lastQuery = '';
+  function doSearch(q) {
+    q = (q || '').trim();
+    if (!q) { Lemon.toast('검색어를 입력해 주세요', 'err'); return; }
+    if (q === lastQuery) return;
+    lastQuery = q;
+    var panel = $('#searchPanel');
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<div class="px-3 py-3 text-[11px] text-neutral-500 flex items-center gap-2"><span class="w-3 h-3 rounded-full border-2 border-current border-t-transparent spin"></span>장소를 찾는 중…</div>';
+    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=ko&q=' + encodeURIComponent(q);
+    if (map) {
+      try {
+        var b = map.getBounds();
+        url += '&viewbox=' + b.getWest().toFixed(4) + ',' + b.getSouth().toFixed(4) + ',' + b.getEast().toFixed(4) + ',' + b.getNorth().toFixed(4);
+      } catch (e) { }
+    }
+    fetch(url, { headers: { 'Accept': 'application/json' } }).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.json();
+    }).then(function (rows) {
+      if (!Array.isArray(rows) || !rows.length) {
+        panel.innerHTML = '<div class="px-3 py-3 text-[11px] text-neutral-500">검색 결과가 없어요. 지도를 직접 눌러 핀을 꽂아도 됩니다.</div>';
+        return;
+      }
+      panel.innerHTML = '';
+      rows.forEach(function (r) {
+        var b = document.createElement('button');
+        b.className = 'sr-item';
+        b.innerHTML = '<svg class="w-3.5 h-3.5 shrink-0" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 21l-4.3-4.3"></path><circle cx="11" cy="11" r="6.5"></circle></svg>' +
+          '<span class="min-w-0 flex-1"><span class="block font-bold truncate">' + esc(r.name || r.display_name) + '</span>' +
+          '<span class="block text-[9.5px] text-neutral-400 truncate">' + esc(r.display_name) + '</span></span>' +
+          '<span class="text-[9px] font-extrabold shrink-0" style="color:var(--brand)">핀 꽂기</span>';
+        b.addEventListener('click', function () {
+          panel.classList.add('hidden');
+          var lat = parseFloat(r.lat), lng = parseFloat(r.lon);
+          if (map) map.flyTo([lat, lng], 16, { duration: .8 });
+          if (state.readOnly) { Lemon.toast('공유 지도는 읽기 전용이에요', 'info'); return; }
+          setTimeout(function () {
+            openPinModal({ id: null, name: (r.name || '').split(',')[0], cat: 'food', rating: 0, memo: '', visited: 0, lat: +lat.toFixed(6), lng: +lng.toFixed(6), photo: null }, false);
+          }, 420);
+        });
+        panel.appendChild(b);
+      });
+    }).catch(function () {
+      panel.innerHTML = '<div class="px-3 py-3 text-[11px] text-neutral-500 leading-relaxed">검색 서버에 연결하지 못했어요.<br>지도를 직접 눌러 핀을 꽂을 수 있습니다.</div>';
+    });
+  }
+  $('#searchInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doSearch(this.value); }
+  });
+  $('#searchInput').addEventListener('input', function () {
+    var v = this.value.trim();
+    if (v.length >= 2) {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { if (v !== lastQuery) doSearch(v); }, 900);
+    } else {
+      $('#searchPanel').classList.add('hidden');
+    }
+  });
+  $('#searchBtn').addEventListener('click', function () { doSearch($('#searchInput').value); });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#searchPanel') && !e.target.closest('#searchInput') && !e.target.closest('#searchBtn')) {
+      $('#searchPanel').classList.add('hidden');
+    }
+  });
+
+  /* ---------------- filters / toolbar ---------------- */
+  $('#visitFilter').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-v]');
+    if (!b) return;
+    state.visit = b.getAttribute('data-v');
+    $$('#visitFilter button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    if (map) map.closePopup();
+    renderMarkers();
+    renderList();
+    Lemon.hap(8);
+  });
+  $('#styleSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-style]');
+    if (!b) return;
+    state.style = b.getAttribute('data-style');
+    $$('#styleSeg button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    applyTiles();
+    saveSoon();
+    Lemon.hap(8);
+  });
+  $('#addHereBtn').addEventListener('click', function () {
+    if (state.readOnly) { Lemon.toast('공유 지도는 읽기 전용이에요', 'info'); return; }
+    var c = map ? map.getCenter() : { lat: state.center[0], lng: state.center[1] };
+    openPinModal({ id: null, name: '', cat: 'food', rating: 0, memo: '', visited: 0, lat: +c.lat.toFixed(6), lng: +c.lng.toFixed(6), photo: null }, false);
+  });
+  $('#fitBtn').addEventListener('click', function () {
+    if (!map || !state.pins.length) { Lemon.toast('꽂힌 핀이 없어요', 'info'); return; }
+    var b = L.latLngBounds(state.pins.map(function (p) { return [p.lat, p.lng]; }));
+    map.fitBounds(b.pad(.22), { duration: .7 });
+  });
+  $('#locBtn').addEventListener('click', function () {
+    if (!navigator.geolocation) { Lemon.toast('이 브라우저는 위치를 지원하지 않아요', 'err'); return; }
+    Lemon.toast('위치를 확인하는 중…', 'info');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var la = pos.coords.latitude, ln = pos.coords.longitude;
+      if (map) map.flyTo([la, ln], 16, { duration: .9 });
+      Lemon.toast('현재 위치로 이동했어요', 'ok');
+    }, function () {
+      Lemon.toast('위치 권한을 허용하면 이동할 수 있어요', 'err');
+    }, { timeout: 8000, maximumAge: 60000 });
+  });
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pop-act]');
+    if (!b) return;
+    var id = b.getAttribute('data-id');
+    var act = b.getAttribute('data-pop-act');
+    var p = state.pins.filter(function (x) { return x.id === id; })[0];
+    if (!p) return;
+    if (act === 'edit') { if (map) map.closePopup(); openPinModal(p, true); }
+    if (act === 'del') {
+      state.pins = state.pins.filter(function (x) { return x.id !== id; });
+      if (state.selected === id) state.selected = null;
+      if (map) map.closePopup();
+      renderAll(); saveSoon(); Lemon.toast('핀을 지웠어요', 'info');
+    }
+    if (act === 'route') {
+      window.open('https://www.google.com/maps/dir/?api=1&destination=' + p.lat + ',' + p.lng, '_blank', 'noopener');
+    }
+  });
+
+  /* ---------------- project ---------------- */
+  function loadRecord(rec) {
+    if (!rec) return;
+    state.title = rec.name || '나의 비밀 지도';
+    state.pins = (rec.pins || []).map(function (p) {
+      return { id: p.i || uid(), name: p.n || '', cat: p.c || 'food', rating: p.r || 0, memo: p.m || '', visited: p.v ? 1 : 0, photo: p.ph || null, lat: p.la, lng: p.ln, ts: p.ts || Date.now() };
+    });
+    state.center = rec.center || state.center;
+    state.zoom = rec.zoom || state.zoom;
+    state.style = rec.style || 'auto';
+    state.selected = null;
+    $('#projName').value = state.title;
+    $$('#styleSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-style') === state.style); });
+    if (map) {
+      applyTiles();
+      map.setView(state.center, state.zoom);
+    }
+    renderAll();
+  }
+  function restoreActive() {
+    var id = prj.id();
+    var rec = id ? prj.restore(id) : null;
+    if (!rec) {
+      var all = prj.archive.all();
+      rec = all.length ? all[0] : null;
+      if (rec && rec.id) prj.openProject(rec.id);
+    }
+    if (rec) loadRecord(rec);
+  }
+  function startNew(silent) {
+    if (!silent) saveNow();
+    prj.newProject();
+    state.title = '새 비밀 지도';
+    state.pins = [];
+    state.selected = null;
+    state.center = [37.5665, 126.978];
+    state.zoom = 12;
+    state.style = 'auto';
+    $('#projName').value = state.title;
+    $$('#styleSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-style') === 'auto'); });
+    if (map) { applyTiles(); map.setView(state.center, state.zoom); }
+    renderAll();
+    renderArchive();
+    if (!silent) { Lemon.toast('새 지도를 폈어요', 'ok'); go('map'); }
+  }
+  $('#newProjectBtn').addEventListener('click', function () { startNew(false); });
+  $('#newFromArchive').addEventListener('click', function () { startNew(false); });
+  $('#projName').addEventListener('input', function () {
+    state.title = this.value.trim() || '나의 비밀 지도';
+    saveSoon();
+  });
+  $('#projName').addEventListener('blur', function () {
+    if (!this.value.trim()) this.value = state.title = '나의 비밀 지도';
+    saveNow();
+  });
+
+  function renderArchive() {
+    var all = prj.archive.all();
+    var wrap = $('#archiveList');
+    wrap.innerHTML = '';
+    $('#archiveEmpty').classList.toggle('hidden', all.length > 0);
+    var activeId = prj.id();
+    all.forEach(function (rec, i) {
+      var card = document.createElement('div');
+      card.className = 'glass-card p-4 card-lift pop-in';
+      card.style.animationDelay = Math.min(i * 40, 240) + 'ms';
+      var n = (rec.pins || []).length;
+      var when = rec.ts ? Lemon.fmtDateTime(rec.ts) : '';
+      card.innerHTML =
+        '<div class="flex items-start justify-between gap-2">' +
+        '<div class="min-w-0"><div class="flex items-center gap-1.5">' +
+        '<h3 class="text-[13px] font-extrabold truncate">' + esc(rec.name || '나의 비밀 지도') + '</h3>' +
+        (rec.id === activeId ? '<span class="text-[8.5px] font-extrabold px-1.5 py-[1px] rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">작업 중</span>' : '') +
+        '</div><p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">핀 ' + n + '곳 · ' + when + '</p></div>' +
+        '<div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center shrink-0"><svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6.5-6.1 6.5-11A6.5 6.5 0 0 0 5.5 10c0 4.9 6.5 11 6.5 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg></div>' +
+        '</div>' +
+        '<div class="flex flex-wrap gap-1.5 mt-3">' +
+        '<button class="pill-btn !text-[10.5px] !py-1.5" data-arc="open">열기</button>' +
+        '<button class="pill-btn !text-[10.5px] !py-1.5" data-arc="share">공유</button>' +
+        '<button class="pill-btn !text-[10.5px] !py-1.5" data-arc="del">삭제</button>' +
+        '</div>';
+      card.querySelector('[data-arc="open"]').addEventListener('click', function () {
+        prj.openProject(rec.id);
+        loadRecord(rec);
+        saveSoon();
+        go('map');
+        Lemon.toast('지도를 열었어요', 'ok');
+      });
+      card.querySelector('[data-arc="share"]').addEventListener('click', function () {
+        prj.openProject(rec.id);
+        loadRecord(rec);
+        openShare();
+      });
+      card.querySelector('[data-arc="del"]').addEventListener('click', function () {
+        var wasActive = rec.id === activeId;
+        if (wasActive) startNew(true);
+        prj.archive.remove(rec.id);
+        renderArchive();
+        refreshArcCount();
+        Lemon.toast(wasActive ? '지도를 지우고 새 지도를 폈어요' : '보관함에서 지웠어요', 'info');
+      });
+      wrap.appendChild(card);
+    });
+    refreshArcCount();
+  }
+
+  /* ---------------- share ---------------- */
+  function encodeShare() {
+    var data = {
+      v: 2, t: state.title,
+      p: state.pins.map(function (p) {
+        return [p.name, p.cat, p.rating, p.memo, p.visited ? 1 : 0, +(+p.lat).toFixed(5), +(+p.lng).toFixed(5)];
+      }),
+      c: state.center, z: state.zoom, s: state.style
+    };
+    var json = JSON.stringify(data);
+    var code = LZString.compressToEncodedURIComponent(json);
+    return { code: code, json: json };
+  }
+  function shareUrl() {
+    var base = location.origin + location.pathname;
+    return base + '#view=' + encodeShare().code;
+  }
+  function openShare() {
+    saveNow();
+    if (!state.pins.length) { Lemon.toast('핀을 하나 이상 꽂아야 공유할 수 있어요', 'err'); return; }
+    var url = shareUrl();
+    var meta = encodeShare().json.length;
+    $('#shareLink').textContent = url;
+    $('#shareSummary').textContent = '“' + state.title + '” · 핀 ' + state.pins.length + '곳을 링크에 담았습니다. 링크를 받은 사람은 지도 위에서 핀을 눌러 별점과 한줄평을 보고 내 지도로 복사할 수 있습니다.';
+    $('#shareMeta').textContent = '압축 후 ' + url.length.toLocaleString() + '자 · 원본 JSON ' + meta.toLocaleString() + '자';
+    $('#shareModal').classList.add('open');
+    Lemon.hap(12);
+  }
+  $('#quickShare').addEventListener('click', openShare);
+  $('#shareCopy').addEventListener('click', function () { Lemon.copy(shareUrl(), '공유 링크를 복사했어요'); });
+  $('#shareOpen').addEventListener('click', function () { window.open(shareUrl(), '_blank', 'noopener'); });
+  $('#shareNative').addEventListener('click', function () {
+    var url = shareUrl();
+    if (navigator.share) {
+      navigator.share({ title: 'Lemon Map · ' + state.title, text: '내 비밀 지도 ' + state.pins.length + '곳', url: url }).catch(function () { });
+    } else {
+      Lemon.copy(url, '이 브라우저는 앱 공유를 지원하지 않아 링크를 복사했어요');
+    }
+  });
+
+  function decodeShare(hash) {
+    var code = hash.replace(/^#view=/, '');
+    if (!code) return null;
+    var json = null;
+    try { json = LZString.decompressFromEncodedURIComponent(code); } catch (e) { json = null; }
+    if (!json) { try { json = LZString.decompressFromEncodedURIComponent(decodeURIComponent(code)); } catch (e2) { json = null; } }
+    if (!json) return null;
+    try {
+      var d = JSON.parse(json);
+      if (!d || !Array.isArray(d.p)) return null;
+      return {
+        title: d.t || '공유된 지도',
+        pins: d.p.map(function (a) {
+          return { id: uid(), name: a[0] || '이름 없는 장소', cat: CAT[a[1]] ? a[1] : 'food', rating: a[2] || 0, memo: a[3] || '', visited: a[4] ? 1 : 0, photo: null, lat: +a[5], lng: +a[6], ts: Date.now() };
+        }),
+        center: d.c, zoom: d.z, style: d.s || 'auto'
+      };
+    } catch (e3) { return null; }
+  }
+
+  var shared = null;
+  function enterShareView(data) {
+    shared = data;
+    state.readOnly = true;
+    state.title = data.title;
+    state.pins = data.pins;
+    state.center = data.center || state.center;
+    state.zoom = data.zoom || 13;
+    state.style = data.style || 'auto';
+    $('#projName').value = state.title;
+    $('#projName').disabled = true;
+    $$('#styleSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-style') === state.style); });
+    $('#saveBadge').textContent = '공유된 지도';
+    $('#shareBannerTitle').textContent = data.title;
+    $('#shareBannerSub').textContent = '핀 ' + data.pins.length + '곳 · 읽기 전용';
+    $('#shareBanner').classList.remove('hidden');
+    $('#newProjectBtn').style.display = 'none';
+    if (map) { applyTiles(); map.setView(state.center, state.zoom); }
+    renderAll();
+  }
+  $('#copyToMine').addEventListener('click', function () {
+    if (!shared) return;
+    var copy = shared.pins.map(function (p) {
+      return { id: uid(), name: p.name, cat: p.cat, rating: p.rating, memo: p.memo, visited: p.visited, photo: null, lat: p.lat, lng: p.lng, ts: Date.now() };
+    });
+    prj.newProject();
+    state.readOnly = false;
+    $('#projName').disabled = false;
+    $('#newProjectBtn').style.display = '';
+    state.title = shared.title + ' 복사본';
+    state.pins = copy;
+    state.selected = null;
+    state.center = shared.center || state.center;
+    state.zoom = shared.zoom || state.zoom;
+    $('#projName').value = state.title;
+    $('#shareBanner').classList.add('hidden');
+    saveNow();
+    renderAll();
+    renderArchive();
+    Lemon.toast('내 지도에 ' + copy.length + '곳을 옮겼어요', 'ok');
+    Lemon.confetti(28);
+  });
+  $('#closeBanner').addEventListener('click', function () { $('#shareBanner').classList.add('hidden'); });
+
+  /* ---------------- presets & home ---------------- */
+  function renderPresets() {
+    var grid = $('#presetGrid');
+    grid.innerHTML = '';
+    PRESETS.forEach(function (ps) {
+      var card = document.createElement('div');
+      card.className = 'glass-card preset-card p-3.5';
+      var dots = '';
+      ps.pins.slice(0, 4).forEach(function (p, i) {
+        dots += '<span style="left:' + (18 + i * 21) + '%;top:' + (24 + (i % 2) * 34) + '%;background:' + (CAT[p.cat] || CATS[0]).color + '"></span>';
+      });
+      card.innerHTML =
+        '<div class="preset-mini">' + dots + '</div>' +
+        '<div class="flex items-center justify-between gap-2 mt-2.5">' +
+        '<div class="min-w-0"><h3 class="text-[12.5px] font-extrabold truncate">' + esc(ps.title) + '</h3>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(ps.sub) + '</p></div>' +
+        '<span class="chip shrink-0">' + ps.pins.length + '곳</span></div>' +
+        '<button class="pill-btn w-full mt-2.5 !text-[10.5px] !py-1.5" data-apply>이 코스로 시작</button>';
+      card.querySelector('[data-apply]').addEventListener('click', function () { applyPreset(ps); });
+      grid.appendChild(card);
+    });
+  }
+  function applyPreset(ps) {
+    if (state.readOnly) {
+      state.readOnly = false; $('#projName').disabled = false; $('#shareBanner').classList.add('hidden'); $('#newProjectBtn').style.display = '';
+    }
+    saveNow();
+    prj.newProject();
+    state.title = ps.title + ' 코스';
+    state.pins = ps.pins.map(function (p) {
+      return { id: uid(), name: p.name, cat: p.cat, rating: p.rating, memo: p.memo, visited: p.visited, photo: null, lat: p.lat, lng: p.lng, ts: Date.now() };
+    });
+    state.center = ps.center.slice();
+    state.zoom = ps.zoom;
+    state.selected = null;
+    state.filter = 'all';
+    state.visit = 'all';
+    $('#projName').value = state.title;
+    go('map');
+    if (map) { map.setView(state.center, state.zoom); }
+    renderAll();
+    saveNow();
+    Lemon.toast(ps.title + ' 샘플 ' + state.pins.length + '곳을 담았어요', 'ok');
+    Lemon.confetti(24);
+  }
+
+  /* ---------------- tabs ---------------- */
+  var go = Lemon.initTabs('home');
+  function moveGlider() {
+    var g = $('#tabGlider');
+    var on = $('.tabbar .nav-tab.nav-on');
+    if (!g || !on) return;
+    g.style.width = on.offsetWidth + 'px';
+    g.style.transform = 'translateX(' + on.offsetLeft + 'px)';
+    g.classList.add('ready');
+  }
+  document.addEventListener('lemon:view', function (e) {
+    moveGlider();
+    if (e.detail.view === 'map') {
+      initMap();
+      setTimeout(function () { if (map) { map.invalidateSize(); } }, 80);
+      setTimeout(function () { if (map) map.invalidateSize(); }, 320);
+    }
+    if (e.detail.view === 'archive') renderArchive();
+    if (e.detail.view === 'home') renderPresets();
+  });
+  window.addEventListener('resize', function () { moveGlider(); if (map) map.invalidateSize(); });
+
+  $$('[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () { go(b.getAttribute('data-goto')); });
+  });
+  $$('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-preset');
+      var ps = PRESETS.filter(function (x) { return x.key === k; })[0];
+      if (ps) applyPreset(ps);
+    });
+  });
+
+  /* theme */
+  document.addEventListener('lemon:theme', function () {
+    if (state.style === 'auto') applyTiles();
+  });
+
+  /* ---------------- boot ---------------- */
+  document.addEventListener('DOMContentLoaded', function () {
+    prj.bind('#saveBadge');
+    renderPresets();
+    renderCatFilters();
+    renderArchive();
+    moveGlider();
+
+    var hash = location.hash || '';
+    var shareData = hash.indexOf('#view=') === 0 ? decodeShare(hash) : null;
+    if (shareData) {
+      enterShareView(shareData);
+      initMap();
+      go('map', true);
+      setTimeout(function () { if (map) map.invalidateSize(); }, 120);
+      setTimeout(function () { if (map) map.invalidateSize(); }, 420);
+      Lemon.toast('공유된 지도를 열었어요', 'ok');
+    } else {
+      restoreActive();
+      renderAll();
+    }
+
+    setTimeout(function () {
+      moveGlider();
+      if (map) map.invalidateSize();
+    }, 260);
+
+    window.__lemonErrs = [];
+    window.addEventListener('error', function (e) { window.__lemonErrs.push(String(e.message || e.error)); });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1838 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Shelf — 빛과 그림자로 세운 3D 서재</title>
+<meta name="description" content="책·영화·드라마·애니·음반을 실제 원목 책장에 꽂아 두는 감상 아카이브. 선반 재질과 조명 방향에 따라 그림자와 광택이 실시간으로 바뀌고, 표지를 펼쳐 명대사와 감상평을 남기고 리뷰 카드로 저장합니다.">
+<meta name="theme-color" content="#b45309">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23b45309'/%3E%3Crect x='7' y='9' width='4.6' height='14' rx='1' fill='white'/%3E%3Crect x='13.4' y='7' width='4.6' height='16' rx='1' fill='white' opacity='.85'/%3E%3Crect x='19.8' y='11' width='4.6' height='12' rx='1' fill='white' opacity='.7'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+        brand: { DEFAULT: '#b45309', light: '#f59e0b', deep: '#78350f', 50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d', 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706', 700: '#b45309', 800: '#92400e', 900: '#78350f', 950: '#451a03' }
+      }
+    }
+  }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #b45309; --brand-2: #f59e0b; --brand-deep: #78350f; }
+
+  @property --lit { syntax: '<number>'; inherits: true; initial-value: 0.82; }
+  @property --lx { syntax: '<number>'; inherits: true; initial-value: 0.5; }
+
+  body { background-color: #fbf7f0; }
+  .dark body { background-color: #090806; }
+
+  /* 애니메이션이 끝난 뒤 transform을 잠그지 않도록 (호버 3D 이동 유지) */
+  .pop-in, .slide-in-y, .pop-scale { animation-fill-mode: backwards; }
+
+  /* ---------- tab glider ---------- */
+  .tabbar { position: relative; display: flex; align-items: center; gap: .25rem; overflow-x: auto; padding: .375rem 0; scrollbar-width: none; }
+  .tabbar::-webkit-scrollbar { display: none; }
+  .tab-glider {
+    position: absolute; top: .5rem; bottom: .5rem; left: 0; width: 0;
+    border-radius: .85rem; z-index: 0; opacity: 0;
+    background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+    box-shadow: 0 8px 22px -10px color-mix(in srgb, var(--brand) 85%, transparent);
+    transition: transform .44s cubic-bezier(.22, 1.36, .36, 1), width .44s cubic-bezier(.22, 1.36, .36, 1), opacity .2s ease;
+  }
+  .tab-glider.ready { opacity: 1; }
+  .tabbar .nav-tab { position: relative; z-index: 1; }
+  .tabbar .nav-tab.nav-on { background-image: none; background-color: transparent; box-shadow: none; color: #fff !important; }
+
+  /* ---------- surfaces ---------- */
+  .glass-card {
+    background: rgba(255, 252, 247, .84);    border: 1px solid rgba(233, 224, 210, .95);
+    border-radius: 1.35rem;
+    box-shadow: 0 2px 4px rgba(40, 26, 10, .035), 0 24px 50px -40px rgba(64, 38, 12, .6);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+  }
+  .dark .glass-card { background: rgba(20, 16, 12, .76); border-color: rgba(54, 44, 34, .9); box-shadow: 0 1px 2px rgba(0,0,0,.5), 0 26px 60px -44px rgba(0,0,0,.95); }
+  .hero-tint { background-image: linear-gradient(150deg, color-mix(in srgb, var(--brand) 11%, transparent), transparent 58%); }
+  .dark .hero-tint { background-image: linear-gradient(150deg, color-mix(in srgb, var(--brand) 24%, transparent), transparent 62%); }
+
+  .library-stage {
+    position: relative;
+    padding: 1rem .5rem 1.4rem;
+    border-radius: 1.6rem;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(255, 214, 150, .22), transparent 60%),
+      radial-gradient(90% 70% at 50% 110%, rgba(60, 34, 12, .16), transparent 62%);
+  }
+  .dark .library-stage {
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(255, 190, 110, .13), transparent 60%),
+      radial-gradient(90% 70% at 50% 110%, rgba(0, 0, 0, .55), transparent 62%);
+  }
+
+  /* ---------- material themes ---------- */
+  .bookcase {
+    --wood-1: #6b4225; --wood-2: #8a5a33; --wood-3: #40260f; --wood-edge: #a06b3d; --wall: #f3e6d4;
+    position: relative;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 12px 12px 14px;
+    border-radius: 1.25rem;
+    background-image: linear-gradient(158deg, var(--wood-2) 0%, var(--wood-1) 46%, var(--wood-3) 100%);
+    box-shadow: 0 34px 60px -38px rgba(40, 22, 8, .8), 0 2px 0 rgba(255, 255, 255, .18) inset, 0 -3px 0 rgba(0, 0, 0, .35) inset;
+    transition: background-image .5s ease, box-shadow .4s ease;
+    isolation: isolate;
+  }
+  .bookcase::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 5;
+    background-image:
+      repeating-linear-gradient(93deg, rgba(0,0,0,.10) 0 1px, transparent 1px 6px),
+      repeating-linear-gradient(3deg, rgba(255,255,255,.05) 0 1px, transparent 1px 9px);
+    opacity: .5; mix-blend-mode: multiply; border-radius: inherit;
+  }
+  .dark .bookcase::before { opacity: .38; mix-blend-mode: soft-light; }
+  .bookcase[data-material="walnut"] { --wood-1: #5d3720; --wood-2: #7d4d2b; --wood-3: #36200e; --wood-edge: #9a6438; --wall: #efe0cc; }
+  .bookcase[data-material="oak"] { --wood-1: #c9ac83; --wood-2: #e4cda6; --wood-3: #a98a62; --wood-edge: #f0ddbc; --wall: #fbf4e7; }
+  .bookcase[data-material="black"] { --wood-1: #1a1c20; --wood-2: #2d3138; --wood-3: #0c0d10; --wood-edge: #4b525c; --wall: #e7ebee; }
+  .bookcase[data-material="smoke"] { --wood-1: #1d2c31; --wood-2: #35525c; --wood-3: #0e181c; --wood-edge: #6d9aa4; --wall: #e4eef0; }
+  .dark .bookcase[data-material="walnut"] { --wall: #1b1209; }
+  .dark .bookcase[data-material="oak"] { --wall: #241a10; }
+  .dark .bookcase[data-material="black"] { --wall: #101215; }
+  .dark .bookcase[data-material="smoke"] { --wall: #0b1216; }
+
+  .case-crown {
+    position: relative; height: 10px; margin: -4px -2px 8px; border-radius: 4px;
+    background-image: linear-gradient(180deg, var(--wood-edge), var(--wood-1) 55%, var(--wood-3));
+    box-shadow: 0 6px 10px -6px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.35);
+  }
+
+  .shelf-row {
+    position: relative;
+    border-radius: 6px;
+    background-image: linear-gradient(180deg, color-mix(in srgb, var(--wood-3) 78%, #000) 0%, color-mix(in srgb, var(--wood-1) 62%, #000) 100%);
+    box-shadow:
+      inset 0 26px 34px -26px rgba(0, 0, 0, .92),
+      inset 12px 0 20px -18px rgba(0, 0, 0, .8),
+      inset -12px 0 20px -18px rgba(0, 0, 0, .8),
+      inset 0 -6px 12px -10px rgba(0, 0, 0, .6);
+    margin-bottom: 9px;
+    transition: background-image .45s ease;
+  }
+  .shelf-row:last-child { margin-bottom: 0; }
+
+  .shelf-glow {
+    position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 1;
+    background-image: radial-gradient(62% 130% at calc(var(--lx, .5) * 100%) -18%, rgba(255, 206, 140, calc(.5 * var(--lit, .8))), transparent 68%);
+    mix-blend-mode: screen;
+    transition: background-image .12s linear;
+  }
+  .dark .shelf-glow { background-image: radial-gradient(62% 130% at calc(var(--lx, .5) * 100%) -18%, rgba(255, 196, 120, calc(.42 * var(--lit, .8))), transparent 70%); }
+  .shelf-led {
+    position: absolute; top: 1px; left: 10%; right: 10%; height: 2px; border-radius: 2px; z-index: 3; pointer-events: none;
+    background-image: linear-gradient(90deg, transparent, rgba(255, 226, 176, calc(.85 * var(--lit, .8))) 50%, transparent);
+    box-shadow: 0 0 12px rgba(255, 214, 150, calc(.6 * var(--lit, .8)));
+    opacity: calc(.35 + var(--lit, .8) * .65);
+  }
+
+  .shelf-items {
+    position: relative; z-index: 4;
+    display: flex; align-items: flex-end; gap: 6px;
+    height: var(--shelf-h, 158px);
+    padding: 0 12px;
+    perspective: 1000px;
+    transform-style: preserve-3d;
+  }
+
+  .shelf-board {
+    position: relative; z-index: 3;
+    height: 15px;
+    margin: 0 -4px;
+    border-radius: 3px 3px 4px 4px;
+    background-image: linear-gradient(180deg, var(--wood-edge) 0%, var(--wood-2) 22%, var(--wood-1) 62%, var(--wood-3) 100%);
+    box-shadow:
+      0 12px 20px -8px rgba(0, 0, 0, .62),
+      inset 0 1px 0 rgba(255, 255, 255, calc(.25 + var(--lit, .8) * .3)),
+      inset 0 -2px 4px rgba(0, 0, 0, .45);
+    transition: background-image .45s ease;
+  }
+  .shelf-board::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; border-radius: 0 0 3px 3px;
+    background-image: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.1));
+  }
+  .bookcase[data-material="smoke"] .shelf-board {
+    background-image: linear-gradient(180deg, rgba(186, 236, 238, .42), rgba(88, 148, 158, .3) 40%, rgba(16, 34, 40, .62));
+    border: 1px solid rgba(190, 240, 240, .22);
+    backdrop-filter: blur(5px);
+    box-shadow: 0 14px 22px -10px rgba(0, 0, 0, .7), inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 -1px 0 rgba(255, 255, 255, .12);
+  }
+  .bookcase[data-material="black"] .shelf-board {
+    background-image: linear-gradient(180deg, #4c535d 0%, #2a2e34 30%, #14161a 70%, #08090b 100%);
+  }
+
+  /* ---------- books ---------- */
+  .book {
+    position: relative;
+    flex: 0 0 auto;
+    width: var(--w, 36px);
+    height: var(--h, 128px);
+    border-radius: 2px 3px 3px 2px;
+    cursor: pointer;
+    transform-origin: 50% 100%;
+    transform-style: preserve-3d;
+    transition: transform .36s cubic-bezier(.2, .9, .2, 1), box-shadow .36s ease, filter .3s ease;
+    outline: none;
+  }
+  .book-face {
+    position: absolute; inset: 0; border-radius: inherit; overflow: hidden;
+    background-image: linear-gradient(160deg, var(--c1, #7c2d12), var(--c2, #ea580c));
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, .12),
+      inset -3px 0 4px -2px rgba(0, 0, 0, .55),
+      inset 2px 0 3px -2px rgba(255, 255, 255, .3);
+  }
+  .book-face::after {
+    content: ''; position: absolute; inset: 0;
+    background-image: linear-gradient(90deg, rgba(255,255,255,.16) 0 1px, transparent 1px 100%);
+    opacity: .5;
+  }
+  .book-gloss {
+    position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3;
+    background-image: linear-gradient(calc(105deg + var(--lx, .5) * -55deg), rgba(255, 255, 255, calc(.42 * var(--lit, .8))) 0%, rgba(255,255,255,0) 46%, rgba(255,255,255,0) 100%);
+    mix-blend-mode: screen;
+    opacity: calc(.45 + var(--lit, .8) * .55);
+    transition: background-image .12s linear, opacity .2s ease;
+  }
+  .book-sh {
+    position: absolute; left: 6%; right: 6%; bottom: -7px; height: 13px; border-radius: 50%; z-index: -1;
+    background: radial-gradient(closest-side, rgba(0, 0, 0, .55), rgba(0, 0, 0, 0) 78%);
+    filter: blur(3px);
+    transform: translateX(calc((.5 - var(--lx, .5)) * 34px)) scaleX(1);
+    opacity: calc(.3 + var(--lit, .8) * .55);
+    transition: transform .12s linear, opacity .2s ease;
+  }
+  .book-wall-sh {
+    position: absolute; left: 12%; right: 12%; bottom: -12px; height: 26px; border-radius: 50%; z-index: -2;
+    background: radial-gradient(closest-side, rgba(0, 0, 0, .4), transparent 72%);
+    filter: blur(6px);
+    transform: translate(calc((.5 - var(--lx, .5)) * 46px), 6px);
+    opacity: calc(.2 + var(--lit, .8) * .4);
+    transition: transform .12s linear, opacity .2s ease;
+  }
+
+  .b-spine .book-title-v {
+    position: absolute; inset: 6px 2px 8px; z-index: 2;
+    writing-mode: vertical-rl; text-orientation: mixed;
+    display: flex; align-items: center; justify-content: flex-start;
+    font-size: 8.5px; line-height: 1.05; font-weight: 800; letter-spacing: -.02em;
+    color: rgba(255, 255, 255, .93); text-shadow: 0 1px 1px rgba(0, 0, 0, .5);
+    overflow: hidden; white-space: nowrap;
+  }
+  .b-spine .spine-band {
+    position: absolute; left: 0; right: 0; height: 6px; z-index: 2;
+    background: rgba(0, 0, 0, .28);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .18) inset;
+  }
+  .b-spine .spine-band.top { top: 10px; }
+  .b-spine .spine-band.bottom { bottom: 10px; }
+
+  .b-cover .cover-title {
+    position: absolute; left: 6px; right: 6px; top: 8px; z-index: 2;
+    font-size: 10px; line-height: 1.22; font-weight: 900; letter-spacing: -.02em;
+    color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .b-cover .cover-author {
+    position: absolute; left: 6px; right: 6px; bottom: 18px; z-index: 2;
+    font-size: 7.5px; font-weight: 700; color: rgba(255, 255, 255, .78);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .b-cover .cover-tag {
+    position: absolute; left: 5px; bottom: 5px; z-index: 2;
+    font-size: 6.5px; font-weight: 900; letter-spacing: .04em;
+    padding: 1px 4px; border-radius: 3px;
+    background: rgba(255, 255, 255, .9); color: #2b1a0d;
+  }
+  .b-cover .cover-pattern { position: absolute; inset: 0; z-index: 1; opacity: .55; }
+  .b-cover .cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+  .b-cover .cover-veil { position: absolute; inset: 0; z-index: 1; background-image: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.05) 42%, rgba(0,0,0,.62) 100%); }
+
+  @media (hover: hover) {
+    .book:hover { transform: translateZ(52px) translateY(-5px) rotateY(-4deg); z-index: 40; }
+    .book:hover .book-sh { transform: translate(calc((.5 - var(--lx, .5)) * 34px), 4px) scaleX(1.35); opacity: .85; }
+    .book:hover .book-wall-sh { transform: translate(calc((.5 - var(--lx, .5)) * 46px), 12px) scale(1.5); opacity: .8; }
+  }
+  .book.pop { transform: translateZ(52px) translateY(-5px) rotateY(-4deg); z-index: 40; }
+  .book.pop .book-sh { transform: translate(calc((.5 - var(--lx, .5)) * 34px), 4px) scaleX(1.35); opacity: .85; }
+  .book:active { filter: brightness(1.08); }
+
+  .add-slot {
+    flex: 0 0 auto; width: var(--w, 36px); height: var(--h, 128px);
+    border-radius: 4px; border: 1.5px dashed color-mix(in srgb, var(--wood-edge) 65%, transparent);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    color: color-mix(in srgb, var(--wood-edge) 85%, #fff);
+    background: rgba(255, 255, 255, .06);
+    transition: transform .22s cubic-bezier(.34,1.56,.64,1), background-color .2s, border-color .2s;
+  }
+  .add-slot:hover { transform: translateY(-3px) scale(1.03); background: rgba(255, 255, 255, .14); border-color: var(--wood-edge); }
+  .add-slot:active { transform: scale(.94); }
+  .add-slot svg { width: 14px; height: 14px; }
+  .add-slot span { font-size: 7.5px; font-weight: 800; letter-spacing: -.02em; }
+
+  /* ---------- controls ---------- */
+  .mat-chip {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .38rem .55rem; border-radius: .7rem;
+    font-size: .68rem; font-weight: 800; white-space: nowrap;
+    border: 1px solid rgb(232 224 212); color: rgb(90 74 58);
+    background: rgba(255,255,255,.7);
+    transition: transform .16s cubic-bezier(.34,1.56,.64,1), border-color .2s, color .2s, box-shadow .2s;
+  }
+  .dark .mat-chip { background: rgba(28,22,16,.8); border-color: rgb(58 47 36); color: rgb(196 178 158); }
+  .mat-chip:hover { transform: translateY(-1.5px); border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+  .mat-chip:active { transform: scale(.94); }
+  .mat-chip.on { border-color: var(--brand); color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent); }
+  .dark .mat-chip.on { color: #fbbf24; border-color: #b45309; }
+  .swatch { width: .8rem; height: .8rem; border-radius: .2rem; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
+
+  .light-box { border-radius: .9rem; border: 1px solid rgba(232,224,212,.9); background: rgba(255,255,255,.55); padding: .6rem .7rem; }
+  .dark .light-box { border-color: rgba(58,47,36,.9); background: rgba(24,19,14,.6); }
+
+  /* ---------- cards ---------- */
+  .rec-card { border-radius: 1.1rem; border: 1px solid rgba(232,224,212,.9); background: rgba(255,252,247,.8); transition: transform .26s cubic-bezier(.2,.8,.2,1), box-shadow .26s, border-color .2s; }
+  .dark .rec-card { border-color: rgba(52,42,32,.9); background: rgba(22,17,13,.8); }
+  @media (hover: hover) { .rec-card:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--brand) 40%, transparent); box-shadow: 0 22px 44px -32px rgba(70,40,10,.8); } }
+
+  /* ---------- detail modal flip ---------- */
+  .detail-cover { width: 138px; height: 196px; perspective: 900px; flex-shrink: 0; }
+  .dc-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .8s cubic-bezier(.6,-.05,.3,1.05); transform: rotateY(-14deg) rotateX(3deg); }
+  .dc-inner.flipped { transform: rotateY(166deg) rotateX(0deg); }
+  .dc-face {
+    position: absolute; inset: 0; border-radius: 4px 8px 8px 4px; overflow: hidden;
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    box-shadow: 12px 16px 30px -18px rgba(20, 10, 4, .85), inset 0 0 0 1px rgba(255,255,255,.14);
+  }
+  .dc-back { transform: rotateY(180deg); background-image: linear-gradient(150deg, #f4e7d3, #e3cfb0); color: #3a2614; padding: .6rem; }
+  .dark .dc-back { background-image: linear-gradient(150deg, #2a2118, #1a140e); color: #ecdcc4; }
+
+  .lib-empty { border-radius: 1rem; border: 1px dashed rgba(200,180,150,.8); }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .primary-btn:active, .pill-btn:active, .ghost-btn:active, .mat-chip:active { transform: scale(.93); }
+</style>
+</head>
+<body class="min-h-screen antialiased flex flex-col text-neutral-900 dark:text-neutral-100">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-28 -left-24 opacity-25"></div>
+<div class="ambient-orb brand-grad w-80 h-80 top-1/3 -right-32 o2 opacity-20"></div>
+
+<!-- ============ HEADER ============ -->
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="1.6"></rect>
+            <path d="M3 10h18M3 15h18"></path><path d="M7 4v6M14 4v6M9 15v5M17 15v5"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Shelf</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">3D LIBRARY</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">빛과 그림자로 세운 감상 아카이브</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="saveBadge" class="hidden sm:inline-flex as-badge">자동 저장 대기</span>
+      <button id="quickAdd" class="icon-btn" aria-label="새 작품 꽂기" title="새 작품 꽂기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      </button>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ TABS ============ -->
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="tabbar" role="tablist">
+      <div class="tab-glider" id="tabGlider"></div>
+      <button class="nav-tab" data-tab="home" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="library" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.8"></rect><path d="M3 10h18M3 15h18"></path><path d="M7 4v6M14 4v6"></path></svg>
+        <span>내 서재</span>
+        <span id="bookCount" class="text-[10px] font-mono px-1.5 rounded-full bg-black/5 dark:bg-white/10">0</span>
+      </button>
+      <button class="nav-tab" data-tab="archive" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-black/5 dark:bg-white/10">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-5 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.02fr_.98fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="4"></circle></svg>
+            원목 선반 · 간접조명 · 표지 펼치기
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.15] tracking-tight">
+            읽고 본 것들을<br>
+            <span class="brand-text">진짜 책장</span>에 꽂아 둡니다.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            평면 카드가 아니라 두께와 안쪽 그늘이 있는 선반입니다. 월넛·화이트 오크·매트 블랙·스모크 글래스로 재질을 바꾸고, 조명의 밝기와 방향을 움직이면 책등의 광택과 선반에 드리운 그림자가 따라 움직입니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5 pt-1">
+            <button class="primary-btn btn-shimmer" data-goto="library">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.8"></rect><path d="M3 10h18M3 15h18"></path></svg>
+              내 서재 열기
+            </button>
+            <button class="ghost-btn" id="homeSampleBtn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v16H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H19"></path></svg>
+              샘플 서재 불러오기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="4 12 9 17 20 6"></polyline></svg>조명 슬라이더 실시간 반영</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M4 14l4-4 4 4 3-3 5 5"></path></svg>리뷰 카드 PNG</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l2.6-2.6a4.5 4.5 0 1 0-6.4-6.4L11.4 6.2"></path><path d="M14 10a4.5 4.5 0 0 0-6.4 0L5 12.6a4.5 4.5 0 1 0 6.4 6.4l1.2-1.2"></path></svg>서재 링크 공유</span>
+          </div>
+        </div>
+
+        <!-- live mini shelf preview -->
+        <div class="relative">
+          <div class="library-stage !p-1.5">
+            <div class="bookcase" id="previewCase" data-material="walnut" style="--lit:.9;--lx:.5;--shelf-h:150px;border-radius:1rem;padding:9px 9px 10px">
+              <div class="case-crown"></div>
+              <div class="shelf-row">
+                <div class="shelf-glow"></div>
+                <div class="shelf-items" id="previewShelf" style="--shelf-h:150px;gap:5px;padding:0 8px"></div>
+                <div class="shelf-led"></div>
+                <div class="shelf-board"></div>
+              </div>
+              <div class="shelf-row">
+                <div class="shelf-glow"></div>
+                <div class="shelf-items" id="previewShelf2" style="--shelf-h:130px;gap:5px;padding:0 8px"></div>
+                <div class="shelf-led"></div>
+                <div class="shelf-board"></div>
+              </div>
+            </div>
+          </div>
+          <p class="text-[9.5px] text-neutral-400 dark:text-neutral-500 mt-2 text-center">표지에 마우스를 올리면 선반에서 빠져나옵니다</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- features -->
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div class="glass-card p-4">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M8 3v6"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-extrabold tracking-tight">네 가지 선반 재질</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">웜 월넛, 화이트 오크, 매트 블랙 메탈, 다크 스모크 글래스. 안쪽 깊이 그늘과 선반 앞면 두께까지 함께 바뀝니다.</p>
+      </div>
+      <div class="glass-card p-4">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-extrabold tracking-tight">조명 밝기와 방향</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">슬라이더를 움직이면 스포트라이트 위치, 책등의 광택, 선반에 떨어지는 그림자 방향이 동시에 따라옵니다.</p>
+      </div>
+      <div class="glass-card p-4">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="16" rx="2"></rect><path d="M17 8h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"></path><path d="M7 9h6M7 13h6"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-extrabold tracking-tight">표지가 펼쳐지는 상세</h3>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">책을 누르면 표지가 돌아가며 명대사와 감상평이 드러나고, 그대로 리뷰 카드 이미지로 저장합니다.</p>
+      </div>
+    </div>
+
+    <!-- sample shelf strip -->
+    <div class="glass-card hero-tint p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <span class="chip mb-2">샘플 서재</span>
+          <h3 class="text-[14px] font-black tracking-tight">처음 열면 일곱 권이 꽂혀 있습니다</h3>
+          <p class="text-[11.5px] text-neutral-600 dark:text-neutral-400 mt-1">도서·영화·드라마·애니·음반이 섞인 예시 서재로 조작을 익힌 뒤, 내 목록으로 바꿔 보세요.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5" id="samplePreview"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= LIBRARY ================= -->
+  <section data-view="library" class="hidden space-y-4">
+
+    <!-- toolbar -->
+    <div class="glass-card p-3.5 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="min-w-0 flex items-center gap-2">
+          <label class="lemon-label shrink-0" for="shelfName">서재 이름</label>
+          <input id="shelfName" class="lemon-input !py-1.5 !text-[13px] font-bold max-w-[190px]" value="나의 서재" maxlength="28">
+        </div>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <div class="seg" id="modeSeg">
+            <button data-mode="spine" class="on">책등</button>
+            <button data-mode="cover">표지</button>
+          </div>
+          <button id="shareBtn" class="pill-btn !text-[10.5px] !py-1.5">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.4"></circle><circle cx="6" cy="12" r="2.4"></circle><circle cx="18" cy="19" r="2.4"></circle><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"></path></svg>
+            공유
+          </button>
+          <button id="addBtn" class="primary-btn !text-[10.5px] !py-1.5 !px-3">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            새 작품 꽂기
+          </button>
+        </div>
+      </div>
+
+      <button id="ctrlToggle" class="sm:hidden ghost-btn w-full !text-[10.5px] !py-1.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+        재질 · 조명 설정
+      </button>
+
+      <div id="ctrlPanel" class="hidden sm:flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-4">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="lemon-label shrink-0">재질</span>
+          <div class="flex flex-wrap gap-1.5" id="matChips"></div>
+        </div>
+        <div class="light-box flex-1 min-w-[220px] grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">조명 밝기</span><span class="text-[10px] font-mono font-bold" id="litVal">82%</span></div>
+            <input type="range" class="lemon-range" id="litRange" min="15" max="100" value="82" aria-label="조명 밝기">
+          </div>
+          <div>
+            <div class="flex items-center justify-between"><span class="lemon-label">빛 방향</span><span class="text-[10px] font-mono font-bold" id="dirVal">중앙</span></div>
+            <input type="range" class="lemon-range" id="dirRange" min="0" max="100" value="50" aria-label="빛 방향">
+            <div class="flex justify-between text-[8px] font-bold text-neutral-400 -mt-1"><span>좌</span><span>중앙</span><span>우</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- the shelf -->
+    <div class="library-stage !px-1 !py-2">
+      <div class="bookcase" id="bookcase" data-material="walnut">
+        <div class="case-crown"></div>
+        <div id="shelfBody"></div>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+      <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400" id="shelfSummary">7권 · 도서 3 · 영화 1</p>
+      <div class="flex items-center gap-1.5">
+        <button id="sampleBtn2" class="ghost-btn !text-[10.5px] !py-1.5">샘플로 채우기</button>
+        <button id="newProjectBtn" class="ghost-btn !text-[10.5px] !py-1.5">새 서재</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between gap-2">
+      <div>
+        <h2 class="text-[17px] font-black tracking-tight">보관함</h2>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400">서재는 수정할 때마다 자동 저장됩니다. 최근 11개까지 보관합니다.</p>
+      </div>
+      <button id="newFromArchive" class="primary-btn !text-[11px] !py-2">새 서재 만들기</button>
+    </div>
+    <div id="archiveList" class="grid sm:grid-cols-2 gap-3"></div>
+    <div id="archiveEmpty" class="hidden glass-card p-10 text-center">
+      <div class="w-12 h-12 mx-auto rounded-2xl brand-grad-soft flex items-center justify-center mb-3 float-y">
+        <svg class="w-5 h-5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg>
+      </div>
+      <p class="text-[13px] font-bold">보관함이 비어 있어요</p>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">작품을 한 권이라도 꽂으면 서재가 여기에 저장됩니다.</p>
+      <button class="ghost-btn mt-4" data-goto="library">서재로 가기</button>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2">
+      <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Shelf</span>
+      <span class="opacity-40">·</span>
+      <span>Lemon soft 독립 웹 프로덕트</span>
+    </div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="map.html" class="hover:text-brand-600 dark:hover:text-brand-400">Map</a>
+      <a href="trip.html" class="hover:text-brand-600 dark:hover:text-brand-400">Trip</a>
+      <a href="news.html" class="hover:text-brand-600 dark:hover:text-brand-400">News</a>
+      <a href="money.html" class="hover:text-brand-600 dark:hover:text-brand-400">Money</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<!-- ============ ITEM MODAL ============ -->
+<div id="itemModal" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="itemModalTitle">
+  <div class="lm-backdrop" data-modal-close></div>
+  <div class="lm-card p-5 w-full" style="max-width:min(94vw,27rem)">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg brand-grad flex items-center justify-center text-white">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 7h8M8 11h8"></path></svg>
+        </div>
+        <h3 id="itemModalTitle" class="text-[13.5px] font-extrabold">새 작품 꽂기</h3>
+      </div>
+      <button class="icon-btn !w-8 !h-8" data-modal-close aria-label="닫기">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <div class="space-y-3">
+      <div class="grid grid-cols-[64px_1fr] gap-2.5 items-start">
+        <div>
+          <span class="lemon-label">표지</span>
+          <div id="itemCoverPrev" class="mt-1 w-16 h-[86px] rounded-[4px] overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center relative" style="box-shadow:5px 7px 14px -8px rgba(0,0,0,.6)">
+            <svg class="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 7h8M8 11h8"></path></svg>
+          </div>
+          <div class="flex gap-1 mt-1 w-16">
+            <button id="itemPhotoBtn" class="pill-btn flex-1 !text-[9px] !py-1 !px-1">사진</button>
+            <button id="itemPhotoDel" class="pill-btn flex-1 !text-[9px] !py-1 !px-1 hidden">해제</button>
+          </div>
+          <input type="file" id="itemPhotoInput" accept="image/*" class="hidden">
+        </div>
+        <div class="space-y-2">
+          <div>
+            <label class="lemon-label" for="itemTitle">제목</label>
+            <input id="itemTitle" class="lemon-input mt-1" maxlength="40" placeholder="작품 제목">
+          </div>
+          <div>
+            <label class="lemon-label" for="itemCreator">저자 / 감독</label>
+            <input id="itemCreator" class="lemon-input mt-1" maxlength="30" placeholder="무라카미 하루키">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <span class="lemon-label">카테고리</span>
+        <div id="itemCats" class="flex flex-wrap gap-1.5 mt-1.5"></div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <span class="lemon-label">별점</span>
+          <div id="itemStars" class="flex items-center gap-0.5 mt-1"></div>
+        </div>
+        <div>
+          <span class="lemon-label">진열 위치</span>
+          <div class="mt-1 text-[10.5px] font-bold text-neutral-500 dark:text-neutral-400" id="itemPlace">새 서가에 꽂힘</div>
+        </div>
+      </div>
+
+      <div>
+        <label class="lemon-label" for="itemQuote">명대사 · 기억에 남는 한 줄</label>
+        <input id="itemQuote" class="lemon-input mt-1" maxlength="90" placeholder="가장 좋았던 문장이나 장면">
+      </div>
+      <div>
+        <label class="lemon-label" for="itemReview">감상평</label>
+        <textarea id="itemReview" class="lemon-textarea mt-1" rows="3" maxlength="400" placeholder="언제, 어떤 기분으로 봤는지 적어 두면 나중에 다시 꺼내기 좋습니다."></textarea>
+      </div>
+    </div>
+
+    <div class="flex gap-2 mt-4">
+      <button id="itemDelete" class="ghost-btn flex-1 !text-[11.5px] hidden">빼기</button>
+      <button id="itemSave" class="primary-btn flex-1 !text-[11.5px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg>
+        서가에 꽂기
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DETAIL MODAL ============ -->
+<div id="detailModal" class="lemon-modal" role="dialog" aria-modal="true">
+  <div class="lm-backdrop" data-modal-close></div>
+  <div class="lm-card p-5 w-full" style="max-width:min(94vw,33rem)">
+    <div class="flex items-start justify-between gap-3 mb-3">
+      <span class="chip" id="detailCat">도서</span>
+      <button class="icon-btn !w-8 !h-8" data-modal-close aria-label="닫기">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="flex gap-4">
+      <div class="detail-cover">
+        <div class="dc-inner" id="detailFlip">
+          <div class="dc-face dc-front" id="detailCoverFront"></div>
+          <div class="dc-face dc-back">
+            <div class="h-full flex flex-col">
+              <svg class="w-4 h-4 opacity-60" viewBox="0 0 24 24" fill="currentColor"><path d="M7.2 6C5.4 7.4 4 9.6 4 12.3 4 15.4 5.9 18 8.6 18c1.9 0 3.3-1.3 3.3-3.1 0-1.8-1.2-3-2.9-3-.3 0-.6 0-.9.1.3-1.6 1.6-3.2 3.1-4.1zM17 6c-1.8 1.4-3.2 3.6-3.2 6.3 0 3.1 1.9 5.7 4.6 5.7 1.9 0 3.3-1.3 3.3-3.1 0-1.8-1.2-3-2.9-3-.3 0-.6 0-.9.1.3-1.6 1.6-3.2 3.1-4.1z"></path></svg>
+              <p class="text-[10px] leading-relaxed font-semibold mt-1.5 flex-1 overflow-hidden" id="detailBackQuote"></p>
+              <span class="text-[8px] font-bold opacity-50" id="detailBackMeta"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h3 class="text-[16px] font-black leading-tight tracking-tight" id="detailTitle"></h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5" id="detailCreator"></p>
+        <div class="flex items-center gap-1.5 mt-2" id="detailStars"></div>
+        <div class="mt-2.5 max-h-[112px] overflow-y-auto no-scrollbar">
+          <p class="text-[11.5px] leading-relaxed text-neutral-600 dark:text-neutral-300" id="detailQuote"></p>
+        </div>
+      </div>
+    </div>
+    <div class="mt-3 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-900/50 p-3">
+      <span class="lemon-label">감상평</span>
+      <p class="text-[11.5px] leading-relaxed mt-1 text-neutral-700 dark:text-neutral-300" id="detailReview"></p>
+      <p class="text-[9px] text-neutral-400 mt-2" id="detailMeta"></p>
+    </div>
+    <div class="flex flex-wrap gap-1.5 mt-3.5">
+      <button id="detailCard" class="primary-btn flex-1 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 14l4-4 4 4 3-3 5 5"></path></svg>
+        리뷰 카드 PNG
+      </button>
+      <button id="detailShare" class="ghost-btn !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.4"></circle><circle cx="6" cy="12" r="2.4"></circle><circle cx="18" cy="19" r="2.4"></circle><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"></path></svg>
+        공유
+      </button>
+      <button id="detailFlipBtn" class="ghost-btn !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a8 8 0 0 1 13.7-3L20 7"></path><path d="M20 3v4h-4"></path><path d="M20 16a8 8 0 0 1-13.7 3L4 17"></path><path d="M4 21v-4h4"></path></svg>
+        표지 돌리기
+      </button>
+      <button id="detailEdit" class="ghost-btn !text-[11px]">수정</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SHARE MODAL ============ -->
+<div id="shareModal" class="lemon-modal" role="dialog" aria-modal="true">
+  <div class="lm-backdrop" data-modal-close></div>
+  <div class="lm-card p-5 w-full" style="max-width:min(94vw,26rem)">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg brand-grad flex items-center justify-center text-white">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.4"></circle><circle cx="6" cy="12" r="2.4"></circle><circle cx="18" cy="19" r="2.4"></circle><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"></path></svg>
+        </div>
+        <h3 class="text-[13.5px] font-extrabold">내 서재 공유</h3>
+      </div>
+      <button class="icon-btn !w-8 !h-8" data-modal-close aria-label="닫기">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+    <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed mb-2.5" id="shareSummary"></p>
+    <div class="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/70 p-2.5">
+      <p id="shareLink" class="text-[10px] font-mono break-all leading-relaxed text-neutral-600 dark:text-neutral-300 max-h-24 overflow-y-auto"></p>
+    </div>
+    <div class="text-[9.5px] text-neutral-400 mt-1.5" id="shareMeta"></div>
+    <div class="flex flex-wrap gap-1.5 mt-3.5">
+      <button id="shareCopy" class="primary-btn flex-1 !text-[11.5px]">링크 복사</button>
+      <button id="shareNative" class="ghost-btn !text-[11.5px]">다른 앱</button>
+      <button id="shareOpen" class="ghost-btn !text-[11.5px]">미리보기</button>
+    </div>
+    <p class="text-[9.5px] text-neutral-400 mt-2.5 leading-relaxed">표지 사진은 용량 때문에 링크에 담기지 않습니다. 제목·저자·카테고리·별점·명대사·감상평이 담깁니다.</p>
+  </div>
+</div>
+
+<div id="shareBanner" class="fixed left-1/2 -translate-x-1/2 bottom-4 z-[60] hidden" style="width:min(94vw,30rem)">
+  <div class="glass-card p-3 flex items-center gap-3" style="border-color:color-mix(in srgb,var(--brand) 34%,transparent)">
+    <div class="w-8 h-8 rounded-xl brand-grad flex items-center justify-center text-white shrink-0">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.8"></rect><path d="M3 10h18M3 15h18"></path></svg>
+    </div>
+    <div class="min-w-0 flex-1">
+      <p class="text-[11.5px] font-extrabold truncate" id="shareBannerTitle">공유된 서재</p>
+      <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate" id="shareBannerSub">읽기 전용</p>
+    </div>
+    <button id="copyToMine" class="primary-btn !text-[10.5px] !px-3 !py-1.5 shrink-0">내 서재에 복사</button>
+    <button id="closeBanner" class="icon-btn !w-7 !h-7 shrink-0" aria-label="닫기">
+      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+    </button>
+  </div>
+</div>
+
+<script src="vendor/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = Lemon.esc;
+
+  /* ---------------- categories ---------------- */
+  var CATS = [
+    { k: 'book', label: '도서', color: '#b45309' },
+    { k: 'movie', label: '영화', color: '#be123c' },
+    { k: 'drama', label: '드라마', color: '#7c3aed' },
+    { k: 'anime', label: '애니', color: '#0891b2' },
+    { k: 'album', label: '음반', color: '#15803d' }
+  ];
+  var CAT = {};
+  CATS.forEach(function (c) { CAT[c.k] = c; });
+
+  var PALETTE = [
+    ['#7c2d12', '#ea580c'],
+    ['#0f3d3e', '#0d9488'],
+    ['#1e1b4b', '#6366f1'],
+    ['#3b0764', '#a855f7'],
+    ['#4a044e', '#db2777'],
+    ['#0c4a6e', '#0ea5e9'],
+    ['#422006', '#f59e0b'],
+    ['#1c1917', '#57534e']
+  ];
+
+  var MATERIALS = [
+    { k: 'walnut', label: '웜 월넛', c1: '#7d4d2b', c2: '#3a210f' },
+    { k: 'oak', label: '화이트 오크', c1: '#e4cda6', c2: '#a98a62' },
+    { k: 'black', label: '매트 블랙', c1: '#31353c', c2: '#0c0d10' },
+    { k: 'smoke', label: '스모크 글래스', c1: '#4d7c88', c2: '#101c22' }
+  ];
+
+  var SAMPLES = [
+    { title: '노르웨이의 숲', creator: '무라카미 하루키', cat: 'book', rating: 5, quote: '기억은 그저 내가 속한 장소를 바꾸는 것만으로도 조금씩 변한다.', review: '겨울 방학 내내 읽었다. 창밖 소리와 페이지 넘기는 소리만 남는 시간이 좋아서 매일 같은 시간에 폈다.', color: 0 },
+    { title: '이터널 선샤인', creator: '미셸 공드리', cat: 'movie', rating: 5, quote: '기억을 지워도 다시 너를 만나게 된다면 그걸 운명이라 부르고 싶다.', review: '처음엔 혼란스러웠는데 두 번째 볼 때는 첫 장면부터 울컥했다. 지우고 싶은 기억도 나를 만든다는 이야기.', color: 1 },
+    { title: '센과 치히로의 행방불명', creator: '미야자키 하야오', cat: 'anime', rating: 5, quote: '한 번 더 해보는 것도 괜찮지 않아?', review: '열 살 때 봤을 때는 무서운 영화였는데, 스무 살 넘어서 보니 이별을 배우는 영화였다.', color: 5 },
+    { title: '나의 아저씨', creator: '김원석', cat: 'drama', rating: 5, quote: '어른은 그냥 버티는 사람이야.', review: '매회 정지된 화면처럼 지나가는 골목 풍경이 좋았다. 대사가 적고 침묵이 많은 드라마.', color: 3 },
+    { title: '연금술사', creator: '파울로 코엘료', cat: 'book', rating: 4, quote: '무언가를 간절히 바라면 우주 전체가 그를 돕는다.', review: '여행 가방에 넣고 다녔다. 지금 읽으면 조금 유치할 것 같아서 그때의 마음으로만 남겨 둔다.', color: 6 },
+    { title: 'Random Access Memories', creator: 'Daft Punk', cat: 'album', rating: 4, quote: 'The robots are here to stay.', review: '밤에 자전거 타면서 들었던 앨범. 마지막 트랙에서 늘 속도를 늦췄다.', color: 7 },
+    { title: '아몬드', creator: '손원평', cat: 'book', rating: 4, quote: '감정을 모르는 게 아니라 조금 늦게 도착하는 거야.', review: '청소년 문학이라고 넘기면 아깝다. 친구 부모님 매장에서 공짜로 받아 읽고 한 권 더 샀다.', color: 2 },
+    { title: '듄', creator: '프랭크 허버트', cat: 'book', rating: 5, quote: '두려움은 마음의 죽음이다.', review: '400쪽까지는 인내, 그 뒤로는 숨을 못 쉬었다. 사막 장면을 읽으며 방 온도가 올라가는 기분.', color: 6 },
+    { title: '그랜드 부다페스트 호텔', creator: '웨스 앤더슨', cat: 'movie', rating: 4, quote: '우리는 남의 눈에 띄지 않게 조용히 사라진다.', review: '화면 정중앙에 꽂혀 있는 것만으로 웃음이 난다. 색감을 따라 잡고 싶어서 캡처를 열 장 넘게 했다.', color: 3 },
+    { title: '목소리의 형태', creator: '야마다 나오코', cat: 'anime', rating: 5, quote: '내가 너를 싫어할 수 있었으면 좋겠다.', review: '교실 장면의 침묵이 오래 남는다. 엔딩 이후의 이야기를 상상하게 되는 작품.', color: 4 },
+    { title: 'Cigarettes After Sex', creator: 'Cigarettes After Sex', cat: 'album', rating: 4, quote: 'Nothing\u2019s gonna hurt you, baby.', review: '새벽 두 시에 듣는 용도로만 재생한다. 앨범 전체가 한 곡처럼 이어진다.', color: 5 },
+    { title: '슬기로운 의사생활', creator: '신원호', cat: 'drama', rating: 4, quote: '밴드 연습은 여전히 즐거워.', review: '병원 이야기인데 결국 친구 이야기. 매회 밴드 장면만 기다렸다.', color: 1 },
+    { title: '인터스텔라', creator: '크리스토퍼 놀란', cat: 'movie', rating: 5, quote: '우리는 사랑을 통해 시간을 초월한다.', review: '아이맥스로 봤다. 도킹 장면에서 손잡이를 잡았다. 이후 우주 영화의 기준이 됐다.', color: 8 },
+    { title: '모순', creator: '양귀자', cat: 'book', rating: 5, quote: '살아 있는 건 기적이고, 사는 건 투쟁이다.', review: '수업 끝나고 하교 길에 한 챕터씩 읽었다. 두 자매의 선택을 두고 오래 생각했다.', color: 4 },
+    { title: '라라랜드', creator: '데이미언 셔젤', cat: 'movie', rating: 4, quote: '도시의 불빛 속에서 우리는 춤을 췄다.', review: '마지막 5분의 상상 시퀀스가 전부다. 그 장면만으로 다섯 번째 관람을 결심했다.', color: 2 },
+    { title: '너의 이름은.', creator: '신카이 마코토', cat: 'anime', rating: 5, quote: '만약 우리가 만난다면, 이름을 기억해 줘.', review: '여름 방학 첫날 밤에 봤다. 계단 장면에서 시간이 멈춘 것 같았다.', color: 6 }
+  ];
+
+  /* ---------------- state ---------------- */
+  var KEY = 'lemon_shelf_v1';
+  var prj = Lemon.project(KEY, { max: 11, delay: 900 });
+  var state = {
+    name: '나의 서재',
+    items: [],
+    material: 'walnut',
+    mode: 'spine',
+    lit: .82,
+    lx: .5,
+    selected: null,
+    draft: null,
+    readOnly: false
+  };
+
+  function uid() { return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+  function hash(str) {
+    var h = 5381, i = 0;
+    for (i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+    return h;
+  }
+  function paletteOf(item) {
+    var p = PALETTE[(item.color || 0) % PALETTE.length];
+    return { c1: p[0], c2: p[1] };
+  }
+  function starsHtml(n, size) {
+    var s = size || 12;
+    var out = '';
+    for (var i = 1; i <= 5; i++) {
+      out += '<svg style="width:' + s + 'px;height:' + s + 'px;color:' + (i <= n ? '#f59e0b' : '#c9c3b9') + '" viewBox="0 0 24 24" fill="' + (i <= n ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.7"><path d="m12 3 2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 16.9 6.4 20l1.3-6.2L3 9.5l6.3-.7z"></path></svg>';
+    }
+    return out;
+  }
+
+  /* ---------------- persistence ---------------- */
+  function payload() {
+    return {
+      name: state.name,
+      material: state.material,
+      mode: state.mode,
+      lit: state.lit,
+      lx: state.lx,
+      items: state.items.map(function (b) {
+        return { i: b.id, t: b.title, a: b.creator, c: b.cat, r: b.rating, q: b.quote, v: b.review, k: b.color, p: b.cover || null, ts: b.ts };
+      })
+    };
+  }
+  function saveSoon() { if (!state.readOnly) { prj.touch(payload); refreshCounts(); } }
+  function saveNow() { if (!state.readOnly) { prj.flushNow(payload); refreshCounts(); } }
+  function refreshCounts() {
+    $('#bookCount').textContent = state.items.length;
+    $('#arcCount').textContent = prj.archive.count();
+  }
+
+  /* ---------------- lighting ---------------- */
+  function applyLight() {
+    var els = [$('#bookcase'), $('#previewCase')];
+    els.forEach(function (el) {
+      if (!el) return;
+      el.style.setProperty('--lit', state.lit.toFixed(2));
+      el.style.setProperty('--lx', state.lx.toFixed(3));
+    });
+    $('#litVal').textContent = Math.round(state.lit * 100) + '%';
+    var dir = state.lx < .34 ? '왼쪽' : (state.lx > .66 ? '오른쪽' : '중앙');
+    $('#dirVal').textContent = dir;
+  }
+
+  /* ---------------- shelf rendering ---------------- */
+  function itemWidth() {
+    var mobile = window.innerWidth < 640;
+    return state.mode === 'spine' ? (mobile ? 30 : 38) : (mobile ? 64 : 82);
+  }
+  function gapSize() { return state.mode === 'spine' ? 6 : 10; }
+  function perCap() { return state.mode === 'spine' ? 10 : 7; }
+  function perShelf() {
+    var body = $('#shelfBody');
+    var w = body ? body.clientWidth : 860;
+    if (!w) w = 860;
+    w -= 28;
+    var iw = itemWidth() + gapSize();
+    return Math.max(3, Math.min(perCap(), Math.floor(w / iw)));
+  }
+  function bookHeight(item, seed) {
+    var mobile = window.innerWidth < 640;
+    var h = hash((item.title || '') + seed) % 100;
+    if (state.mode === 'spine') return (mobile ? 96 : 112) + Math.round(h / 100 * (mobile ? 26 : 34));
+    return (mobile ? 84 : 100) + Math.round(h / 100 * (mobile ? 24 : 26));
+  }
+  function coverArt(b) {
+    var p = paletteOf(b);
+    var pattern = '';
+    var ph = hash(b.title || 'x') % 3;
+    if (ph === 0) pattern = '<svg class="cover-pattern" viewBox="0 0 100 140" preserveAspectRatio="none"><circle cx="78" cy="26" r="30" fill="rgba(255,255,255,.22)"></circle><circle cx="20" cy="112" r="40" fill="rgba(0,0,0,.16)"></circle></svg>';
+    if (ph === 1) pattern = '<svg class="cover-pattern" viewBox="0 0 100 140" preserveAspectRatio="none"><path d="M0 100 L100 52 L100 140 L0 140 Z" fill="rgba(0,0,0,.22)"></path><path d="M0 76 L100 30" stroke="rgba(255,255,255,.3)" stroke-width="2"></path></svg>';
+    if (ph === 2) pattern = '<svg class="cover-pattern" viewBox="0 0 100 140" preserveAspectRatio="none"><rect x="12" y="16" width="76" height="108" rx="4" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1.5"></rect><rect x="20" y="86" width="60" height="2" fill="rgba(255,255,255,.35)"></rect></svg>';
+    return { p: p, pattern: pattern };
+  }
+  function bookEl(b, idx) {
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'book pop-in ' + (state.mode === 'spine' ? 'b-spine' : 'b-cover');
+    el.setAttribute('data-id', b.id);
+    el.style.animationDelay = Math.min(idx * 36, 520) + 'ms';
+    var w = itemWidth(), h = bookHeight(b, idx);
+    el.style.setProperty('--w', w + 'px');
+    el.style.setProperty('--h', h + 'px');
+    var art = coverArt(b);
+    el.style.setProperty('--c1', art.p.c1);
+    el.style.setProperty('--c2', art.p.c2);
+
+    var inner = '';
+    if (state.mode === 'spine') {
+      inner = '<span class="book-face">' +
+        '<span class="spine-band top"></span><span class="spine-band bottom"></span>' +
+        '<span class="book-title-v">' + esc(b.title) + '</span>' +
+        '</span>';
+    } else {
+      inner = '<span class="book-face">' +
+        (b.cover ? '<img class="cover-img" src="' + b.cover + '" alt="">' : art.pattern) +
+        '<span class="cover-veil"></span>' +
+        '<span class="cover-title">' + esc(b.title) + '</span>' +
+        '<span class="cover-author">' + esc(b.creator || '') + '</span>' +
+        '<span class="cover-tag">' + esc((CAT[b.cat] || CAT.book).label) + '</span>' +
+        '</span>';
+    }
+    el.innerHTML = inner + '<span class="book-gloss"></span><span class="book-sh"></span><span class="book-wall-sh"></span>';
+    el.setAttribute('aria-label', b.title + ' 상세 보기');
+    el.addEventListener('click', function () { openDetail(b.id); });
+    return el;
+  }
+
+  function renderShelf() {
+    var body = $('#shelfBody');
+    if (!body) return;
+    body.innerHTML = '';
+    var per = Math.min(perShelf(), 12);
+    var chunks = [];
+    var cur = [];
+    state.items.forEach(function (b, i) {
+      if (cur.length >= per) { chunks.push(cur); cur = []; }
+      cur.push({ b: b, i: i });
+    });
+    if (cur.length) chunks.push(cur);
+    if (!chunks.length) chunks.push([]);
+    if (chunks.length === 1) chunks.push([]);
+    if (chunks.length === 2 && chunks[1].length === 0 && chunks[0].length >= 4) {
+      var allBooks = chunks[0];
+      var half = Math.ceil(allBooks.length / 2);
+      chunks[0] = allBooks.slice(0, half);
+      chunks[1] = allBooks.slice(half);
+    }
+    var addTarget = -1;
+    for (var ci0 = chunks.length - 1; ci0 >= 0; ci0--) {
+      if (chunks[ci0].length && chunks[ci0].length < per) { addTarget = ci0; break; }
+    }
+    if (addTarget === -1) {
+      if (chunks[chunks.length - 1].length) chunks.push([]);
+      addTarget = chunks.length - 1;
+    }
+
+    var mobile = window.innerWidth < 640;
+    var shelfH = state.mode === 'spine' ? (mobile ? 132 : 158) : (mobile ? 118 : 138);
+
+    chunks.forEach(function (chunk, ci) {
+      var row = document.createElement('div');
+      row.className = 'shelf-row';
+      var glow = document.createElement('div');
+      glow.className = 'shelf-glow';
+      var items = document.createElement('div');
+      items.className = 'shelf-items';
+      var emptyShelf = chunk.length === 0;
+      items.style.setProperty('--shelf-h', (emptyShelf ? 92 : shelfH) + 'px');
+      items.style.gap = gapSize() + 'px';
+      chunk.forEach(function (o) { items.appendChild(bookEl(o.b, o.i)); });
+      if (ci === addTarget) {
+        var add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'add-slot';
+        add.style.setProperty('--w', itemWidth() + 'px');
+        add.style.setProperty('--h', (emptyShelf ? 76 : (state.mode === 'spine' ? 104 : 100)) + 'px');
+        add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>꽂기</span>';
+        add.addEventListener('click', function () { openItemModal(null); });
+        items.appendChild(add);
+      }
+      var led = document.createElement('div');
+      led.className = 'shelf-led';
+      var board = document.createElement('div');
+      board.className = 'shelf-board';
+      row.appendChild(glow); row.appendChild(items); row.appendChild(led); row.appendChild(board);
+      body.appendChild(row);
+    });
+
+    if (!state.items.length) {
+      var hint = document.createElement('div');
+      hint.className = 'lib-empty mt-2 p-4 text-center text-[11px] font-bold';
+      hint.style.color = 'color-mix(in srgb, var(--wood-edge) 92%, #fff)';
+      hint.textContent = '아직 꽂힌 작품이 없어요. 아래 “새 작품 꽂기”로 첫 작품을 올려 보세요.';
+      body.insertBefore(hint, body.firstChild ? body.firstChild.nextSibling : null);
+    }
+    applyLight();
+    renderSummary();
+  }
+
+  function renderSummary() {
+    var counts = {};
+    state.items.forEach(function (b) { counts[b.cat] = (counts[b.cat] || 0) + 1; });
+    var parts = CATS.filter(function (c) { return counts[c.k]; }).map(function (c) { return c.label + ' ' + counts[c.k]; });
+    var el = $('#shelfSummary');
+    if (el) el.textContent = state.items.length + '권' + (parts.length ? ' · ' + parts.join(' · ') : '');
+    refreshCounts();
+  }
+
+  function renderMaterialChips() {
+    var wrap = $('#matChips');
+    wrap.innerHTML = '';
+    MATERIALS.forEach(function (m) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mat-chip' + (state.material === m.k ? ' on' : '');
+      b.innerHTML = '<span class="swatch" style="background-image:linear-gradient(135deg,' + m.c1 + ',' + m.c2 + ')"></span>' + esc(m.label);
+      b.addEventListener('click', function () {
+        state.material = m.k;
+        applyMaterial();
+        renderMaterialChips();
+        saveSoon();
+        Lemon.hap(8);
+      });
+      wrap.appendChild(b);
+    });
+  }
+  function applyMaterial() {
+    var bc = $('#bookcase');
+    if (bc) bc.setAttribute('data-material', state.material);
+    var pc = $('#previewCase');
+    if (pc) pc.setAttribute('data-material', state.material);
+  }
+
+  /* ---------------- preview shelf (home) ---------------- */
+  function renderPreview() {
+    var list = state.items.length ? state.items.slice(0, 9) : SAMPLES.slice(0, 9).map(function (s) {
+      return { id: 's' + hash(s.title), title: s.title, creator: s.creator, cat: s.cat, rating: s.rating, color: s.color };
+    });
+    var s1 = $('#previewShelf'), s2 = $('#previewShelf2');
+    if (!s1 || !s2) return;
+    s1.innerHTML = ''; s2.innerHTML = '';
+    var prevMode = state.mode;
+    state.mode = 'spine';
+    list.forEach(function (b, i) {
+      var el = document.createElement('div');
+      el.className = 'book b-spine';
+      el.style.setProperty('--w', (i % 3 === 0 ? 15 : 13) + 'px');
+      el.style.setProperty('--h', (96 + (hash(b.title) % 40)) + 'px');
+      var p = PALETTE[(b.color || 0) % PALETTE.length];
+      el.style.setProperty('--c1', p[0]);
+      el.style.setProperty('--c2', p[1]);
+      el.innerHTML = '<span class="book-face"><span class="book-title-v">' + esc(b.title) + '</span></span><span class="book-gloss"></span><span class="book-sh"></span>';
+      (i < 5 ? s1 : s2).appendChild(el);
+    });
+    state.mode = prevMode;
+  }
+
+  /* ---------------- item modal ---------------- */
+  function catPickers(sel) {
+    var wrap = $('#itemCats');
+    wrap.innerHTML = '';
+    CATS.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      var on = sel === c.k;
+      b.className = 'mat-chip' + (on ? ' on' : '');
+      b.innerHTML = '<span class="swatch" style="background:' + c.color + '"></span>' + c.label;
+      b.addEventListener('click', function () {
+        state.draft.cat = c.k;
+        catPickers(c.k);
+        renderDraftCover();
+        Lemon.hap(6);
+      });
+      wrap.appendChild(b);
+    });
+  }
+  function starPicker(n) {
+    var wrap = $('#itemStars');
+    wrap.innerHTML = '';
+    for (var i = 1; i <= 5; i++) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'star-btn' + (i <= n ? ' on' : '');
+      b.setAttribute('data-v', i);
+      b.style.color = i <= n ? '#f59e0b' : '';
+      b.innerHTML = '<svg style="width:20px;height:20px;color:' + (i <= n ? '#f59e0b' : '#cfc8bd') + '" viewBox="0 0 24 24" fill="' + (i <= n ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.7"><path d="m12 3 2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 16.9 6.4 20l1.3-6.2L3 9.5l6.3-.7z"></path></svg>';
+      b.addEventListener('click', function (e) {
+        var v = +e.currentTarget.getAttribute('data-v');
+        state.draft.rating = (state.draft.rating === v) ? 0 : v;
+        starPicker(state.draft.rating);
+      });
+      wrap.appendChild(b);
+    }
+  }
+  function renderDraftCover() {
+    var box = $('#itemCoverPrev');
+    var d = state.draft;
+    if (!box || !d) return;
+    if (d.cover) {
+      box.innerHTML = '<img src="' + d.cover + '" class="w-full h-full object-cover" alt="">';
+      $('#itemPhotoDel').classList.remove('hidden');
+      return;
+    }
+    $('#itemPhotoDel').classList.add('hidden');
+    var p = PALETTE[(d.color || 0) % PALETTE.length];
+    box.innerHTML = '<div class="w-full h-full flex flex-col justify-between p-1" style="background-image:linear-gradient(150deg,' + p[0] + ',' + p[1] + ')">' +
+      '<span class="text-[7px] font-black leading-tight text-white/95" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">' + esc(d.title || '제목') + '</span>' +
+      '<span class="text-[5.5px] font-bold text-white/70 truncate">' + esc(d.creator || '') + '</span></div>';
+  }
+
+  function openItemModal(item) {
+    if (state.readOnly) { Lemon.toast('공유된 서재는 읽기 전용이에요', 'info'); return; }
+    state.draft = item ? Object.assign({}, item) : { id: null, title: '', creator: '', cat: 'book', rating: 0, quote: '', review: '', color: Math.floor(Math.random() * PALETTE.length), cover: null };
+    var edit = !!item;
+    $('#itemModalTitle').textContent = edit ? '작품 정보 수정' : '새 작품 꽂기';
+    $('#itemTitle').value = state.draft.title || '';
+    $('#itemCreator').value = state.draft.creator || '';
+    $('#itemQuote').value = state.draft.quote || '';
+    $('#itemReview').value = state.draft.review || '';
+    $('#itemDelete').classList.toggle('hidden', !edit);
+    $('#itemSave').innerHTML = edit
+      ? '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg>수정 저장'
+      : '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg>서가에 꽂기';
+    catPickers(state.draft.cat);
+    starPicker(state.draft.rating || 0);
+    renderDraftCover();
+    $('#itemPlace').textContent = edit ? '지금 서가 위치 유지' : '맨 끝 서가에 꽂힘';
+    $('#itemModal').classList.add('open');
+    setTimeout(function () { $('#itemTitle').focus({ preventScroll: true }); }, 240);
+  }
+  function closeItemModal() { $('#itemModal').classList.remove('open'); state.draft = null; }
+
+  $('#itemTitle').addEventListener('input', function () {
+    if (!state.draft) return;
+    state.draft.title = this.value;
+    renderDraftCover();
+  });
+  $('#itemCreator').addEventListener('input', function () {
+    if (!state.draft) return;
+    state.draft.creator = this.value;
+    renderDraftCover();
+  });
+  $('#itemPhotoBtn').addEventListener('click', function () { $('#itemPhotoInput').click(); });
+  $('#itemPhotoInput').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { Lemon.toast('이미지 파일을 골라주세요', 'err'); return; }
+    resizeImage(f, 420, 0.66, function (url) {
+      if (!state.draft) return;
+      if (!url) { Lemon.toast('사진을 읽지 못했어요', 'err'); return; }
+      state.draft.cover = url;
+      renderDraftCover();
+      Lemon.toast('표지 사진을 붙였어요', 'ok');
+    });
+    e.target.value = '';
+  });
+  $('#itemPhotoDel').addEventListener('click', function () {
+    if (!state.draft) return;
+    state.draft.cover = null;
+    renderDraftCover();
+  });
+
+  $('#itemSave').addEventListener('click', function () {
+    var d = state.draft;
+    if (!d) return;
+    var title = ($('#itemTitle').value || '').trim();
+    if (!title) {
+      $('#itemTitle').classList.add('shake');
+      setTimeout(function () { $('#itemTitle').classList.remove('shake'); }, 460);
+      $('#itemTitle').focus();
+      Lemon.toast('제목을 입력해 주세요', 'err');
+      return;
+    }
+    var creator = ($('#itemCreator').value || '').trim();
+    var quote = ($('#itemQuote').value || '').trim();
+    var review = ($('#itemReview').value || '').trim();
+    if (d.id) {
+      var t = state.items.filter(function (x) { return x.id === d.id; })[0];
+      if (t) { t.title = title; t.creator = creator; t.cat = d.cat; t.rating = d.rating; t.quote = quote; t.review = review; t.cover = d.cover; t.color = d.color; t.ts = Date.now(); }
+      Lemon.toast('작품 정보를 고쳤어요', 'ok');
+    } else {
+      var rec = { id: uid(), title: title, creator: creator, cat: d.cat, rating: d.rating, quote: quote, review: review, color: d.color, cover: d.cover || null, ts: Date.now() };
+      state.items.push(rec);
+      state.selected = rec.id;
+      Lemon.toast('서가에 꽂았어요 · ' + title, 'ok');
+      Lemon.hap(18);
+    }
+    closeItemModal();
+    renderShelf();
+    renderPreview();
+    saveSoon();
+  });
+
+  $('#itemDelete').addEventListener('click', function () {
+    var d = state.draft;
+    if (!d || !d.id) return;
+    state.items = state.items.filter(function (x) { return x.id !== d.id; });
+    closeItemModal();
+    renderShelf();
+    renderPreview();
+    saveSoon();
+    Lemon.toast('서가에서 뺐어요', 'info');
+  });
+
+  /* ---------------- detail ---------------- */
+  function openDetail(id) {
+    var b = state.items.filter(function (x) { return x.id === id; })[0];
+    if (!b) return;
+    state.selected = id;
+    var c = CAT[b.cat] || CAT.book;
+    $('#detailCat').textContent = c.label;
+    $('#detailCat').style.color = c.color;
+    $('#detailTitle').textContent = b.title;
+    $('#detailCreator').textContent = b.creator || '기록 없음';
+    $('#detailStars').innerHTML = starsHtml(b.rating, 14) + '<span class="text-[10px] font-bold text-neutral-400 ml-1">' + (b.rating ? b.rating.toFixed(1) : '미평가') + '</span>';
+    $('#detailQuote').textContent = b.quote ? '“' + b.quote + '”' : '남겨 둔 명대사가 없습니다.';
+    $('#detailReview').textContent = b.review || '감상평이 아직 없습니다.';
+    $('#detailMeta').textContent = (b.ts ? Lemon.fmtDate(b.ts) : '') + ' · ' + (b.cover ? '표지 사진' : '자동 표지');
+    var p = paletteOf(b);
+    var front = $('#detailCoverFront');
+    front.innerHTML = (b.cover ? '<img src="' + b.cover + '" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">' : '') +
+      '<div style="position:absolute;inset:0;background-image:linear-gradient(155deg,' + p.c1 + ',' + p.c2 + ')"></div>' +
+      '<div style="position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:8px">' +
+      '<span style="font-size:12px;font-weight:900;color:#fff;line-height:1.2;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">' + esc(b.title) + '</span>' +
+      '<span style="font-size:8px;font-weight:700;color:rgba(255,255,255,.75)">' + esc(b.creator || '') + '</span></div>';
+    $('#detailBackQuote').textContent = b.quote || b.review || '기록 없음';
+    $('#detailBackMeta').textContent = 'Lemon Shelf · ' + c.label;
+    $('#detailFlip').classList.remove('flipped');
+    $('#detailModal').classList.add('open');
+    var innerFlip = $('#detailFlip');
+    innerFlip.style.transition = 'none';
+    innerFlip.style.transform = 'rotateY(-74deg) rotateX(8deg)';
+    requestAnimationFrame(function () {
+      setTimeout(function () {
+        innerFlip.style.transition = 'transform .9s cubic-bezier(.24,1.2,.36,1)';
+        innerFlip.style.transform = '';
+      }, 40);
+    });
+    Lemon.hap(12);
+  }
+  function currentDetail() {
+    return state.items.filter(function (x) { return x.id === state.selected; })[0] || null;
+  }
+  $('#detailFlipBtn').addEventListener('click', function () {
+    var f = $('#detailFlip');
+    f.style.transition = 'transform .9s cubic-bezier(.6,-.05,.3,1.05)';
+    f.style.transform = '';
+    f.classList.toggle('flipped');
+    Lemon.hap(10);
+  });
+  $('#detailEdit').addEventListener('click', function () {
+    var b = currentDetail();
+    if (!b) return;
+    $('#detailModal').classList.remove('open');
+    openItemModal(b);
+  });
+  $('#detailShare').addEventListener('click', function () {
+    var b = currentDetail();
+    if (!b) return;
+    var text = b.title + ' · ' + (b.creator || '') + ' — ' + (b.quote || b.review || '기록');
+    if (navigator.share) navigator.share({ title: b.title, text: text }).catch(function () { });
+    else Lemon.copy(text, '리뷰 문구를 복사했어요');
+  });
+
+  /* ---------------- review card PNG ---------------- */
+  function drawCoverArt(ctx, x, y, w, h, b) {
+    var p = paletteOf(b);
+    var g = ctx.createLinearGradient(x, y, x + w, y + h);
+    g.addColorStop(0, p.c1);
+    g.addColorStop(1, p.c2);
+    ctx.save();
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = .18;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x + w * .82, y + h * .18, w * .3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#000000';
+    ctx.beginPath(); ctx.arc(x + w * .18, y + h * .86, w * .38, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,.25)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + w * .1, y + h * .1, w * .8, h * .8);
+    ctx.restore();
+  }
+  function wrapText(ctx, text, x, y, maxW, lineH, maxLines) {
+    var words = String(text || '').split(' ');
+    var line = '', lines = [];
+    for (var i = 0; i < words.length; i++) {
+      var test = line ? line + ' ' + words[i] : words[i];
+      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = words[i]; if (lines.length === maxLines) break; }
+      else line = test;
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    lines.forEach(function (l, i) { ctx.fillText(l, x, y + i * lineH); });
+    return y + lines.length * lineH;
+  }
+  function drawStar(ctx, cx, cy, r, filled) {
+    ctx.beginPath();
+    for (var i = 0; i < 10; i++) {
+      var ang = -Math.PI / 2 + i * Math.PI / 5;
+      var rad = i % 2 ? r * .45 : r;
+      var px = cx + Math.cos(ang) * rad, py = cy + Math.sin(ang) * rad;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    if (filled) { ctx.fillStyle = '#fbbf24'; ctx.fill(); }
+    else { ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.stroke(); }
+  }
+  function buildCard(b, cb) {
+    var W = 1080, H = 1350;
+    var cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    var ctx = cv.getContext('2d');
+    var bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#1a1209');
+    bg.addColorStop(.55, '#241708');
+    bg.addColorStop(1, '#0e0905');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    var glow = ctx.createRadialGradient(W * .5, 60, 20, W * .5, 60, 720);
+    glow.addColorStop(0, 'rgba(251,191,36,.22)');
+    glow.addColorStop(1, 'rgba(251,191,36,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, 620);
+
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.font = '700 26px "Pretendard","Apple SD Gothic Neo",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('L E M O N   S H E L F', W / 2, 92);
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.fillRect(W / 2 - 60, 116, 120, 1);
+
+    var cw = 420, ch = 580, cx = (W - cw) / 2, cy = 168;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.65)';
+    ctx.shadowBlur = 60;
+    ctx.shadowOffsetY = 26;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(cx, cy, cw, ch);
+    ctx.restore();
+
+    function drawText() {
+      drawCoverArt(ctx, cx, cy, cw, ch, b);
+      if (b.cover && img) {
+        try { ctx.drawImage(img, cx, cy, cw, ch); } catch (e) { }
+      }
+      var veil = ctx.createLinearGradient(cx, cy, cx, cy + ch);
+      veil.addColorStop(0, 'rgba(0,0,0,.5)');
+      veil.addColorStop(.45, 'rgba(0,0,0,.05)');
+      veil.addColorStop(1, 'rgba(0,0,0,.6)');
+      ctx.fillStyle = veil;
+      ctx.fillRect(cx, cy, cw, ch);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fff';
+      ctx.font = '900 46px "Pretendard","Apple SD Gothic Neo",sans-serif';
+      wrapText(ctx, b.title, cx + 30, cy + 74, cw - 60, 54, 4);
+      ctx.fillStyle = 'rgba(255,255,255,.78)';
+      ctx.font = '700 24px "Pretendard","Apple SD Gothic Neo",sans-serif';
+      wrapText(ctx, b.creator || '', cx + 30, cy + ch - 40, cw - 60, 30, 2);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.font = '900 54px "Pretendard","Apple SD Gothic Neo",sans-serif';
+      wrapText(ctx, b.title, W / 2, cy + ch + 96, W - 200, 64, 2);
+
+      ctx.fillStyle = 'rgba(255,255,255,.65)';
+      ctx.font = '600 26px "Pretendard","Apple SD Gothic Neo",sans-serif';
+      ctx.fillText(b.creator || '', W / 2, cy + ch + 152);
+
+      var sx = W / 2 - (b.rating || 0) * 0 + 0;
+      var startX = W / 2 - 5 * 20 + 10;
+      for (var i = 1; i <= 5; i++) drawStar(ctx, startX + (i - 1) * 40, cy + ch + 206, 15, i <= b.rating);
+      sx = sx;
+
+      ctx.textAlign = 'center';
+      if (b.quote) {
+        ctx.fillStyle = 'rgba(255,214,150,.92)';
+        ctx.font = 'italic 700 30px "Pretendard","Apple SD Gothic Neo",sans-serif';
+        wrapText(ctx, '“' + b.quote + '”', W / 2, cy + ch + 290, W - 220, 42, 3);
+      }
+      if (b.review) {
+        ctx.fillStyle = 'rgba(255,255,255,.62)';
+        ctx.font = '400 25px "Pretendard","Apple SD Gothic Neo",sans-serif';
+        var endY = wrapText(ctx, b.review, W / 2, cy + ch + (b.quote ? 410 : 290), W - 240, 38, 4);
+        endY = endY;
+      }
+
+      ctx.fillStyle = 'rgba(255,255,255,.34)';
+      ctx.font = '600 20px "Pretendard","Apple SD Gothic Neo",sans-serif';
+      ctx.fillText('Lemon Shelf · lemon soft', W / 2, H - 62);
+      ctx.fillStyle = 'rgba(255,255,255,.22)';
+      ctx.font = '600 18px "Pretendard","Apple SD Gothic Neo",sans-serif';
+      ctx.fillText((CAT[b.cat] || CAT.book).label + ' · ' + Lemon.fmtDate(b.ts || Date.now()), W / 2, H - 32);
+      cb(cv);
+    }
+
+    var img = null;
+    if (b.cover) {
+      img = new Image();
+      img.onload = drawText;
+      img.onerror = drawText;
+      img.src = b.cover;
+    } else {
+      drawText();
+    }
+  }
+  $('#detailCard').addEventListener('click', function () {
+    var b = currentDetail();
+    if (!b) return;
+    Lemon.toast('리뷰 카드를 만드는 중…', 'info');
+    buildCard(b, function (cv) {
+      var name = 'lemonshelf-' + b.title.replace(/[^\w가-힣]+/g, '-').slice(0, 24) + '.png';
+      try {
+        var url = cv.toDataURL('image/png');
+        var a = document.createElement('a');
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        Lemon.toast('리뷰 카드를 저장했어요', 'ok');
+        Lemon.confetti(22);
+      } catch (e) {
+        Lemon.toast('카드를 만들지 못했어요', 'err');
+      }
+    });
+  });
+
+  /* ---------------- resize helper ---------------- */
+  function resizeImage(file, maxSide, quality, cb) {
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height;
+        var scale = Math.min(1, maxSide / Math.max(w, h));
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(w * scale);
+        cv.height = Math.round(h * scale);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        try { cb(cv.toDataURL('image/jpeg', quality)); } catch (e) { cb(null); }
+      };
+      img.onerror = function () { cb(null); };
+      img.src = ev.target.result;
+    };
+    reader.onerror = function () { cb(null); };
+    reader.readAsDataURL(file);
+  }
+
+  /* ---------------- share ---------------- */
+  function encodeShare() {
+    var data = {
+      v: 1, t: state.name, m: state.material, mo: state.mode, li: +state.lit.toFixed(2), lx: +state.lx.toFixed(2),
+      b: state.items.map(function (b) { return [b.title, b.creator, b.cat, b.rating, b.quote, b.review, b.color]; })
+    };
+    return LZString.compressToEncodedURIComponent(JSON.stringify(data));
+  }
+  function shareUrl() { return location.origin + location.pathname + '#view=' + encodeShare(); }
+  function openShare() {
+    saveNow();
+    if (!state.items.length) { Lemon.toast('작품을 하나 이상 꽂아야 공유할 수 있어요', 'err'); return; }
+    var url = shareUrl();
+    $('#shareLink').textContent = url;
+    $('#shareSummary').textContent = '“' + state.name + '” · ' + state.items.length + '권의 서재를 링크에 담았습니다. 받은 사람은 내 서재를 그대로 꽂아 볼 수 있습니다.';
+    $('#shareMeta').textContent = url.length.toLocaleString() + '자';
+    $('#shareModal').classList.add('open');
+    Lemon.hap(12);
+  }
+  $('#shareBtn').addEventListener('click', openShare);
+  $('#shareCopy').addEventListener('click', function () { Lemon.copy(shareUrl(), '서재 링크를 복사했어요'); });
+  $('#shareOpen').addEventListener('click', function () { window.open(shareUrl(), '_blank', 'noopener'); });
+  $('#shareNative').addEventListener('click', function () {
+    var url = shareUrl();
+    if (navigator.share) navigator.share({ title: 'Lemon Shelf · ' + state.name, text: '내 서재 ' + state.items.length + '권', url: url }).catch(function () { });
+    else Lemon.copy(url, '이 브라우저는 앱 공유를 지원하지 않아 링크를 복사했어요');
+  });
+
+  function decodeShare(hashStr) {
+    var code = hashStr.replace(/^#view=/, '');
+    if (!code) return null;
+    var json = null;
+    try { json = LZString.decompressFromEncodedURIComponent(code); } catch (e) { json = null; }
+    if (!json) return null;
+    try {
+      var d = JSON.parse(json);
+      if (!d || !Array.isArray(d.b)) return null;
+      return {
+        name: d.t || '공유된 서재', material: d.m || 'walnut', mode: d.mo || 'spine',
+        lit: typeof d.li === 'number' ? d.li : .82, lx: typeof d.lx === 'number' ? d.lx : .5,
+        items: d.b.map(function (a) {
+          return { id: uid(), title: a[0] || '제목 없음', creator: a[1] || '', cat: CAT[a[2]] ? a[2] : 'book', rating: a[3] || 0, quote: a[4] || '', review: a[5] || '', color: a[6] || 0, cover: null, ts: Date.now() };
+        })
+      };
+    } catch (e) { return null; }
+  }
+
+  var shared = null;
+  function enterShareView(d) {
+    shared = d;
+    state.readOnly = true;
+    state.name = d.name;
+    state.material = d.material;
+    state.mode = d.mode;
+    state.lit = d.lit;
+    state.lx = d.lx;
+    state.items = d.items;
+    $('#shelfName').value = state.name;
+    $('#shelfName').disabled = true;
+    $('#litRange').value = Math.round(state.lit * 100);
+    $('#dirRange').value = Math.round(state.lx * 100);
+    $$('#modeSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === state.mode); });
+    $('#shareBannerTitle').textContent = d.name;
+    $('#shareBannerSub').textContent = d.items.length + '권 · 읽기 전용';
+    $('#shareBanner').classList.remove('hidden');
+    $('#addBtn').style.display = 'none';
+    $('#quickAdd').style.display = 'none';
+    $('#newProjectBtn').style.display = 'none';
+    $('#saveBadge').textContent = '공유된 서재';
+    applyMaterial();
+    applyLight();
+    renderShelf();
+    renderPreview();
+  }
+  $('#copyToMine').addEventListener('click', function () {
+    if (!shared) return;
+    prj.newProject();
+    state.readOnly = false;
+    $('#shelfName').disabled = false;
+    $('#addBtn').style.display = '';
+    $('#quickAdd').style.display = '';
+    $('#newProjectBtn').style.display = '';
+    state.name = shared.name + ' 복사본';
+    state.items = shared.items.map(function (b) {
+      return { id: uid(), title: b.title, creator: b.creator, cat: b.cat, rating: b.rating, quote: b.quote, review: b.review, color: b.color, cover: null, ts: Date.now() };
+    });
+    $('#shelfName').value = state.name;
+    $('#shareBanner').classList.add('hidden');
+    saveNow();
+    renderShelf();
+    renderPreview();
+    renderArchive();
+    Lemon.toast('내 서재에 ' + state.items.length + '권을 옮겼어요', 'ok');
+    Lemon.confetti(28);
+  });
+  $('#closeBanner').addEventListener('click', function () { $('#shareBanner').classList.add('hidden'); });
+
+  /* ---------------- projects ---------------- */
+  function loadRecord(rec) {
+    if (!rec) return;
+    state.name = rec.name || '나의 서재';
+    state.material = rec.material || 'walnut';
+    state.mode = rec.mode === 'cover' ? 'cover' : 'spine';
+    state.lit = typeof rec.lit === 'number' ? rec.lit : .82;
+    state.lx = typeof rec.lx === 'number' ? rec.lx : .5;
+    state.items = (rec.items || []).map(function (b) {
+      return { id: b.i || uid(), title: b.t || '', creator: b.a || '', cat: b.c || 'book', rating: b.r || 0, quote: b.q || '', review: b.v || '', color: b.k || 0, cover: b.p || null, ts: b.ts || Date.now() };
+    });
+    $('#shelfName').value = state.name;
+    $('#litRange').value = Math.round(state.lit * 100);
+    $('#dirRange').value = Math.round(state.lx * 100);
+    $$('#modeSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === state.mode); });
+    applyMaterial();
+    renderMaterialChips();
+    applyLight();
+    renderShelf();
+    renderPreview();
+  }
+  function restoreActive() {
+    var id = prj.id();
+    var rec = id ? prj.restore(id) : null;
+    if (!rec) {
+      var all = prj.archive.all();
+      rec = all.length ? all[0] : null;
+      if (rec && rec.id) prj.openProject(rec.id);
+    }
+    if (rec) { loadRecord(rec); return true; }
+    return false;
+  }
+  function loadSamples(silent) {
+    state.items = SAMPLES.map(function (s) {
+      return { id: uid(), title: s.title, creator: s.creator, cat: s.cat, rating: s.rating, quote: s.quote, review: s.review, color: s.color, cover: null, ts: Date.now() };
+    });
+    state.name = '샘플 서재';
+    $('#shelfName').value = state.name;
+    renderShelf();
+    renderPreview();
+    saveNow();
+    if (!silent) Lemon.toast('샘플 7권을 꽂았어요', 'ok');
+  }
+  function startNew(silent) {
+    if (!silent) saveNow();
+    prj.newProject();
+    state.name = '새 서재';
+    state.items = [];
+    state.material = 'walnut';
+    state.mode = 'spine';
+    state.lit = .82;
+    state.lx = .5;
+    $('#shelfName').value = state.name;
+    $('#litRange').value = 82;
+    $('#dirRange').value = 50;
+    $$('#modeSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === 'spine'); });
+    applyMaterial();
+    applyLight();
+    renderShelf();
+    renderPreview();
+    renderArchive();
+    if (!silent) { Lemon.toast('새 서재를 폈어요', 'ok'); go('library'); }
+  }
+  $('#newProjectBtn').addEventListener('click', function () { startNew(false); });
+  $('#newFromArchive').addEventListener('click', function () { startNew(false); });
+  $('#sampleBtn2').addEventListener('click', function () {
+    if (state.readOnly) { Lemon.toast('공유된 서재는 읽기 전용이에요', 'info'); return; }
+    loadSamples(false);
+  });
+  $('#homeSampleBtn').addEventListener('click', function () {
+    if (state.readOnly) {
+      state.readOnly = false; $('#shelfName').disabled = false; $('#shareBanner').classList.add('hidden'); $('#addBtn').style.display = ''; $('#quickAdd').style.display = ''; $('#newProjectBtn').style.display = '';
+    }
+    prj.newProject();
+    loadSamples(false);
+    go('library');
+    Lemon.confetti(24);
+  });
+  $('#shelfName').addEventListener('input', function () {
+    state.name = this.value.trim() || '나의 서재';
+    saveSoon();
+  });
+  $('#shelfName').addEventListener('blur', function () {
+    if (!this.value.trim()) this.value = state.name = '나의 서재';
+    saveNow();
+  });
+  $('#quickAdd').addEventListener('click', function () { openItemModal(null); });
+  $('#ctrlToggle').addEventListener('click', function () {
+    var pnl = $('#ctrlPanel');
+    var show = pnl.classList.contains('hidden');
+    pnl.classList.toggle('hidden', !show);
+    pnl.classList.toggle('flex', show);
+    Lemon.hap(8);
+  });
+  $('#addBtn').addEventListener('click', function () { openItemModal(null); });
+
+  function renderArchive() {
+    var all = prj.archive.all();
+    var wrap = $('#archiveList');
+    wrap.innerHTML = '';
+    $('#archiveEmpty').classList.toggle('hidden', all.length > 0);
+    var activeId = prj.id();
+    all.forEach(function (rec, i) {
+      var card = document.createElement('div');
+      card.className = 'glass-card p-4 pop-in';
+      card.style.animationDelay = Math.min(i * 40, 240) + 'ms';
+      var n = (rec.items || []).length;
+      var mats = { walnut: '웜 월넛', oak: '화이트 오크', black: '매트 블랙', smoke: '스모크 글래스' };
+      card.innerHTML =
+        '<div class="flex items-start justify-between gap-2">' +
+        '<div class="min-w-0"><div class="flex items-center gap-1.5">' +
+        '<h3 class="text-[13px] font-extrabold truncate">' + esc(rec.name || '나의 서재') + '</h3>' +
+        (rec.id === activeId ? '<span class="text-[8.5px] font-extrabold px-1.5 py-[1px] rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">작업 중</span>' : '') +
+        '</div><p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">' + n + '권 · ' + esc(mats[rec.material] || '웜 월넛') + ' · ' + (rec.ts ? Lemon.fmtDateTime(rec.ts) : '') + '</p></div>' +
+        '<div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center shrink-0"><svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1.8"></rect><path d="M3 10h18M3 15h18"></path></svg></div>' +
+        '</div><div class="flex flex-wrap gap-1.5 mt-3">' +
+        '<button class="pill-btn !text-[10.5px] !py-1.5" data-arc="open">열기</button>' +
+        '<button class="pill-btn !text-[10.5px] !py-1.5" data-arc="share">공유</button>' +
+        '<button class="pill-btn !text-[10.5px] !py-1.5" data-arc="del">삭제</button></div>';
+      card.querySelector('[data-arc="open"]').addEventListener('click', function () {
+        prj.openProject(rec.id);
+        loadRecord(rec);
+        saveSoon();
+        go('library');
+        Lemon.toast('서재를 열었어요', 'ok');
+      });
+      card.querySelector('[data-arc="share"]').addEventListener('click', function () {
+        prj.openProject(rec.id);
+        loadRecord(rec);
+        openShare();
+      });
+      card.querySelector('[data-arc="del"]').addEventListener('click', function () {
+        var wasActive = rec.id === activeId;
+        if (wasActive) startNew(true);
+        prj.archive.remove(rec.id);
+        renderArchive();
+        refreshCounts();
+        Lemon.toast(wasActive ? '서재를 지우고 새 서재를 폈어요' : '보관함에서 지웠어요', 'info');
+      });
+      wrap.appendChild(card);
+    });
+    refreshCounts();
+  }
+
+  /* ---------------- tabs ---------------- */
+  var go = Lemon.initTabs('home');
+  function moveGlider() {
+    var g = $('#tabGlider');
+    var on = $('.tabbar .nav-tab.nav-on');
+    if (!g || !on) return;
+    g.style.width = on.offsetWidth + 'px';
+    g.style.transform = 'translateX(' + on.offsetLeft + 'px)';
+    g.classList.add('ready');
+  }
+  document.addEventListener('lemon:view', function (e) {
+    moveGlider();
+    if (e.detail.view === 'library') { renderShelf(); renderPreview(); applyLight(); }
+    if (e.detail.view === 'archive') renderArchive();
+    if (e.detail.view === 'home') renderPreview();
+  });
+  $$('[data-goto]').forEach(function (b) { b.addEventListener('click', function () { go(b.getAttribute('data-goto')); }); });
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-modal-close]');
+    if (!t) return;
+    closeItemModal();
+    ['#detailModal', '#shareModal'].forEach(function (s) { var el = $(s); if (el) el.classList.remove('open'); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closeItemModal();
+      ['#detailModal', '#shareModal'].forEach(function (s) { var el = $(s); if (el) el.classList.remove('open'); });
+    }
+  });
+
+  $('#modeSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-mode]');
+    if (!b) return;
+    state.mode = b.getAttribute('data-mode');
+    $$('#modeSeg button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    renderShelf();
+    saveSoon();
+    Lemon.hap(8);
+  });
+
+  var lightRaf = null;
+  $('#litRange').addEventListener('input', function () {
+    state.lit = (+this.value) / 100;
+    applyLight();
+    if (lightRaf) cancelAnimationFrame(lightRaf);
+    lightRaf = requestAnimationFrame(function () { saveSoon(); });
+  });
+  $('#dirRange').addEventListener('input', function () {
+    state.lx = (+this.value) / 100;
+    applyLight();
+    if (lightRaf) cancelAnimationFrame(lightRaf);
+    lightRaf = requestAnimationFrame(function () { saveSoon(); });
+  });
+
+  var rTimer = null;
+  window.addEventListener('resize', function () {
+    moveGlider();
+    clearTimeout(rTimer);
+    rTimer = setTimeout(function () { renderShelf(); }, 180);
+  });
+
+  /* sample preview chips on home */
+  function renderSampleChips() {
+    var wrap = $('#samplePreview');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    SAMPLES.slice(0, 7).forEach(function (s) {
+      var b = document.createElement('span');
+      b.className = 'chip';
+      b.style.borderColor = 'color-mix(in srgb,' + (CAT[s.cat] || CAT.book).color + ' 40%, transparent)';
+      b.textContent = (CAT[s.cat] || CAT.book).label + ' · ' + s.title;
+      wrap.appendChild(b);
+    });
+  }
+
+  /* ---------------- boot ---------------- */
+  document.addEventListener('DOMContentLoaded', function () {
+    prj.bind('#saveBadge');
+    renderMaterialChips();
+    applyMaterial();
+    applyLight();
+    renderSampleChips();
+
+    var hash = location.hash || '';
+    var sd = hash.indexOf('#view=') === 0 ? decodeShare(hash) : null;
+    if (sd) {
+      enterShareView(sd);
+      go('library', true);
+      Lemon.toast('공유된 서재를 열었어요', 'ok');
+    } else {
+      var restored = restoreActive();
+      if (!restored) {
+        state.items = SAMPLES.map(function (s) {
+          return { id: uid(), title: s.title, creator: s.creator, cat: s.cat, rating: s.rating, quote: s.quote, review: s.review, color: s.color, cover: null, ts: Date.now() };
+        });
+        state.name = '나의 서재';
+        $('#shelfName').value = state.name;
+        saveNow();
+      }
+      renderShelf();
+      renderPreview();
+    }
+    renderArchive();
+    moveGlider();
+    setTimeout(moveGlider, 240);
+    window.__lemonErrs = [];
+    window.addEventListener('error', function (e) { window.__lemonErrs.push(String(e.message || e.error)); });
+  });
+})();
+</script>
+</body>
+</html>
