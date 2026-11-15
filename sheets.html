@@ -1,0 +1,3136 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Flux Sheets — 웹 스프레드시트 스튜디오</title>
+<meta name="description" content="수식·서식·차트·공유 링크까지. 설치 없이 브라우저에서 바로 쓰는 웹 스프레드시트. 가계부, 일정, 성적표 템플릿 6종과 CSV 입출력, 보기 전용 공유 링크를 제공합니다.">
+<meta name="theme-color" content="#0f766e">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cg stroke='%23d1fae5' stroke-width='2'%3E%3Cpath d='M8 12h16M8 20h16M14 8v16M21 8v16'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+:root {
+  --brand: #0f766e;
+  --brand-2: #34d399;
+  --brand-deep: #064e3b;
+  --bg: #f3faf7;
+  --surface: #ffffff;
+  --surface-2: #f8fdfa;
+  --line: #dcebe4;
+  --line-2: #ecf5f0;
+  --ink: #081f19;
+  --ink-2: #2f4740;
+  --muted: #6a857c;
+  --cell-line: #e4efe9;
+  --cell-head: #eef6f2;
+  --grid-sel: rgba(15, 118, 110, .11);
+  --shadow-sm: 0 1px 2px rgba(8, 31, 25, .05), 0 10px 24px -22px rgba(8, 31, 25, .45);
+  --shadow-md: 0 2px 6px rgba(8, 31, 25, .05), 0 22px 44px -30px rgba(8, 31, 25, .5);
+}
+html.dark {
+  --bg: #06110d;
+  --surface: #0b1915;
+  --surface-2: #08140f;
+  --line: #1b2d26;
+  --line-2: #14231d;
+  --ink: #e9f6f1;
+  --ink-2: #c3d9d0;
+  --muted: #8aa79c;
+  --cell-line: #1a2b24;
+  --cell-head: #0f211a;
+  --grid-sel: rgba(52, 211, 153, .16);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 26px -22px rgba(0, 0, 0, .9);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, .45), 0 26px 50px -30px rgba(0, 0, 0, 1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+button { font-family: inherit; border: 0; background: none; color: inherit; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+.hidden { display: none !important; }
+.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+.muted { color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+::selection { background: var(--brand); color: #fff; }
+html.dark .lg-moon { display: none; }
+html.dark .lg-sun { display: block !important; color: #fbbf24; }
+
+/* ---------- shell ---------- */
+.top-bar {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+}
+.top-bar-in { max-width: 1240px; margin: 0 auto; padding: 0 18px; height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-mark {
+  width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0;
+  background-image: linear-gradient(140deg, var(--brand-deep), var(--brand) 52%, var(--brand-2));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 22px -14px var(--brand);
+  position: relative; overflow: hidden;
+}
+.brand-mark::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .55) 50%, transparent 62%);
+  transform: translateX(-120%);
+  animation: markSheen 5.5s ease-in-out infinite;
+}
+@keyframes markSheen { 0%, 62% { transform: translateX(-120%); } 88%, 100% { transform: translateX(120%); } }
+.brand-mark svg { width: 19px; height: 19px; color: #fff; position: relative; z-index: 1; }
+.brand-name { font-size: 15px; font-weight: 900; letter-spacing: -.02em; line-height: 1.15; display: flex; align-items: center; gap: 6px; }
+.brand-tag {
+  font-size: 8.5px; font-weight: 800; letter-spacing: .1em; padding: 2px 5px; border-radius: 5px;
+  color: var(--brand-deep); background: color-mix(in srgb, var(--brand) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, transparent);
+}
+html.dark .brand-tag { color: var(--brand-2); background: color-mix(in srgb, var(--brand) 22%, transparent); }
+.brand-sub { font-size: 10.5px; color: var(--muted); margin-top: 1px; letter-spacing: -.01em; }
+.top-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.glass-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px;
+  border-radius: 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 70%, transparent);
+  font-size: 11.5px; font-weight: 700; color: var(--ink-2);
+  transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), border-color .2s, color .2s, background-color .2s;
+}
+.glass-btn:hover { border-color: color-mix(in srgb, var(--brand) 45%, transparent); color: var(--brand); transform: translateY(-1px); }
+.glass-btn:active { transform: scale(.94); }
+.glass-btn svg { width: 15px; height: 15px; }
+.icon-sq {
+  width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--ink-2); transition: transform .15s cubic-bezier(.34,1.56,.64,1), color .2s, border-color .2s;
+}
+.icon-sq:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.icon-sq:active { transform: scale(.9); }
+.icon-sq svg { width: 16px; height: 16px; }
+
+.view-nav {
+  position: sticky; top: 62px; z-index: 45;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+.view-nav-in { max-width: 1240px; margin: 0 auto; padding: 0 12px; position: relative; }
+.nav-tabs { position: relative; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; padding: 6px 0; }
+.nav-tabs::-webkit-scrollbar { display: none; }
+.nav-tab { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 800; color: var(--muted); white-space: nowrap; transition: color .2s, background-color .2s, transform .14s; }
+.nav-tab svg { width: 15px; height: 15px; }
+.nav-tab:hover { color: var(--ink); background: var(--surface-2); }
+.nav-tab:active { transform: scale(.95); }
+.nav-tab.nav-on { color: #fff; }
+.nav-tab .cnt { font-size: 9.5px; font-weight: 900; padding: 1px 5px; border-radius: 99px; background: rgba(255, 255, 255, .22); }
+.nav-tab:not(.nav-on) .cnt { background: var(--line); color: var(--muted); }
+.tab-ind {
+  position: absolute; top: 6px; left: 0; height: 34px; border-radius: 9px; z-index: 0;
+  background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 10px 20px -12px color-mix(in srgb, var(--brand) 85%, transparent);
+  transition: transform .34s cubic-bezier(.22, 1, .36, 1), width .34s cubic-bezier(.22, 1, .36, 1), opacity .2s;
+}
+
+main { max-width: 1240px; margin: 0 auto; padding: 20px 18px 72px; }
+.sect-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 30px 0 14px; }
+.sect-title { font-size: 16px; font-weight: 900; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
+.sect-title .bar { width: 4px; height: 15px; border-radius: 3px; background-image: linear-gradient(var(--brand), var(--brand-2)); }
+.sect-desc { font-size: 11.5px; color: var(--muted); margin-top: 3px; font-weight: 600; }
+
+/* ---------- hero ---------- */
+.hero {
+  position: relative; overflow: hidden; border-radius: 22px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(90% 130% at 0% 0%, color-mix(in srgb, var(--brand) 20%, var(--surface)) 0%, var(--surface) 55%, var(--surface) 100%);
+  box-shadow: var(--shadow-md);
+  padding: 30px;
+  display: grid; grid-template-columns: 1.05fr .95fr; gap: 26px; align-items: center;
+}
+.hero::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--brand) 12%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--brand) 12%, transparent) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: radial-gradient(80% 90% at 12% 0%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(80% 90% at 12% 0%, #000 0%, transparent 72%);
+}
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 900; letter-spacing: .12em;
+  color: var(--brand); padding: 4px 8px; border-radius: 7px; position: relative;
+  border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+  background: color-mix(in srgb, var(--brand) 9%, transparent);
+}
+.hero h1 { font-size: clamp(27px, 3.9vw, 40px); line-height: 1.13; letter-spacing: -.045em; font-weight: 900; margin: 14px 0 0; position: relative; }
+.hero h1 em { font-style: normal; background-image: linear-gradient(115deg, var(--brand-deep), var(--brand) 45%, var(--brand-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+html.dark .hero h1 em { background-image: linear-gradient(115deg, #fff, var(--brand-2) 70%); }
+.hero p { font-size: 13px; line-height: 1.75; color: var(--ink-2); margin: 13px 0 0; max-width: 30em; position: relative; word-break: keep-all; }
+.hero-cta { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; position: relative; }
+.hero-cta .primary-btn { padding: 12px 18px; border-radius: 12px; font-size: 13px; }
+.hero-cta .ghost-btn { padding: 12px 16px; border-radius: 12px; font-size: 12.5px; }
+
+.hero-mock { position: relative; }
+.mock {
+  border-radius: 15px; border: 1px solid var(--line); background: var(--surface);
+  box-shadow: 0 26px 60px -34px rgba(6, 78, 59, .55), 0 0 0 1px rgba(255, 255, 255, .02) inset;
+  overflow: hidden; transform: perspective(1200px) rotateY(-6deg) rotateX(3deg);
+  transition: transform .5s cubic-bezier(.22, 1, .36, 1);
+}
+.mock:hover { transform: perspective(1200px) rotateY(0deg) rotateX(0deg) translateY(-4px); }
+.mock-bar { display: flex; align-items: center; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.mock-dot { width: 7px; height: 7px; border-radius: 99px; background: var(--line); }
+.mock-dot.on { background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+.mock-title { font-size: 9px; font-weight: 800; color: var(--muted); margin-left: 6px; letter-spacing: .04em; }
+.mock-body { padding: 10px 12px 14px; }
+.mock-row { display: grid; grid-template-columns: 1.4fr .8fr .8fr; gap: 0; border-bottom: 1px solid var(--line-2); }
+.mock-row.head span { font-size: 8px; font-weight: 900; letter-spacing: .06em; color: var(--muted); padding: 5px 0; }
+.mock-row span { font-size: 10px; font-weight: 700; padding: 6px 0; }
+.mock-row span:not(:first-child) { text-align: right; }
+.mock-bar-cell { height: 7px; border-radius: 99px; background-image: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .8s cubic-bezier(.22,1,.36,1); }
+.mock-total { margin-top: 11px; }
+.mock-pt { display: flex; align-items: baseline; justify-content: space-between; }
+.mock-pt b { font-size: 19px; font-weight: 900; letter-spacing: -.03em; color: var(--brand-deep); }
+html.dark .mock-pt b { color: var(--brand-2); }
+.mock-pt small { font-size: 9px; font-weight: 800; color: var(--muted); letter-spacing: .04em; }
+.mock-track { height: 7px; border-radius: 99px; background: var(--line-2); margin-top: 7px; overflow: hidden; }
+.mock-float {
+  position: absolute; padding: 7px 10px; border-radius: 10px; font-size: 10px; font-weight: 800;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-md);
+  display: flex; align-items: center; gap: 5px;
+  animation: floatY 5s ease-in-out infinite;
+}
+.mock-float svg { width: 12px; height: 12px; color: var(--brand); }
+.mock-float.f1 { right: -10px; top: 16px; animation-delay: -.6s; }
+.mock-float.f2 { right: -6px; bottom: -16px; animation-delay: -2.2s; }
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+
+.stat-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+.stat {
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 13px 15px;
+  box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+  transition: transform .24s cubic-bezier(.22,1,.36,1), border-color .2s;
+}
+.stat:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--brand) 38%, transparent); }
+.stat::after { content: ''; position: absolute; right: -18px; top: -18px; width: 54px; height: 54px; border-radius: 99px; background: color-mix(in srgb, var(--brand) 9%, transparent); }
+.stat b { display: block; font-size: 21px; font-weight: 900; letter-spacing: -.04em; }
+.stat span { font-size: 10.5px; font-weight: 800; color: var(--muted); letter-spacing: .02em; }
+
+/* ---------- templates ---------- */
+.tpl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.tpl {
+  position: relative; text-align: left; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--surface); padding: 0; overflow: hidden; box-shadow: var(--shadow-sm);
+  transition: transform .26s cubic-bezier(.22,1,.36,1), box-shadow .26s, border-color .2s;
+  display: flex; flex-direction: column;
+}
+.tpl:hover { transform: translateY(-5px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--tpl-accent, var(--brand)) 45%, transparent); }
+.tpl:active { transform: scale(.99); }
+.tpl-thumb { height: 92px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: linear-gradient(160deg, color-mix(in srgb, var(--tpl-accent, var(--brand)) 12%, var(--surface)), var(--surface) 78%); position: relative; overflow: hidden; }
+.tpl-thumb::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--tpl-accent, var(--brand)) 14%, transparent) 1px, transparent 1px);
+  background-size: 22px 100%; opacity: .5;
+}
+.tl { display: flex; gap: 4px; align-items: center; height: 10px; margin-bottom: 4px; }
+.tl i { display: block; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--tpl-accent, var(--brand)) 30%, transparent); }
+.tl i.w1 { width: 26%; } .tl i.w2 { width: 18%; } .tl i.w3 { width: 34%; } .tl i.w4 { width: 12%; }
+.tl.solid i { background-image: linear-gradient(90deg, var(--tpl-accent, var(--brand)), color-mix(in srgb, var(--tpl-accent, var(--brand)) 45%, transparent)); opacity: .85; }
+.tpl-body { padding: 13px 15px 15px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.tpl-kicker { font-size: 9px; font-weight: 900; letter-spacing: .1em; color: var(--tpl-accent, var(--brand)); }
+.tpl-name { font-size: 13.5px; font-weight: 900; letter-spacing: -.02em; }
+.tpl-desc { font-size: 11px; line-height: 1.6; color: var(--muted); font-weight: 600; }
+.tpl-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 8px; }
+.tpl-formula { font-size: 9.5px; font-weight: 800; color: var(--tpl-accent, var(--brand)); background: color-mix(in srgb, var(--tpl-accent, var(--brand)) 10%, transparent); padding: 2px 6px; border-radius: 5px; }
+.tpl-go { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 900; color: var(--tpl-accent, var(--brand)); }
+.tpl-go svg { width: 13px; height: 13px; transition: transform .22s; }
+.tpl:hover .tpl-go svg { transform: translateX(3px); }
+
+/* ---------- recent / archive lists ---------- */
+.list { display: grid; gap: 9px; }
+.proj {
+  display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 13px;
+  background: var(--surface); padding: 12px 14px; box-shadow: var(--shadow-sm);
+  transition: transform .2s cubic-bezier(.22,1,.36,1), border-color .2s, box-shadow .2s;
+}
+.proj:hover { transform: translateX(3px); border-color: color-mix(in srgb, var(--brand) 34%, transparent); box-shadow: var(--shadow-md); }
+.proj-ico { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--brand); }
+.proj-ico svg { width: 17px; height: 17px; }
+.proj-main { min-width: 0; flex: 1; }
+.proj-name { font-size: 12.5px; font-weight: 900; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proj-meta { font-size: 10.5px; color: var(--muted); font-weight: 700; display: flex; gap: 7px; margin-top: 2px; flex-wrap: wrap; }
+.proj-meta span.dotsep { opacity: .45; }
+.proj-acts { display: flex; gap: 5px; flex-shrink: 0; }
+.mini-btn { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); color: var(--muted); transition: transform .15s, color .2s, border-color .2s, background-color .2s; }
+.mini-btn:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); background: color-mix(in srgb, var(--brand) 7%, transparent); }
+.mini-btn:active { transform: scale(.9); }
+.mini-btn.danger:hover { color: #e11d48; border-color: #fda4af; background: rgba(225, 29, 72, .07); }
+.mini-btn svg { width: 14px; height: 14px; }
+.empty { border: 1px dashed var(--line); border-radius: 16px; padding: 34px 20px; text-align: center; background: var(--surface-2); }
+.empty svg { width: 30px; height: 30px; color: var(--muted); opacity: .6; }
+.empty p { font-size: 12px; font-weight: 700; color: var(--muted); margin: 9px 0 0; }
+
+/* ---------- studio ---------- */
+.studio { display: flex; flex-direction: column; gap: 10px; }
+.studio-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 13px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.studio-title-wrap { flex: 1; min-width: 150px; display: flex; align-items: center; gap: 8px; }
+#sheetTitle {
+  width: 100%; max-width: 380px; font-size: 14px; font-weight: 900; letter-spacing: -.02em;
+  background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 5px 7px; color: var(--ink);
+  transition: border-color .2s, background-color .2s;
+}
+#sheetTitle:hover { border-color: var(--line); }
+#sheetTitle:focus { outline: none; border-color: color-mix(in srgb, var(--brand) 60%, transparent); background: var(--surface-2); }
+.studio-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.as-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--line); color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+.as-badge::before { content: ''; width: 5px; height: 5px; border-radius: 99px; background: currentColor; }
+.as-badge[data-state="saving"] { color: #d97706; }
+.as-badge[data-state="saved"] { color: var(--brand); }
+.as-badge[data-state="new"] { color: #2563eb; }
+
+.ribbon {
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px; overflow-x: auto; scrollbar-width: none;
+  border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.ribbon::-webkit-scrollbar { display: none; }
+.rib-group { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.rib-sep { width: 1px; height: 20px; background: var(--line); margin: 0 3px; flex-shrink: 0; }
+.rib-btn {
+  height: 29px; min-width: 29px; padding: 0 6px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  font-size: 11px; font-weight: 800; color: var(--ink-2); border: 1px solid transparent;
+  transition: background-color .16s, color .16s, transform .13s, border-color .16s;
+}
+.rib-btn svg { width: 14px; height: 14px; }
+.rib-btn:hover { background: var(--surface-2); color: var(--brand); border-color: var(--line); }
+.rib-btn:active { transform: scale(.9); }
+.rib-btn.on { background: color-mix(in srgb, var(--brand) 13%, transparent); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+.rib-btn.wide { padding: 0 9px; }
+.rib-label { font-size: 9px; font-weight: 900; letter-spacing: .08em; color: var(--muted); padding: 0 3px; }
+.swatch-btn { position: relative; }
+.swatch-btn .sw-line { position: absolute; bottom: 3px; left: 6px; right: 6px; height: 3px; border-radius: 2px; background: var(--brand); }
+.swatch-btn .sw-glyph { position: relative; top: -1px; font-size: 12px; font-weight: 900; }
+
+.formula-bar {
+  display: flex; align-items: center; gap: 6px; padding: 5px 9px;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.ref-box {
+  min-width: 62px; padding: 5px 8px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 11px; font-weight: 900; text-align: center; color: var(--brand); font-family: ui-monospace, Menlo, monospace;
+}
+.fx-tag { font-size: 11px; font-weight: 900; font-style: italic; color: var(--muted); padding: 0 2px; font-family: Georgia, serif; }
+#fxInput {
+  flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--ink);
+  font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 4px 2px;
+}
+#fxInput::placeholder { color: var(--muted); opacity: .7; font-family: inherit; }
+
+.grid-shell { border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow-sm); overflow: hidden; }
+.grid-scroll { position: relative; overflow: auto; height: min(64vh, 640px); overscroll-behavior: contain; }
+table.grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
+table.grid th, table.grid td { border-right: 1px solid var(--cell-line); border-bottom: 1px solid var(--cell-line); padding: 0 6px; height: 26px; overflow: hidden; white-space: nowrap; }
+table.grid thead th {
+  position: sticky; top: 0; z-index: 3; height: 24px; font-size: 10px; font-weight: 900; color: var(--muted);
+  background: var(--cell-head); text-align: center; user-select: none; letter-spacing: .03em;
+}
+table.grid thead th.hl, table.grid tbody th.hl { background: color-mix(in srgb, var(--brand) 18%, var(--cell-head)); color: var(--brand); }
+table.grid tbody th {
+  position: sticky; left: 0; z-index: 2; width: 42px; min-width: 42px; font-size: 10px; font-weight: 800;
+  color: var(--muted); background: var(--cell-head); text-align: center; user-select: none;
+}
+table.grid thead th.corner { left: 0; z-index: 5; }
+table.grid thead th.corner::after {
+  content: ''; position: absolute; right: 4px; bottom: 4px; width: 0; height: 0;
+  border-left: 5px solid transparent; border-bottom: 5px solid var(--muted); opacity: .45;
+}
+td.cell {
+  cursor: cell; color: var(--ink); background: var(--surface);
+  transition: background-color .12s ease; user-select: none; overflow: hidden; text-overflow: clip;
+}
+td.cell.num { text-align: right; }
+td.cell.b { font-weight: 800; }
+td.cell.i { font-style: italic; }
+td.cell.al-c { text-align: center; }
+td.cell.al-r { text-align: right; }
+td.cell.err { color: #e11d48; font-weight: 800; }
+td.cell.sel { background: var(--grid-sel); }
+td.cell.fxcell { color: color-mix(in srgb, var(--brand) 82%, var(--ink)); }
+.sel-frame { position: absolute; border: 2px solid var(--brand); pointer-events: none; z-index: 6; border-radius: 2px; display: none; }
+.sel-frame.act { box-shadow: 0 0 0 1px rgba(255, 255, 255, .5) inset; }
+.col-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 7; }
+.row-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: row-resize; z-index: 7; }
+#cellEditor {
+  position: absolute; z-index: 8; display: none; border: 2px solid var(--brand); border-radius: 2px;
+  background: var(--surface); color: var(--ink); font-size: 12px; padding: 0 5px; outline: none;
+  box-shadow: 0 8px 22px -10px rgba(0, 0, 0, .45); font-family: inherit;
+}
+.grid-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 9px; border-top: 1px solid var(--line); background: var(--surface-2); flex-wrap: wrap; }
+.grid-stat { font-size: 10.5px; font-weight: 800; color: var(--muted); display: flex; gap: 9px; flex-wrap: wrap; }
+.grid-stat b { color: var(--ink-2); font-weight: 900; }
+.sheet-tabs { display: flex; align-items: center; gap: 3px; overflow-x: auto; scrollbar-width: none; padding: 5px 8px; border-top: 1px solid var(--line); background: var(--surface); }
+.sheet-tabs::-webkit-scrollbar { display: none; }
+.sheet-tab {
+  padding: 5px 12px; border-radius: 7px 7px 0 0; font-size: 11px; font-weight: 800; color: var(--muted);
+  border: 1px solid transparent; white-space: nowrap; transition: color .18s, background-color .18s, border-color .18s;
+  position: relative;
+}
+.sheet-tab:hover { color: var(--ink); background: var(--surface-2); }
+.sheet-tab.on { color: var(--brand); background: color-mix(in srgb, var(--brand) 11%, transparent); border-color: color-mix(in srgb, var(--brand) 26%, transparent); }
+.sheet-tab.on::after { content: ''; position: absolute; left: 9px; right: 9px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--brand); }
+.sheet-tab input { background: transparent; border: 0; outline: none; font: inherit; color: inherit; width: 72px; }
+.tab-add { width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); border: 1px solid var(--line); transition: transform .15s, color .2s, border-color .2s; flex-shrink: 0; }
+.tab-add:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.tab-add:active { transform: scale(.9); }
+.tab-add svg { width: 13px; height: 13px; }
+
+/* ---------- color picker ---------- */
+#picker {
+  position: fixed; z-index: 96; width: 228px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--surface); box-shadow: 0 30px 60px -26px rgba(0, 0, 0, .55), var(--shadow-md);
+  padding: 11px; display: none;
+}
+#picker.show { display: block; animation: popIn .22s cubic-bezier(.16, 1, .3, 1); }
+@keyframes popIn { from { opacity: 0; transform: translateY(-6px) scale(.96); } to { opacity: 1; transform: none; } }
+.pk-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.pk-head span { font-size: 10px; font-weight: 900; letter-spacing: .05em; color: var(--muted); }
+.pk-close { width: 20px; height: 20px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.pk-close:hover { background: var(--surface-2); color: var(--ink); }
+.pk-close svg { width: 11px; height: 11px; }
+.pk-sv { position: relative; width: 100%; height: 108px; border-radius: 9px; overflow: hidden; cursor: crosshair; border: 1px solid var(--line); }
+.pk-sv canvas { display: block; width: 100%; height: 100%; }
+.pk-cursor { position: absolute; width: 13px; height: 13px; border-radius: 99px; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.45); pointer-events: none; transform: translate(-50%, -50%); left: 50%; top: 50%; }
+.pk-hue { margin: 9px 0 7px; }
+.pk-hue input { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; border-radius: 99px; outline: none; border: 1px solid var(--line); background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); cursor: pointer; }
+.pk-hue input::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 99px; background: #fff; border: 2px solid #333; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+.pk-row { display: flex; align-items: center; gap: 6px; }
+.pk-prev { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line); flex-shrink: 0; }
+#pkHex { flex: 1; min-width: 0; width: 0; box-sizing: border-box; font-size: 11px; font-weight: 800; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: ui-monospace, Menlo, monospace; outline: none; }
+#pkHex:focus { border-color: var(--brand); }
+.pk-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; margin-top: 8px; }
+.pk-sw { width: 100%; aspect-ratio: 1; border-radius: 5px; border: 1px solid rgba(0,0,0,.12); transition: transform .14s; }
+.pk-sw:hover { transform: scale(1.16); }
+.pk-actions { display: flex; gap: 6px; margin-top: 9px; }
+.pk-actions .primary-btn { flex: 1; padding: 7px; border-radius: 8px; font-size: 11px; }
+.pk-actions .ghost-btn { padding: 7px 9px; border-radius: 8px; font-size: 11px; }
+
+/* ---------- modal ---------- */
+.modal { position: fixed; inset: 0; z-index: 92; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal.hidden { display: none; }
+.modal-bg { position: absolute; inset: 0; background: rgba(3, 14, 11, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fadeIn .24s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-card {
+  position: relative; width: 100%; max-width: 520px; border-radius: 18px; border: 1px solid var(--line);
+  background: var(--surface); box-shadow: 0 40px 90px -34px rgba(0, 0, 0, .7); padding: 18px;
+  animation: zoomIn .3s cubic-bezier(.16, 1, .3, 1); max-height: 90vh; overflow: auto;
+}
+@keyframes zoomIn { from { opacity: 0; transform: scale(.9) translateY(10px); } to { opacity: 1; transform: none; } }
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.modal-title { font-size: 15px; font-weight: 900; letter-spacing: -.02em; }
+.modal-sub { font-size: 11px; color: var(--muted); font-weight: 700; margin-top: 3px; }
+.modal-x { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted); flex-shrink: 0; }
+.modal-x:hover { background: var(--surface-2); color: var(--ink); }
+.modal-x svg { width: 14px; height: 14px; }
+.seg-row { display: flex; gap: 4px; margin: 13px 0 10px; }
+.seg-row button { flex: 1; padding: 7px; border-radius: 9px; font-size: 11.5px; font-weight: 800; color: var(--muted); border: 1px solid var(--line); background: var(--surface-2); transition: all .18s; }
+.seg-row button.on { color: #fff; border-color: transparent; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 8px 18px -12px var(--brand); }
+.chart-box { border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); padding: 10px; }
+#chartCanvas { display: block; width: 100%; height: 260px; }
+.dlg-text { font-size: 12.5px; line-height: 1.7; color: var(--ink-2); margin: 12px 0 0; font-weight: 600; word-break: break-all; }
+.dlg-acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+.dlg-acts .primary-btn, .dlg-acts .ghost-btn { padding: 9px 16px; border-radius: 10px; font-size: 12px; }
+
+/* ---------- readonly viewer ---------- */
+#viewer { position: fixed; inset: 0; z-index: 88; background: var(--bg); display: flex; flex-direction: column; animation: fadeIn .25s ease; }
+#viewer.hidden { display: none; }
+.viewer-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.viewer-body { flex: 1; overflow: auto; padding: 16px; }
+.viewer-title { font-size: 15px; font-weight: 900; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
+.ro-badge { font-size: 9px; font-weight: 900; letter-spacing: .07em; padding: 3px 6px; border-radius: 6px; color: #b45309; background: rgba(245, 158, 11, .14); border: 1px solid rgba(245, 158, 11, .3); }
+.viewer-tabs { display: flex; gap: 4px; padding: 8px 16px 0; background: var(--surface); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.viewer-grid { border: 1px solid var(--line); border-radius: 12px; overflow: auto; background: var(--surface); max-height: 70vh; }
+table.rogrid { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
+table.rogrid th, table.rogrid td { border-right: 1px solid var(--cell-line); border-bottom: 1px solid var(--cell-line); padding: 0 6px; height: 26px; white-space: nowrap; overflow: hidden; }
+table.rogrid thead th { background: var(--cell-head); color: var(--muted); font-size: 10px; font-weight: 900; text-align: center; position: sticky; top: 0; z-index: 2; }
+table.rogrid tbody th { background: var(--cell-head); color: var(--muted); font-size: 10px; font-weight: 800; text-align: center; width: 42px; position: sticky; left: 0; z-index: 1; }
+table.rogrid td { background: var(--surface); color: var(--ink); }
+table.rogrid td.num { text-align: right; }
+table.rogrid td.b { font-weight: 800; }
+table.rogrid td.i { font-style: italic; }
+table.rogrid td.al-c { text-align: center; }
+table.rogrid td.al-r { text-align: right; }
+
+/* ---------- toast / misc ---------- */
+.lemon-toast { z-index: 99; }
+.copy-url { display: flex; gap: 6px; margin-top: 10px; }
+.copy-url input { flex: 1; min-width: 0; font-size: 11px; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); font-family: ui-monospace, Menlo, monospace; }
+.primary-btn:active, .ghost-btn:active, .glass-btn:active, .rib-btn:active, .pill-btn:active { transform: scale(.93); }
+.hint { font-size: 10.5px; color: var(--muted); font-weight: 700; line-height: 1.6; }
+.foot { margin-top: 46px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 10.5px; color: var(--muted); font-weight: 700; }
+.foot a:hover { color: var(--brand); }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; padding: 22px; }
+  .hero-mock { display: none; }
+  .tpl-grid { grid-template-columns: repeat(2, 1fr); }
+  .stat-strip { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 640px) {
+  main { padding: 14px 12px 60px; }
+  .studio-head { flex-direction: column; align-items: stretch; gap: 7px; }
+  .studio-title-wrap { width: 100%; }
+  #sheetTitle { max-width: none; }
+  .studio-acts { justify-content: flex-end; }
+  .top-bar-in { height: 56px; padding: 0 12px; }
+  .view-nav { top: 56px; }
+  .brand-sub { display: none; }
+  .brand-name { font-size: 14px; }
+  .hero h1 { font-size: 25px; }
+  .tpl-grid { grid-template-columns: 1fr; }
+  .stat b { font-size: 18px; }
+  .stat { padding: 11px 12px; }
+  .studio-head { padding: 9px 10px; gap: 8px; }
+  #sheetTitle { font-size: 13px; max-width: 100%; }
+  .grid-scroll { height: 58vh; }
+  .glass-btn span.lbl { display: none; }
+  .viewer-body { padding: 10px; }
+  .viewer-title { font-size: 13px; }
+  .modal-card { padding: 14px; border-radius: 16px; }
+  .sect-head { margin: 22px 0 11px; }
+  .proj { padding: 10px 11px; gap: 9px; }
+  .proj-acts .mini-btn { width: 27px; height: 27px; }
+  #chartCanvas { height: 220px; }
+}
+</style>
+</head>
+<body>
+
+<header class="top-bar">
+  <div class="top-bar-in">
+    <a href="index.html" class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+      </div>
+      <div>
+        <div class="brand-name">Flux Sheets <span class="brand-tag">SHEETS</span></div>
+        <div class="brand-sub">수식과 차트가 살아있는 웹 스프레드시트</div>
+      </div>
+    </a>
+    <div class="top-actions">
+      <button class="glass-btn" id="btnTopNew" title="새 시트">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span class="lbl">새 시트</span>
+      </button>
+      <button class="icon-sq" data-theme-toggle aria-label="테마 변경">
+        <svg class="lg-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+        <svg class="lg-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="4.4"></circle><line x1="12" y1="1.8" x2="12" y2="3.6"></line><line x1="12" y1="20.4" x2="12" y2="22.2"></line><line x1="4.2" y1="4.2" x2="5.5" y2="5.5"></line><line x1="18.5" y1="18.5" x2="19.8" y2="19.8"></line><line x1="1.8" y1="12" x2="3.6" y2="12"></line><line x1="20.4" y1="12" x2="22.2" y2="12"></line><line x1="4.2" y1="19.8" x2="5.5" y2="18.5"></line><line x1="18.5" y1="5.5" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="view-nav">
+  <div class="view-nav-in">
+    <div class="nav-tabs" id="mainTabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.6 12 3l9 6.6V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="9.5" y1="10" x2="9.5" y2="20"></line></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>내 시트</span>
+        <span class="cnt" id="arcCount">0</span>
+      </button>
+      <span class="tab-ind" id="tabInd"></span>
+    </div>
+  </div>
+</div>
+
+<main>
+
+  <!-- ============ HOME ============ -->
+  <section data-view="home" id="viewHome">
+    <div class="hero">
+      <div style="position:relative">
+        <span class="hero-eyebrow">
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="3 17 9 11 13 15 21 6"></polyline></svg>
+          BROWSER SPREADSHEET
+        </span>
+        <h1>숫자가 <em>다시 정리</em><br>되는 순간</h1>
+        <p>수식은 실시간으로 다시 계산되고, 서식과 차트는 그 자리에서 붙습니다. 설치도 로그인도 없이, 링크 하나로 표를 그대로 건네세요.</p>
+        <div class="hero-cta">
+          <button class="primary-btn btn-shimmer" id="btnBlankHero">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            빈 시트 열기
+          </button>
+          <button class="ghost-btn" id="btnGotoTpl">템플릿 둘러보기</button>
+        </div>
+      </div>
+      <div class="hero-mock">
+        <div class="mock">
+          <div class="mock-bar">
+            <span class="mock-dot on"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+            <span class="mock-title">2026년 11월 가계부 · 시트1</span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-row head"><span>항목</span><span>예산</span><span>지출</span></div>
+            <div class="mock-row"><span>식비</span><span>450,000</span><span>412,000</span></div>
+            <div class="mock-row"><span>교통</span><span>120,000</span><span>98,500</span></div>
+            <div class="mock-row"><span>주거</span><span>700,000</span><span>700,000</span></div>
+            <div class="mock-row"><span>여가</span><span>150,000</span><span>132,000</span></div>
+            <div class="mock-row"><span>합계</span><span>1,420,000</span><span>1,342,500</span></div>
+            <div class="mock-total">
+              <div class="mock-pt"><small>집행률</small><b id="mockPct">0%</b></div>
+              <div class="mock-track"><div class="mock-bar-cell" id="mockBar" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="mock-float f1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 15l5-6 4 4 7-8"></path></svg>
+          =SUM(D3:D8)
+        </div>
+        <div class="mock-float f2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M8 15v-4M12 15V8M16 15v-6"></path></svg>
+          자동 차트
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-strip">
+      <div class="stat"><b id="stProjects">0</b><span>내 시트</span></div>
+      <div class="stat"><b id="stCells">0</b><span>저장된 셀</span></div>
+      <div class="stat"><b id="stTpl">6</b><span>템플릿</span></div>
+    </div>
+
+    <div class="sect-head" id="tplAnchor">
+      <div>
+        <div class="sect-title"><span class="bar"></span>템플릿 갤러리</div>
+        <div class="sect-desc">누르면 수식과 데이터가 채워진 시트로 바로 들어갑니다</div>
+      </div>
+    </div>
+    <div class="tpl-grid stagger" id="tplGrid"></div>
+
+    <div class="sect-head">
+      <div>
+        <div class="sect-title"><span class="bar"></span>최근 시트</div>
+        <div class="sect-desc">자동 저장된 작업을 이어서 편집하세요</div>
+      </div>
+      <button class="ghost-btn" id="btnAllSheets" style="padding:7px 12px;border-radius:9px;font-size:11.5px">전체 보기</button>
+    </div>
+    <div class="list" id="recentList"></div>
+  </section>
+
+  <!-- ============ STUDIO ============ -->
+  <section data-view="studio" id="viewStudio" class="hidden">
+    <div class="studio">
+      <div class="studio-head">
+        <div class="studio-title-wrap">
+          <input id="sheetTitle" value="새 시트" spellcheck="false" aria-label="시트 제목">
+          <span class="as-badge" id="asBadge">자동 저장 대기</span>
+        </div>
+        <div class="studio-acts">
+          <button class="glass-btn" id="btnShare" title="보기 전용 링크">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"></path><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"></path></svg>
+            <span class="lbl">공유</span>
+          </button>
+          <button class="glass-btn" id="btnCsv" title="CSV 내보내기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><polyline points="7 10 12 15 17 10"></polyline><path d="M4 19h16"></path></svg>
+            <span class="lbl">CSV</span>
+          </button>
+          <button class="glass-btn" id="btnJson" title="JSON 백업">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H6a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2"></path><path d="M16 3h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2"></path></svg>
+            <span class="lbl">백업</span>
+          </button>
+          <button class="glass-btn" id="btnChartTop" title="차트 만들기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20H2"></path></svg>
+            <span class="lbl">차트</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="ribbon" id="ribbon">
+        <div class="rib-group">
+          <button class="rib-btn" data-cmd="undo" title="실행 취소">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg>
+          </button>
+          <button class="rib-btn" data-cmd="redo" title="다시 실행">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"></path><path d="M20 9H10a6 6 0 0 0 0 12h3"></path></svg>
+          </button>
+        </div>
+        <div class="rib-sep"></div>
+        <div class="rib-group">
+          <button class="rib-btn" data-cmd="bold" title="굵게"><b style="font-size:12px">B</b></button>
+          <button class="rib-btn" data-cmd="italic" title="기울임"><i style="font-size:12px;font-family:Georgia,serif">I</i></button>
+          <button class="rib-btn" data-cmd="clear" title="서식 지우기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 8-13h8"></path><path d="M9 20h11"></path><path d="m12.5 9.5 4 4"></path></svg>
+          </button>
+        </div>
+        <div class="rib-sep"></div>
+        <div class="rib-group">
+          <button class="rib-btn" data-cmd="al-l" title="왼쪽 정렬">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="14" y2="12"></line><line x1="4" y1="18" x2="18" y2="18"></line></svg>
+          </button>
+          <button class="rib-btn" data-cmd="al-c" title="가운데 정렬">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="7" y1="12" x2="17" y2="12"></line><line x1="5" y1="18" x2="19" y2="18"></line></svg>
+          </button>
+          <button class="rib-btn" data-cmd="al-r" title="오른쪽 정렬">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="10" y1="12" x2="20" y2="12"></line><line x1="6" y1="18" x2="20" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="rib-sep"></div>
+        <div class="rib-group">
+          <span class="rib-label">숫자</span>
+          <button class="rib-btn wide" data-fmt="auto" title="일반">일반</button>
+          <button class="rib-btn wide" data-fmt="cur" title="통화">₩</button>
+          <button class="rib-btn wide" data-fmt="pct" title="퍼센트">%</button>
+          <button class="rib-btn wide" data-fmt="n1" title="소수 1자리">.0</button>
+          <button class="rib-btn wide" data-fmt="n2" title="소수 2자리">.00</button>
+        </div>
+        <div class="rib-sep"></div>
+        <div class="rib-group">
+          <span class="rib-label">색</span>
+          <button class="rib-btn swatch-btn" data-picker="text" title="글자색">
+            <span class="sw-glyph">A</span><i class="sw-line" id="swText" style="background:#0f766e"></i>
+          </button>
+          <button class="rib-btn swatch-btn" data-picker="fill" title="셀 배경색">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 6-6 7 7-6 6z"></path><path d="M12 21h9"></path></svg>
+            <i class="sw-line" id="swFill" style="background:#a7f3d0"></i>
+          </button>
+        </div>
+        <div class="rib-sep"></div>
+        <div class="rib-group">
+          <span class="rib-label">셀</span>
+          <button class="rib-btn" data-cmd="ins-row" title="행 삽입">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="6" rx="1.5"></rect><path d="M12 14v6M9 17h6"></path></svg>
+          </button>
+          <button class="rib-btn" data-cmd="ins-col" title="열 삽입">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="6" height="18" rx="1.5"></rect><path d="M16 9v6M13 12h6"></path></svg>
+          </button>
+          <button class="rib-btn" data-cmd="del-row" title="행 삭제">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="6" rx="1.5"></rect><path d="M9 17h6"></path></svg>
+          </button>
+          <button class="rib-btn" data-cmd="del-col" title="열 삭제">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="6" height="18" rx="1.5"></rect><path d="M17 12h4"></path><path d="m19 10 2 2-2 2"></path></svg>
+          </button>
+        </div>
+        <div class="rib-sep"></div>
+        <div class="rib-group">
+          <button class="rib-btn wide" data-cmd="chart" title="선택 범위 차트">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20H2"></path></svg>
+            차트
+          </button>
+        </div>
+      </div>
+
+      <div class="formula-bar">
+        <div class="ref-box" id="refBox">A1</div>
+        <span class="fx-tag">fx</span>
+        <input id="fxInput" spellcheck="false" autocomplete="off" placeholder="=SUM(B3:B8) 처럼 수식을 입력하거나 값을 입력하세요">
+        <button class="rib-btn" id="btnFxRun" title="입력 적용" style="color:var(--brand)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 9 17 20 6"></polyline></svg>
+        </button>
+      </div>
+
+      <div class="grid-shell">
+        <div class="grid-scroll" id="gridScroll">
+          <div id="gridInner" style="position:relative;display:inline-block;min-width:100%">
+            <table class="grid" id="gridTable"></table>
+            <div class="sel-frame" id="selFrame"></div>
+            <div class="sel-frame act" id="actFrame"></div>
+            <input id="cellEditor" spellcheck="false" autocomplete="off">
+          </div>
+        </div>
+        <div class="sheet-tabs" id="sheetTabs"></div>
+        <div class="grid-foot">
+          <div class="grid-stat" id="gridStat">선택: A1</div>
+          <div class="grid-stat hint" id="gridHint">더블클릭 또는 타이핑으로 편집 · 드래그로 범위 선택 · 헤더 경계 드래그로 크기 조절</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ARCHIVE ============ -->
+  <section data-view="archive" id="viewArchive" class="hidden">
+    <div class="sect-head" style="margin-top:6px">
+      <div>
+        <div class="sect-title"><span class="bar"></span>내 시트</div>
+        <div class="sect-desc">자동 저장된 모든 스프레드시트</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="ghost-btn" id="btnImportCsv" style="padding:7px 11px;border-radius:9px;font-size:11.5px">CSV 가져오기</button>
+        <button class="ghost-btn" id="btnRestoreJson" style="padding:7px 11px;border-radius:9px;font-size:11.5px">백업 복원</button>
+        <button class="primary-btn" id="btnNewArchive" style="padding:8px 13px;border-radius:9px;font-size:11.5px">새 시트</button>
+      </div>
+    </div>
+    <div class="list" id="arcList"></div>
+  </section>
+
+</main>
+
+<div class="foot" style="max-width:1240px;margin:0 auto;padding:0 18px 30px">
+  <span>Flux Sheets — Lemon soft가 만든 웹 프로덕트</span>
+  <span><a href="index.html">Lemon soft 허브로</a></span>
+</div>
+
+<!-- share dialog -->
+<div class="modal hidden" id="shareModal">
+  <div class="modal-bg" data-close="shareModal"></div>
+  <div class="modal-card" style="max-width:460px">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">보기 전용 링크</div>
+        <div class="modal-sub">시트 데이터가 링크 안에 압축되어 들어갑니다. 서버 저장 없이 그대로 전달됩니다.</div>
+      </div>
+      <button class="modal-x" data-close="shareModal" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button>
+    </div>
+    <div class="copy-url">
+      <input id="shareUrl" readonly>
+      <button class="primary-btn" id="btnCopyUrl" style="padding:8px 13px;border-radius:8px;font-size:11.5px">복사</button>
+    </div>
+    <p class="hint" style="margin-top:9px">받는 사람은 읽기만 할 수 있고, 필요하면 "이 시트 복사해서 편집"으로 자기 시트를 만들 수 있습니다.</p>
+    <div class="dlg-acts">
+      <button class="ghost-btn" id="btnOpenShare" style="padding:8px 13px;border-radius:9px;font-size:11.5px">미리보기</button>
+    </div>
+  </div>
+</div>
+
+<!-- chart modal -->
+<div class="modal hidden" id="chartModal">
+  <div class="modal-bg" data-close="chartModal"></div>
+  <div class="modal-card" style="max-width:560px">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">선택 범위 차트</div>
+        <div class="modal-sub" id="chartInfo">범위를 선택하면 자동으로 차트가 만들어집니다</div>
+      </div>
+      <button class="modal-x" data-close="chartModal" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button>
+    </div>
+    <div class="seg-row" id="chartTypes">
+      <button data-ctype="bar" class="on">막대</button>
+      <button data-ctype="line">꺾은선</button>
+      <button data-ctype="donut">도넛</button>
+    </div>
+    <div class="chart-box"><canvas id="chartCanvas" width="1040" height="520"></canvas></div>
+    <div class="dlg-acts">
+      <button class="ghost-btn" id="btnChartPng" style="padding:8px 13px;border-radius:9px;font-size:11.5px">이미지로 저장</button>
+      <button class="primary-btn" id="btnChartClose" style="padding:8px 13px;border-radius:9px;font-size:11.5px">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- generic dialog -->
+<div class="modal hidden" id="dlgModal">
+  <div class="modal-bg" data-close="dlgModal"></div>
+  <div class="modal-card" style="max-width:400px">
+    <div class="modal-title" id="dlgTitle">확인</div>
+    <div class="dlg-text" id="dlgText"></div>
+    <div class="dlg-acts">
+      <button class="ghost-btn" id="dlgCancel" style="padding:8px 14px;border-radius:9px;font-size:11.5px">취소</button>
+      <button class="primary-btn" id="dlgOk" style="padding:8px 14px;border-radius:9px;font-size:11.5px">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- custom color picker -->
+<div id="picker">
+  <div class="pk-head"><span id="pkTitle">글자색</span><button class="pk-close" id="pkClose" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button></div>
+  <div class="pk-sv" id="pkSv"><canvas id="pkCanvas" width="360" height="216"></canvas><div class="pk-cursor" id="pkCursor"></div></div>
+  <div class="pk-hue"><input type="range" id="pkHue" min="0" max="360" value="170"></div>
+  <div class="pk-row"><div class="pk-prev" id="pkPrev"></div><input id="pkHex" value="#0F766E" spellcheck="false"></div>
+  <div class="pk-swatches" id="pkSwatches"></div>
+  <div class="pk-actions">
+    <button class="ghost-btn" id="pkNoColor" style="padding:7px 9px;border-radius:8px;font-size:11px">해제</button>
+    <button class="primary-btn" id="pkApply" style="padding:7px;border-radius:8px;font-size:11px">적용</button>
+  </div>
+</div>
+
+<!-- readonly viewer -->
+<div id="viewer" class="hidden">
+  <div class="viewer-head">
+    <div class="viewer-title">
+      <span id="viewTitle">공유된 시트</span>
+      <span class="ro-badge">읽기 전용</span>
+    </div>
+    <div style="flex:1"></div>
+    <button class="glass-btn" id="btnViewCopy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path></svg>
+      <span class="lbl">이 시트 복사해서 편집</span>
+    </button>
+    <button class="glass-btn" id="btnViewCsv">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><polyline points="7 10 12 15 17 10"></polyline><path d="M4 19h16"></path></svg>
+      <span class="lbl">CSV</span>
+    </button>
+    <button class="icon-sq" id="btnViewClose" aria-label="닫기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+    </button>
+  </div>
+  <div class="viewer-tabs" id="viewerTabs"></div>
+  <div class="viewer-body"><div class="viewer-grid" id="viewerGrid"></div></div>
+</div>
+
+<input type="file" id="csvInput" accept=".csv,text/csv" class="hidden">
+<input type="file" id="jsonInput" accept=".json,application/json" class="hidden">
+
+<script src="vendor/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+/* ============ Flux Sheets · core: model · templates · formula engine ============ */
+(function () {
+  'use strict';
+  var S = window.S = {};
+  S.COLS = 26;
+  S.ROWS = 80;
+  S.MAX_HIST = 40;
+
+  /* ---------- refs ---------- */
+  S.colName = function (i) {
+    var s = '', n = i + 1;
+    while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  };
+  S.colIndex = function (name) {
+    var n = 0;
+    for (var i = 0; i < name.length; i++) n = n * 26 + (name.charCodeAt(i) - 64);
+    return n - 1;
+  };
+  S.key = function (r, c) { return S.colName(c) + (r + 1); };
+  S.parseRef = function (k) {
+    var m = /^([A-Za-z]+)(\d+)$/.exec(String(k || ''));
+    if (!m) return null;
+    return { c: S.colIndex(m[1].toUpperCase()), r: parseInt(m[2], 10) - 1 };
+  };
+  S.eachRange = function (rng, cb) {
+    var parts = String(rng).split(':');
+    var a = S.parseRef(parts[0]), b = S.parseRef(parts[1] || parts[0]);
+    if (!a || !b) return;
+    var r1 = Math.min(a.r, b.r), r2 = Math.max(a.r, b.r), c1 = Math.min(a.c, b.c), c2 = Math.max(a.c, b.c);
+    for (var r = r1; r <= r2; r++) for (var c = c1; c <= c2; c++) cb(S.key(r, c), r, c);
+  };
+  S.clone = function (o) { return JSON.parse(JSON.stringify(o)); };
+
+  /* ---------- formula engine ---------- */
+  function E(code) { return { __err: code }; }
+  S.E = E;
+  function isErr(v) { return v && typeof v === 'object' && !Array.isArray(v) && v.__err; }
+  S.isErr = isErr;
+
+  function tokenize(src) {
+    var s = String(src), i = 0, n = s.length, out = [];
+    while (i < n) {
+      var ch = s.charAt(i);
+      if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') { i++; continue; }
+      var rest = s.slice(i), m;
+      if ((m = /^(\$?[A-Za-z]{1,3}\$?\d+)\s*:\s*(\$?[A-Za-z]{1,3}\$?\d+)/.exec(rest))) {
+        out.push({ t: 'range', a: m[1].replace(/\$/g, '').toUpperCase(), b: m[2].replace(/\$/g, '').toUpperCase() });
+        i += m[0].length; continue;
+      }
+      if ((m = /^\$?([A-Za-z]{1,3})(\d+)(?![\w])/.exec(rest))) {
+        out.push({ t: 'cell', k: m[1].toUpperCase() + m[2] });
+        i += m[0].length; continue;
+      }
+      if ((m = /^"([^"]*)"/.exec(rest))) {
+        out.push({ t: 'num', v: m[1] });
+        out[out.length - 1].t = 'str';
+        i += m[0].length; continue;
+      }
+      if ((m = /^\d+(?:\.\d+)?/.exec(rest))) {
+        out.push({ t: 'num', v: parseFloat(m[0]) }); i += m[0].length; continue;
+      }
+      if ((m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest))) {
+        out.push({ t: 'id', v: m[0].toUpperCase() }); i += m[0].length; continue;
+      }
+      if ((m = /^(<>|<=|>=|[+\-*\/^%(),<>=&])/.exec(rest))) {
+        out.push({ t: 'op', v: m[0] }); i += m[0].length; continue;
+      }
+      i++;
+    }
+    return out;
+  }
+
+  function toNum(v) {
+    if (isErr(v)) return v;
+    if (Array.isArray(v)) v = v.length ? v[0] : 0;
+    if (typeof v === 'number') return v;
+    if (v === null || v === undefined || v === '') return 0;
+    var n = Number(String(v).replace(/[,₩%\s]/g, ''));
+    return isNaN(n) ? E('#VALUE!') : n;
+  }
+  function scalar(v) {
+    if (Array.isArray(v)) return v.length ? scalar(v[0]) : '';
+    return v;
+  }
+  function truthy(v) {
+    v = scalar(v);
+    if (isErr(v)) return false;
+    if (typeof v === 'number') return v !== 0;
+    if (v === null || v === undefined) return false;
+    var s = String(v).trim().toLowerCase();
+    return !(s === '' || s === '0' || s === 'false');
+  }
+
+  function evalFormula(src, ctx) {
+    var toks = tokenize(src), pos = 0;
+    function peek() { return toks[pos]; }
+    function isOp(v) { var t = toks[pos]; return !!t && t.t === 'op' && t.v === v; }
+    function eatOp(v) { if (isOp(v)) { pos++; return true; } return false; }
+
+    function cellVal(k) {
+      var cache = ctx.cache || (ctx.cache = {});
+      if (Object.prototype.hasOwnProperty.call(cache, k)) return cache[k];
+      var sh = ctx.sheet;
+      var c = sh && sh.cells ? sh.cells[k] : null;
+      var out;
+      if (!c || (c.v === '' && !c.f)) {
+        out = '';
+      } else if (c.f) {
+        if (ctx.visiting && ctx.visiting[k]) return E('#REF!');
+        ctx.visiting = ctx.visiting || {};
+        ctx.visiting[k] = 1;
+        try { out = S.compute(c.f, ctx); } finally { delete ctx.visiting[k]; }
+      } else {
+        out = c.v;
+      }
+      cache[k] = out;
+      return out;
+    }
+
+    function rangeVals(a, b) {
+      var p = S.parseRef(a), q = S.parseRef(b), arr = [];
+      if (!p || !q) return arr;
+      var r1 = Math.min(p.r, q.r), r2 = Math.max(p.r, q.r);
+      var c1 = Math.min(p.c, q.c), c2 = Math.max(p.c, q.c);
+      for (var r = r1; r <= r2; r++) for (var c = c1; c <= c2; c++) arr.push(cellVal(S.key(r, c)));
+      return arr;
+    }
+
+    function bin(op, a, b) {
+      if (isErr(a)) return a;
+      if (isErr(b)) return b;
+      var x = toNum(a), y = toNum(b);
+      if (isErr(x)) return x;
+      if (isErr(y)) return y;
+      switch (op) {
+        case '+': return x + y;
+        case '-': return x - y;
+        case '*': return x * y;
+        case '/': return y === 0 ? E('#DIV/0!') : x / y;
+        case '^': return Math.pow(x, y);
+        case '%': return y === 0 ? E('#DIV/0!') : x / 100;
+        default: return E('#ERROR!');
+      }
+    }
+
+    function callFn(name, args) {
+      var flat = [];
+      (function walk(list) {
+        for (var i = 0; i < list.length; i++) {
+          var v = list[i];
+          if (Array.isArray(v)) walk(v); else flat.push(v);
+        }
+      })(args);
+      var firstErr = null;
+      for (var i = 0; i < flat.length; i++) { if (isErr(flat[i])) { firstErr = flat[i]; break; } }
+      var nums = [];
+      for (var j = 0; j < flat.length; j++) if (typeof flat[j] === 'number' && isFinite(flat[j])) nums.push(flat[j]);
+      function agg(fn) {
+        if (firstErr) return firstErr;
+        if (!nums.length) return 0;
+        return nums.reduce(fn);
+      }
+      switch (name) {
+        case 'SUM': return agg(function (s, v) { return s + v; });
+        case 'PRODUCT':
+          if (firstErr) return firstErr;
+          if (!nums.length) return 0;
+          return nums.reduce(function (s, v) { return s * v; });
+        case 'AVERAGE':
+          if (firstErr) return firstErr;
+          if (!nums.length) return E('#DIV/0!');
+          return nums.reduce(function (s, v) { return s + v; }) / nums.length;
+        case 'MIN':
+          if (firstErr) return firstErr;
+          return nums.length ? Math.min.apply(null, nums) : 0;
+        case 'MAX':
+          if (firstErr) return firstErr;
+          return nums.length ? Math.max.apply(null, nums) : 0;
+        case 'COUNT': return nums.length;
+        case 'COUNTA':
+          var cnt = 0;
+          flat.forEach(function (v) { if (v !== '' && v !== null && v !== undefined) cnt++; });
+          return cnt;
+        case 'IF':
+          if (firstErr && !args.length) return firstErr;
+          return truthy(args[0]) ? (args.length > 1 ? args[1] : 1) : (args.length > 2 ? args[2] : 0);
+        case 'AND':
+          for (var a = 0; a < args.length; a++) if (!truthy(args[a])) return 0;
+          return 1;
+        case 'OR':
+          for (var o = 0; o < args.length; o++) if (truthy(args[o])) return 1;
+          return 0;
+        case 'NOT': return truthy(args[0]) ? 0 : 1;
+        case 'ROUND':
+          var rv = toNum(args[0]); if (isErr(rv)) return rv;
+          var rd = args.length > 1 ? toNum(args[1]) : 0; if (isErr(rd)) return rd;
+          var p = Math.pow(10, Math.round(rd));
+          return Math.round(rv * p) / p;
+        case 'ABS':
+          var av = toNum(args[0]); return isErr(av) ? av : Math.abs(av);
+        case 'SQRT':
+          var sv = toNum(args[0]); if (isErr(sv)) return sv;
+          return sv < 0 ? E('#NUM!') : Math.sqrt(sv);
+        case 'POWER':
+          var pv = toNum(args[0]), pw = toNum(args[1]);
+          if (isErr(pv)) return pv; if (isErr(pw)) return pw;
+          return Math.pow(pv, pw);
+        case 'MOD':
+          var mv = toNum(args[0]), mw = toNum(args[1]);
+          if (isErr(mv)) return mv; if (isErr(mw)) return mw;
+          return mw === 0 ? E('#DIV/0!') : mv % mw;
+        default: return E('#NAME?');
+      }
+    }
+
+    function parseCompare() {
+      var left = parseAdd();
+      var t = peek();
+      while (t && t.t === 'op' && ['=', '<>', '<', '>', '<=', '>='].indexOf(t.v) > -1) {
+        pos++;
+        var right = parseAdd();
+        if (isErr(left)) { } else if (isErr(right)) { left = right; }
+        else {
+          var a = scalar(left), b = scalar(right), cmp;
+          var an = typeof a === 'number' ? a : (a === '' ? 0 : Number(a));
+          var bn = typeof b === 'number' ? b : (b === '' ? 0 : Number(b));
+          if (!isNaN(an) && !isNaN(bn)) { cmp = an < bn ? -1 : an > bn ? 1 : 0; }
+          else { var sa = String(a), sb = String(b); cmp = sa < sb ? -1 : sa > sb ? 1 : 0; }
+          var res = t.v === '=' ? cmp === 0 : t.v === '<>' ? cmp !== 0 : t.v === '<' ? cmp < 0 : t.v === '>' ? cmp > 0 : t.v === '<=' ? cmp <= 0 : cmp >= 0;
+          left = res ? 1 : 0;
+        }
+        t = peek();
+      }
+      return left;
+    }
+    function parseAdd() {
+      var left = parseMul();
+      for (;;) {
+        var t = peek();
+        if (!t || t.t !== 'op' || (t.v !== '+' && t.v !== '-')) break;
+        pos++;
+        left = bin(t.v, left, parseMul());
+      }
+      return left;
+    }
+    function parseMul() {
+      var left = parsePow();
+      for (;;) {
+        var t = peek();
+        if (!t || t.t !== 'op' || (t.v !== '*' && t.v !== '/')) break;
+        pos++;
+        left = bin(t.v, left, parsePow());
+      }
+      return left;
+    }
+    function parsePow() {
+      var left = parseUnary();
+      if (isOp('^')) { pos++; return bin('^', left, parsePow()); }
+      return left;
+    }
+    function parseUnary() {
+      var t = peek();
+      if (t && t.t === 'op' && (t.v === '-' || t.v === '+')) {
+        pos++;
+        var v = parseUnary();
+        if (t.v === '+') return v;
+        if (isErr(v)) return v;
+        var n = toNum(v);
+        return isErr(n) ? n : -n;
+      }
+      return parsePostfix();
+    }
+    function parsePostfix() {
+      var v = parsePrimary();
+      while (isOp('%')) { pos++; v = bin('%', v, 1); }
+      return v;
+    }
+    function parsePrimary() {
+      var t = peek();
+      if (!t) return E('#ERROR!');
+      if (t.t === 'num' || t.t === 'str') { pos++; return t.v; }
+      if (t.t === 'cell') { pos++; return cellVal(t.k); }
+      if (t.t === 'range') { pos++; return rangeVals(t.a, t.b); }
+      if (t.t === 'op' && t.v === '(') {
+        pos++;
+        var v = parseCompare();
+        if (isOp(')')) pos++;
+        return v;
+      }
+      if (t.t === 'id') {
+        var name = t.v; pos++;
+        if (isOp('(')) {
+          pos++;
+          var args = [];
+          if (!isOp(')')) {
+            for (;;) {
+              args.push(parseCompare());
+              if (eatOp(',')) continue;
+              break;
+            }
+          }
+          if (isOp(')')) pos++;
+          return callFn(name, args);
+        }
+        if (name === 'TRUE') return 1;
+        if (name === 'FALSE') return 0;
+        return E('#NAME?');
+      }
+      pos++;
+      return E('#ERROR!');
+    }
+
+    try { return parseCompare(); } catch (e) { return E('#ERROR!'); }
+  }
+
+  S.compute = function (f, ctx) {
+    var src = String(f || '');
+    if (src.charAt(0) === '=') src = src.slice(1);
+    if (!src.trim()) return '';
+    return evalFormula(src, ctx || {});
+  };
+
+  S.recalc = function (sh) {
+    var ctx = { sheet: sh, cache: {}, visiting: {} };
+    var vals = {};
+    var cells = sh.cells || {};
+    Object.keys(cells).forEach(function (k) {
+      var c = cells[k];
+      if (!c) return;
+      if (c.f) {
+        var cache = ctx.cache;
+        if (Object.prototype.hasOwnProperty.call(cache, k)) { vals[k] = cache[k]; return; }
+        if (ctx.visiting[k]) { vals[k] = E('#REF!'); return; }
+        ctx.visiting[k] = 1;
+        var out;
+        try { out = S.compute(c.f, ctx); } finally { delete ctx.visiting[k]; }
+        ctx.cache[k] = out;
+        vals[k] = out;
+      }
+    });
+    return vals;
+  };
+
+  /* ---------- display ---------- */
+  function sep(n) {
+    if (!isFinite(n)) return '#NUM!';
+    if (Number.isInteger(n)) return n.toLocaleString('ko-KR');
+    return n.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+  }
+  S.fmtValue = function (v, st) {
+    if (isErr(v)) return v.__err;
+    if (v === '' || v === null || v === undefined) return '';
+    if (typeof v !== 'number') return String(v);
+    if (!isFinite(v)) return '#NUM!';
+    var fmt = (st && st.fmt) || 'auto';
+    switch (fmt) {
+      case 'cur': return '₩' + sep(Math.round(v));
+      case 'pct': return (Math.round(v * 1000) / 10).toFixed(1).replace(/\.0$/, '') + '%';
+      case 'int': return sep(Math.round(v));
+      case 'n1': return v.toFixed(1);
+      case 'n2': return v.toFixed(2);
+      default: return sep(Math.round(v * 1e6) / 1e6);
+    }
+  };
+  S.cellText = function (c, vals, k) {
+    if (!c) return '';
+    if (c.f) return S.fmtValue(vals && Object.prototype.hasOwnProperty.call(vals, k) ? vals[k] : '', c.st);
+    if (c.v === undefined || c.v === null || c.v === '') return '';
+    if (c.st && c.st.fmt && c.st.fmt !== 'auto') {
+      var n = Number(String(c.v).replace(/,/g, ''));
+      if (!isNaN(n) && String(c.v).trim() !== '') return S.fmtValue(n, c.st);
+    }
+    return String(c.v);
+  };
+  S.rawNumeric = function (c, vals, k) {
+    if (!c) return null;
+    if (c.f) {
+      var v = vals && vals[k];
+      return typeof v === 'number' ? v : null;
+    }
+    var n = Number(String(c.v).replace(/,/g, ''));
+    return String(c.v).trim() !== '' && !isNaN(n) ? n : null;
+  };
+
+  /* ---------- document ---------- */
+  S.newSheet = function (name) {
+    return { name: name || '시트1', cells: {}, colW: {}, rowH: {} };
+  };
+  S.blankDoc = function (title) {
+    return { title: title || '새 시트', active: 0, sheets: [S.newSheet('시트1')] };
+  };
+  S.curSheet = function (doc) {
+    doc = doc || S.doc;
+    if (!doc || !doc.sheets || !doc.sheets.length) return S.newSheet('시트1');
+    var i = doc.active || 0;
+    if (!doc.sheets[i]) i = 0;
+    return doc.sheets[i];
+  };
+  S.snapshotDoc = function (doc) {
+    doc = doc || S.doc;
+    if (!doc) return null;
+    return {
+      title: doc.title || '새 시트',
+      active: doc.active || 0,
+      sheets: (doc.sheets || []).map(function (sh) {
+        return { name: sh.name, cells: S.clone(sh.cells || {}), colW: S.clone(sh.colW || {}), rowH: S.clone(sh.rowH || {}) };
+      })
+    };
+  };
+
+  /* ---------- templates ---------- */
+  function mkSheet(name, rows, opt) {
+    opt = opt || {};
+    var cells = {};
+    rows.forEach(function (row, r) {
+      (row || []).forEach(function (v, c) {
+        if (v === '' || v === null || v === undefined) return;
+        var k = S.key(r, c);
+        var isF = typeof v === 'string' && v.charAt(0) === '=';
+        cells[k] = isF ? { v: '', f: v } : { v: v };
+      });
+    });
+    function st(k) {
+      if (!cells[k]) cells[k] = { v: '' };
+      if (!cells[k].st) cells[k].st = {};
+      return cells[k].st;
+    }
+    (opt.bold || []).forEach(function (rng) { S.eachRange(rng, function (k) { st(k).b = 1; }); });
+    (opt.center || []).forEach(function (rng) { S.eachRange(rng, function (k) { st(k).al = 'c'; }); });
+    (opt.cur || []).forEach(function (rng) { S.eachRange(rng, function (k) { st(k).fmt = 'cur'; }); });
+    (opt.pct || []).forEach(function (rng) { S.eachRange(rng, function (k) { st(k).fmt = 'pct'; }); });
+    (opt.int || []).forEach(function (rng) { S.eachRange(rng, function (k) { st(k).fmt = 'int'; }); });
+    (opt.n1 || []).forEach(function (rng) { S.eachRange(rng, function (k) { st(k).fmt = 'n1'; }); });
+    (opt.fill || []).forEach(function (pair) { S.eachRange(pair[0], function (k) { st(k).bg = pair[1]; }); });
+    (opt.color || []).forEach(function (pair) { S.eachRange(pair[0], function (k) { st(k).tc = pair[1]; }); });
+    (opt.head || []).forEach(function (rng) {
+      S.eachRange(rng, function (k) {
+        var s = st(k);
+        s.b = 1; s.al = 'c';
+        if (!s.bg) s.bg = opt.headBg || '#d7efe6';
+        if (!s.tc) s.tc = opt.headTc || '#064e3b';
+      });
+    });
+    return { name: name, cells: cells, colW: opt.colW || {}, rowH: opt.rowH || {} };
+  }
+
+  S.TEMPLATES = [
+    {
+      id: 'budget', name: '월간 가계부 · 예산표', kicker: 'LEDGER', accent: '#0f766e',
+      desc: '항목별 예산과 지출을 나란히 두고, 집행률과 잔여액이 수식으로 따라옵니다.',
+      formula: '=SUM · IF',
+      make: function () {
+        var s1 = mkSheet('예산', [
+          ['2026년 11월 가계부'],
+          ['항목', '예산', '지출', '잔여', '집행률'],
+          ['식비', 450000, 412000, '=B3-C3', '=IF(B3=0,0,C3/B3)'],
+          ['교통', 120000, 98500, '=B4-C4', '=IF(B4=0,0,C4/B4)'],
+          ['주거', 700000, 700000, '=B5-C5', '=IF(B5=0,0,C5/B5)'],
+          ['통신', 89000, 78000, '=B6-C6', '=IF(B6=0,0,C6/B6)'],
+          ['여가', 150000, 132000, '=B7-C7', '=IF(B7=0,0,C7/B7)'],
+          ['기타', 100000, 64000, '=B8-C8', '=IF(B8=0,0,C8/B8)'],
+          ['합계', '=SUM(B3:B8)', '=SUM(C3:C8)', '=SUM(D3:D8)', '=IF(B9=0,0,C9/B9)'],
+          ['예산 대비 차액', '=B9-C9', '남은 하루 예산', '=ROUND((B9-C9)/30,0)', '=IF(B9-C9>0,"절약","초과")'],
+          ['가장 큰 지출', '=MAX(C3:C8)', '가장 작은 지출', '=MIN(C3:C8)', '=COUNT(C3:C8)']
+        ], {
+          head: ['A2:E2'], headBg: '#d5efe5', colW: { A: 168, B: 118, C: 118, D: 118, E: 92 },
+          bold: ['A1:E1', 'A9:E9'], cur: ['B3:D10', 'B11:B11', 'D11:D11'], pct: ['E3:E9'],
+          fill: [['A1:E1', '#eaf7f1']], color: [['A1:E1', '#064e3b']]
+        });
+        var s2 = mkSheet('상세 지출', [
+          ['날짜', '항목', '분류', '금액', '결제수단'],
+          ['11.03', '이마트 장보기', '식비', 48200, '카드'],
+          ['11.05', '지하철 정기권', '교통', 55000, '카드'],
+          ['11.08', '친구 생일 선물', '기타', 32000, '현금'],
+          ['11.12', '카페', '여가', 12800, '카드'],
+          ['11.15', '배달 음식', '식비', 23500, '카드'],
+          ['합계', '', '', '=SUM(D2:D6)', ''],
+          ['건수', '', '', '=COUNT(D2:D6)', ''],
+          ['평균', '', '', '=AVERAGE(D2:D6)', '']
+        ], {
+          head: ['A1:E1'], headBg: '#d5efe5', colW: { A: 92, B: 190, C: 100, D: 118, E: 106 },
+          bold: ['A7:A9'], cur: ['D2:D9'], center: ['A7:A9']
+        });
+        return { title: '2026년 11월 가계부', active: 0, sheets: [s1, s2] };
+      }
+    },
+    {
+      id: 'gantt', name: '프로젝트 일정 · 간트', kicker: 'TIMELINE', accent: '#0d9488',
+      desc: '작업별 담당·기간·진행률을 한 줄로 두고, 14일 간트 바가 일정을 그립니다.',
+      formula: '=IF · AVERAGE',
+      make: function () {
+        var dayHead = ['1주', '2주', '3주', '4주', '5일차', '6일차', '7일차', '8일차', '9일차', '10일차', '11일차', '12일차', '13일차', '14일차'];
+        var head = ['작업', '담당', '시작', '종료', '일수', '진행률', '상태'].concat(dayHead);
+        var rows = [['11월 셋째 주 · 출시 스프린트'], head];
+        var tasks = [
+          ['요구사항 정리', '김민중', '11.16', '11.17', 2, 1, [0, 1]],
+          ['디자인 시안', '이서연', '11.18', '11.20', 3, 0.85, [2, 4]],
+          ['프론트 구현', '박준호', '11.19', '11.24', 6, 0.6, [3, 8]],
+          ['API 연동', '최하늘', '11.22', '11.26', 5, 0.3, [6, 10]],
+          ['QA 1차', '정우진', '11.25', '11.27', 3, 0, [9, 11]],
+          ['배포 준비', '김민중', '11.27', '11.28', 2, 0, [11, 12]],
+          ['회고', '전원', '11.29', '11.29', 1, 0, [13, 13]]
+        ];
+        tasks.forEach(function (t) {
+          var status = '=IF(F' + (rows.length + 1) + '>=1,"완료",IF(F' + (rows.length + 1) + '>0,"진행","대기"))';
+          var row = [t[0], t[1], t[2], t[3], t[4], t[5], status];
+          for (var d = 0; d < 14; d++) row.push('');
+          rows.push(row);
+        });
+        rows.push(['합계', '', '', '', '=SUM(E3:E9)', '=ROUND(AVERAGE(F3:F9),2)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+        var sh = mkSheet('스프린트', rows, {
+          head: ['A2:U2'], headBg: '#d3eee7', colW: { A: 140, B: 84, C: 62, D: 62, E: 52, F: 66, G: 64 },
+          bold: ['A1:U1', 'A10:G10'], center: ['C3:E9', 'G3:G10'], pct: [], n1: [],
+          fill: [['A1:U1', '#e9f6f2']], color: [['A1:U1', '#0b3b34']]
+        });
+        var colors = ['#34d399', '#22c55e', '#0ea5e9', '#14b8a6', '#f59e0b', '#f97316', '#94a3b8'];
+        tasks.forEach(function (t, i) {
+          var rowN = i + 3;
+          for (var d = t[6][0]; d <= t[6][1]; d++) {
+            var k = S.key(rowN - 1, 7 + d);
+            if (!sh.cells[k]) sh.cells[k] = { v: '' };
+            sh.cells[k].st = { bg: colors[i % colors.length], tc: d === t[6][0] ? '#03251f' : '#03251f', b: 1, al: 'c' };
+          }
+          var k2 = S.key(rowN - 1, 5);
+          if (sh.cells[k2]) sh.cells[k2].st = { fmt: 'pct' };
+        });
+        ['E3:E9'].forEach(function (rng) { S.eachRange(rng, function (k) { if (sh.cells[k]) sh.cells[k].st = Object.assign({}, sh.cells[k].st, { fmt: 'int' }); }); });
+        if (!sh.cells['F10']) sh.cells['F10'] = { v: '' };
+        sh.cells['F10'].st = Object.assign({}, sh.cells['F10'].st || {}, { fmt: 'pct', b: 1 });
+        return { title: '11월 출시 스프린트 일정', active: 0, sheets: [sh] };
+      }
+    },
+    {
+      id: 'grades', name: '성적 · 학점 계산표', kicker: 'GPA', accent: '#059669',
+      desc: '학점과 평점을 곱해 총점을 만들고, 학기 평점과 목표 달성 여부를 자동 판정합니다.',
+      formula: '=SUM · ROUND · IF',
+      make: function () {
+        var sh = mkSheet('성적표', [
+          ['2026 2학기 성적표'],
+          ['과목', '학점', '등급', '평점', '학점×평점', '이수'],
+          ['자료구조', 3, 'A+', 4.5, '=B3*D3', '=IF(D3>0,"이수","-")'],
+          ['컴퓨터네트워크', 3, 'A0', 4.0, '=B4*D4', '=IF(D4>0,"이수","-")'],
+          ['선형대수', 2, 'B+', 3.5, '=B5*D5', '=IF(D5>0,"이수","-")'],
+          ['창의설계', 2, 'A+', 4.5, '=B6*D6', '=IF(D6>0,"이수","-")'],
+          ['교양세미나', 1, 'P', 0, '=B7*D7', '=IF(D7>0,"이수","-")'],
+          ['합계', '=SUM(B3:B7)', '', '=ROUND(AVERAGE(D3:D5),2)', '=SUM(E3:E7)', '=COUNT(B3:B7)'],
+          ['학기 평점', '=ROUND(E8/B8,2)', '목표 학점', 3.75, '=IF(B9>=D9,"달성","미달")', ''],
+          ['최고 평점', '=MAX(D3:D7)', '최저 평점', '=MIN(D3:D5)', '', '']
+        ], {
+          head: ['A2:F2'], headBg: '#d6f0e4', colW: { A: 170, B: 78, C: 82, D: 96, E: 108, F: 92 },
+          bold: ['A1:F1', 'A8:F8', 'A9:B9'], center: ['B3:C9', 'F3:F9'], n1: ['D3:D9'], n2: ['B9:B9'],
+          fill: [['A1:F1', '#eaf8f1']], color: [['A1:F1', '#064e3b']]
+        });
+        return { title: '2026 2학기 성적표', active: 0, sheets: [sh] };
+      }
+    },
+    {
+      id: 'dues', name: '동아리 회비 정산표', kicker: 'SETTLE', accent: '#16a34a',
+      desc: '낸 회비와 나눌 지출을 비교해 환급·추가 납부를 자동 판정하고 1인당 부담을 계산합니다.',
+      formula: '=IF · ROUND',
+      make: function () {
+        var sh = mkSheet('회비 정산', [
+          ['사진동아리 · 11월 회비 정산'],
+          ['이름', '회비 납부', '지출 분담', '정산액', '상태'],
+          ['김민중', 20000, 8000, '=B3-C3', '=IF(D3>0,"환급",IF(D3<0,"추가 납부","완료"))'],
+          ['이서연', 20000, 12000, '=B4-C4', '=IF(D4>0,"환급",IF(D4<0,"추가 납부","완료"))'],
+          ['박준호', 0, 8000, '=B5-C5', '=IF(D5>0,"환급",IF(D5<0,"추가 납부","완료"))'],
+          ['최하늘', 20000, 6000, '=B6-C6', '=IF(D6>0,"환급",IF(D6<0,"추가 납부","완료"))'],
+          ['정우진', 15000, 8000, '=B7-C7', '=IF(D7>0,"환급",IF(D7<0,"추가 납부","완료"))'],
+          ['합계', '=SUM(B3:B7)', '=SUM(C3:C7)', '=SUM(D3:D7)', ''],
+          ['인원', '=COUNT(B3:B7)', '1인당 부담', '=ROUND(C8/B8,0)', ''],
+          ['최다 납부', '=MAX(B3:B7)', '최소 납부', '=MIN(B3:B7)', '']
+        ], {
+          head: ['A2:E2'], headBg: '#dbf2d9', colW: { A: 140, B: 122, C: 122, D: 112, E: 120 },
+          bold: ['A1:E1', 'A8:E8', 'A9:B9'], center: ['B3:E10'], cur: ['B3:D10'],
+          fill: [['A1:E1', '#eef9ec']], color: [['A1:E1', '#14532d']]
+        });
+        return { title: '사진동아리 11월 회비 정산', active: 0, sheets: [sh] };
+      }
+    },
+    {
+      id: 'fitness', name: '운동 · 식단 기록표', kicker: 'HABIT LOG', accent: '#0891b2',
+      desc: '하루 운동 시간과 칼로리, 식단 메모를 남기면 주간 합계와 평균이 바로 잡힙니다.',
+      formula: '=SUM · AVERAGE · MAX',
+      make: function () {
+        var sh = mkSheet('기록', [
+          ['11월 셋째 주 · 운동과 식단'],
+          ['날짜', '운동', '시간(분)', '칼로리', '식단 메모', '목표'],
+          ['11.16', '달리기', 40, 420, '현미밥 + 닭가슴살', '=IF(C3>=60,"달성","부족")'],
+          ['11.17', '근력 운동', 55, 380, '샐러드 + 두부', '=IF(C4>=60,"달성","부족")'],
+          ['11.18', '자전거', 70, 510, '김밥 + 삶은 계란', '=IF(C5>=60,"달성","부족")'],
+          ['11.19', '산책', 30, 120, '닭가슴살 도시락', '=IF(C6>=60,"달성","부족")'],
+          ['11.20', '수영', 65, 600, '현미밥 + 생선', '=IF(C7>=60,"달성","부족")'],
+          ['11.21', '요가', 45, 210, '채소 스프', '=IF(C8>=60,"달성","부족")'],
+          ['11.22', '달리기', 50, 470, '단백질 셰이크', '=IF(C9>=60,"달성","부족")'],
+          ['합계', '', '=SUM(C3:C9)', '=SUM(D3:D9)', '평균 시간', '=ROUND(AVERAGE(C3:C9),1)'],
+          ['최장', '', '=MAX(C3:C9)', '=MAX(D3:D9)', '평균 칼로리', '=ROUND(AVERAGE(D3:D9),0)'],
+          ['최단', '', '=MIN(C3:C9)', '=MIN(D3:D9)', '기록 일수', '=COUNT(C3:C9)']
+        ], {
+          head: ['A2:F2'], headBg: '#d4eef4', colW: { A: 84, B: 110, C: 96, D: 94, E: 200, F: 96 },
+          bold: ['A1:F1', 'A10:A11'], center: ['A3:A9', 'F3:F9'], int: ['C3:D11'], n1: ['F10:F10'],
+          fill: [['A1:F1', '#e9f7fa']], color: [['A1:F1', '#0e4a56']]
+        });
+        return { title: '11월 셋째 주 운동 기록', active: 0, sheets: [sh] };
+      }
+    },
+    {
+      id: 'travel', name: '여행 경비 정산표', kicker: 'TRIP', accent: '#65a30d',
+      desc: '누가 얼마를 냈는지 적고, 인원수로 나눈 1인당 부담을 항목별로 모아 줍니다.',
+      formula: '=ROUND · SUM',
+      make: function () {
+        var sh = mkSheet('경비', [
+          ['제주 2박 3일 · 경비 정산'],
+          ['항목', '결제자', '금액', '인원', '1인당'],
+          ['숙소', '김민중', 180000, 3, '=ROUND(C3/D3,0)'],
+          ['렌터카', '이서연', 120000, 3, '=ROUND(C4/D4,0)'],
+          ['식비', '박준호', 96000, 3, '=ROUND(C5/D5,0)'],
+          ['입장료', '김민중', 45000, 3, '=ROUND(C6/D6,0)'],
+          ['합계', '', '=SUM(C3:C6)', '=COUNT(C3:C6)', '=SUM(E3:E6)'],
+          ['1인당 총액', '', '', '', '=ROUND(C7/B7,0)'],
+          ['하루 평균', '', '=ROUND(C7/3,0)', '', '']
+        ], {
+          head: ['A2:E2'], headBg: '#e6f2d2', colW: { A: 140, B: 118, C: 120, D: 80, E: 120 },
+          bold: ['A1:E1', 'A7:E7', 'A8:B8'], center: ['A3:D8'], cur: ['C3:C8', 'E3:E8'],
+          fill: [['A1:E1', '#f1f8e5']], color: [['A1:E1', '#3f6212']]
+        });
+        return { title: '제주 2박 3일 경비 정산', active: 0, sheets: [sh] };
+      }
+    }
+  ];
+
+  /* ---------- autosave project ---------- */
+  S.doc = S.blankDoc('새 시트');
+  S.proj = Lemon.project('fluxsheets_project', { max: 30, delay: 850 });
+  S.vals = {};
+  S.dirty = false;
+
+  S.touchSave = function () {
+    S.dirty = true;
+    S.proj.touch(function () { return S.snapshotDoc(); });
+  };
+  S.flushSave = function () {
+    S.dirty = false;
+    return S.proj.flushNow(function () { return S.snapshotDoc(); });
+  };
+
+  /* ---------- history ---------- */
+  S.hist = [];
+  S.histIdx = -1;
+  S.pushHistory = function () {
+    if (!S.doc) return;
+    var snap = S.snapshotDoc();
+    var last = S.hist[S.histIdx];
+    if (last && JSON.stringify(last) === JSON.stringify(snap)) return;
+    S.hist = S.hist.slice(0, S.histIdx + 1);
+    S.hist.push(snap);
+    if (S.hist.length > S.MAX_HIST) S.hist.shift();
+    S.histIdx = S.hist.length - 1;
+  };
+  S.undo = function () {
+    if (S.histIdx <= 0) return false;
+    S.histIdx--;
+    S.doc = S.clone(S.hist[S.histIdx]);
+    S.touchSave();
+    if (S.buildGrid) S.buildGrid();
+    return true;
+  };
+  S.redo = function () {
+    if (S.histIdx >= S.hist.length - 1) return false;
+    S.histIdx++;
+    S.doc = S.clone(S.hist[S.histIdx]);
+    S.touchSave();
+    if (S.buildGrid) S.buildGrid();
+    return true;
+  };
+
+  /* ---------- doc helpers ---------- */
+  S.getCell = function (k, create) {
+    var sh = S.curSheet();
+    if (!sh.cells[k] && create) sh.cells[k] = { v: '' };
+    return sh.cells[k];
+  };
+  S.setCellInput = function (k, input) {
+    var sh = S.curSheet();
+    var val = String(input === undefined || input === null ? '' : input);
+    var c = sh.cells[k];
+    if (!c) c = sh.cells[k] = { v: '' };
+    var st = c.st;
+    if (val.charAt(0) === '=' && val.length > 1) {
+      c.f = val;
+      c.v = '';
+    } else {
+      c.f = null;
+      c.v = val;
+    }
+    if (!val) {
+      if (st && Object.keys(st).length) { c.v = ''; c.f = null; }
+      else delete sh.cells[k];
+    }
+    if (st) c.st = st;
+    return c;
+  };
+  S.usedBounds = function (sh) {
+    sh = sh || S.curSheet();
+    var maxR = 0, maxC = 0;
+    Object.keys(sh.cells || {}).forEach(function (k) {
+      var p = S.parseRef(k);
+      if (!p) return;
+      if (p.r > maxR) maxR = p.r;
+      if (p.c > maxC) maxC = p.c;
+    });
+    return { rows: Math.min(maxR + 1, S.ROWS), cols: Math.min(maxC + 1, S.COLS) };
+  };
+  S.cellCount = function (doc) {
+    var n = 0;
+    (doc || S.doc).sheets.forEach(function (sh) { n += Object.keys(sh.cells || {}).length; });
+    return n;
+  };
+})();
+
+</script>
+<script>
+/* ============ Flux Sheets · grid · editing · toolbar · charts ============ */
+(function () {
+  'use strict';
+  var S = window.S;
+  function el(id) { return document.getElementById(id); }
+
+  S.anchor = { r: 0, c: 0 };
+  S.cur = { r: 0, c: 0 };
+  S.cellsEls = {};
+  S.colEls = [];
+  S.rowEls = [];
+  S.dragging = false;
+  S.editing = false;
+  S.readonly = false;
+
+  function sheet() { return S.curSheet(); }
+  function selRect() {
+    return {
+      r1: Math.min(S.anchor.r, S.cur.r), c1: Math.min(S.anchor.c, S.cur.c),
+      r2: Math.max(S.anchor.r, S.cur.r), c2: Math.max(S.anchor.c, S.cur.c)
+    };
+  }
+  S.selRect = selRect;
+  function clampR(r) { return Math.max(0, Math.min(S.ROWS - 1, r)); }
+  function clampC(c) { return Math.max(0, Math.min(S.COLS - 1, c)); }
+
+  function cellNum(cell, vals, k) {
+    if (!cell) return false;
+    if (cell.f) return typeof vals[k] === 'number';
+    var s = String(cell.v === undefined || cell.v === null ? '' : cell.v);
+    return s.trim() !== '' && !isNaN(Number(s.replace(/,/g, '')));
+  }
+
+  function paintCell(td, cell, k, vals) {
+    if (!td) return;
+    var txt = S.cellText(cell, vals, k);
+    if (td.textContent !== txt) td.textContent = txt;
+    var st = (cell && cell.st) || {};
+    var num = cellNum(cell, vals, k);
+    var err = !!(cell && cell.f && S.isErr(vals[k]));
+    var cls = 'cell';
+    if (num) cls += ' num';
+    if (st.b) cls += ' b';
+    if (st.i) cls += ' i';
+    if (st.al === 'c') cls += ' al-c';
+    else if (st.al === 'r') cls += ' al-r';
+    if (cell && cell.f && !st.tc) cls += ' fxcell';
+    if (err) cls += ' err';
+    if (td.className !== cls) td.className = cls;
+    td.style.background = st.bg || '';
+    td.style.color = st.tc || '';
+  }
+
+  S.paintCells = function () {
+    var sh = sheet();
+    S.vals = S.recalc(sh);
+    for (var r = 0; r < S.ROWS; r++) {
+      for (var c = 0; c < S.COLS; c++) {
+        var k = S.key(r, c);
+        paintCell(S.cellsEls[k], sh.cells[k], k, S.vals);
+      }
+    }
+    S.paintStat();
+  };
+
+  S.buildGrid = function () {
+    var sh = sheet();
+    sh.colW = sh.colW || {}; sh.rowH = sh.rowH || {};
+    var h = ['<colgroup><col style="width:42px">'];
+    for (var c = 0; c < S.COLS; c++) h.push('<col style="width:' + (sh.colW[S.colName(c)] || 96) + 'px">');
+    h.push('</colgroup><thead><tr><th class="corner"></th>');
+    for (c = 0; c < S.COLS; c++) {
+      h.push('<th data-c="' + c + '" style="position:relative">' + S.colName(c) + '<span class="col-resize" data-col="' + c + '"></span></th>');
+    }
+    h.push('</tr></thead><tbody>');
+    for (var r = 0; r < S.ROWS; r++) {
+      h.push('<tr data-r="' + r + '" style="height:' + (sh.rowH[r + 1] || 26) + 'px">');
+      h.push('<th data-r="' + r + '" style="position:relative">' + (r + 1) + '<span class="row-resize" data-row="' + r + '"></span></th>');
+      for (c = 0; c < S.COLS; c++) h.push('<td class="cell" data-k="' + S.key(r, c) + '" data-r="' + r + '" data-c="' + c + '"></td>');
+      h.push('</tr>');
+    }
+    h.push('</tbody>');
+    el('gridTable').innerHTML = h.join('');
+    S.cellsEls = {};
+    S.colEls = [];
+    S.rowEls = [];
+    var tds = el('gridTable').querySelectorAll('td.cell');
+    for (var i = 0; i < tds.length; i++) S.cellsEls[tds[i].getAttribute('data-k')] = tds[i];
+    var cols = el('gridTable').querySelectorAll('colgroup col');
+    for (i = 1; i < cols.length; i++) S.colEls[i - 1] = cols[i];
+    var trs = el('gridTable').querySelectorAll('tbody tr');
+    for (i = 0; i < trs.length; i++) S.rowEls[i] = trs[i];
+    S.paintCells();
+    S.paintSelection();
+    S.renderSheetTabs();
+    el('sheetTitle').value = S.doc.title || '새 시트';
+    S.paintStat();
+  };
+
+  var selCells = [];
+  S.paintSelection = function () {
+    var rect = selRect();
+    for (var i = 0; i < selCells.length; i++) if (selCells[i]) selCells[i].classList.remove('sel');
+    selCells = [];
+    for (var r = rect.r1; r <= rect.r2; r++) {
+      for (var c = rect.c1; c <= rect.c2; c++) {
+        var td = S.cellsEls[S.key(r, c)];
+        if (td) { td.classList.add('sel'); selCells.push(td); }
+      }
+    }
+    var prev = el('gridTable').querySelectorAll('th.hl');
+    for (i = 0; i < prev.length; i++) prev[i].classList.remove('hl');
+    for (r = rect.r1; r <= rect.r2; r++) {
+      var rh = el('gridTable').querySelector('tbody th[data-r="' + r + '"]');
+      if (rh) rh.classList.add('hl');
+    }
+    for (c = rect.c1; c <= rect.c2; c++) {
+      var ch = el('gridTable').querySelector('thead th[data-c="' + c + '"]');
+      if (ch) ch.classList.add('hl');
+    }
+    frame(el('selFrame'), rect.r1, rect.c1, rect.r2, rect.c2);
+    frame(el('actFrame'), S.cur.r, S.cur.c, S.cur.r, S.cur.c);
+    var single = rect.r1 === rect.r2 && rect.c1 === rect.c2;
+    el('selFrame').style.display = single ? 'none' : 'block';
+    el('actFrame').style.display = 'block';
+    S.updateFormulaBar();
+    S.paintStat();
+    positionEditor();
+  };
+  function frame(node, r1, c1, r2, c2) {
+    var a = S.cellsEls[S.key(r1, c1)], b = S.cellsEls[S.key(r2, c2)];
+    if (!a || !b || !node) return;
+    var inner = el('gridInner').getBoundingClientRect();
+    var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    node.style.left = (ra.left - inner.left) + 'px';
+    node.style.top = (ra.top - inner.top) + 'px';
+    node.style.width = (rb.right - ra.left + 1) + 'px';
+    node.style.height = (rb.bottom - ra.top + 1) + 'px';
+  }
+
+  S.updateFormulaBar = function () {
+    var rect = selRect();
+    var label = S.key(S.cur.r, S.cur.c);
+    if (rect.r1 !== rect.r2 || rect.c1 !== rect.c2) label += ':' + S.key(rect.r2, rect.c2);
+    el('refBox').textContent = label;
+    if (S.editing) return;
+    var c = sheet().cells[S.key(S.cur.r, S.cur.c)];
+    el('fxInput').value = c ? (c.f || c.v || '') : '';
+  };
+
+  S.paintStat = function () {
+    var rect = selRect(), sh = sheet(), vals = S.vals || {};
+    var n = 0, sum = 0, cnt = 0;
+    for (var r = rect.r1; r <= rect.r2; r++) {
+      for (var c = rect.c1; c <= rect.c2; c++) {
+        var k = S.key(r, c), cell = sh.cells[k];
+        if (!cell) continue;
+        n++;
+        var v = S.rawNumeric(cell, vals, k);
+        if (v !== null) { sum += v; cnt++; }
+      }
+    }
+    var parts = [];
+    parts.push('선택 ' + (rect.r2 - rect.r1 + 1) + 'x' + (rect.c2 - rect.c1 + 1));
+    parts.push('셀 <b>' + n + '</b>');
+    if (cnt) {
+      parts.push('합계 <b>' + S.fmtValue(sum, { fmt: 'auto' }) + '</b>');
+      parts.push('평균 <b>' + S.fmtValue(sum / cnt, { fmt: 'n2' }) + '</b>');
+      parts.push('숫자 <b>' + cnt + '</b>');
+    }
+    el('gridStat').innerHTML = '<span>' + parts.join(' · ') + '</span>';
+  };
+
+  /* ---------- selection & editing ---------- */
+  function positionEditor() {
+    if (!S.editing) return;
+    var td = S.cellsEls[S.key(S.cur.r, S.cur.c)];
+    if (!td) return;
+    var inner = el('gridInner').getBoundingClientRect(), r = td.getBoundingClientRect();
+    var ed = el('cellEditor');
+    ed.style.left = (r.left - inner.left) + 'px';
+    ed.style.top = (r.top - inner.top) + 'px';
+    ed.style.width = Math.max(r.width, 96) + 'px';
+    ed.style.height = Math.max(r.height, 24) + 'px';
+  }
+
+  S.startEdit = function (initial) {
+    if (S.readonly) return;
+    var k = S.key(S.cur.r, S.cur.c);
+    if (!S.cellsEls[k]) return;
+    var c = sheet().cells[k];
+    var ed = el('cellEditor');
+    S.editing = true;
+    ed.value = initial !== undefined ? initial : (c ? (c.f || c.v || '') : '');
+    ed.style.display = 'block';
+    positionEditor();
+    ed.focus();
+    if (initial === undefined) ed.select();
+    else { try { ed.setSelectionRange(ed.value.length, ed.value.length); } catch (e) { } }
+  };
+
+  S.commitEdit = function (move) {
+    if (!S.editing) return;
+    var ed = el('cellEditor');
+    var k = S.key(S.cur.r, S.cur.c);
+    var val = ed.value;
+    S.editing = false;
+    ed.style.display = 'none';
+    S.pushHistory();
+    S.setCellInput(k, val);
+    S.paintCells();
+    S.paintSelection();
+    S.touchSave();
+    S.pushHistory();
+    if (move === 'down') moveCursor(1, 0);
+    else if (move === 'right') moveCursor(0, 1);
+    else if (move === 'up') moveCursor(-1, 0);
+  };
+
+  function cancelEdit() {
+    S.editing = false;
+    el('cellEditor').style.display = 'none';
+    S.updateFormulaBar();
+  }
+
+  function moveCursor(dr, dc, extend) {
+    S.cur = { r: clampR(S.cur.r + dr), c: clampC(S.cur.c + dc) };
+    if (!extend) S.anchor = { r: S.cur.r, c: S.cur.c };
+    S.paintSelection();
+    scrollToCursor();
+  }
+  S.moveCursor = moveCursor;
+
+  function scrollToCursor() {
+    var td = S.cellsEls[S.key(S.cur.r, S.cur.c)];
+    if (!td) return;
+    var sc = el('gridScroll');
+    var tr = td.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+    if (tr.top < sr.top + 26) sc.scrollTop -= (sr.top + 26 - tr.top);
+    else if (tr.bottom > sr.bottom - 2) sc.scrollTop += (tr.bottom - sr.bottom + 2);
+    if (tr.left < sr.left + 44) sc.scrollLeft -= (sr.left + 44 - tr.left);
+    else if (tr.right > sr.right - 2) sc.scrollLeft += (tr.right - sr.right + 2);
+  }
+
+  function bindGrid() {
+    var table = el('gridTable');
+
+    table.addEventListener('pointerdown', function (e) {
+      if (S.readonly) return;
+      if (S.resizeDrag) return;
+      var td = e.target.closest ? e.target.closest('td.cell') : null;
+      if (!td) return;
+      if (S.editing) S.commitEdit();
+      var r = parseInt(td.getAttribute('data-r'), 10), c = parseInt(td.getAttribute('data-c'), 10);
+      if (e.shiftKey) {
+        S.cur = { r: r, c: c };
+      } else {
+        S.cur = { r: r, c: c };
+        S.anchor = { r: r, c: c };
+      }
+      S.dragging = true;
+      S.paintSelection();
+      e.preventDefault();
+    });
+
+    table.addEventListener('dblclick', function (e) {
+      var td = e.target.closest ? e.target.closest('td.cell') : null;
+      if (!td || S.readonly) return;
+      S.startEdit();
+    });
+
+    document.addEventListener('pointermove', function (e) {
+      if (!S.dragging) return;
+      var node = document.elementFromPoint(e.clientX, e.clientY);
+      var td = node && node.closest ? node.closest('td.cell') : null;
+      if (!td) return;
+      var r = parseInt(td.getAttribute('data-r'), 10), c = parseInt(td.getAttribute('data-c'), 10);
+      if (r === S.cur.r && c === S.cur.c) return;
+      S.cur = { r: r, c: c };
+      S.paintSelection();
+    });
+    document.addEventListener('pointerup', function () {
+      if (S.dragging) { S.dragging = false; }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+      if (el('viewStudio').classList.contains('hidden') || !el('viewer').classList.contains('hidden')) return;
+      if (S.editing) return;
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === 'z') { e.preventDefault(); S.undo() ? (S.buildGrid(), Lemon.toast('되돌렸어요', 'info')) : Lemon.toast('더 되돌릴 기록이 없어요', 'err'); }
+        else if (e.key === 'y') { e.preventDefault(); S.redo() ? (S.buildGrid(), Lemon.toast('다시 실행했어요', 'info')) : Lemon.toast('다시 실행할 기록이 없어요', 'err'); }
+        else if (e.key === 'b') { e.preventDefault(); S.applyStyle({ b: S.toggleBold() }); }
+        return;
+      }
+      var key = e.key;
+      if (key === 'ArrowDown') { e.preventDefault(); moveCursor(1, 0, e.shiftKey); }
+      else if (key === 'ArrowUp') { e.preventDefault(); moveCursor(-1, 0, e.shiftKey); }
+      else if (key === 'ArrowLeft') { e.preventDefault(); moveCursor(0, -1, e.shiftKey); }
+      else if (key === 'ArrowRight') { e.preventDefault(); moveCursor(0, 1, e.shiftKey); }
+      else if (key === 'Tab') { e.preventDefault(); moveCursor(0, 1, false); }
+      else if (key === 'Enter') { e.preventDefault(); S.startEdit(); }
+      else if (key === 'F2') { e.preventDefault(); S.startEdit(); }
+      else if (key === 'Delete' || key === 'Backspace') { e.preventDefault(); S.clearSelection(); }
+      else if (key === 'Escape') { S.paintSelection(); }
+      else if (key.length === 1) { e.preventDefault(); S.startEdit(key); }
+    });
+
+    var ed = el('cellEditor');
+    ed.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); if (e.shiftKey) S.commitEdit('up'); else S.commitEdit('down'); }
+      else if (e.key === 'Tab') { e.preventDefault(); S.commitEdit('right'); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+      e.stopPropagation();
+    });
+    ed.addEventListener('blur', function () {
+      if (S.editing) S.commitEdit();
+    });
+
+    el('fxInput').addEventListener('focus', function () {
+      var c = sheet().cells[S.key(S.cur.r, S.cur.c)];
+      this.value = c ? (c.f || c.v || '') : '';
+    });
+    el('fxInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        S.pushHistory();
+        S.setCellInput(S.key(S.cur.r, S.cur.c), this.value);
+        S.paintCells(); S.paintSelection(); S.touchSave();
+        moveCursor(1, 0);
+      }
+    });
+    el('btnFxRun').addEventListener('click', function () {
+      S.pushHistory();
+      S.setCellInput(S.key(S.cur.r, S.cur.c), el('fxInput').value);
+      S.paintCells(); S.paintSelection(); S.touchSave();
+      Lemon.hap(10);
+    });
+
+    /* resize handles */
+    document.addEventListener('pointerdown', function (e) {
+      var h = e.target.closest ? e.target.closest('.col-resize') : null;
+      if (h) {
+        var idx = parseInt(h.getAttribute('data-col'), 10);
+        S.resizeDrag = { type: 'col', idx: idx, x: e.clientX, w: S.colEls[idx] ? S.colEls[idx].getBoundingClientRect().width : 96 };
+        e.preventDefault(); e.stopPropagation();
+        return;
+      }
+      var v = e.target.closest ? e.target.closest('.row-resize') : null;
+      if (v) {
+        var ri = parseInt(v.getAttribute('data-row'), 10);
+        S.resizeDrag = { type: 'row', idx: ri, y: e.clientY, h: S.rowEls[ri] ? S.rowEls[ri].getBoundingClientRect().height : 26 };
+        e.preventDefault(); e.stopPropagation();
+      }
+    }, true);
+    document.addEventListener('pointermove', function (e) {
+      var d = S.resizeDrag;
+      if (!d) return;
+      if (d.type === 'col') {
+        var w = Math.max(44, Math.min(400, d.w + (e.clientX - d.x)));
+        if (S.colEls[d.idx]) S.colEls[d.idx].style.width = w + 'px';
+        sheet().colW[S.colName(d.idx)] = w;
+      } else {
+        var hh = Math.max(20, Math.min(120, d.h + (e.clientY - d.y)));
+        if (S.rowEls[d.idx]) S.rowEls[d.idx].style.height = hh + 'px';
+        sheet().rowH[d.idx + 1] = hh;
+      }
+    });
+    document.addEventListener('pointerup', function () {
+      if (S.resizeDrag) { S.resizeDrag = null; S.touchSave(); }
+    });
+  }
+  S.bindGrid = bindGrid;
+
+  S.clearSelection = function () {
+    var rect = selRect(), sh = sheet();
+    S.pushHistory();
+    var changed = false;
+    for (var r = rect.r1; r <= rect.r2; r++) {
+      for (var c = rect.c1; c <= rect.c2; c++) {
+        var k = S.key(r, c), cell = sh.cells[k];
+        if (!cell) continue;
+        if (cell.st && Object.keys(cell.st).length) { cell.v = ''; cell.f = null; changed = true; }
+        else { delete sh.cells[k]; changed = true; }
+      }
+    }
+    if (changed) { S.paintCells(); S.paintSelection(); S.touchSave(); S.pushHistory(); }
+  };
+
+  /* ---------- styles ---------- */
+  function eachSel(cb) {
+    var rect = selRect();
+    for (var r = rect.r1; r <= rect.r2; r++) for (var c = rect.c1; c <= rect.c2; c++) cb(S.key(r, c));
+  }
+  S.eachSel = eachSel;
+
+  S.toggleBold = function () {
+    var c = sheet().cells[S.key(S.cur.r, S.cur.c)];
+    return !(c && c.st && c.st.b);
+  };
+
+  S.applyStyle = function (patch, clearKeys) {
+    var sh = sheet();
+    S.pushHistory();
+    eachSel(function (k) {
+      var c = sh.cells[k];
+      if (!c) c = sh.cells[k] = { v: '' };
+      c.st = c.st || {};
+      if (clearKeys) clearKeys.forEach(function (q) { delete c.st[q]; });
+      Object.keys(patch || {}).forEach(function (q) { c.st[q] = patch[q]; });
+      if (!Object.keys(c.st).length) delete c.st;
+    });
+    S.paintCells();
+    S.paintSelection();
+    S.touchSave();
+    S.pushHistory();
+  };
+
+  S.bindRibbon = function () {
+    el('ribbon').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var cmd = b.getAttribute('data-cmd');
+      var fmt = b.getAttribute('data-fmt');
+      var pick = b.getAttribute('data-picker');
+      if (fmt) { S.applyStyle({ fmt: fmt }); Lemon.hap(8); return; }
+      if (pick) { S.openPicker(pick, b); return; }
+      if (!cmd) return;
+      switch (cmd) {
+        case 'undo': if (S.undo()) { S.buildGrid(); Lemon.toast('되돌렸어요', 'info'); } else Lemon.toast('더 되돌릴 기록이 없어요', 'err'); break;
+        case 'redo': if (S.redo()) { S.buildGrid(); Lemon.toast('다시 실행했어요', 'info'); } else Lemon.toast('다시 실행할 기록이 없어요', 'err'); break;
+        case 'bold': S.applyStyle({ b: S.toggleBold() }); break;
+        case 'italic':
+          var cur = sheet().cells[S.key(S.cur.r, S.cur.c)];
+          S.applyStyle({ i: !(cur && cur.st && cur.st.i) });
+          break;
+        case 'clear': S.applyStyle({}, ['b', 'i', 'al', 'fmt', 'tc', 'bg']); Lemon.toast('서식을 지웠어요', 'info'); break;
+        case 'al-l': S.applyStyle({ al: 'l' }); break;
+        case 'al-c': S.applyStyle({ al: 'c' }); break;
+        case 'al-r': S.applyStyle({ al: 'r' }); break;
+        case 'ins-row': S.insertRow(); break;
+        case 'ins-col': S.insertCol(); break;
+        case 'del-row': S.deleteRow(); break;
+        case 'del-col': S.deleteCol(); break;
+        case 'chart': S.openChart(); break;
+      }
+    });
+  };
+
+  S.remap = function (fn) {
+    var sh = sheet(), out = {};
+    Object.keys(sh.cells).forEach(function (k) {
+      var p = S.parseRef(k);
+      if (!p) return;
+      var q = fn(p.r, p.c);
+      if (!q) return;
+      var nk = S.key(q.r, q.c);
+      out[nk] = sh.cells[k];
+    });
+    sh.cells = out;
+  };
+
+  S.insertRow = function () {
+    S.pushHistory();
+    var at = S.cur.r;
+    S.remap(function (r, c) { return r >= at ? { r: r + 1, c: c } : { r: r, c: c }; });
+    S.paintCells(); S.paintSelection(); S.touchSave(); S.pushHistory();
+    Lemon.toast('행을 삽입했어요', 'ok');
+  };
+  S.insertCol = function () {
+    S.pushHistory();
+    var at = S.cur.c;
+    S.remap(function (r, c) { return c >= at ? { r: r, c: c + 1 } : { r: r, c: c }; });
+    S.buildGrid(); S.touchSave(); S.pushHistory();
+    Lemon.toast('열을 삽입했어요', 'ok');
+  };
+  S.deleteRow = function () {
+    S.pushHistory();
+    var at = S.cur.r;
+    S.remap(function (r, c) {
+      if (r === at) return null;
+      return r > at ? { r: r - 1, c: c } : { r: r, c: c };
+    });
+    S.paintCells(); S.paintSelection(); S.touchSave(); S.pushHistory();
+    Lemon.toast('행을 삭제했어요', 'info');
+  };
+  S.deleteCol = function () {
+    S.pushHistory();
+    var at = S.cur.c;
+    S.remap(function (r, c) {
+      if (c === at) return null;
+      return c > at ? { r: r, c: c - 1 } : { r: r, c: c };
+    });
+    S.buildGrid(); S.touchSave(); S.pushHistory();
+    Lemon.toast('열을 삭제했어요', 'info');
+  };
+
+  /* ---------- sheet tabs ---------- */
+  S.renderSheetTabs = function () {
+    var box = el('sheetTabs');
+    var existing = box.querySelectorAll('.sheet-tab');
+    var canReuse = existing.length === S.doc.sheets.length && box.querySelector('#btnAddSheet');
+    if (canReuse) {
+      for (var q = 0; q < existing.length; q++) {
+        if (existing[q].getAttribute('data-sheet') !== String(q) || existing[q].textContent !== S.doc.sheets[q].name) { canReuse = false; break; }
+      }
+    }
+    if (canReuse) {
+      for (var q2 = 0; q2 < existing.length; q2++) existing[q2].classList.toggle('on', q2 === (S.doc.active || 0));
+      return;
+    }
+    var html = '';
+    (S.doc.sheets || []).forEach(function (sh, i) {
+      html += '<button class="sheet-tab' + (i === (S.doc.active || 0) ? ' on' : '') + '" data-sheet="' + i + '">' + Lemon.esc(sh.name) + '</button>';
+    });
+    html += '<button class="tab-add" id="btnAddSheet" title="시트 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>';
+    box.innerHTML = html;
+    box.querySelectorAll('.sheet-tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var prev = S.editing ? S.commitEdit() : null;
+        S.doc.active = parseInt(btn.getAttribute('data-sheet'), 10);
+        S.buildGrid();
+        Lemon.hap(8);
+      });
+      btn.addEventListener('dblclick', function (e) {
+        e.preventDefault();
+        var i = parseInt(btn.getAttribute('data-sheet'), 10);
+        var input = document.createElement('input');
+        input.value = S.doc.sheets[i].name;
+        input.maxLength = 16;
+        btn.textContent = '';
+        btn.appendChild(input);
+        input.focus(); input.select();
+        function done(save) {
+          var v = input.value.trim();
+          S.doc.sheets[i].name = save && v ? v : S.doc.sheets[i].name;
+          S.touchSave();
+          S.renderSheetTabs();
+        }
+        input.addEventListener('blur', function () { done(true); });
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') { ev.preventDefault(); done(true); }
+          else if (ev.key === 'Escape') { ev.preventDefault(); done(false); }
+          ev.stopPropagation();
+        });
+      });
+    });
+    var add = box.querySelector('#btnAddSheet');
+    if (add) add.addEventListener('click', function () {
+      S.pushHistory();
+      S.doc.sheets.push(S.newSheet('시트' + (S.doc.sheets.length + 1)));
+      S.doc.active = S.doc.sheets.length - 1;
+      S.buildGrid(); S.touchSave(); S.pushHistory();
+      Lemon.toast('새 시트를 추가했어요', 'ok');
+    });
+  };
+
+  S.renderTabs = function () { S.renderSheetTabs(); };
+
+  /* ---------- custom color picker ---------- */
+  var pk = { target: 'text', h: 170, s: 0.62, v: 0.47, hex: '#0F766E' };
+
+  function hsv2hex(h, s, v) {
+    var c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+    var rgb = [0, 0, 0];
+    if (h < 60) rgb = [c, x, 0];
+    else if (h < 120) rgb = [x, c, 0];
+    else if (h < 180) rgb = [0, c, x];
+    else if (h < 240) rgb = [0, x, c];
+    else if (h < 300) rgb = [x, 0, c];
+    else rgb = [c, 0, x];
+    return '#' + rgb.map(function (n) {
+      var q = Math.round((n + m) * 255).toString(16);
+      return q.length === 1 ? '0' + q : q;
+    }).join('').toUpperCase();
+  }
+  function hex2hsv(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+    if (!m) return null;
+    var n = parseInt(m[1], 16);
+    var r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, h = 0;
+    if (d) {
+      if (mx === r) h = 60 * (((g - b) / d) % 6);
+      else if (mx === g) h = 60 * ((b - r) / d + 2);
+      else h = 60 * ((r - g) / d + 4);
+    }
+    if (h < 0) h += 360;
+    return { h: h, s: mx === 0 ? 0 : d / mx, v: mx };
+  }
+
+  function drawSv() {
+    var cv = el('pkCanvas');
+    if (!cv) return;
+    var ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = hsv2hex(pk.h, 1, 1);
+    ctx.fillRect(0, 0, w, h);
+    var g = ctx.createLinearGradient(0, 0, w, 0);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    var g2 = ctx.createLinearGradient(0, 0, 0, h);
+    g2.addColorStop(0, 'rgba(0,0,0,0)');
+    g2.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, w, h);
+    var cur = el('pkCursor');
+    cur.style.left = (pk.s * 100) + '%';
+    cur.style.top = ((1 - pk.v) * 100) + '%';
+    el('pkPrev').style.background = pk.hex;
+    el('pkHex').value = pk.hex;
+  }
+
+  S.openPicker = function (target, anchor) {
+    var box = el('picker');
+    pk.target = target;
+    el('pkTitle').textContent = target === 'fill' ? '셀 배경색' : '글자색';
+    var cur = sheet().cells[S.key(S.cur.r, S.cur.c)];
+    var start = cur && cur.st ? (target === 'fill' ? cur.st.bg : cur.st.tc) : null;
+    var hsv = hex2hsv(start || (target === 'fill' ? '#A7F3D0' : '#0F766E'));
+    if (hsv) { pk.h = hsv.h; pk.s = hsv.s; pk.v = hsv.v; }
+    pk.hex = hsv2hex(pk.h, pk.s, pk.v);
+    el('pkHue').value = Math.round(pk.h);
+    drawSv();
+    box.classList.add('show');
+    var r = anchor.getBoundingClientRect();
+    var w = 228, left = Math.min(window.innerWidth - w - 10, Math.max(10, r.left - 40));
+    box.style.left = left + 'px';
+    box.style.top = Math.min(window.innerHeight - 300, r.bottom + 8) + 'px';
+  };
+
+  S.closePicker = function () { el('picker').classList.remove('show'); };
+
+  S.bindPicker = function () {
+    var palette = ['#0F766E', '#0D9488', '#059669', '#16A34A', '#65A30D', '#0891B2', '#2563EB', '#4F46E5',
+      '#7C3AED', '#DB2777', '#E11D48', '#EA580C', '#D97706', '#CA8A04', '#475569', '#111827',
+      '#FFFFFF', '#F1F5F9', '#D7EFE6', '#A7F3D0', '#FEF3C7', '#FEE2E2', '#DBEAFE', '#EDE9FE'];
+    var sw = el('pkSwatches');
+    sw.innerHTML = palette.map(function (c) { return '<button class="pk-sw" data-hex="' + c + '" style="background:' + c + '"></button>'; }).join('');
+    sw.addEventListener('click', function (e) {
+      var b = e.target.closest('.pk-sw');
+      if (!b) return;
+      var hsv = hex2hsv(b.getAttribute('data-hex'));
+      if (hsv) { pk.h = hsv.h; pk.s = hsv.s; pk.v = hsv.v; pk.hex = b.getAttribute('data-hex').toUpperCase(); el('pkHue').value = Math.round(pk.h); drawSv(); }
+    });
+
+    var sv = el('pkSv');
+    function pick(e) {
+      var r = sv.getBoundingClientRect();
+      pk.s = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      pk.v = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+      pk.hex = hsv2hex(pk.h, pk.s, pk.v);
+      drawSv();
+    }
+    var down = false;
+    sv.addEventListener('pointerdown', function (e) { down = true; pick(e); e.preventDefault(); });
+    document.addEventListener('pointermove', function (e) { if (down) pick(e); });
+    document.addEventListener('pointerup', function () { down = false; });
+
+    el('pkHue').addEventListener('input', function () {
+      pk.h = parseFloat(this.value);
+      pk.hex = hsv2hex(pk.h, pk.s, pk.v);
+      drawSv();
+    });
+    el('pkHex').addEventListener('change', function () {
+      var hsv = hex2hsv(this.value);
+      if (!hsv) { this.value = pk.hex; return; }
+      pk.h = hsv.h; pk.s = hsv.s; pk.v = hsv.v; pk.hex = this.value.toUpperCase();
+      el('pkHue').value = Math.round(pk.h);
+      drawSv();
+    });
+    el('pkApply').addEventListener('click', function () {
+      S.applyStyle(pk.target === 'fill' ? { bg: pk.hex } : { tc: pk.hex });
+      el(pk.target === 'fill' ? 'swFill' : 'swText').style.background = pk.hex;
+      S.closePicker();
+      Lemon.toast('색을 적용했어요', 'ok');
+    });
+    el('pkNoColor').addEventListener('click', function () {
+      S.applyStyle({}, [pk.target === 'fill' ? 'bg' : 'tc']);
+      S.closePicker();
+      Lemon.toast('색을 해제했어요', 'info');
+    });
+    el('pkClose').addEventListener('click', S.closePicker);
+  };
+
+  /* ---------- charts ---------- */
+  S.chartType = 'bar';
+  var chartAnim = null;
+
+  S.chartData = function () {
+    var rect = selRect(), vals = S.vals || {}, sh = sheet();
+    if (rect.r1 === rect.r2 && rect.c1 === rect.c2) {
+      var b = S.usedBounds(sh);
+      rect = { r1: 0, c1: 0, r2: Math.max(0, b.rows - 1), c2: Math.max(0, b.cols - 1) };
+    }
+    var rows = rect.r2 - rect.r1 + 1, cols = rect.c2 - rect.c1 + 1;
+    var colStat = [];
+    for (var c = rect.c1; c <= rect.c2; c++) {
+      var num = 0, txt = 0;
+      for (var r = rect.r1; r <= rect.r2; r++) {
+        var k = S.key(r, c), cell = sh.cells[k];
+        if (!cell) continue;
+        var v = S.rawNumeric(cell, vals, k);
+        if (v !== null) num++;
+        else if (String(S.cellText(cell, vals, k)).trim() !== '') txt++;
+      }
+      colStat.push({ c: c, num: num, txt: txt });
+    }
+    var labelCol = -1, valCol = -1;
+    if (cols > 1) {
+      for (var i = 0; i < colStat.length; i++) {
+        if (colStat[i].txt > colStat[i].num) { labelCol = colStat[i].c; break; }
+      }
+    }
+    for (var j = 0; j < colStat.length; j++) {
+      if (colStat[j].c === labelCol) continue;
+      if (colStat[j].num > 0) { valCol = colStat[j].c; break; }
+    }
+    if (valCol < 0) return null;
+    var labels = [], values = [];
+    for (var rr = rect.r1; rr <= rect.r2; rr++) {
+      var vk = S.key(rr, valCol), vcell = sh.cells[vk];
+      var vn = vcell ? S.rawNumeric(vcell, vals, vk) : null;
+      if (vn === null) continue;
+      var lab;
+      if (labelCol >= 0) lab = String(S.cellText(sh.cells[S.key(rr, labelCol)], vals, S.key(rr, labelCol)) || ('행 ' + (rr + 1)));
+      else lab = S.colName(valCol) + (rr + 1);
+      labels.push(lab);
+      values.push(vn);
+    }
+    return { labels: labels, values: values, labelCol: labelCol, valCol: valCol, rect: rect };
+  };
+
+  function chartPalette(n) {
+    var base = ['#0f766e', '#34d399', '#0891b2', '#65a30d', '#f59e0b', '#14b8a6', '#0ea5e9', '#84cc16', '#e11d48', '#7c3aed'];
+    var out = [];
+    for (var i = 0; i < n; i++) out.push(base[i % base.length]);
+    return out;
+  }
+
+  S.drawChart = function (progress) {
+    var cv = el('chartCanvas');
+    if (!cv) return;
+    var data = S.data;
+    var ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = Lemon.isDark() ? '#0b1915' : '#f8fdfa';
+    ctx.fillRect(0, 0, W, H);
+    if (!data) return;
+    var t = progress === undefined ? 1 : progress;
+    var padL = 74, padR = 28, padT = 34, padB = 74;
+    var iw = W - padL - padR, ih = H - padT - padB;
+    var vals = data.values, labels = data.labels, colors = chartPalette(vals.length);
+    var maxV = Math.max.apply(null, vals), minV = Math.min.apply(null, vals);
+    if (!isFinite(maxV)) maxV = 1;
+    var top = Math.max(maxV, 0), bot = Math.min(minV, 0);
+    if (top === bot) top = bot + 1;
+
+    ctx.font = '600 17px -apple-system, "Apple SD Gothic Neo", "Pretendard", sans-serif';
+    var ink = Lemon.isDark() ? '#e9f6f1' : '#0f2b24';
+    var muted = Lemon.isDark() ? '#8aa79c' : '#6a857c';
+    var axis = Lemon.isDark() ? '#233a32' : '#dcebe4';
+    var zeroY = padT + ih - (0 - bot) / (top - bot) * ih;
+
+    function roundRect(x, y, w, h, r) {
+      r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    if (S.chartType === 'donut') {
+      var cx = W * 0.34, cy = H * 0.5, R = Math.min(W * 0.24, H * 0.42), r0 = R * 0.58;
+      var total = vals.reduce(function (a, b) { return a + (b > 0 ? b : 0); }, 0);
+      if (total <= 0) total = 1;
+      var ang = -Math.PI / 2;
+      for (var i = 0; i < vals.length; i++) {
+        var frac = (Math.max(0, vals[i]) / total) * t;
+        var a2 = ang + frac * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, R, ang, a2);
+        ctx.closePath();
+        ctx.fillStyle = colors[i];
+        ctx.fill();
+        ang = a2;
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, r0, 0, Math.PI * 2);
+      ctx.fillStyle = Lemon.isDark() ? '#0b1915' : '#f8fdfa';
+      ctx.fill();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = ink;
+      ctx.font = '800 30px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.fillText(S.fmtValue(Math.round(total * t), { fmt: 'auto' }), cx, cy + 4);
+      ctx.font = '700 15px -apple-system, "Apple SD Gothic Neo", sans-serif';
+      ctx.fillStyle = muted;
+      ctx.fillText('합계', cx, cy + 26);
+
+      var lx = W * 0.63, ly = padT + 8, lh = Math.min(32, (H - padT - padB) / Math.max(1, vals.length));
+      ctx.textAlign = 'left';
+      for (var k2 = 0; k2 < vals.length; k2++) {
+        var yy = ly + k2 * lh;
+        ctx.fillStyle = colors[k2];
+        roundRect(lx, yy + 4, 14, 14, 4);
+        ctx.fill();
+        ctx.fillStyle = ink;
+        ctx.font = '700 15px -apple-system, "Apple SD Gothic Neo", sans-serif';
+        var lab = labels[k2] || '';
+        if (lab.length > 12) lab = lab.slice(0, 12) + '…';
+        ctx.fillText(lab, lx + 22, yy + 16);
+        ctx.fillStyle = muted;
+        ctx.font = '700 14px -apple-system, "Apple SD Gothic Neo", sans-serif';
+        ctx.fillText(Math.round(vals[k2] / total * 100) + '%', lx + 22 + 150, yy + 16);
+      }
+      return;
+    }
+
+    /* grid + axes (bar / line) */
+    ctx.strokeStyle = axis; ctx.lineWidth = 1;
+    ctx.fillStyle = muted;
+    ctx.font = '600 14px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'right';
+    for (var g = 0; g <= 4; g++) {
+      var yv = bot + (top - bot) * (g / 4);
+      var y = padT + ih - (g / 4) * ih;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+      ctx.fillText(S.fmtValue(Math.round(yv * 100) / 100, { fmt: 'auto' }), padL - 10, y + 5);
+    }
+    ctx.strokeStyle = Lemon.isDark() ? '#3a5a4f' : '#b9d3c8';
+    ctx.beginPath(); ctx.moveTo(padL, zeroY); ctx.lineTo(W - padR, zeroY); ctx.stroke();
+    ctx.textAlign = 'center';
+
+    var n = vals.length;
+    var slot = iw / n;
+    var step = Math.max(1, Math.ceil(n / 9));
+
+    if (S.chartType === 'bar') {
+      for (var i2 = 0; i2 < n; i2++) {
+        var bw = Math.min(64, slot * 0.62);
+        var x = padL + slot * i2 + (slot - bw) / 2;
+        var v2 = vals[i2] * t;
+        var y2 = padT + ih - (v2 - bot) / (top - bot) * ih;
+        var hgt = zeroY - y2;
+        var grad = ctx.createLinearGradient(0, y2, 0, zeroY);
+        grad.addColorStop(0, colors[i2]);
+        grad.addColorStop(1, Lemon.isDark() ? 'rgba(52,211,153,.35)' : 'rgba(15,118,110,.28)');
+        ctx.fillStyle = grad;
+        if (hgt <= 0) { hgt = 2; y2 = zeroY - 2; }
+        roundRect(x, y2, bw, hgt, 6);
+        ctx.fill();
+        ctx.fillStyle = ink;
+        ctx.font = '800 15px -apple-system, "Apple SD Gothic Neo", sans-serif';
+        ctx.fillText(S.fmtValue(Math.round(vals[i2] * 100) / 100, { fmt: 'auto' }), x + bw / 2, y2 - 8);
+      }
+    } else {
+      var pts = [];
+      for (var i3 = 0; i3 < n; i3++) {
+        var px = padL + slot * i3 + slot / 2;
+        var py = padT + ih - (vals[i3] * t - bot) / (top - bot) * ih;
+        pts.push([px, py]);
+      }
+      var lg = ctx.createLinearGradient(0, padT, 0, padT + ih);
+      lg.addColorStop(0, 'rgba(52,211,153,.42)');
+      lg.addColorStop(1, 'rgba(52,211,153,0)');
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], zeroY);
+      for (var p1 = 0; p1 < pts.length; p1++) ctx.lineTo(pts[p1][0], pts[p1][1]);
+      ctx.lineTo(pts[pts.length - 1][0], zeroY);
+      ctx.closePath();
+      ctx.fillStyle = lg; ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (var p2 = 1; p2 < pts.length; p2++) ctx.lineTo(pts[p2][0], pts[p2][1]);
+      ctx.strokeStyle = '#0f766e'; ctx.lineWidth = 3.4; ctx.lineJoin = 'round'; ctx.stroke();
+      for (var p3 = 0; p3 < pts.length; p3++) {
+        ctx.beginPath();
+        ctx.arc(pts[p3][0], pts[p3][1], 6, 0, Math.PI * 2);
+        ctx.fillStyle = Lemon.isDark() ? '#0b1915' : '#ffffff'; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = '#0f766e'; ctx.stroke();
+      }
+    }
+
+    ctx.fillStyle = muted;
+    ctx.font = '700 14px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    for (var i4 = 0; i4 < n; i4++) {
+      if (i4 % step !== 0) continue;
+      var lx2 = padL + slot * i4 + slot / 2;
+      var lab2 = labels[i4] || '';
+      if (lab2.length > 10) lab2 = lab2.slice(0, 10) + '…';
+      ctx.fillText(lab2, lx2, padT + ih + 26);
+    }
+    ctx.textAlign = 'left';
+    ctx.fillStyle = muted;
+    ctx.font = '700 13px -apple-system, "Apple SD Gothic Neo", sans-serif';
+    ctx.fillText('Flux Sheets · ' + (S.chartType === 'bar' ? '막대' : '꺾은선') + ' 차트', padL, 24);
+  };
+
+  S.animateChart = function () {
+    var cv = el('chartCanvas');
+    if (!cv) return;
+    if (chartAnim) cancelAnimationFrame(chartAnim);
+    var start = null, dur = 620;
+    function step(ts) {
+      if (!start) start = ts;
+      var p = Math.min(1, (ts - start) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      S.drawChart(e);
+      if (p < 1) chartAnim = requestAnimationFrame(step);
+    }
+    chartAnim = requestAnimationFrame(step);
+  };
+
+  S.openChart = function () {
+    var d = S.chartData();
+    if (!d || !d.values.length) { Lemon.toast('숫자가 들어 있는 범위를 선택해 주세요', 'err'); return; }
+    S.data = d;
+    el('chartInfo').textContent = d.labels.length + '개 값 · ' + S.colName(d.valCol) + '열 기준 · ' + d.labels[0] + ' ~ ' + d.labels[d.labels.length - 1];
+    el('chartModal').classList.remove('hidden');
+    S.animateChart();
+    Lemon.hap(10);
+  };
+
+  S.bindChart = function () {
+    el('chartTypes').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      S.chartType = b.getAttribute('data-ctype');
+      this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      S.animateChart();
+      Lemon.hap(8);
+    });
+    el('btnChartPng').addEventListener('click', function () {
+      try {
+        var url = el('chartCanvas').toDataURL('image/png');
+        var a = document.createElement('a');
+        a.href = url; a.download = 'flux-sheets-chart.png';
+        document.body.appendChild(a); a.click();
+        setTimeout(function () { document.body.removeChild(a); }, 500);
+        Lemon.toast('차트를 PNG로 저장했어요', 'ok');
+      } catch (e) { Lemon.toast('이미지 저장에 실패했어요', 'err'); }
+    });
+    el('btnChartClose').addEventListener('click', function () { el('chartModal').classList.add('hidden'); });
+  };
+
+  /* ---------- CSV / JSON ---------- */
+  function csvEscape(s) {
+    s = String(s === undefined || s === null ? '' : s);
+    if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  S.sheetToCsv = function (sh) {
+    sh = sh || sheet();
+    var vals = S.recalc(sh);
+    var b = S.usedBounds(sh);
+    var out = [];
+    for (var r = 0; r < b.rows; r++) {
+      var row = [];
+      for (var c = 0; c < b.cols; c++) {
+        var k = S.key(r, c), cell = sh.cells[k];
+        if (!cell) { row.push(''); continue; }
+        if (cell.f) {
+          var v = vals[k];
+          if (S.isErr(v)) row.push('');
+          else if (typeof v === 'number') row.push(String(Math.round(v * 1e6) / 1e6));
+          else row.push(String(v === undefined || v === null ? '' : v));
+        } else {
+          row.push(String(cell.v === undefined || cell.v === null ? '' : cell.v));
+        }
+      }
+      out.push(row.map(csvEscape).join(','));
+    }
+    return out.join('\r\n');
+  };
+
+  S.exportCsv = function (sh, name) {
+    var csv = S.sheetToCsv(sh);
+    Lemon.download((name || (S.doc.title || 'flux-sheets')) + '.csv', '\uFEFF' + csv, 'text/csv;charset=utf-8');
+  };
+
+  function parseCsv(text) {
+    var rows = [], row = [], cur = '', i = 0, q = false;
+    text = String(text).replace(/^\uFEFF/, '');
+    while (i < text.length) {
+      var ch = text.charAt(i);
+      if (q) {
+        if (ch === '"') {
+          if (text.charAt(i + 1) === '"') { cur += '"'; i += 2; continue; }
+          q = false; i++; continue;
+        }
+        cur += ch; i++; continue;
+      }
+      if (ch === '"') { q = true; i++; continue; }
+      if (ch === ',') { row.push(cur); cur = ''; i++; continue; }
+      if (ch === '\r') { i++; continue; }
+      if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; i++; continue; }
+      cur += ch; i++;
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    return rows;
+  }
+
+  S.importCsv = function (text, name) {
+    var rows = parseCsv(text);
+    if (!rows.length) { Lemon.toast('CSV에 데이터가 없어요', 'err'); return; }
+    S.pushHistory();
+    var sh = S.newSheet(name || '가져온 데이터');
+    rows.forEach(function (row, r) {
+      row.forEach(function (v, c) {
+        if (v === '' || r >= S.ROWS || c >= S.COLS) return;
+        var s = String(v);
+        if (s.charAt(0) === '=') { sh.cells[S.key(r, c)] = { v: '', f: s }; return; }
+        var n = Number(s.replace(/,/g, ''));
+        sh.cells[S.key(r, c)] = { v: (!isNaN(n) && s.trim() !== '' && !/^0\d/.test(s.trim())) ? n : s };
+      });
+    });
+    S.doc.sheets.push(sh);
+    S.doc.active = S.doc.sheets.length - 1;
+    S.buildGrid(); S.touchSave(); S.pushHistory();
+    Lemon.toast(rows.length + '행을 가져왔어요', 'ok');
+  };
+
+  S.jsonBackup = function () {
+    var payload = { app: 'flux-sheets', version: 1, exportedAt: new Date().toISOString(), doc: S.snapshotDoc() };
+    Lemon.download('flux-sheets-' + Date.now() + '.json', JSON.stringify(payload, null, 2), 'application/json');
+    Lemon.toast('JSON 백업을 내려받았어요', 'ok');
+  };
+
+  S.restoreJson = function (text) {
+    var data;
+    try { data = JSON.parse(text); } catch (e) { Lemon.toast('JSON을 읽을 수 없어요', 'err'); return null; }
+    var doc = data && data.doc ? data.doc : (data && data.sheets ? data : null);
+    if (!doc || !doc.sheets || !doc.sheets.length) { Lemon.toast('시트 데이터를 찾지 못했어요', 'err'); return null; }
+    S.pushHistory();
+    var added = 0;
+    doc.sheets.forEach(function (sh) {
+      if (!sh || !sh.cells) return;
+      S.doc.sheets.push({ name: (sh.name || '복원') + (added ? ' ' + added : ''), cells: sh.cells, colW: sh.colW || {}, rowH: sh.rowH || {} });
+      added++;
+    });
+    if (!added) { Lemon.toast('복원할 시트가 없어요', 'err'); return null; }
+    S.doc.active = S.doc.sheets.length - added;
+    S.buildGrid(); S.touchSave(); S.pushHistory();
+    Lemon.toast(added + '개 시트를 복원했어요', 'ok');
+    return added;
+  };
+})();
+</script>
+<script>
+/* ============ Flux Sheets · views · share · viewer ============ */
+(function () {
+  'use strict';
+  var S = window.S;
+  function el(id) { return document.getElementById(id); }
+  var goView = function () { };
+  var dlgCb = null;
+
+  /* ---------- helpers ---------- */
+  function countCells(sheets) {
+    var n = 0;
+    (sheets || []).forEach(function (sh) { n += Object.keys((sh && sh.cells) || {}).length; });
+    return n;
+  }
+  function payloadOf(rec) {
+    return {
+      title: rec.title || '새 시트',
+      active: rec.active || 0,
+      sheets: (rec.sheets || []).map(function (sh) {
+        return { name: sh.name || '시트', cells: S.clone(sh.cells || {}), colW: S.clone(sh.colW || {}), rowH: S.clone(sh.rowH || {}) };
+      })
+    };
+  }
+  function normalize(doc) {
+    var d = payloadOf(doc);
+    if (!d.sheets.length) d.sheets = [S.newSheet('시트1')];
+    d.active = Math.max(0, Math.min(d.active, d.sheets.length - 1));
+    return d;
+  }
+
+  S.loadDoc = function (doc, id) {
+    S.doc = normalize(doc);
+    S.cur = { r: 0, c: 0 };
+    S.anchor = { r: 0, c: 0 };
+    S.hist = [];
+    S.histIdx = -1;
+    S.buildGrid();
+    S.pushHistory();
+    if (id) S.proj.openProject(id);
+    S.paintSelection();
+  };
+
+  function moveInd() {
+    var on = document.querySelector('#mainTabs .nav-tab.nav-on');
+    var ind = el('tabInd');
+    if (!on || !ind) return;
+    var box = el('mainTabs').getBoundingClientRect(), r = on.getBoundingClientRect();
+    ind.style.width = r.width + 'px';
+    ind.style.transform = 'translateX(' + (r.left - box.left) + 'px)';
+    ind.style.opacity = '1';
+  }
+
+  /* ---------- dialog ---------- */
+  function ask(title, text, okLabel, cb) {
+    el('dlgTitle').textContent = title;
+    el('dlgText').textContent = text;
+    el('dlgOk').textContent = okLabel || '확인';
+    dlgCb = cb;
+    el('dlgModal').classList.remove('hidden');
+  }
+
+  /* ---------- home ---------- */
+  function thumb(i) {
+    var pattern = [
+      ['w1', 'w3', 'w2', 'w4'], ['w3', 'w1', 'w4', 'w2'], ['w2', 'w4', 'w3', 'w1'],
+      ['w4', 'w2', 'w1', 'w3'], ['w1', 'w2', 'w3', 'w4'], ['w3', 'w4', 'w2', 'w1']
+    ][i % 6];
+    var h = '';
+    for (var r = 0; r < 4; r++) {
+      h += '<div class="tl' + (r === 0 ? ' solid' : '') + '">';
+      for (var c = 0; c < 3; c++) h += '<i class="' + pattern[(r + c) % 4] + '"></i>';
+      h += '</div>';
+    }
+    return h;
+  }
+
+  function renderHome() {
+    var arc = S.proj.archive.all();
+    el('arcCount').textContent = arc.length;
+    el('stProjects').textContent = arc.length;
+    var cells = countCells(S.doc.sheets);
+    el('stCells').textContent = cells.toLocaleString('ko-KR');
+    el('stTpl').textContent = S.TEMPLATES.length;
+
+    el('tplGrid').innerHTML = S.TEMPLATES.map(function (t, i) {
+      return '<button class="tpl" data-tpl="' + t.id + '" style="--tpl-accent:' + t.accent + '">' +
+        '<div class="tpl-thumb">' + thumb(i) + '</div>' +
+        '<div class="tpl-body">' +
+        '<span class="tpl-kicker">' + Lemon.esc(t.kicker) + '</span>' +
+        '<span class="tpl-name">' + Lemon.esc(t.name) + '</span>' +
+        '<span class="tpl-desc">' + Lemon.esc(t.desc) + '</span>' +
+        '<span class="tpl-foot"><span class="tpl-formula">' + Lemon.esc(t.formula) + '</span>' +
+        '<span class="tpl-go">시작<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="13 6 19 12 13 18"></polyline></svg></span></span>' +
+        '</div></button>';
+    }).join('');
+
+    var recent = arc.slice(0, 4);
+    if (!recent.length) {
+      el('recentList').innerHTML = '<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M3 9h18M9 9v12"></path></svg><p>아직 저장된 시트가 없어요. 빈 시트로 시작해 보세요.</p></div>';
+    } else {
+      el('recentList').innerHTML = recent.map(function (rec) { return projRow(rec, true); }).join('');
+    }
+    S.paintStat();
+  }
+
+  function projRow(rec, compact) {
+    var sheets = rec.sheets || [];
+    var cells = countCells(sheets);
+    return '<div class="proj" data-id="' + rec.id + '">' +
+      '<div class="proj-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg></div>' +
+      '<div class="proj-main">' +
+      '<div class="proj-name">' + Lemon.esc(rec.title || '새 시트') + '</div>' +
+      '<div class="proj-meta"><span>' + Lemon.timeAgo(rec.ts) + '</span><span class="dotsep">·</span><span>' + sheets.length + '시트</span><span class="dotsep">·</span><span>' + cells.toLocaleString('ko-KR') + '셀</span></div>' +
+      '</div>' +
+      '<div class="proj-acts">' +
+      (compact ? '' : '<button class="mini-btn" data-act="open" title="이어서 편집"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path></svg></button>') +
+      '<button class="mini-btn" data-act="share" title="공유 링크"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"></path><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"></path></svg></button>' +
+      '<button class="mini-btn" data-act="dup" title="복제"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path></svg></button>' +
+      '<button class="mini-btn danger" data-act="del" title="삭제"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 20 7"></polyline><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"></path></svg></button>' +
+      '</div></div>';
+  }
+
+  function renderArchive() {
+    var arc = S.proj.archive.all();
+    el('arcCount').textContent = arc.length;
+    if (!arc.length) {
+      el('arcList').innerHTML = '<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg><p>보관함이 비었습니다. 새 시트를 만들거나 템플릿으로 시작해 보세요.</p></div>';
+      return;
+    }
+    el('arcList').innerHTML = arc.map(function (rec) { return projRow(rec, false); }).join('');
+  }
+
+  function onProjAction(e) {
+    var btn = e.target.closest ? e.target.closest('.mini-btn') : null;
+    var row = e.target.closest ? e.target.closest('.proj') : null;
+    if (!row) return;
+    var id = row.getAttribute('data-id');
+    var rec = S.proj.archive.all().filter(function (x) { return x.id === id; })[0];
+    if (!rec) return;
+    if (!btn) { S.loadDoc(rec, id); goView('studio'); return; }
+    var act = btn.getAttribute('data-act');
+    if (act === 'open') { S.loadDoc(rec, id); goView('studio'); Lemon.hap(10); }
+    else if (act === 'share') { openShare(rec); }
+    else if (act === 'dup') {
+      var copy = payloadOf(rec);
+      copy.title = (copy.title || '시트') + ' (사본)';
+      var newRec = S.proj.archive.add(copy);
+      if (newRec) { renderHome(); renderArchive(); Lemon.toast('시트를 복제했어요', 'ok'); }
+      else Lemon.toast('복제하지 못했어요', 'err');
+    } else if (act === 'del') {
+      ask('시트를 삭제할까요?', (rec.title || '시트') + ' — 삭제하면 되돌릴 수 없습니다.', '삭제', function () {
+        S.proj.archive.remove(id);
+        if (S.proj.id() === id) S.proj.openProject('');
+        renderHome(); renderArchive();
+        Lemon.toast('삭제했어요', 'info');
+      });
+    }
+  }
+
+  /* ---------- share ---------- */
+  function shareUrlFor(doc) {
+    var snap = payloadOf(doc || S.snapshotDoc());
+    var code = LZString.compressToEncodedURIComponent(JSON.stringify(snap));
+    return location.origin + location.pathname + '#view=' + code;
+  }
+
+  function openShare(rec) {
+    var doc = rec ? payloadOf(rec) : S.snapshotDoc();
+    var url = shareUrlFor(doc);
+    el('shareUrl').value = url;
+    el('shareModal').classList.remove('hidden');
+    el('shareUrl').select();
+    S.shareDoc = doc;
+  }
+
+  /* ---------- viewer ---------- */
+  function decodeShare(code) {
+    try {
+      var raw = LZString.decompressFromEncodedURIComponent(code);
+      if (!raw) return null;
+      var snap = JSON.parse(raw);
+      if (!snap || !snap.sheets || !snap.sheets.length) return null;
+      return normalize(snap);
+    } catch (e) { return null; }
+  }
+
+  function renderRoGrid(sheet) {
+    var vals = S.recalc(sheet);
+    var b = S.usedBounds(sheet);
+    var cols = Math.max(Math.min(b.cols, S.COLS), 6);
+    var rows = Math.max(Math.min(b.rows, S.ROWS), 12);
+    var h = ['<table class="rogrid"><colgroup><col style="width:42px">'];
+    for (var c = 0; c < cols; c++) h.push('<col style="width:' + ((sheet.colW && sheet.colW[S.colName(c)]) || 96) + 'px">');
+    h.push('</colgroup><thead><tr><th></th>');
+    for (c = 0; c < cols; c++) h.push('<th>' + S.colName(c) + '</th>');
+    h.push('</tr></thead><tbody>');
+    for (var r = 0; r < rows; r++) {
+      h.push('<tr><th>' + (r + 1) + '</th>');
+      for (c = 0; c < cols; c++) {
+        var k = S.key(r, c), cell = sheet.cells[k], st = (cell && cell.st) || {};
+        var txt = S.cellText(cell, vals, k);
+        var num = cell && ((cell.f && typeof vals[k] === 'number') || (!cell.f && String(cell.v === undefined ? '' : cell.v).trim() !== '' && !isNaN(Number(cell.v))));
+        var cls = [];
+        if (num) cls.push('num');
+        if (st.b) cls.push('b');
+        if (st.i) cls.push('i');
+        if (st.al === 'c') cls.push('al-c');
+        else if (st.al === 'r') cls.push('al-r');
+        var style = '';
+        if (st.bg) style += 'background:' + st.bg + ';';
+        if (st.tc) style += 'color:' + st.tc + ';';
+        h.push('<td class="' + cls.join(' ') + '" style="' + style + '">' + Lemon.esc(txt) + '</td>');
+      }
+      h.push('</tr>');
+    }
+    h.push('</tbody></table>');
+    el('viewerGrid').innerHTML = h.join('');
+  }
+
+  function openViewer(doc) {
+    S.viewDoc = doc;
+    el('viewTitle').textContent = doc.title || '공유된 시트';
+    el('viewer').classList.remove('hidden');
+    renderViewerTabs(doc, 0);
+    document.body.style.overflow = 'hidden';
+  }
+  function renderViewerTabs(doc, idx) {
+    el('viewerTabs').innerHTML = doc.sheets.map(function (sh, i) {
+      return '<button class="sheet-tab' + (i === idx ? ' on' : '') + '" data-sheet="' + i + '">' + Lemon.esc(sh.name) + '</button>';
+    }).join('');
+    el('viewerTabs').querySelectorAll('.sheet-tab').forEach(function (b) {
+      b.addEventListener('click', function () {
+        renderViewerTabs(doc, parseInt(b.getAttribute('data-sheet'), 10));
+      });
+    });
+    S.viewIdx = idx;
+    renderRoGrid(doc.sheets[idx]);
+  }
+  function closeViewer() {
+    el('viewer').classList.add('hidden');
+    document.body.style.overflow = '';
+    if (location.hash.indexOf('#view=') === 0) {
+      try { history.replaceState(null, '', location.pathname + location.search + '#home'); } catch (e) { }
+    }
+  }
+
+  /* ---------- buttons ---------- */
+  function bindButtons() {
+    el('btnTopNew').addEventListener('click', function () { startBlank(); });
+    el('btnBlankHero').addEventListener('click', function () { startBlank(); });
+    el('btnNewArchive').addEventListener('click', function () { startBlank(); });
+    el('btnGotoTpl').addEventListener('click', function () {
+      var t = el('tplAnchor');
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    el('btnAllSheets').addEventListener('click', function () { goView('archive'); });
+    el('btnShare').addEventListener('click', function () { openShare(null); });
+    el('btnCsv').addEventListener('click', function () { S.exportCsv(null, S.doc.title); Lemon.toast('CSV로 내보냈어요', 'ok'); });
+    el('btnJson').addEventListener('click', function () { S.jsonBackup(); });
+    el('btnChartTop').addEventListener('click', function () { S.openChart(); });
+    el('btnCopyUrl').addEventListener('click', function () { Lemon.copy(el('shareUrl').value, '공유 링크를 복사했어요'); });
+    el('btnOpenShare').addEventListener('click', function () {
+      el('shareModal').classList.add('hidden');
+      if (S.shareDoc) openViewer(S.shareDoc);
+    });
+    el('btnChartClose').addEventListener('click', function () { el('chartModal').classList.add('hidden'); });
+    el('sheetTitle').addEventListener('input', function () {
+      S.doc.title = this.value || '새 시트';
+      S.touchSave();
+    });
+    el('sheetTitle').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+
+    el('btnRestoreJson').addEventListener('click', function () { el('jsonInput').click(); });
+    el('btnImportCsv').addEventListener('click', function () { el('csvInput').click(); });
+    el('csvInput').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      var self = this;
+      reader.onload = function () {
+        S.importCsv(String(reader.result || ''), f.name.replace(/\.csv$/i, ''));
+        self.value = '';
+        renderHome(); renderArchive();
+      };
+      reader.readAsText(f, 'utf-8');
+    });
+    el('jsonInput').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      var self = this;
+      reader.onload = function () {
+        var n = S.restoreJson(String(reader.result || ''));
+        self.value = '';
+        renderHome(); renderArchive();
+        if (n) goView('studio');
+      };
+      reader.readAsText(f, 'utf-8');
+    });
+
+    el('tplGrid').addEventListener('click', function (e) {
+      var card = e.target.closest('.tpl');
+      if (!card) return;
+      startTemplate(card.getAttribute('data-tpl'));
+    });
+    el('recentList').addEventListener('click', onProjAction);
+    el('arcList').addEventListener('click', onProjAction);
+
+    el('btnViewCopy').addEventListener('click', function () {
+      if (!S.viewDoc) return;
+      var copy = payloadOf(S.viewDoc);
+      copy.title = (copy.title || '공유 시트') + ' (내 사본)';
+      S.proj.newProject();
+      S.loadDoc(copy);
+      S.touchSave(); S.flushSave();
+      closeViewer();
+      goView('studio');
+      renderHome(); renderArchive();
+      Lemon.toast('내 시트로 복사했어요', 'ok');
+      Lemon.confetti(22);
+    });
+    el('btnViewCsv').addEventListener('click', function () {
+      if (!S.viewDoc) return;
+      S.exportCsv(S.viewDoc.sheets[S.viewIdx || 0], S.viewDoc.title || 'shared');
+      Lemon.toast('CSV로 내보냈어요', 'ok');
+    });
+    el('btnViewClose').addEventListener('click', closeViewer);
+
+    el('dlgOk').addEventListener('click', function () {
+      el('dlgModal').classList.add('hidden');
+      var cb = dlgCb; dlgCb = null;
+      if (cb) cb();
+    });
+    el('dlgCancel').addEventListener('click', function () { dlgCb = null; el('dlgModal').classList.add('hidden'); });
+
+    document.addEventListener('click', function (e) {
+      var c = e.target.closest ? e.target.closest('[data-close]') : null;
+      if (c) el(c.getAttribute('data-close')).classList.add('hidden');
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (el('picker').classList.contains('show')) { S.closePicker(); return; }
+      ['shareModal', 'chartModal', 'dlgModal'].forEach(function (id) {
+        if (!el(id).classList.contains('hidden')) el(id).classList.add('hidden');
+      });
+      if (!el('viewer').classList.contains('hidden')) closeViewer();
+    });
+
+    window.addEventListener('resize', function () {
+      moveInd();
+      if (!el('viewStudio').classList.contains('hidden')) S.paintSelection();
+      if (S.data && !el('chartModal').classList.contains('hidden')) S.drawChart(1);
+    });
+    document.addEventListener('lemon:theme', function () {
+      if (S.data && !el('chartModal').classList.contains('hidden')) S.drawChart(1);
+    });
+    window.addEventListener('beforeunload', function () { if (S.dirty) S.flushSave(); });
+  }
+
+  function startBlank() {
+    S.proj.newProject();
+    S.loadDoc(S.blankDoc('새 시트'));
+    S.touchSave(); S.flushSave();
+    goView('studio');
+    Lemon.toast('새 시트를 열었어요', 'ok');
+    renderHome(); renderArchive();
+  }
+
+  function startTemplate(id) {
+    var t = null;
+    S.TEMPLATES.forEach(function (x) { if (x.id === id) t = x; });
+    if (!t) return;
+    var doc;
+    try { doc = t.make(); } catch (e) { Lemon.toast('템플릿을 여는 데 실패했어요', 'err'); return; }
+    S.proj.newProject();
+    S.loadDoc(doc);
+    S.touchSave(); S.flushSave();
+    goView('studio');
+    renderHome(); renderArchive();
+    Lemon.toast(t.name + ' 템플릿을 열었어요', 'ok');
+    Lemon.confetti(20);
+  }
+
+  /* ---------- boot ---------- */
+  function boot() {
+    S.bindGrid();
+    S.bindRibbon();
+    S.bindPicker();
+    S.bindChart();
+    bindButtons();
+
+    try { S.proj.bind('asBadge'); } catch (e) { }
+    goView = Lemon.initTabs('home');
+    document.addEventListener('lemon:view', function (e) {
+      moveInd();
+      if (e.detail.view === 'studio') {
+        S.paintSelection();
+        setTimeout(function () { S.paintSelection(); }, 60);
+      }
+      if (e.detail.view === 'archive') renderArchive();
+      if (e.detail.view === 'home') renderHome();
+    });
+
+    var hash = location.hash || '';
+    var shared = null;
+    if (hash.indexOf('#view=') === 0) shared = decodeShare(hash.slice(6));
+
+    var restored = false;
+    var activeId = S.proj.id();
+    if (activeId) {
+      var rec = S.proj.restore(activeId);
+      if (rec) { S.loadDoc(rec, activeId); restored = true; }
+    }
+    if (!restored) {
+      var all = S.proj.archive.all();
+      if (all.length) S.loadDoc(all[0], all[0].id);
+      else S.loadDoc(S.blankDoc('새 시트'));
+    }
+
+    renderHome();
+    renderArchive();
+    setTimeout(function () { moveInd(); S.paintSelection(); }, 80);
+
+    /* hero mock number animation */
+    var pctNode = el('mockPct'), barNode = el('mockBar');
+    if (pctNode && barNode) {
+      setTimeout(function () {
+        barNode.style.width = '94.5%';
+        var t0 = null;
+        function tick(ts) {
+          if (!t0) t0 = ts;
+          var p = Math.min(1, (ts - t0) / 900);
+          pctNode.textContent = (94.5 * (1 - Math.pow(1 - p, 3))).toFixed(1) + '%';
+          if (p < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      }, 420);
+    }
+
+    if (shared) {
+      openViewer(shared);
+    }
+    if (location.search.indexOf('debug') > -1 && window.__lemonErrs) {
+      window.__lemonErrs.push('boot ok: sheets=' + S.doc.sheets.length);
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
