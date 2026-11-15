@@ -1,0 +1,2323 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Translate — 이미지·웹페이지·문서까지 한 번에 번역</title>
+<meta name="description" content="텍스트, 사진 속 글자, 웹페이지, 자막 파일을 20개 언어로 번역합니다. 이미지 위에 원래 배경색 그대로 번역문을 덮어쓰고 PNG로 저장하세요.">
+<meta name="theme-color" content="#4f46e5">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f46e5'/%3E%3Cpath d='M7 11h9M11 11v2.5c0 3.6-2 6.6-4.6 8' stroke='white' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3Cpath d='M16 25l4.2-10.5L24.4 25M17.7 21.2h5' stroke='white' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+        brand: { DEFAULT: '#4f46e5', light: '#d946ef', deep: '#4338ca', 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81', 950: '#1e1b4b' }
+      }
+    }
+  }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #4f46e5; --brand-2: #d946ef; --brand-deep: #4338ca; }
+
+  /* dual studio glass */
+  .glass-card {
+    background: rgba(255, 255, 255, .74);
+    border: 1px solid rgba(228, 228, 235, .95);
+    border-radius: 1.35rem;
+    box-shadow: 0 2px 4px rgba(16, 16, 20, .03), 0 24px 50px -40px rgba(16, 16, 20, .5);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    transition: border-color .25s ease, box-shadow .3s ease, transform .3s cubic-bezier(.22, 1, .36, 1);
+  }
+  .dark .glass-card {
+    background: rgba(17, 17, 22, .68);
+    border-color: rgba(44, 44, 54, .9);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 26px 60px -44px rgba(0, 0, 0, .95);
+  }
+  .glass-card:hover { border-color: color-mix(in srgb, var(--brand) 34%, transparent); }
+  .glass-tint { background-image: linear-gradient(150deg, color-mix(in srgb, var(--brand) 9%, transparent), transparent 55%); }
+  .dark .glass-tint { background-image: linear-gradient(150deg, color-mix(in srgb, var(--brand) 20%, transparent), transparent 58%); }
+
+  .pane-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .pane-tag {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+    color: rgb(113 113 122);
+  }
+  .dark .pane-tag { color: rgb(148 148 158); }
+
+  .mini-btn {
+    width: 1.9rem; height: 1.9rem; border-radius: .7rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: rgb(82 82 91); border: 1px solid transparent;
+    transition: transform .14s cubic-bezier(.34, 1.56, .64, 1), background-color .2s, color .2s, border-color .2s;
+  }
+  .dark .mini-btn { color: rgb(161 161 170); }
+  .mini-btn:hover { color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); border-color: color-mix(in srgb, var(--brand) 32%, transparent); }
+  .mini-btn:active { transform: scale(.9); }
+
+  .swap-btn {
+    width: 2.5rem; height: 2.5rem; border-radius: 9999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+    box-shadow: 0 12px 26px -12px color-mix(in srgb, var(--brand) 85%, transparent);
+    transition: transform .35s cubic-bezier(.34, 1.56, .64, 1), box-shadow .25s;
+    z-index: 5;
+  }
+  .swap-btn:hover { transform: rotate(180deg) scale(1.06); }
+  .swap-btn:active { transform: scale(.9) rotate(180deg); }
+
+  /* hero dual panes */
+  .hero-pane {
+    position: relative; overflow: hidden;
+    border-radius: 1.15rem;
+    border: 1px solid rgba(228, 228, 235, .9);
+    background: rgba(255, 255, 255, .85);
+    transition: transform .4s cubic-bezier(.22, 1, .36, 1), border-color .3s;
+  }
+  .dark .hero-pane { background: rgba(20, 20, 26, .8); border-color: rgba(46, 46, 56, .9); }
+  .hero-pane:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--brand) 40%, transparent); }
+  .pane-src { box-shadow: inset 3px 0 0 var(--brand); }
+  .pane-dst { box-shadow: inset 3px 0 0 var(--brand-2); }
+  .shimmer-text {
+    background: linear-gradient(90deg, currentColor 0%, currentColor 35%, #fff 50%, currentColor 65%, currentColor 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: textShimmer 5.5s linear infinite;
+  }
+  @keyframes textShimmer { 0% { background-position: 160% 0; } 100% { background-position: -60% 0; } }
+
+  /* mode pills */
+  .mode-pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .55rem .8rem; border-radius: .9rem;
+    font-size: .76rem; font-weight: 800; white-space: nowrap;
+    border: 1px solid rgb(228 228 231); color: rgb(82 82 91);
+    background: rgba(255, 255, 255, .7);
+    transition: color .2s, background-color .2s, border-color .2s, box-shadow .2s, transform .16s;
+    position: relative; overflow: hidden;
+  }
+  .dark .mode-pill { background: rgba(24, 24, 27, .7); border-color: rgb(45, 45, 50); color: rgb(161 161 170); }
+  .mode-pill svg { width: .95rem; height: .95rem; }
+  .mode-pill:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); transform: translateY(-1px); }
+  .mode-pill.on {
+    color: #fff; border-color: transparent;
+    background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+    box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--brand) 90%, transparent);
+  }
+
+  /* dropzone */
+  .dropzone {
+    border: 1.5px dashed rgb(214 214 222);
+    border-radius: 1.2rem;
+    transition: border-color .2s, background-color .2s, transform .2s;
+  }
+  .dark .dropzone { border-color: rgb(58, 58, 66); }
+  .dropzone:hover { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+  .dropzone.dz-on {
+    border-color: var(--brand) !important;
+    background: color-mix(in srgb, var(--brand) 8%, transparent) !important;
+    transform: scale(1.006);
+  }
+
+  /* image canvas stage */
+  .stage-wrap { position: relative; display: inline-block; line-height: 0; }
+  #trCanvas { border-radius: .9rem; display: block; box-shadow: 0 18px 40px -30px rgba(0, 0, 0, .7); max-width: none; }
+  .hl-box {
+    position: absolute; border-radius: .4rem;
+    border: 2px solid color-mix(in srgb, var(--brand-2) 90%, white);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-2) 22%, transparent);
+    pointer-events: none; opacity: 0; transition: opacity .12s ease;
+  }
+  .hl-box.on { opacity: 1; }
+  .sweep {
+    position: absolute; left: 0; right: 0; height: 3px; top: 0;
+    background: linear-gradient(90deg, transparent, var(--brand-2), transparent);
+    box-shadow: 0 0 22px 6px color-mix(in srgb, var(--brand-2) 55%, transparent);
+    animation: sweepDown 2.4s cubic-bezier(.45, 0, .55, 1) infinite;
+    pointer-events: none;
+  }
+  @keyframes sweepDown { 0% { top: 2%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 96%; opacity: 0; } }
+
+  .seg-row { border-radius: .9rem; transition: background-color .18s, transform .18s; }
+  .seg-row:hover { background: color-mix(in srgb, var(--brand) 6%, transparent); }
+
+  .web-doc { line-height: 1.85; }
+  .web-doc h1, .web-doc h2, .web-doc h3 { font-weight: 800; letter-spacing: -.01em; margin: 1.15em 0 .45em; line-height: 1.3; }
+  .web-doc h1 { font-size: 1.28rem; }
+  .web-doc h2 { font-size: 1.1rem; }
+  .web-doc h3 { font-size: .98rem; }
+  .web-doc p, .web-doc li, .web-doc td, .web-doc blockquote { font-size: .82rem; margin: .42em 0; }
+  .web-doc ul { list-style: disc; padding-left: 1.15rem; }
+  .web-doc ol { list-style: decimal; padding-left: 1.15rem; }
+  .web-doc blockquote { border-left: 3px solid color-mix(in srgb, var(--brand) 45%, transparent); padding-left: .7rem; color: rgb(113 113 122); }
+  .tr-seg { cursor: pointer; border-radius: .35rem; transition: background-color .16s ease; }
+  .tr-seg:hover { background: color-mix(in srgb, var(--brand) 9%, transparent); }
+  .tr-seg.just { animation: segFlash .8s ease; }
+  @keyframes segFlash { 0% { background: color-mix(in srgb, var(--brand) 22%, transparent); } 100% { background: transparent; } }
+
+  .lang-select { max-width: 9.6rem; }
+  .result-area { min-height: 11.5rem; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: rgba(120, 120, 140, .35); border-radius: 9999px; }
+  .hist-chip {
+    display: inline-flex; align-items: center; gap: .35rem; max-width: 15rem;
+    padding: .3rem .55rem; border-radius: .6rem; font-size: 10.5px;
+    border: 1px solid rgb(232 232 238); color: rgb(82 82 91); background: rgba(255, 255, 255, .6);
+    transition: border-color .18s, color .18s, transform .14s;
+  }
+  .dark .hist-chip { border-color: rgb(45, 45, 50); color: rgb(161 161 170); background: rgba(24, 24, 27, .55); }
+  .hist-chip:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, transparent); transform: translateY(-1px); }
+  @media (max-width: 400px) {
+    .lang-select { max-width: 7.4rem; }
+    .result-area { min-height: 8.5rem; }
+  }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-24 opacity-25"></div>
+<div class="ambient-orb brand-grad w-80 h-80 top-1/2 -right-28 o2 opacity-20"></div>
+<div class="ambient-orb w-64 h-64 bottom-16 left-1/3 o3 opacity-15" style="background:#d946ef"></div>
+
+<!-- Header -->
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 5h9M7.5 5v2c0 3.3-2 6-4.5 7.2"></path>
+            <path d="M5 11.5c1.6 2.2 3.6 3.5 5.5 4.2"></path>
+            <path d="M13 19l3.8-9.5L20.6 19"></path>
+            <path d="M14.6 15.6h4.6"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Translate</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">4 in 1</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">텍스트 · 이미지 · 웹페이지 · 문서 번역</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="engineChip" class="hidden md:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"></path></svg>
+        <span id="engineChipText">20개 언어</span>
+      </span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Tabs -->
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs" role="tablist">
+      <button class="nav-tab" data-tab="home" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h7M7.5 7v1.6c0 2.6-1.6 4.8-3.5 5.8"></path><path d="M5.5 12.2c1.3 1.7 2.9 2.8 4.5 3.4"></path><path d="M12.5 20l4-10 4 10"></path><path d="M14 17h5"></path></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+
+    <div class="hero-shell p-5 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.02fr_.98fr] gap-7 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            사진 속 글자까지 · 배경색 그대로 덮는 오버레이 번역
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.16] tracking-tight">
+            읽고 싶은 순간에<br>
+            <span class="brand-text">바로 옆에</span> 번역을.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            외국어 문장을 붙여 넣으면 실시간으로 옮겨 줍니다. 사진 속 간판과 문서는 글자 영역을 찾아내 그 자리에 번역문을 얹고, 웹페이지는 문단마다 번역해 원문과 나란히 보여 줍니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5 pt-1">
+            <button class="primary-btn btn-shimmer" data-goto="studio">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h7M7.5 7v1.6c0 2.6-1.6 4.8-3.5 5.8"></path><path d="M5.5 12.2c1.3 1.7 2.9 2.8 4.5 3.4"></path><path d="M12.5 20l4-10 4 10"></path><path d="M14 17h5"></path></svg>
+              번역 시작하기
+            </button>
+            <button class="ghost-btn" data-goto="studio" data-mode="image">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15.5 16 10.5 5 21"></path></svg>
+              이미지로 해보기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>서버에 사진 저장 없음</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>로그인 없이 무료</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>20개 언어</span>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          <div class="hero-pane pane-src p-3.5">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[9.5px] font-black tracking-widest uppercase text-brand-600 dark:text-brand-400">English · 자동 감지</span>
+              <span class="text-[9.5px] font-mono text-neutral-400">1/2</span>
+            </div>
+            <p class="text-[13.5px] font-semibold leading-relaxed text-neutral-700 dark:text-neutral-200">The exhibition opens at nine, and the last entry is at seven in the evening.</p>
+          </div>
+          <div class="flex justify-center -my-0.5">
+            <div class="swap-btn" style="width:2.1rem;height:2.1rem">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v14M7 18l-3-3M7 18l3-3"></path><path d="M17 20V6M17 6l-3 3M17 6l3 3"></path></svg>
+            </div>
+          </div>
+          <div class="hero-pane pane-dst p-3.5">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[9.5px] font-black tracking-widest uppercase" style="color:var(--brand-2)">한국어 · 번역</span>
+              <span class="text-[9.5px] font-mono text-neutral-400">2/2</span>
+            </div>
+            <p class="text-[13.5px] font-semibold leading-relaxed shimmer-text text-brand-700 dark:text-brand-200">전시는 오전 9시에 문을 열고, 입장은 저녁 7시에 마감됩니다.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+      <button class="glass-card glass-tint p-4 text-left card-lift" data-goto="studio" data-mode="text">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3 shadow-lg">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h13"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black mb-1">텍스트 번역</h3>
+        <p class="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">붙여 넣으면 0.7초 만에 옮깁니다. 언어 자동 감지, 발음 듣기, 복사까지.</p>
+      </button>
+      <button class="glass-card glass-tint p-4 text-left card-lift" data-goto="studio" data-mode="image">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3 shadow-lg">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15.5 16 10.5 5 21"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black mb-1">이미지 오버레이</h3>
+        <p class="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">사진 속 글자 위치를 찾아 배경색을 샘플링하고 그 자리에 번역문을 얹습니다.</p>
+      </button>
+      <button class="glass-card glass-tint p-4 text-left card-lift" data-goto="studio" data-mode="web">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3 shadow-lg">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black mb-1">웹페이지 번역</h3>
+        <p class="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">주소만 넣으면 문단 단위로 번역해 원문과 비교하며 읽을 수 있게 정리합니다.</p>
+      </button>
+      <button class="glass-card glass-tint p-4 text-left card-lift" data-goto="studio" data-mode="doc">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3 shadow-lg">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M9 13h6M9 17h4"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black mb-1">문서 · 자막</h3>
+        <p class="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">TXT와 SRT·VTT 자막의 타임코드는 그대로 두고 문장만 번역해 내려받습니다.</p>
+      </button>
+    </div>
+
+    <div class="glass-card p-5 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-[15px] font-black tracking-tight">번역이 필요한 순간</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">눌러서 예문을 바로 번역해 보세요.</p>
+        </div>
+        <span class="chip">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z"></path></svg>
+          클릭 한 번
+        </span>
+      </div>
+      <div id="homeSamples" class="grid sm:grid-cols-2 gap-2.5"></div>
+    </div>
+
+    <div class="grid sm:grid-cols-3 gap-3">
+      <div class="glass-card p-4">
+        <div class="flex items-baseline gap-1.5 mb-1">
+          <span class="text-2xl font-black brand-text mono">20</span>
+          <span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">개 언어</span>
+        </div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">한국어·영어·일본어·중국어 간체/번체·스페인어·프랑스어·독일어·베트남어·태국어·러시아어 등</p>
+      </div>
+      <div class="glass-card p-4">
+        <div class="flex items-baseline gap-1.5 mb-1">
+          <span class="text-2xl font-black brand-text mono">4</span>
+          <span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">가지 방식</span>
+        </div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">텍스트·이미지·웹페이지·문서를 한 화면에서. 결과는 PNG·SRT·TXT·MD로 저장</p>
+      </div>
+      <div class="glass-card p-4">
+        <div class="flex items-baseline gap-1.5 mb-1">
+          <span class="text-2xl font-black brand-text mono">0</span>
+          <span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">원 비용</span>
+        </div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">설치·가입 없이 브라우저에서 바로. 이미지 인식도 기기 안에서 처리합니다</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-4">
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-1.5 flex-wrap py-0.5 w-full sm:w-auto">
+        <button class="mode-pill on" data-mode="text">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h13"></path></svg>
+          텍스트
+        </button>
+        <button class="mode-pill" data-mode="image">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15.5 16 10.5 5 21"></path></svg>
+          이미지
+        </button>
+        <button class="mode-pill" data-mode="web">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"></path></svg>
+          웹페이지
+        </button>
+        <button class="mode-pill" data-mode="doc">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M9 13h6M9 17h4"></path></svg>
+          문서
+        </button>
+      </div>
+      <span id="asBadge" class="as-badge">자동 저장 대기</span>
+    </div>
+
+    <!-- ---------- TEXT ---------- -->
+    <div data-mode-panel="text" class="space-y-4">
+      <div class="relative grid md:grid-cols-2 gap-3">
+        <div class="glass-card glass-tint p-4">
+          <div class="pane-head mb-2.5">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="pane-tag">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v18M5 8l7-5 7 5"></path></svg>
+                원본
+              </span>
+              <select id="srcLang" class="lemon-select !w-auto !py-1 !px-2 !text-[11px] !font-bold lang-select"></select>
+            </div>
+            <div class="flex items-center gap-0.5">
+              <button class="mini-btn" data-act="paste" title="붙여넣기">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
+              </button>
+              <button class="mini-btn" data-act="speak-src" title="원문 듣기">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path></svg>
+              </button>
+              <button class="mini-btn" data-act="clear-src" title="지우기">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg>
+              </button>
+            </div>
+          </div>
+          <textarea id="srcText" class="lemon-textarea result-area !text-[13px] !leading-[1.75]" placeholder="번역할 문장을 붙여 넣으세요. 언어는 자동으로 감지합니다."></textarea>
+          <div class="flex items-center justify-between mt-2 text-[10px] text-neutral-400 dark:text-neutral-500">
+            <span id="srcCount" class="mono">0자</span>
+            <span id="detectBadge" class="font-bold">자동 감지</span>
+          </div>
+        </div>
+
+        <button id="btnSwap" class="swap-btn absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden md:flex" title="언어 바꾸기">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v14M7 18l-3-3M7 18l3-3"></path><path d="M17 20V6M17 6l-3 3M17 6l3 3"></path></svg>
+        </button>
+
+        <div class="glass-card glass-tint p-4">
+          <div class="pane-head mb-2.5">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="pane-tag">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 21V3M5 16l7 5 7-5"></path></svg>
+                번역
+              </span>
+              <select id="dstLang" class="lemon-select !w-auto !py-1 !px-2 !text-[11px] !font-bold lang-select"></select>
+            </div>
+            <div class="flex items-center gap-0.5">
+              <button class="mini-btn" data-act="copy-out" title="복사">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
+              </button>
+              <button class="mini-btn" data-act="speak-out" title="번역문 듣기">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path></svg>
+              </button>
+              <button class="mini-btn" data-act="retranslate" title="다시 번역">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3.2-6.9"></path><path d="M21 3v6h-6"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div class="relative">
+            <div id="outText" class="lemon-textarea result-area !text-[13px] !leading-[1.75] overflow-y-auto whitespace-pre-wrap thin-scroll select-text" style="min-height:11.5rem"></div>
+            <div id="outEmpty" class="absolute inset-0 flex items-center justify-center px-6 text-center pointer-events-none">
+              <p class="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed">왼쪽에 문장을 입력하면<br>여기에 번역문이 나타납니다</p>
+            </div>
+            <div id="outBusy" class="absolute inset-0 rounded-xl bg-white/70 dark:bg-neutral-900/70 backdrop-blur-[2px] hidden items-center justify-center gap-2">
+              <span class="w-3.5 h-3.5 rounded-full border-2 border-brand-500 border-t-transparent spin"></span>
+              <span class="text-[11px] font-bold text-brand-600 dark:text-brand-400">번역 중</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between mt-2 text-[10px] text-neutral-400 dark:text-neutral-500">
+            <span id="transInfo">자동 감지 · Google</span>
+            <span id="transTime" class="mono"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-3 flex flex-wrap items-center gap-2">
+        <button class="primary-btn !py-2.5 !text-[12px]" data-act="translate-now">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M4 7h7M7.5 7v1.6c0 2.6-1.6 4.8-3.5 5.8"></path><path d="M5.5 12.2c1.3 1.7 2.9 2.8 4.5 3.4"></path><path d="M12.5 20l4-10 4 10"></path><path d="M14 17h5"></path></svg>
+          번역하기
+        </button>
+        <button class="ghost-btn !py-2.5 !text-[12px]" data-act="save">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+          보관함에 저장
+        </button>
+        <button class="ghost-btn !py-2.5 !text-[12px]" data-act="dl-txt">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          TXT
+        </button>
+        <button class="ghost-btn !py-2.5 !text-[12px]" data-act="dl-md">MD</button>
+        <button class="ghost-btn !py-2.5 !text-[12px]" data-act="new">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          새 번역
+        </button>
+        <div class="ml-auto flex items-center gap-2 pl-1">
+          <span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">실시간 번역</span>
+          <div id="autoSwitch" class="switch on" role="switch" aria-checked="true" tabindex="0"></div>
+        </div>
+      </div>
+
+      <div id="recentBox" class="glass-card p-3.5 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <span class="pane-tag">최근 번역</span>
+          <button class="text-[10px] font-bold text-neutral-400 hover:text-brand-500" data-act="clear-recent">비우기</button>
+        </div>
+        <div id="recentList" class="flex flex-wrap gap-1.5"></div>
+      </div>
+    </div>
+
+    <!-- ---------- IMAGE ---------- -->
+    <div data-mode-panel="image" class="hidden space-y-4">
+      <div class="glass-card p-3.5">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="chip !rounded-lg cursor-pointer">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5"></path><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+            이미지 선택
+            <input id="imgInput" type="file" accept="image/*" class="hidden">
+          </label>
+          <select id="imgSrcLang" class="lemon-select !w-auto !py-1.5 !px-2 !text-[11px] !font-bold !rounded-lg"></select>
+          <svg class="w-3.5 h-3.5 text-neutral-400 shrink-0 hidden sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          <select id="imgDstLang" class="lemon-select !w-auto !py-1.5 !px-2 !text-[11px] !font-bold !rounded-lg"></select>
+          <button id="btnOcr" class="primary-btn !py-2 !text-[12px]" disabled>
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2M4 17v2a1 1 0 0 0 1 1h2M20 7V5a1 1 0 0 0-1-1h-2M20 17v2a1 1 0 0 1-1 1h-2M7 12h10"></path></svg>
+            글자 찾아 번역
+          </button>
+          <div class="flex items-center gap-2 ml-auto">
+            <span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">번역 표시</span>
+            <div id="imgSwitch" class="switch on" role="switch" aria-checked="true" tabindex="0"></div>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2.5">
+          <label class="flex items-center gap-2 text-[10px] font-bold text-neutral-500 dark:text-neutral-400">
+            여백
+            <input id="imgPad" type="range" class="lemon-range !w-20" min="0" max="12" value="3" step="1">
+            <span id="imgPadVal" class="mono w-5">3</span>
+          </label>
+          <label class="flex items-center gap-2 text-[10px] font-bold text-neutral-500 dark:text-neutral-400">
+            글자 크기
+            <input id="imgFont" type="range" class="lemon-range !w-20" min="70" max="130" value="100" step="5">
+            <span id="imgFontVal" class="mono w-8">100%</span>
+          </label>
+          <label class="flex items-center gap-2 text-[10px] font-bold text-neutral-500 dark:text-neutral-400">
+            확대
+            <input id="imgZoom" type="range" class="lemon-range !w-20" min="50" max="250" value="100" step="10">
+            <span id="imgZoomVal" class="mono w-10">100%</span>
+          </label>
+          <div class="ml-auto flex items-center gap-1.5">
+            <button class="ghost-btn !py-1.5 !text-[11px]" data-act="img-copy" disabled id="btnImgCopy">번역문 복사</button>
+            <button class="ghost-btn !py-1.5 !text-[11px]" data-act="img-png" disabled id="btnImgPng">PNG 저장</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-3.5">
+        <div class="flex items-center justify-between mb-2.5 gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="pane-tag">캔버스</span>
+            <span id="imgMeta" class="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">이미지를 올려 주세요</span>
+          </div>
+          <span id="imgBadge" class="text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">대기</span>
+        </div>
+
+        <div id="imgDrop" class="dropzone p-3 min-h-[16rem] flex items-center justify-center">
+          <div id="imgEmpty" class="text-center px-4 py-8">
+            <div class="w-14 h-14 mx-auto rounded-2xl brand-grad-soft border border-brand-200/70 dark:border-brand-800/60 flex items-center justify-center mb-3 float-y">
+              <svg class="w-6 h-6 text-brand-600 dark:text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15.5 16 10.5 5 21"></path></svg>
+            </div>
+            <p class="text-[12px] font-bold mb-1">사진을 끌어다 놓거나 눌러서 선택하세요</p>
+            <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed">붙여넣기(Ctrl+V)도 됩니다 · 메뉴판, 간판, 캡처, 교재<br>이미지는 기기 안에서만 처리됩니다</p>
+          </div>
+          <div id="imgStage" class="relative hidden max-w-full overflow-auto thin-scroll" style="max-height:70vh">
+            <div class="stage-wrap">
+              <canvas id="trCanvas"></canvas>
+              <div id="imgHl" class="hl-box"></div>
+              <div id="imgSweep" class="sweep hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-2.5 space-y-1.5">
+          <div class="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400">
+            <span id="imgStatus">대기 중</span>
+            <span id="imgProgressText" class="mono"></span>
+          </div>
+          <div class="progress-track"><div id="imgProgress" class="progress-fill" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <div id="imgListWrap" class="glass-card p-3.5 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <span class="pane-tag">찾은 글자 <span id="imgCount" class="ml-1 mono">0</span></span>
+          <span class="text-[10px] text-neutral-400 dark:text-neutral-500">줄을 누르면 원문과 비교합니다</span>
+        </div>
+        <div id="imgList" class="space-y-1 max-h-64 overflow-y-auto thin-scroll"></div>
+      </div>
+    </div>
+
+    <!-- ---------- WEB ---------- -->
+    <div data-mode-panel="web" class="hidden space-y-4">
+      <div class="glass-card p-4">
+        <div class="flex flex-col sm:flex-row gap-2">
+          <div class="flex-1 relative">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"></path></svg>
+            <input id="webUrl" class="lemon-input !pl-9" placeholder="https://en.wikipedia.org/wiki/Seoul" inputmode="url" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="flex gap-2">
+            <select id="webDstLang" class="lemon-select !w-auto !text-[11px] !font-bold"></select>
+            <button id="btnWeb" class="primary-btn !py-2.5 !text-[12px] shrink-0">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h7M7.5 7v1.6c0 2.6-1.6 4.8-3.5 5.8"></path><path d="M5.5 12.2c1.3 1.7 2.9 2.8 4.5 3.4"></path><path d="M12.5 20l4-10 4 10"></path><path d="M14 17h5"></path></svg>
+              번역
+            </button>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mt-2.5">
+          <button class="pill-btn !py-1.5 !text-[11px]" data-act="web-toggle" id="btnWebToggle" disabled>
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span id="webToggleLabel">원문 보기</span>
+          </button>
+          <button class="pill-btn !py-1.5 !text-[11px]" data-act="web-open" id="btnWebOpen" disabled>
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            원문 사이트
+          </button>
+          <button class="pill-btn !py-1.5 !text-[11px]" data-act="web-save" id="btnWebSave" disabled>보관함에 저장</button>
+          <span id="webInfo" class="text-[10px] text-neutral-400 dark:text-neutral-500 ml-auto">주소를 넣으면 문단 단위로 번역합니다</span>
+        </div>
+        <div id="webProgWrap" class="mt-2.5 hidden">
+          <div class="progress-track"><div id="webProgress" class="progress-fill" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 sm:p-6">
+        <div id="webEmpty" class="text-center py-14">
+          <div class="w-14 h-14 mx-auto rounded-2xl brand-grad-soft border border-brand-200/70 dark:border-brand-800/60 flex items-center justify-center mb-3 float-y">
+            <svg class="w-6 h-6 text-brand-600 dark:text-brand-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"></path></svg>
+          </div>
+          <p class="text-[12px] font-bold mb-1">번역할 페이지 주소를 넣어 주세요</p>
+          <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400">본문 문단을 찾아 번역하고, 문단을 누르면 그 문단만 원문으로 돌아갑니다.</p>
+        </div>
+        <div id="webDoc" class="web-doc hidden"></div>
+      </div>
+    </div>
+
+    <!-- ---------- DOC ---------- -->
+    <div data-mode-panel="doc" class="hidden space-y-4">
+      <div class="glass-card p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="chip !rounded-lg cursor-pointer">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5"></path><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path></svg>
+            파일 선택
+            <input id="docInput" type="file" accept=".txt,.srt,.vtt,text/plain" class="hidden">
+          </label>
+          <span id="docName" class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 truncate max-w-[13rem]">TXT · SRT · VTT</span>
+          <select id="docSrcLang" class="lemon-select !w-auto !py-1.5 !px-2 !text-[11px] !font-bold !rounded-lg"></select>
+          <svg class="w-3.5 h-3.5 text-neutral-400 shrink-0 hidden sm:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          <select id="docDstLang" class="lemon-select !w-auto !py-1.5 !px-2 !text-[11px] !font-bold !rounded-lg"></select>
+          <button id="btnDoc" class="primary-btn !py-2 !text-[12px]" disabled>
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h7M7.5 7v1.6c0 2.6-1.6 4.8-3.5 5.8"></path><path d="M5.5 12.2c1.3 1.7 2.9 2.8 4.5 3.4"></path><path d="M12.5 20l4-10 4 10"></path><path d="M14 17h5"></path></svg>
+            문서 번역
+          </button>
+          <div class="ml-auto flex items-center gap-1.5">
+            <button class="ghost-btn !py-1.5 !text-[11px]" data-act="doc-dl" id="btnDocDl" disabled>결과 내려받기</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400 mt-2.5">
+          <span id="docStatus">아직 파일이 없습니다</span>
+          <span id="docProgressText" class="mono"></span>
+        </div>
+        <div class="progress-track mt-1.5"><div id="docProgress" class="progress-fill" style="width:0%"></div></div>
+      </div>
+
+      <div id="docWrap" class="glass-card p-3.5 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <span class="pane-tag">문단 <span id="docCount" class="ml-1 mono">0</span></span>
+          <button class="pill-btn !py-1 !text-[10px]" data-act="doc-toggle" id="btnDocToggle">원문 보기</button>
+        </div>
+        <div id="docList" class="space-y-1 max-h-[60vh] overflow-y-auto thin-scroll"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">번역한 기록은 이 브라우저에만 저장됩니다. 항목을 누르면 스튜디오로 불러옵니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
+        전체 삭제
+      </button>
+    </div>
+    <div id="archiveList" class="grid sm:grid-cols-2 gap-3"></div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2">
+      <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Translate</span>
+      <span class="opacity-40">·</span>
+      <span>Lemon soft 독립 웹 프로덕트</span>
+    </div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="ocr.html" class="hover:text-brand-600 dark:hover:text-brand-400">OCR</a>
+      <a href="calculator.html" class="hover:text-brand-600 dark:hover:text-brand-400">Calculator</a>
+      <a href="docs.html" class="hover:text-brand-600 dark:hover:text-brand-400">Docs</a>
+      <a href="pdf.html" class="hover:text-brand-600 dark:hover:text-brand-400">PDF</a>
+      <a href="voice.html" class="hover:text-brand-600 dark:hover:text-brand-400">Voice</a>
+      <a href="money.html" class="hover:text-brand-600 dark:hover:text-brand-400">Money</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<!-- block detail modal -->
+<div id="blockModal" class="lemon-modal" role="dialog" aria-modal="true">
+  <div class="lm-backdrop" data-act="modal-close"></div>
+  <div class="lm-card p-5 w-full">
+    <div class="flex items-center justify-between mb-3">
+      <span class="pane-tag">번역 비교</span>
+      <button class="mini-btn" data-act="modal-close" aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="space-y-2.5">
+      <div>
+        <span class="lemon-label">원문</span>
+        <p id="bmOrig" class="text-[13px] font-semibold leading-relaxed mt-1 break-words"></p>
+      </div>
+      <div class="hr"></div>
+      <div>
+        <span class="lemon-label">번역</span>
+        <p id="bmTrans" class="text-[13px] font-semibold leading-relaxed mt-1 break-words" style="color:var(--brand)"></p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 mt-4">
+      <button class="ghost-btn !py-2 !text-[11px] flex-1" data-act="bm-speak">발음 듣기</button>
+      <button class="primary-btn !py-2 !text-[11px] flex-1" data-act="bm-copy">번역문 복사</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = Lemon.esc;
+
+  /* ============================================================
+     Languages
+     ============================================================ */
+  var LANGS = [
+    { c: 'auto', n: '자동 감지', sp: '' },
+    { c: 'ko', n: '한국어', sp: 'ko-KR' },
+    { c: 'en', n: 'English', sp: 'en-US' },
+    { c: 'ja', n: '日本語', sp: 'ja-JP' },
+    { c: 'zh-CN', n: '中文 (简体)', sp: 'zh-CN' },
+    { c: 'zh-TW', n: '中文 (繁體)', sp: 'zh-TW' },
+    { c: 'es', n: 'Español', sp: 'es-ES' },
+    { c: 'fr', n: 'Français', sp: 'fr-FR' },
+    { c: 'de', n: 'Deutsch', sp: 'de-DE' },
+    { c: 'it', n: 'Italiano', sp: 'it-IT' },
+    { c: 'pt', n: 'Português', sp: 'pt-BR' },
+    { c: 'vi', n: 'Tiếng Việt', sp: 'vi-VN' },
+    { c: 'th', n: 'ไทย', sp: 'th-TH' },
+    { c: 'id', n: 'Bahasa Indonesia', sp: 'id-ID' },
+    { c: 'ru', n: 'Русский', sp: 'ru-RU' },
+    { c: 'ar', n: 'العربية', sp: 'ar-SA' },
+    { c: 'hi', n: 'हिन्दी', sp: 'hi-IN' },
+    { c: 'tr', n: 'Türkçe', sp: 'tr-TR' },
+    { c: 'nl', n: 'Nederlands', sp: 'nl-NL' },
+    { c: 'pl', n: 'Polski', sp: 'pl-PL' }
+  ];
+  var LANG_MAP = {};
+  LANGS.forEach(function (l) { LANG_MAP[l.c] = l; });
+  function langName(c) { return (LANG_MAP[c] || { n: c }).n; }
+  function langSp(c) { return (LANG_MAP[c] || { sp: 'en-US' }).sp || 'en-US'; }
+
+  function fillLangSelect(el, value, withAuto) {
+    el.innerHTML = LANGS.filter(function (l) { return withAuto || l.c !== 'auto'; })
+      .map(function (l) { return '<option value="' + l.c + '">' + esc(l.n) + '</option>'; }).join('');
+    if (value) el.value = value;
+  }
+
+  /* ============================================================
+     Language detection
+     ============================================================ */
+  var LATIN_HINTS = {
+    es: ['el', 'la', 'los', 'las', 'de', 'que', 'por', 'para', 'con', 'una', 'es', 'del', 'como', 'más', 'pero', 'hola', 'gracias'],
+    fr: ['le', 'la', 'les', 'des', 'et', 'est', 'une', 'pour', 'que', 'dans', 'avec', 'vous', 'nous', 'bonjour', 'merci', 'pas'],
+    de: ['der', 'die', 'das', 'und', 'ist', 'nicht', 'mit', 'für', 'ein', 'eine', 'auf', 'sich', 'hallo', 'danke', 'werden'],
+    it: ['il', 'la', 'gli', 'di', 'che', 'per', 'una', 'sono', 'ciao', 'grazie', 'anche', 'della', 'non', 'questo'],
+    pt: ['o', 'os', 'as', 'de', 'que', 'para', 'com', 'uma', 'não', 'obrigado', 'você', 'mais', 'como', 'isso'],
+    nl: ['de', 'het', 'een', 'en', 'van', 'dat', 'niet', 'met', 'voor', 'zijn', 'hallo', 'dank', 'maar'],
+    pl: ['nie', 'się', 'jest', 'tak', 'oraz', 'dla', 'które', 'dzień', 'dzięki', 'jestem'],
+    tr: ['bir', 've', 'bu', 'için', 'değil', 'merhaba', 'teşekkür', 'olarak', 'ile'],
+    id: ['yang', 'dan', 'untuk', 'dengan', 'tidak', 'ini', 'itu', 'selamat', 'terima', 'kasih', 'adalah'],
+    vi: ['và', 'của', 'không', 'một', 'những', 'được', 'chào', 'cảm', 'ơn', 'này', 'người']
+  };
+  function detectLang(text) {
+    var s = String(text || '').slice(0, 900);
+    if (!s.trim()) return 'en';
+    if (/[\uac00-\ud7af\u1100-\u11ff]/.test(s)) return 'ko';
+    if (/[\u3040-\u30ff]/.test(s)) return 'ja';
+    if (/[\u4e00-\u9fff]/.test(s)) return 'zh-CN';
+    if (/[\u0400-\u04ff]/.test(s)) return 'ru';
+    if (/[\u0600-\u06ff]/.test(s)) return 'ar';
+    if (/[\u0e00-\u0e7f]/.test(s)) return 'th';
+    if (/[\u0900-\u097f]/.test(s)) return 'hi';
+    var words = s.toLowerCase().replace(/[^a-zà-ÿğıüşöçâêôãõ\s]/g, ' ').split(/\s+/).filter(Boolean);
+    var best = 'en', bestScore = 0;
+    Object.keys(LATIN_HINTS).forEach(function (code) {
+      var score = 0;
+      var hints = LATIN_HINTS[code];
+      words.slice(0, 160).forEach(function (w) { if (hints.indexOf(w) > -1) score++; });
+      if (/[ãõç]/i.test(s)) score += code === 'pt' ? 2 : 0;
+      if (/[ñ¿¡]/i.test(s)) score += code === 'es' ? 3 : 0;
+      if (/[ğıİşöçü]/i.test(s)) score += code === 'tr' ? 2 : 0;
+      if (/[àâçèéêëîïôûùüÿœ]/i.test(s)) score += (code === 'fr' || code === 'vi') ? 2 : 0;
+      if (/[äöüß]/i.test(s)) score += code === 'de' ? 3 : 0;
+      if (score > bestScore) { bestScore = score; best = code; }
+    });
+    return bestScore >= 2 ? best : 'en';
+  }
+
+  /* ============================================================
+     Translation engine  (MyMemory + graceful fallback)
+     ============================================================ */
+  var cache = {};
+  var engineOk = true;
+
+  function decodeEnt(s) {
+    var d = document.createElement('textarea');
+    d.innerHTML = String(s || '');
+    return d.value;
+  }
+  function chunkText(text, size) {
+    var out = [], buf = '', parts = String(text).split(/(?<=[.!?。！？\n])/);
+    parts.forEach(function (p) {
+      if ((buf + p).length > size) {
+        if (buf.trim()) out.push(buf);
+        buf = p;
+        while (buf.length > size) { out.push(buf.slice(0, size)); buf = buf.slice(size); }
+      } else buf += p;
+    });
+    if (buf.trim()) out.push(buf);
+    return out.length ? out : [String(text)];
+  }
+
+  function myMemory(q, from, to) {
+    var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(q) +
+      '&langpair=' + encodeURIComponent(from + '|' + to);
+    return fetch(url, { credentials: 'omit' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      var txt = data && data.responseData ? data.responseData.translatedText : '';
+      var status = data ? Number(data.responseStatus || 200) : 500;
+      if (!txt || status >= 400 || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID LANGUAGE PAIR|PLEASE SELECT TWO DISTINCT/i.test(txt)) {
+        throw new Error('myMemory:' + (txt || status));
+      }
+      return decodeEnt(txt);
+    });
+  }
+
+  /* ---- engine 1: Google dictionary-chrome batch endpoint (multi-question) ---- */
+  function googleBatch(units, from, to) {
+    var url = 'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=' +
+      encodeURIComponent(from) + '&tl=' + encodeURIComponent(to);
+    var qs = units.map(function (u) { return '&q=' + encodeURIComponent(u.text); }).join('');
+    if (url.length + qs.length > 7600) return Promise.reject(new Error('payload'));
+    return fetch(url + qs, { credentials: 'omit' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      if (!Array.isArray(data)) throw new Error('shape');
+      var out = data.map(function (d) { return Array.isArray(d) ? d[0] : d; });
+      if (out.length !== units.length) throw new Error('count');
+      return out.map(function (s) { return String(s === undefined || s === null ? '' : s); });
+    });
+  }
+
+  /* ---- engine 2: MyMemory, one request per unit ---- */
+  function myMemoryBatch(units, from, to) {
+    var out = [];
+    return units.reduce(function (chain, u) {
+      return chain.then(function () {
+        return myMemory(u.text, from, to).then(function (t) { out.push(t); })
+          .catch(function () { out.push(null); })
+          .then(function () { return new Promise(function (r) { setTimeout(r, 170); }); });
+      });
+    }, Promise.resolve()).then(function () { return out; });
+  }
+
+  /* ---- batch translate: pack chunks into as few requests as possible ---- */
+  function translateBatch(texts, from, to, onProgress) {
+    texts = (texts || []).map(function (t) { return String(t === undefined || t === null ? '' : t); });
+    if (!texts.length) return Promise.resolve([]);
+    if (from === to) {
+      return Promise.resolve(texts.map(function (t) { return { text: t, ok: true, same: true }; }));
+    }
+    var plans = [], units = [];
+    texts.forEach(function (t, i) {
+      var key = from + '|' + to + '|' + t;
+      if (cache[key] !== undefined) { plans.push({ i: i, done: cache[key] }); return; }
+      if (!t.trim()) { plans.push({ i: i, done: '' }); return; }
+      var chunks = chunkText(t, 700);
+      var p = { i: i, chunks: chunks, outs: new Array(chunks.length) };
+      plans.push(p);
+      chunks.forEach(function (c, idx) { units.push({ p: p, idx: idx, text: c }); });
+    });
+    if (!units.length) {
+      return Promise.resolve(plans.slice().sort(function (a, b) { return a.i - b.i; }).map(function (p) { return { text: p.done, ok: true }; }));
+    }
+    var groups = [], cur = [], curLen = 0;
+    units.forEach(function (u) {
+      var len = encodeURIComponent(u.text).length + 14;
+      if (cur.length >= 8 || (curLen + len > 6800 && cur.length)) { groups.push(cur); cur = []; curLen = 0; }
+      cur.push(u); curLen += len;
+    });
+    if (cur.length) groups.push(cur);
+
+    var done = 0;
+    var chain = Promise.resolve();
+    groups.forEach(function (g) {
+      chain = chain.then(function () {
+        return googleBatch(g, from, to).then(function (res) {
+          g.forEach(function (u, k) { u.p.outs[u.idx] = res[k]; });
+        }).catch(function () {
+          return myMemoryBatch(g, from, to).then(function (res) {
+            g.forEach(function (u, k) { u.p.outs[u.idx] = res[k]; });
+          });
+        }).then(function () {
+          done += g.length;
+          if (onProgress) onProgress(Math.min(done, units.length), units.length);
+          return new Promise(function (r) { setTimeout(r, 90); });
+        });
+      });
+    });
+
+    return chain.then(function () {
+      var byIndex = {};
+      plans.forEach(function (p) {
+        if (p.done !== undefined) { byIndex[p.i] = { text: p.done, ok: true }; return; }
+        var missing = 0;
+        var parts = p.chunks.map(function (c, idx) {
+          var v = p.outs[idx];
+          if (v === undefined || v === null || v === '') { missing++; return c; }
+          return v;
+        });
+        var joined = parts.join('');
+        var ok = missing === 0;
+        if (ok) cache[from + '|' + to + '|' + texts[p.i]] = joined;
+        byIndex[p.i] = { text: joined, ok: ok, failed: missing };
+      });
+      var out = [];
+      for (var i = 0; i < texts.length; i++) out.push(byIndex[i] || { text: texts[i], ok: false, failed: 1 });
+      return out;
+    });
+  }
+
+  function translateText(text, from, to, onProgress) {
+    return translateBatch([text], from, to, onProgress).then(function (r) { return r[0] || { text: text, ok: false }; });
+  }
+
+  /* ============================================================
+     Speech / copy
+     ============================================================ */
+  function speak(text, code) {
+    if (!text || !text.trim()) { Lemon.toast('읽을 내용이 없어요', 'err'); return; }
+    if (!window.speechSynthesis) { Lemon.toast('이 브라우저는 발음을 지원하지 않아요', 'err'); return; }
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(String(text).slice(0, 900));
+      u.lang = code || 'en-US';
+      u.rate = 1;
+      window.speechSynthesis.speak(u);
+      Lemon.toast('발음을 재생합니다', 'info');
+    } catch (e) { Lemon.toast('발음을 재생하지 못했어요', 'err'); }
+  }
+
+  /* ============================================================
+     State + project autosave
+     ============================================================ */
+  var state = {
+    from: 'auto', to: 'en', auto: true, out: '', lastMs: 0, mode: 'text',
+    srcDetected: ''
+  };
+  var project = Lemon.project('lemon_translate_proj', { max: 18 });
+  var arc = project.archive;
+  project.bind($('#asBadge'));
+
+  function touchProject() {
+    project.touch(function () {
+      var src = ($('#srcText').value || '').trim();
+      if (!src) return null;
+      return {
+        kind: 'text', title: src.slice(0, 60).replace(/\s+/g, ' '),
+        src: $('#srcText').value, out: state.out, from: state.from, to: state.to
+      };
+    });
+  }
+
+  function renderArchive() {
+    var list = arc.all();
+    $('#arcCount').textContent = list.length;
+    var box = $('#archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="glass-card p-10 text-center sm:col-span-2">' +
+        '<div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3">' +
+        '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg></div>' +
+        '<p class="text-[12px] font-bold">아직 저장한 번역이 없어요</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">스튜디오에서 번역하면 자동으로 여기에 쌓입니다.</p></div>';
+      return;
+    }
+    var KIND = { text: '텍스트', image: '이미지', web: '웹페이지', doc: '문서' };
+    box.innerHTML = list.map(function (it) {
+      return '<div class="glass-card p-4 card-lift cursor-pointer" data-open="' + it.id + '">' +
+        '<div class="flex items-center justify-between gap-2 mb-1.5">' +
+        '<span class="chip !text-[9px] !py-0.5">' + esc(KIND[it.kind] || '텍스트') + '</span>' +
+        '<span class="text-[10px] text-neutral-400 mono">' + Lemon.timeAgo(it.ts) + '</span>' +
+        '</div>' +
+        '<p class="text-[12.5px] font-bold leading-snug line-clamp-2 mb-1">' + esc(it.title || '(제목 없음)') + '</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed line-clamp-2">' + esc((it.out || it.trans || '').slice(0, 120) || '번역 결과 없음') + '</p>' +
+        '<div class="flex items-center justify-between mt-2.5">' +
+        '<span class="text-[9.5px] font-mono text-neutral-400">' + esc(langName(it.from || 'auto')) + ' → ' + esc(langName(it.to || 'en')) + '</span>' +
+        '<button class="mini-btn !w-7 !h-7" data-del="' + it.id + '" title="삭제">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg></button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  /* ============================================================
+     Tabs, modes, nav
+     ============================================================ */
+  var goTab = Lemon.initTabs('home');
+
+  document.addEventListener('click', function (e) {
+    var g = e.target.closest('[data-goto]');
+    if (g) {
+      var mode = g.getAttribute('data-mode');
+      if (mode) setMode(mode);
+      goTab(g.getAttribute('data-goto'));
+      return;
+    }
+    var mp = e.target.closest('.mode-pill');
+    if (mp) { setMode(mp.getAttribute('data-mode')); return; }
+    var tab = e.target.closest('[data-tab]');
+    if (tab) { renderArchive(); return; }
+  });
+
+  function setMode(mode) {
+    state.mode = mode;
+    $$('.mode-pill').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === mode); });
+    $$('[data-mode-panel]').forEach(function (p) {
+      var on = p.getAttribute('data-mode-panel') === mode;
+      p.classList.toggle('hidden', !on);
+      if (on) { p.classList.remove('view-anim'); void p.offsetWidth; p.classList.add('view-anim'); }
+    });
+    if (mode === 'image') renderOverlay();
+  }
+
+  /* ============================================================
+     Text studio
+   ============================================================ */
+  function initLangSelects() {
+    fillLangSelect($('#srcLang'), state.from, true);
+    fillLangSelect($('#dstLang'), state.to, false);
+    fillLangSelect($('#imgSrcLang'), 'auto', true);
+    fillLangSelect($('#imgDstLang'), 'ko', false);
+    fillLangSelect($('#webDstLang'), 'ko', false);
+    fillLangSelect($('#docSrcLang'), 'auto', true);
+    fillLangSelect($('#docDstLang'), 'ko', false);
+  }
+
+  function setBusy(on) {
+    var b = $('#outBusy');
+    b.classList.toggle('hidden', !on);
+    b.classList.toggle('flex', on);
+  }
+
+  function updateCounts() {
+    var t = $('#srcText').value;
+    $('#srcCount').textContent = t.length.toLocaleString() + '자';
+    var det = state.from === 'auto' ? detectLang(t) : state.from;
+    state.srcDetected = det;
+    $('#detectBadge').textContent = t.trim() ? langName(det) + ' 감지' : '자동 감지';
+  }
+
+  var textTimer = null, textSeq = 0;
+
+  function runText(force) {
+    var raw = $('#srcText').value;
+    var text = raw.trim();
+    var seq = ++textSeq;
+    if (!text) {
+      state.out = '';
+      $('#outText').textContent = '';
+      $('#outEmpty').classList.remove('hidden');
+      $('#transInfo').textContent = '자동 감지 · Google';
+      $('#transTime').textContent = '';
+      updateCounts();
+      return;
+    }
+    var from = state.from === 'auto' ? detectLang(text) : state.from;
+    var to = state.to;
+    updateCounts();
+    $('#outEmpty').classList.add('hidden');
+    if (from === to) {
+      state.out = text;
+      $('#outText').textContent = text;
+      $('#transInfo').textContent = '원문과 같은 언어입니다';
+      $('#transTime').textContent = '';
+      setBusy(false);
+      return;
+    }
+    setBusy(true);
+    var t0 = Date.now();
+    $('#transInfo').textContent = langName(from) + ' → ' + langName(to) + ' · 번역 중';
+    translateText(text, from, to, function (done, total) {
+      if (seq !== textSeq) return;
+      $('#transInfo').textContent = langName(from) + ' → ' + langName(to) + ' · ' + done + '/' + total + ' 문장';
+    }).then(function (res) {
+      if (seq !== textSeq) return;
+      setBusy(false);
+      state.out = res.text;
+      state.lastMs = Date.now() - t0;
+      $('#outText').textContent = res.text;
+      $('#transInfo').textContent = langName(from) + ' → ' + langName(to) + ' · Google';
+      $('#transTime').textContent = state.lastMs + 'ms';
+      if (res.failed) Lemon.toast('일부 문장은 번역하지 못해 원문을 그대로 뒀어요', 'info');
+      pushRecent(raw.trim(), to);
+      touchProject();
+      setTimeout(renderArchive, 1600);
+    }).catch(function () {
+      if (seq !== textSeq) return;
+      setBusy(false);
+      Lemon.toast('번역에 실패했어요. 잠시 뒤 다시 시도해 주세요', 'err');
+    });
+  }
+
+  function scheduleText() {
+    clearTimeout(textTimer);
+    if (!state.auto) return;
+    textTimer = setTimeout(function () { runText(false); }, 700);
+  }
+
+  $('#srcText').addEventListener('input', function () {
+    updateCounts();
+    scheduleText();
+    touchProject();
+  });
+  $('#srcText').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runText(true); }
+  });
+  $('#srcLang').addEventListener('change', function () { state.from = this.value; updateCounts(); scheduleText(); });
+  $('#dstLang').addEventListener('change', function () { state.to = this.value; runText(true); });
+  $('#btnSwap').addEventListener('click', function () {
+    var from = state.from === 'auto' ? (state.srcDetected || 'en') : state.from;
+    var to = state.to;
+    state.from = to; state.to = from === 'auto' ? 'en' : from;
+    $('#srcLang').value = state.from;
+    $('#dstLang').value = state.to;
+    var src = $('#srcText').value;
+    if (state.out) {
+      $('#srcText').value = state.out;
+      state.out = src;
+      $('#outText').textContent = src;
+    }
+    updateCounts();
+    runText(true);
+  });
+  (function bindSwitch() {
+    var sw = $('#autoSwitch');
+    function apply(on) {
+      state.auto = on;
+      sw.classList.toggle('on', on);
+      sw.setAttribute('aria-checked', on ? 'true' : 'false');
+      if (on) scheduleText();
+    }
+    sw.addEventListener('click', function () { apply(!state.auto); });
+    sw.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); apply(!state.auto); } });
+    apply(true);
+  })();
+
+  /* ----- recent chips ----- */
+  var RECENT_KEY = 'lemon_translate_recent';
+  function getRecent() { var r = Lemon.store.get(RECENT_KEY, []); return Array.isArray(r) ? r : []; }
+  function pushRecent(text, to) {
+    if (!text) return;
+    var list = getRecent().filter(function (r) { return r.text !== text; });
+    list.unshift({ text: text.slice(0, 220), to: to, ts: Date.now() });
+    Lemon.store.set(RECENT_KEY, list.slice(0, 8));
+    renderRecent();
+  }
+  function renderRecent() {
+    var list = getRecent();
+    var box = $('#recentBox');
+    if (!list.length) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    $('#recentList').innerHTML = list.map(function (r, i) {
+      return '<button class="hist-chip" data-recent="' + i + '">' +
+        '<svg class="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 12a9 9 0 1 1-3.2-6.9"></path><path d="M21 3v6h-6"></path></svg>' +
+        '<span class="truncate">' + esc(r.text.slice(0, 46)) + '</span></button>';
+    }).join('');
+  }
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest('[data-recent]');
+    if (chip) {
+      var r = getRecent()[Number(chip.getAttribute('data-recent'))];
+      if (r) {
+        $('#srcText').value = r.text;
+        if (r.to) { state.to = r.to; $('#dstLang').value = r.to; }
+        updateCounts(); runText(true);
+      }
+    }
+  });
+
+  /* ============================================================
+     Image overlay translation
+     ============================================================ */
+  var IMG = {
+    img: null, w: 0, h: 0, canvas: null, ctx: null, pix: null,
+    blocks: [], showTrans: true, ready: false, zoom: 100, pad: 3, fontScale: 100,
+    worker: null, workerLang: '', busy: false
+  };
+
+  function imgSetStatus(text, badge) {
+    $('#imgStatus').textContent = text;
+    if (badge) {
+      var el = $('#imgBadge');
+      el.textContent = badge;
+      el.className = 'text-[10px] font-bold px-2 py-1 rounded-lg ' + (
+        badge === '완료' ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400' :
+          badge === '진행 중' ? 'bg-brand-100 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300' :
+            badge === '실패' ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-400' :
+              'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400');
+    }
+  }
+  function imgProgress(p, label) {
+    $('#imgProgress').style.width = Math.max(0, Math.min(100, p)) + '%';
+    $('#imgProgressText').textContent = label || Math.round(p) + '%';
+  }
+
+  function imgLoad(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type || '')) { Lemon.toast('이미지 파일만 열 수 있어요', 'err'); return; }
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      IMG.img = img; IMG.w = img.naturalWidth; IMG.h = img.naturalHeight;
+      IMG.blocks = []; IMG.pix = null; IMG.showTrans = true;
+      IMG.canvas = $('#trCanvas');
+      IMG.ctx = IMG.canvas.getContext('2d');
+      IMG.canvas.width = IMG.w; IMG.canvas.height = IMG.h;
+      $('#imgEmpty').classList.add('hidden');
+      $('#imgStage').classList.remove('hidden');
+      $('#btnOcr').disabled = false;
+      $('#imgMeta').textContent = IMG.w + ' × ' + IMG.h + ' px';
+      imgSetStatus('이미지를 불러왔어요. 글자 찾아 번역을 눌러 주세요', '준비');
+      imgProgress(0, '');
+      layoutCanvas();
+      renderOverlay();
+      $('#imgSwitch').classList.add('on');
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = function () { Lemon.toast('이미지를 열지 못했어요', 'err'); URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+
+  function layoutCanvas() {
+    if (!IMG.canvas) return;
+    var host = $('#imgStage');
+    var avail = Math.max(160, host.clientWidth - 8 || 320);
+    var scale = Math.min(1, avail / IMG.w);
+    if (IMG.w < avail) scale = Math.min(2, avail / IMG.w);
+    var cssW = Math.round(IMG.w * scale * (IMG.zoom / 100));
+    IMG.canvas.style.width = cssW + 'px';
+    IMG.canvas.style.height = 'auto';
+  }
+
+  function imgPixels() {
+    if (IMG.pix) return IMG.pix;
+    var off = document.createElement('canvas');
+    off.width = IMG.w; off.height = IMG.h;
+    var octx = off.getContext('2d');
+    octx.drawImage(IMG.img, 0, 0);
+    IMG.pix = octx.getImageData(0, 0, IMG.w, IMG.h);
+    return IMG.pix;
+  }
+
+  function median(arr) {
+    if (!arr.length) return 128;
+    arr.sort(function (a, b) { return a - b; });
+    return arr[arr.length >> 1];
+  }
+
+  function sampleBg(b) {
+    var d = imgPixels().data, W = IMG.w, H = IMG.h;
+    var x0 = Math.max(0, Math.floor(b.x0)), y0 = Math.max(0, Math.floor(b.y0));
+    var x1 = Math.min(W - 1, Math.ceil(b.x1)), y1 = Math.min(H - 1, Math.ceil(b.y1));
+    var pad = Math.max(2, Math.round(IMG.pad + Math.min(8, (y1 - y0) * 0.22)));
+    var rs = [], gs = [], bs = [];
+    var step = Math.max(1, Math.round(Math.max(x1 - x0, y1 - y0) / 70));
+    for (var y = Math.max(0, y0 - pad); y <= Math.min(H - 1, y1 + pad); y += step) {
+      for (var x = Math.max(0, x0 - pad); x <= Math.min(W - 1, x1 + pad); x += step) {
+        if (x > x0 - 1 && x < x1 + 1 && y > y0 - 1 && y < y1 + 1) continue;
+        var i = (y * W + x) * 4;
+        rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]);
+      }
+    }
+    if (!rs.length) {
+      var mid = ((Math.floor((y0 + y1) / 2)) * W + Math.floor((x0 + x1) / 2)) * 4;
+      return { r: d[mid], g: d[mid + 1], b: d[mid + 2] };
+    }
+    return { r: median(rs), g: median(gs), b: median(bs) };
+  }
+
+  function lum(r, g, b) { return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; }
+
+  function sampleInk(b, bgLum) {
+    var d = imgPixels().data, W = IMG.w, H = IMG.h;
+    var x0 = Math.max(0, Math.floor(b.x0)), y0 = Math.max(0, Math.floor(b.y0));
+    var x1 = Math.min(W - 1, Math.ceil(b.x1)), y1 = Math.min(H - 1, Math.ceil(b.y1));
+    var step = Math.max(1, Math.round((x1 - x0) / 60));
+    var rs = [], gs = [], bs = [];
+    for (var y = y0; y <= y1; y += step) {
+      for (var x = x0; x <= x1; x += step) {
+        var i = (y * W + x) * 4;
+        rs.push(d[i]); gs.push(d[i + 1]); bs.push(d[i + 2]);
+      }
+    }
+    if (!rs.length) return bgLum > 0.55 ? '#101014' : '#ffffff';
+    // split into luminance deciles: darkest cluster vs brightest cluster
+    var samples = rs.map(function (r, i) { return { r: r, g: gs[i], b: bs[i], l: lum(r, gs[i], bs[i]) }; });
+    samples.sort(function (a, b2) { return a.l - b2.l; });
+    var lowN = Math.max(1, Math.round(samples.length * 0.15));
+    var low = samples.slice(0, lowN);
+    var high = samples.slice(samples.length - lowN);
+    function avg(list) {
+      var r = 0, g = 0, b2 = 0;
+      list.forEach(function (s) { r += s.r; g += s.g; b2 += s.b; });
+      return { r: r / list.length, g: g / list.length, b: b2 / list.length };
+    }
+    var lo = avg(low), hi = avg(high);
+    var lLo = lum(lo.r, lo.g, lo.b), lHi = lum(hi.r, hi.g, hi.b);
+    var cand = Math.abs(lLo - bgLum) > Math.abs(lHi - bgLum) ? lo.r !== undefined ? { c: lo, l: lLo } : null : { c: hi, l: lHi };
+    if (!cand || Math.abs(cand.l - bgLum) < 0.22) {
+      return bgLum > 0.55 ? '#0f0f13' : '#ffffff';
+    }
+    return 'rgb(' + Math.round(cand.c.r) + ',' + Math.round(cand.c.g) + ',' + Math.round(cand.c.b) + ')';
+  }
+
+  function wrapText(ctx, text, maxW) {
+    var words = String(text).split(/\s+/).filter(Boolean);
+    var lines = [], cur = '';
+    function pushWord(w) {
+      var test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width <= maxW) { cur = test; return; }
+      if (cur) { lines.push(cur); cur = ''; }
+      if (ctx.measureText(w).width <= maxW) { cur = w; return; }
+      // long token: break by characters (CJK friendly)
+      var seg = '';
+      for (var i = 0; i < w.length; i++) {
+        var t2 = seg + w[i];
+        if (ctx.measureText(t2).width > maxW) { lines.push(seg); seg = w[i]; }
+        else seg = t2;
+      }
+      cur = seg;
+    }
+    words.forEach(pushWord);
+    if (cur) lines.push(cur);
+    return lines.length ? lines : [''];
+  }
+
+  function fitBlock(ctx, text, w, h) {
+    var maxSize = Math.max(7, Math.min(h * 1.06, 56)) * (IMG.fontScale / 100);
+    var size = maxSize;
+    for (var n = 0; n < 42; n++) {
+      ctx.font = '600 ' + size.toFixed(1) + 'px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", Roboto, sans-serif';
+      var lines = wrapText(ctx, text, w * 1.02);
+      var lh = size * 1.16;
+      if (lines.length * lh <= h * 1.16 && lines.length <= 3) return { size: size, lines: lines, lh: lh };
+      size *= 0.92;
+      if (size < 6) break;
+    }
+    ctx.font = '600 6.5px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", Roboto, sans-serif';
+    return { size: 6.5, lines: wrapText(ctx, text, w * 1.02).slice(0, 3), lh: 7.6 };
+  }
+
+  function renderOverlay() {
+    if (!IMG.img || !IMG.ctx) return;
+    var ctx = IMG.ctx;
+    ctx.clearRect(0, 0, IMG.w, IMG.h);
+    ctx.drawImage(IMG.img, 0, 0);
+    if (!IMG.showTrans) return;
+    IMG.blocks.forEach(function (b) {
+      if (!b.trans || b.failed) return;
+      var x0 = Math.max(0, b.x0), y0 = Math.max(0, b.y0);
+      var w = Math.min(IMG.w - x0, b.x1 - b.x0), h = Math.min(IMG.h - y0, b.y1 - b.y0);
+      if (w < 4 || h < 4) return;
+      var pad = Math.max(1, Math.round(IMG.pad + h * 0.06));
+      var bg = b.bg || (b.bg = sampleBg(b));
+      var col = 'rgb(' + Math.round(bg.r) + ',' + Math.round(bg.g) + ',' + Math.round(bg.b) + ')';
+      var blur = Math.max(1, h * 0.07);
+      ctx.save();
+      ctx.fillStyle = col;
+      ctx.filter = 'blur(' + blur.toFixed(1) + 'px)';
+      roundRect(ctx, x0 - pad, y0 - pad * 0.7, w + pad * 2, h + pad * 1.4, Math.min(6, h * 0.2));
+      ctx.fill();
+      ctx.restore();
+      ctx.save();
+      ctx.fillStyle = col;
+      roundRect(ctx, x0, y0, w, h, Math.min(3, h * 0.12));
+      ctx.fill();
+      ctx.restore();
+
+      var bgL = lum(bg.r, bg.g, bg.b);
+      var ink = b.ink || (b.ink = sampleInk(b, bgL));
+      var fit = fitBlock(ctx, b.trans, w, h);
+      b.fitSize = fit.size;
+      ctx.save();
+      ctx.fillStyle = ink;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      var totalH = fit.lines.length * fit.lh;
+      var startY = y0 + h / 2 - totalH / 2 + fit.lh / 2;
+      for (var i = 0; i < fit.lines.length; i++) {
+        ctx.fillText(fit.lines[i], x0 + Math.max(0, (w - Math.max.apply(null, fit.lines.map(function (l) { return ctx.measureText(l).width; }))) / 2), startY + i * fit.lh);
+      }
+      ctx.restore();
+    });
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function collectLines(data) {
+    var out = [];
+    function norm(l) {
+      if (!l || !l.bbox) return null;
+      var b = l.bbox;
+      return {
+        text: (l.text || '').replace(/\s+/g, ' ').trim(),
+        x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, conf: l.confidence
+      };
+    }
+    if (Array.isArray(data.lines) && data.lines.length) {
+      data.lines.forEach(function (l) { var n = norm(l); if (n) out.push(n); });
+      if (out.length) return out;
+    }
+    if (Array.isArray(data.blocks)) {
+      data.blocks.forEach(function (bl) {
+        (bl.paragraphs || []).forEach(function (p) {
+          (p.lines || []).forEach(function (l) { var n = norm(l); if (n) out.push(n); });
+        });
+      });
+    }
+    if (!out.length && Array.isArray(data.words) && data.words.length) {
+      var byLine = {};
+      data.words.forEach(function (w) {
+        var key = w.line ? (w.line.baseline ? w.line.baseline.y0 + ':' + w.line.baseline.x0 : '0') : '0';
+        if (!byLine[key]) byLine[key] = { words: [], x0: 1e9, y0: 1e9, x1: 0, y1: 0 };
+        var g = byLine[key];
+        g.words.push(w.text);
+        g.x0 = Math.min(g.x0, w.bbox.x0); g.y0 = Math.min(g.y0, w.bbox.y0);
+        g.x1 = Math.max(g.x1, w.bbox.x1); g.y1 = Math.max(g.y1, w.bbox.y1);
+      });
+      Object.keys(byLine).forEach(function (k) {
+        var g = byLine[k];
+        out.push({ text: g.words.join(' '), x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 });
+      });
+    }
+    return out;
+  }
+
+  function imgLangString(code) {
+    var map = { auto: 'eng+kor', ko: 'kor', en: 'eng', ja: 'jpn', 'zh-CN': 'chi_sim', 'zh-TW': 'chi_tra', es: 'spa', fr: 'fra', de: 'deu', ru: 'rus', vi: 'vie', it: 'ita', pt: 'por' };
+    return map[code] || 'eng';
+  }
+
+  function doImageTranslate() {
+    if (!IMG.img || IMG.busy) return;
+    IMG.busy = true;
+    $('#btnOcr').disabled = true;
+    $('#imgSweep').classList.remove('hidden');
+    $('#imgListWrap').classList.add('hidden');
+    IMG.blocks = [];
+    renderOverlay();
+    imgSetStatus('글자 영역을 찾는 중…', '진행 중');
+    imgProgress(4, '글자 인식 준비');
+
+    var srcCode = $('#imgSrcLang').value;
+    var dstCode = $('#imgDstLang').value;
+    var langStr = imgLangString(srcCode);
+
+    if (!window.Tesseract) {
+      imgSetStatus('글자 인식 엔진을 불러오지 못했어요. 네트워크를 확인해 주세요', '실패');
+      Lemon.toast('Tesseract 엔진을 불러오지 못했어요', 'err');
+      IMG.busy = false; $('#btnOcr').disabled = false; $('#imgSweep').classList.add('hidden');
+      return;
+    }
+
+    function ensureWorker() {
+      if (IMG.worker && IMG.workerLang === langStr) return Promise.resolve(IMG.worker);
+      var prev = IMG.worker ? IMG.worker.terminate() : Promise.resolve();
+      IMG.worker = null;
+      return prev.then(function () {
+        return Tesseract.createWorker(langStr, 1, {
+          logger: function (m) {
+            if (m.status === 'recognizing text') imgProgress(10 + m.progress * 55, '글자 인식 ' + Math.round(m.progress * 100) + '%');
+            else if (m.status) imgSetStatus(m.status === 'loading language traineddata' ? '인식 언어 데이터를 받는 중…' : '엔진 준비 중…', '진행 중');
+          }
+        });
+      }).then(function (w) { IMG.worker = w; IMG.workerLang = langStr; return w; });
+    }
+
+    ensureWorker().then(function (w) {
+      return w.recognize(IMG.canvas, {}, { blocks: true, text: true });
+    }).then(function (res) {
+      var lines = collectLines((res && res.data) || {}).filter(function (l) {
+        return l.text && l.text.replace(/[^\p{L}\p{N}]/gu, '').length > 0 && (l.x1 - l.x0) > 6 && (l.y1 - l.y0) > 6;
+      });
+      if (!lines.length) {
+        imgSetStatus('글자를 찾지 못했어요. 다른 사진으로 시도해 보세요', '실패');
+        Lemon.toast('이 이미지에서는 글자를 찾지 못했어요', 'info');
+        IMG.busy = false; $('#btnOcr').disabled = false; $('#imgSweep').classList.add('hidden');
+        imgProgress(0, '');
+        return null;
+      }
+      IMG.blocks = lines;
+      imgProgress(68, lines.length + '줄 번역 중');
+      imgSetStatus(lines.length + '줄을 찾았어요. 번역하는 중…', '진행 중');
+      var from = srcCode === 'auto' ? detectLang(lines.map(function (l) { return l.text; }).join(' ')) : srcCode;
+      return translateBatch(lines.map(function (l) { return l.text; }), from, dstCode, function (d, t) {
+        imgProgress(68 + (d / t) * 32, d + '/' + t + '줄');
+      }).then(function (res) {
+        lines.forEach(function (b, i) {
+          b.orig = b.text;
+          var r = res[i] || { text: b.text, ok: false };
+          b.trans = r.text || b.text;
+          var same = b.trans.replace(/\s+/g, ' ').trim() === b.text.replace(/\s+/g, ' ').trim();
+          b.failed = (!r.ok && same) || (same && from !== dstCode);
+        });
+        renderOverlay();
+        return lines;
+      });
+    }).then(function (lines) {
+      if (!lines) return;
+      IMG.showTrans = true;
+      $('#imgSwitch').classList.add('on');
+      renderOverlay();
+      renderImgList();
+      imgProgress(100, '완료');
+      imgSetStatus(lines.length + '줄을 번역했어요. 줄을 눌러 원문과 비교하세요', '완료');
+      $('#imgListWrap').classList.remove('hidden');
+      $('#btnImgCopy').disabled = false;
+      $('#btnImgPng').disabled = false;
+      $('#imgSweep').classList.add('hidden');
+      IMG.busy = false;
+      $('#btnOcr').disabled = false;
+      Lemon.toast('이미지 번역을 완성했어요', 'ok');
+    }).catch(function (err) {
+      IMG.busy = false;
+      $('#btnOcr').disabled = false;
+      $('#imgSweep').classList.add('hidden');
+      imgSetStatus('인식에 실패했어요: ' + String(err && err.message || err).slice(0, 80), '실패');
+      Lemon.toast('이미지 인식에 실패했어요', 'err');
+    });
+  }
+
+  function renderImgList() {
+    $('#imgCount').textContent = IMG.blocks.length;
+    $('#imgList').innerHTML = IMG.blocks.map(function (b, i) {
+      var conf = b.conf ? Math.round(b.conf) : 0;
+      return '<div class="seg-row p-2 flex items-start gap-2 cursor-pointer" data-block="' + i + '">' +
+        '<span class="text-[9px] font-mono text-neutral-400 mt-0.5 w-8 shrink-0">' + (conf ? conf + '%' : '#' + (i + 1)) + '</span>' +
+        '<div class="min-w-0 flex-1">' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(b.orig || '') + '</p>' +
+        (b.failed
+          ? '<p class="text-[11px] font-bold text-neutral-400">원문 유지</p>'
+          : '<p class="text-[12px] font-bold truncate" style="color:var(--brand)">' + esc(b.trans || '') + '</p>') +
+        '</div></div>';
+    }).join('');
+  }
+
+  document.addEventListener('click', function (e) {
+    var row = e.target.closest('[data-block]');
+    if (row) { openBlock(IMG.blocks[Number(row.getAttribute('data-block'))]); }
+  });
+
+  var currentBlock = null;
+  function openBlock(b) {
+    if (!b) return;
+    currentBlock = b;
+    $('#bmOrig').textContent = b.orig || b.text || '';
+    $('#bmTrans').textContent = b.trans || '';
+    $('#blockModal').classList.add('open');
+  }
+  $('#blockModal').addEventListener('click', function (e) {
+    if (e.target.closest('[data-act="modal-close"]') || e.target.classList.contains('lm-backdrop')) {
+      $('#blockModal').classList.remove('open');
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') $('#blockModal').classList.remove('open');
+  });
+
+  /* canvas hover + click */
+  (function bindCanvas() {
+    var canvas = $('#trCanvas');
+    var hl = $('#imgHl');
+    canvas.addEventListener('mousemove', function (e) {
+      if (!IMG.blocks.length) return;
+      var r = canvas.getBoundingClientRect();
+      var x = (e.clientX - r.left) * (IMG.w / r.width);
+      var y = (e.clientY - r.top) * (IMG.h / r.height);
+      var hit = IMG.blocks.filter(function (b) { return x >= b.x0 - 2 && x <= b.x1 + 2 && y >= b.y0 - 2 && y <= b.y1 + 2; })[0];
+      if (hit && IMG.showTrans) {
+        hl.style.left = (hit.x0 * r.width / IMG.w) + 'px';
+        hl.style.top = (hit.y0 * r.height / IMG.h) + 'px';
+        hl.style.width = ((hit.x1 - hit.x0) * r.width / IMG.w) + 'px';
+        hl.style.height = ((hit.y1 - hit.y0) * r.height / IMG.h) + 'px';
+        hl.classList.add('on');
+        canvas.style.cursor = 'pointer';
+      } else {
+        hl.classList.remove('on');
+        canvas.style.cursor = 'default';
+      }
+    });
+    canvas.addEventListener('mouseleave', function () { hl.classList.remove('on'); });
+    canvas.addEventListener('click', function (e) {
+      var r = canvas.getBoundingClientRect();
+      var x = (e.clientX - r.left) * (IMG.w / r.width);
+      var y = (e.clientY - r.top) * (IMG.h / r.height);
+      var hit = IMG.blocks.filter(function (b) { return x >= b.x0 - 2 && x <= b.x1 + 2 && y >= b.y0 - 2 && y <= b.y1 + 2; })[0];
+      if (hit) openBlock(hit);
+    });
+    // press-and-hold to peek the original
+    var holdTimer = null, peeking = false;
+    canvas.addEventListener('pointerdown', function () {
+      if (!IMG.blocks.length || !IMG.showTrans) return;
+      holdTimer = setTimeout(function () {
+        peeking = true;
+        var keep = IMG.showTrans;
+        IMG.showTrans = false;
+        renderOverlay();
+        IMG.showTrans = keep;
+        Lemon.hap(8);
+      }, 420);
+    });
+    function endHold() {
+      clearTimeout(holdTimer);
+      if (peeking) { peeking = false; renderOverlay(); }
+    }
+    canvas.addEventListener('pointerup', endHold);
+    canvas.addEventListener('pointerleave', endHold);
+    canvas.addEventListener('pointercancel', endHold);
+  })();
+
+  $('#imgInput').addEventListener('change', function () { if (this.files[0]) imgLoad(this.files[0]); });
+  $('#btnOcr').addEventListener('click', doImageTranslate);
+  $('#imgSrcLang').addEventListener('change', function () { if (IMG.blocks.length) doImageTranslate(); });
+  $('#imgDstLang').addEventListener('change', function () { if (IMG.blocks.length) doImageTranslate(); });
+  $('#imgPad').addEventListener('input', function () {
+    IMG.pad = Number(this.value);
+    $('#imgPadVal').textContent = this.value;
+    IMG.blocks.forEach(function (b) { b.bg = null; });
+    renderOverlay();
+  });
+  $('#imgFont').addEventListener('input', function () {
+    IMG.fontScale = Number(this.value);
+    $('#imgFontVal').textContent = this.value + '%';
+    renderOverlay();
+  });
+  $('#imgZoom').addEventListener('input', function () {
+    IMG.zoom = Number(this.value);
+    $('#imgZoomVal').textContent = this.value + '%';
+    layoutCanvas();
+  });
+  (function bindImgSwitch() {
+    var sw = $('#imgSwitch');
+    function apply(showTrans) {
+      IMG.showTrans = showTrans;
+      sw.classList.toggle('on', showTrans);
+      sw.setAttribute('aria-checked', showTrans ? 'true' : 'false');
+      renderOverlay();
+    }
+    sw.addEventListener('click', function () { apply(!IMG.showTrans); });
+    sw.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); apply(!IMG.showTrans); } });
+  })();
+
+  /* dropzone */
+  (function bindDrop() {
+    var dz = $('#imgDrop');
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('dz-on'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('dz-on'); });
+    });
+    dz.addEventListener('drop', function (e) {
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) imgLoad(f);
+    });
+    document.addEventListener('paste', function (e) {
+      if ($('[data-view="studio"]').classList.contains('hidden')) return;
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') === 0) {
+          var f = items[i].getAsFile();
+          if (f) { setMode('image'); imgLoad(f); Lemon.toast('붙여넣은 이미지를 불러왔어요', 'ok'); }
+          break;
+        }
+      }
+    });
+  })();
+
+  function imgDownloadPng() {
+    if (!IMG.canvas || !IMG.blocks.length) { Lemon.toast('먼저 이미지를 번역해 주세요', 'err'); return; }
+    var wasTrans = IMG.showTrans;
+    IMG.showTrans = true;
+    renderOverlay();
+    IMG.canvas.toBlob(function (blob) {
+      if (blob) Lemon.downloadBlob('lemon-translate-' + Date.now() + '.png', blob);
+      else Lemon.toast('이미지를 저장하지 못했어요', 'err');
+      IMG.showTrans = wasTrans;
+      renderOverlay();
+      Lemon.toast('번역 이미지를 PNG로 저장했어요', 'ok');
+    }, 'image/png');
+  }
+
+  function imgCopyText() {
+    var text = IMG.blocks.map(function (b) { return b.trans; }).filter(Boolean).join('\n');
+    if (!text) { Lemon.toast('복사할 번역문이 없어요', 'err'); return; }
+    Lemon.copy(text, '번역문을 복사했어요');
+  }
+
+  /* ============================================================
+     Web page translation
+     ============================================================ */
+  var WEB = { segs: [], url: '', title: '', showingTrans: true, busy: false };
+
+  var PROXIES = [
+    function (u) { return 'https://proxy.cors.dev/' + u; },
+    function (u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+    function (u) { return 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u); }
+  ];
+
+  function fetchPage(url) {
+    var i = 0;
+    function attempt() {
+      if (i >= PROXIES.length) return Promise.reject(new Error('proxy'));
+      var target = PROXIES[i++](url);
+      var ctrl = window.AbortController ? new AbortController() : null;
+      var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 14000);
+      return fetch(target, { credentials: 'omit', signal: ctrl ? ctrl.signal : undefined })
+        .then(function (r) {
+          clearTimeout(timer);
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.text();
+        })
+        .then(function (html) {
+          if (!html || html.length < 60) throw new Error('empty');
+          return html;
+        })
+        .catch(function () { clearTimeout(timer); return attempt(); });
+    }
+    return attempt();
+  }
+
+  function normalizeUrl(v) {
+    v = String(v || '').trim();
+    if (!v) return '';
+    if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+    try { var u = new URL(v); return u.href; } catch (e) { return ''; }
+  }
+
+  function extractSegments(doc, baseUrl) {
+    var body = doc.body;
+    if (!body) return { segs: [], title: doc.title || '' };
+    var imgs = Array.prototype.slice.call(body.querySelectorAll('img')).map(function (im) {
+      var src = im.getAttribute('src') || im.getAttribute('data-src') || '';
+      if (!src) return null;
+      if (/\.svg(\?|$)/i.test(src) || /logo|icon|sprite|banner|wordmark/i.test(src)) return null;
+      var wAttr = Number(im.getAttribute('width') || 0), hAttr = Number(im.getAttribute('height') || 0);
+      if ((wAttr && wAttr < 140) || (hAttr && hAttr < 90)) return null;
+      try { return new URL(src, baseUrl).href; } catch (e) { return null; }
+    }).filter(Boolean).slice(0, 3);
+
+    ['script', 'style', 'noscript', 'iframe', 'svg', 'form', 'input', 'select', 'button', 'textarea', 'nav', 'footer', 'header', 'aside'].forEach(function (tag) {
+      Array.prototype.slice.call(body.querySelectorAll(tag)).forEach(function (n) { n.remove(); });
+    });
+    body.querySelectorAll('*').forEach(function (n) {
+      Array.prototype.slice.call(n.attributes || []).forEach(function (a) {
+        if (/^on/i.test(a.name)) n.removeAttribute(a.name);
+      });
+    });
+
+    var sel = 'h1,h2,h3,h4,h5,h6,p,li,td,th,blockquote,figcaption,dd,dt,pre,caption';
+    var nodes = Array.prototype.slice.call(body.querySelectorAll(sel));
+    var set = nodes.slice();
+    var segs = nodes.filter(function (n) {
+      var txt = (n.textContent || '').replace(/\s+/g, ' ').trim();
+      if (txt.length < 2) return false;
+      var p = n.parentElement, nested = false;
+      while (p) { if (set.indexOf(p) > -1) { nested = true; break; } p = p.parentElement; }
+      return !nested;
+    }).slice(0, 140).map(function (n) {
+      return { tag: n.tagName.toLowerCase(), orig: (n.textContent || '').replace(/\s+/g, ' ').trim(), trans: '' };
+    });
+    return { segs: segs, title: (doc.title || '').trim(), imgs: imgs.slice(0, 3) };
+  }
+
+  function renderWeb() {
+    var host = $('#webDoc');
+    host.innerHTML = '';
+    if (!WEB.segs.length) return;
+    var top = document.createElement('div');
+    top.className = 'mb-3 pb-3 border-b border-neutral-200/70 dark:border-neutral-800/70';
+    top.innerHTML = '<p class="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 mb-1 break-all">' + esc(WEB.url) + '</p>' +
+      '<h1 class="text-[17px] font-black leading-snug">' + esc(WEB.title || '번역한 페이지') + '</h1>';
+    host.appendChild(top);
+    if (WEB.imgs && WEB.imgs.length) {
+      var gal = document.createElement('div');
+      gal.className = 'flex gap-2 mb-3 overflow-x-auto no-scrollbar';
+      gal.innerHTML = WEB.imgs.map(function (src) {
+        return '<img src="' + esc(src) + '" alt="" class="h-24 rounded-lg object-cover border border-neutral-200 dark:border-neutral-800" loading="lazy" referrerpolicy="no-referrer">';
+      }).join('');
+      host.appendChild(gal);
+    }
+    WEB.segs.forEach(function (s, i) {
+      var el = document.createElement(s.tag === 'li' ? 'li' : s.tag === 'td' || s.tag === 'th' ? 'p' : s.tag);
+      el.className = 'tr-seg';
+      el.setAttribute('data-seg', String(i));
+      el.textContent = WEB.showingTrans ? (s.trans || s.orig) : s.orig;
+      el.setAttribute('title', '누르면 원문/번역이 바뀝니다');
+      host.appendChild(el);
+    });
+    host.classList.remove('hidden');
+    $('#webEmpty').classList.add('hidden');
+  }
+
+  function webTranslate() {
+    if (WEB.busy) return;
+    var url = normalizeUrl($('#webUrl').value);
+    if (!url) { Lemon.toast('올바른 주소를 넣어 주세요', 'err'); return; }
+    WEB.busy = true;
+    $('#btnWeb').disabled = true;
+    $('#webProgWrap').classList.remove('hidden');
+    $('#webProgress').style.width = '4%';
+    $('#webInfo').textContent = '페이지를 가져오는 중…';
+    $('#webEmpty').classList.add('hidden');
+    $('#webDoc').classList.add('hidden');
+
+    fetchPage(url).then(function (html) {
+      $('#webProgress').style.width = '12%';
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var got = extractSegments(doc, url);
+      if (!got.segs.length) throw new Error('nobody');
+      WEB.segs = got.segs;
+      WEB.title = got.title;
+      WEB.imgs = got.imgs || [];
+      WEB.url = url;
+      WEB.showingTrans = true;
+      renderWeb();
+      var from = detectLang(WEB.segs.slice(0, 6).map(function (s) { return s.orig; }).join(' '));
+      var to = $('#webDstLang').value;
+      $('#webInfo').textContent = WEB.segs.length + '개 문단 · ' + langName(from) + ' → ' + langName(to);
+      var GROUP = 10, chain = Promise.resolve();
+      for (var gi = 0; gi < WEB.segs.length; gi += GROUP) {
+        (function (start) {
+          var group = WEB.segs.slice(start, start + GROUP);
+          chain = chain.then(function () {
+            return translateBatch(group.map(function (s) { return s.orig; }), from, to).then(function (res) {
+              group.forEach(function (s, k) {
+                var r = res[k] || {};
+                s.trans = r.text || s.orig;
+                var el = $('[data-seg="' + (start + k) + '"]');
+                if (el) {
+                  el.textContent = s.trans;
+                  el.classList.add('just');
+                  (function (node) { setTimeout(function () { node.classList.remove('just'); }, 900); })(el);
+                }
+              });
+              var progressed = Math.min(start + group.length, WEB.segs.length);
+              $('#webProgress').style.width = (12 + (progressed / WEB.segs.length) * 86) + '%';
+              $('#webInfo').textContent = progressed + '/' + WEB.segs.length + ' 문단 번역';
+            });
+          });
+        })(gi);
+      }
+      return chain;
+    }).then(function () {
+      $('#webProgress').style.width = '100%';
+      $('#webInfo').textContent = WEB.segs.length + '개 문단 번역 완료';
+      $('#btnWebToggle').disabled = false;
+      $('#btnWebOpen').disabled = false;
+      $('#btnWebSave').disabled = false;
+      $('#webToggleLabel').textContent = '원문 보기';
+      WEB.busy = false;
+      $('#btnWeb').disabled = false;
+      Lemon.toast('웹페이지 번역을 마쳤어요', 'ok');
+      saveWeb(false);
+    }).catch(function (err) {
+      WEB.busy = false;
+      $('#btnWeb').disabled = false;
+      $('#webProgWrap').classList.add('hidden');
+      $('#webEmpty').classList.remove('hidden');
+      $('#webInfo').textContent = '페이지를 불러오지 못했어요';
+      var msg = String(err && err.message || '');
+      Lemon.toast(msg === 'nobody' ? '번역할 본문을 찾지 못했어요' : '페이지를 불러오지 못했어요. 주소를 확인해 주세요', 'err');
+    });
+  }
+
+  function saveWeb(manual) {
+    if (!WEB.segs.length) return;
+    var title = (WEB.title || WEB.url).slice(0, 60);
+    var out = WEB.segs.slice(0, 8).map(function (s) { return s.trans || s.orig; }).join(' ');
+    if (manual) {
+      var rec = arc.add({ kind: 'web', title: title, url: WEB.url, out: out, from: 'auto', to: $('#webDstLang').value, count: WEB.segs.length });
+      if (rec) { renderArchive(); Lemon.toast('보관함에 저장했어요', 'ok'); }
+      else Lemon.toast('저장에 실패했어요', 'err');
+    } else {
+      var rec2 = arc.add({ kind: 'web', title: title, url: WEB.url, out: out, from: 'auto', to: $('#webDstLang').value, count: WEB.segs.length });
+      if (rec2) renderArchive();
+    }
+  }
+  $('#btnWeb').addEventListener('click', webTranslate);
+  $('#webUrl').addEventListener('keydown', function (e) { if (e.key === 'Enter') webTranslate(); });
+
+  document.addEventListener('click', function (e) {
+    var seg = e.target.closest('.tr-seg');
+    if (!seg) return;
+    var i = Number(seg.getAttribute('data-seg'));
+    var s = WEB.segs[i];
+    if (!s) return;
+    var showingTrans = seg.textContent === (s.trans || s.orig);
+    seg.textContent = showingTrans ? s.orig : (s.trans || s.orig);
+  });
+
+  /* ============================================================
+     Documents (.txt / .srt / .vtt)
+     ============================================================ */
+  var DOC = { name: '', kind: 'txt', segs: [], showingTrans: true, busy: false };
+
+  function parseSrt(text) {
+    var blocks = text.replace(/\r/g, '').split(/\n{2,}/);
+    var segs = [];
+    blocks.forEach(function (b) {
+      var lines = b.split('\n').filter(function (l) { return l.trim() !== ''; });
+      if (!lines.length) return;
+      var timeIdx = lines.findIndex(function (l) { return l.indexOf('-->') > -1; });
+      if (timeIdx < 0) return;
+      var idx = timeIdx > 0 ? lines[timeIdx - 1].trim() : '';
+      segs.push({
+        idx: idx, time: lines[timeIdx].trim(),
+        orig: lines.slice(timeIdx + 1).join(' ').trim(),
+        trans: ''
+      });
+    });
+    return segs;
+  }
+
+  function parseDocText(text, name) {
+    var lower = (name || '').toLowerCase();
+    if (/\.srt$/.test(lower) || (text.indexOf('-->') > -1 && /\.vtt$/.test(lower) === false)) {
+      var s = parseSrt(text);
+      if (s.length) return { kind: 'srt', segs: s };
+    }
+    if (/\.vtt$/.test(lower) || /^WEBVTT/.test(text.trim().slice(0, 20))) {
+      var body = text.replace(/\r/g, '').replace(/^WEBVTT[^\n]*\n/, '');
+      var segs = parseSrt(body).map(function (x) { return { idx: x.idx, time: x.time.replace(/\./g, ','), orig: x.orig, trans: '' }; });
+      if (segs.length) return { kind: 'vtt', segs: segs };
+    }
+    var paras = text.split(/\n\s*\n/).map(function (p) { return p.replace(/\s+\n/g, '\n').trim(); }).filter(function (p) { return p.length > 0; });
+    return { kind: 'txt', segs: paras.map(function (p, i) { return { idx: String(i + 1), time: '', orig: p, trans: '' }; }) };
+  }
+
+  function docLoad(file) {
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) { Lemon.toast('4MB 이하 파일만 열 수 있어요', 'err'); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var text = String(reader.result || '');
+      var parsed = parseDocText(text, file.name);
+      if (!parsed.segs.length) { Lemon.toast('번역할 내용을 찾지 못했어요', 'err'); return; }
+      DOC.name = file.name;
+      DOC.kind = parsed.kind;
+      DOC.segs = parsed.segs;
+      DOC.showingTrans = false;
+      $('#docName').textContent = file.name.length > 24 ? file.name.slice(0, 22) + '…' : file.name;
+      $('#docStatus').textContent = parsed.kind.toUpperCase() + ' · ' + parsed.segs.length + '개 문단';
+      $('#docCount').textContent = parsed.segs.length;
+      $('#docWrap').classList.remove('hidden');
+      $('#btnDoc').disabled = false;
+      $('#btnDocDl').disabled = false;
+      $('#btnDocToggle').textContent = '번역 보기';
+      $('#docProgress').style.width = '0%';
+      $('#docProgressText').textContent = '';
+      renderDoc();
+      Lemon.toast('파일을 불러왔어요. 문서 번역을 눌러 주세요', 'info');
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function renderDoc() {
+    $('#docList').innerHTML = DOC.segs.map(function (s, i) {
+      var showTrans = DOC.showingTrans && s.trans;
+      return '<div class="seg-row p-2 flex gap-2 items-start">' +
+        '<span class="text-[8.5px] font-mono text-neutral-400 mt-0.5 w-16 shrink-0 truncate">' + esc(s.time ? s.time.split(' --> ')[0] : '#' + (i + 1)) + '</span>' +
+        '<div class="min-w-0 flex-1">' +
+        (showTrans ? '<p class="text-[11px] text-neutral-400 dark:text-neutral-500 truncate">' + esc(s.orig) + '</p>' : '') +
+        '<p class="text-[12px] leading-relaxed break-words ' + (showTrans ? 'font-bold' : '') + '"' + (showTrans ? ' style="color:var(--brand)"' : '') + '>' + esc(showTrans ? s.trans : s.orig) + '</p>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function docTranslate() {
+    if (!DOC.segs.length || DOC.busy) return;
+    DOC.busy = true;
+    $('#btnDoc').disabled = true;
+    $('#docProgress').style.width = '3%';
+    var from = $('#docSrcLang').value;
+    var fromResolved = from === 'auto' ? detectLang(DOC.segs.slice(0, 5).map(function (s) { return s.orig; }).join(' ')) : from;
+    var to = $('#docDstLang').value;
+    $('#docStatus').textContent = langName(fromResolved) + ' → ' + langName(to) + ' 번역 중';
+    var GROUP = 8, chain = Promise.resolve();
+    for (var gi = 0; gi < DOC.segs.length; gi += GROUP) {
+      (function (start) {
+        var group = DOC.segs.slice(start, start + GROUP);
+        chain = chain.then(function () {
+          return translateBatch(group.map(function (s) { return s.orig; }), fromResolved, to).then(function (res) {
+            group.forEach(function (s, k) {
+              var r = res[k] || {};
+              s.trans = r.text || s.orig;
+            });
+            var progressed = Math.min(start + group.length, DOC.segs.length);
+            $('#docProgress').style.width = (3 + (progressed / DOC.segs.length) * 96) + '%';
+            $('#docProgressText').textContent = progressed + '/' + DOC.segs.length;
+            renderDoc();
+          });
+        });
+      })(gi);
+    }
+    return chain.then(function () {
+      DOC.showingTrans = true;
+      DOC.busy = false;
+      $('#btnDoc').disabled = false;
+      $('#btnDocToggle').textContent = '원문 보기';
+      $('#docStatus').textContent = DOC.segs.length + '개 문단 번역 완료';
+      $('#docProgress').style.width = '100%';
+      renderDoc();
+      var rec = arc.add({
+        kind: 'doc', title: DOC.name, out: DOC.segs.slice(0, 6).map(function (s) { return s.trans; }).join(' '),
+        from: fromResolved, to: to, count: DOC.segs.length
+      });
+      if (rec) renderArchive();
+      Lemon.toast('문서 번역을 완료했어요', 'ok');
+    });
+  }
+
+  function docDownload() {
+    if (!DOC.segs.length) return;
+    var body;
+    if (DOC.kind === 'srt' || DOC.kind === 'vtt') {
+      body = DOC.segs.map(function (s, i) {
+        var time = DOC.kind === 'vtt' ? s.time.replace(/,/g, '.') : s.time;
+        return (s.idx || (i + 1)) + '\n' + time + '\n' + (s.trans || s.orig) + '\n';
+      }).join('\n');
+      if (DOC.kind === 'vtt') body = 'WEBVTT\n\n' + body;
+    } else {
+      body = DOC.segs.map(function (s) { return s.trans || s.orig; }).join('\n\n');
+    }
+    var base = DOC.name.replace(/\.[^.]+$/, '') || 'lemon-translate';
+    var ext = DOC.kind === 'vtt' ? '.vtt' : DOC.kind === 'srt' ? '.srt' : '.txt';
+    Lemon.download(base + '.' + $('#docDstLang').value + ext, body, 'text/plain;charset=utf-8');
+    Lemon.toast('번역 결과를 내려받았어요', 'ok');
+  }
+
+  $('#docInput').addEventListener('change', function () { if (this.files[0]) docLoad(this.files[0]); });
+  $('#btnDoc').addEventListener('click', docTranslate);
+  $('#btnDocDl').addEventListener('click', docDownload);
+  $('#btnDocToggle').addEventListener('click', function () {
+    DOC.showingTrans = !DOC.showingTrans;
+    this.textContent = DOC.showingTrans ? '원문 보기' : '번역 보기';
+    renderDoc();
+  });
+
+  /* ============================================================
+     Global actions (text studio, archive, modal)
+   ============================================================ */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var act = btn.getAttribute('data-act');
+    var src = $('#srcText').value, out = state.out;
+
+    if (act === 'translate-now') runText(true);
+    if (act === 'copy-out') {
+      if (!out) { Lemon.toast('복사할 번역문이 없어요', 'err'); return; }
+      Lemon.copy(out, '번역문을 복사했어요');
+    }
+    if (act === 'speak-src') speak(src, langSp(state.from === 'auto' ? detectLang(src) : state.from));
+    if (act === 'speak-out') speak(out, langSp(state.to));
+    if (act === 'retranslate') runText(true);
+    if (act === 'clear-src') {
+      $('#srcText').value = ''; state.out = '';
+      $('#outText').textContent = ''; $('#outEmpty').classList.remove('hidden');
+      updateCounts(); $('#transTime').textContent = '';
+      project.newProject();
+    }
+    if (act === 'paste') {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(function (t) {
+          if (!t) { Lemon.toast('클립보드가 비어 있어요', 'info'); return; }
+          $('#srcText').value = t; updateCounts(); runText(true);
+        }, function () { Lemon.toast('붙여넣기 권한을 허용해 주세요', 'err'); });
+      } else Lemon.toast('이 브라우저는 붙여넣기를 지원하지 않아요', 'err');
+    }
+    if (act === 'save') {
+      if (!src.trim()) { Lemon.toast('저장할 번역이 없어요', 'err'); return; }
+      project.touch(function () {
+        return {
+          kind: 'text', title: src.trim().slice(0, 60).replace(/\s+/g, ' '),
+          src: src, out: out, from: state.from === 'auto' ? (state.srcDetected || 'auto') : state.from, to: state.to
+        };
+      });
+      var rec = project.flushNow();
+      if (!rec) {
+        rec = arc.add({
+          kind: 'text', title: src.trim().slice(0, 60).replace(/\s+/g, ' '),
+          src: src, out: out, from: state.from === 'auto' ? (state.srcDetected || 'auto') : state.from, to: state.to
+        });
+      }
+      if (rec) { renderArchive(); Lemon.toast('보관함에 저장했어요', 'ok'); }
+      else Lemon.toast('저장 공간이 부족해요', 'err');
+    }
+    if (act === 'dl-txt') {
+      if (!src.trim()) { Lemon.toast('내려받을 내용이 없어요', 'err'); return; }
+      Lemon.download('lemon-translate-' + Date.now() + '.txt', src + (out ? '\n\n--- 번역 ---\n' + out : ''), 'text/plain;charset=utf-8');
+      Lemon.toast('TXT로 내려받았어요', 'ok');
+    }
+    if (act === 'dl-md') {
+      if (!src.trim()) { Lemon.toast('내려받을 내용이 없어요', 'err'); return; }
+      var md = '# Lemon Translate\n\n- 방향: ' + langName(state.from) + ' → ' + langName(state.to) + '\n- 날짜: ' + Lemon.fmtDateTime(Date.now()) + '\n\n## 원문\n\n' + src + '\n\n## 번역\n\n' + out + '\n';
+      Lemon.download('lemon-translate-' + Date.now() + '.md', md, 'text/markdown;charset=utf-8');
+      Lemon.toast('MD로 내려받았어요', 'ok');
+    }
+    if (act === 'new') {
+      $('#srcText').value = ''; state.out = '';
+      $('#outText').textContent = ''; $('#outEmpty').classList.remove('hidden');
+      $('#transTime').textContent = '';
+      updateCounts(); project.newProject();
+      Lemon.toast('새 번역을 시작합니다', 'info');
+    }
+    if (act === 'clear-recent') { Lemon.store.set(RECENT_KEY, []); renderRecent(); }
+    if (act === 'img-png') imgDownloadPng();
+    if (act === 'img-copy') imgCopyText();
+    if (act === 'web-toggle') {
+      WEB.showingTrans = !WEB.showingTrans;
+      $('#webToggleLabel').textContent = WEB.showingTrans ? '원문 보기' : '번역 보기';
+      WEB.segs.forEach(function (s, i) {
+        var el = $('[data-seg="' + i + '"]');
+        if (el) el.textContent = WEB.showingTrans ? (s.trans || s.orig) : s.orig;
+      });
+    }
+    if (act === 'web-open') { if (WEB.url) window.open(WEB.url, '_blank', 'noopener'); }
+    if (act === 'web-save') saveWeb(true);
+    if (act === 'bm-copy') { if (currentBlock) Lemon.copy(currentBlock.trans || '', '번역문을 복사했어요'); }
+    if (act === 'bm-speak') { if (currentBlock) speak(currentBlock.trans || '', langSp($('#imgDstLang').value)); }
+  });
+
+  document.querySelectorAll('#archiveList').forEach(function (box) {
+    box.addEventListener('click', function (e) {
+      var del = e.target.closest('[data-del]');
+      if (del) {
+        e.stopPropagation();
+        arc.remove(del.getAttribute('data-del'));
+        renderArchive();
+        Lemon.toast('기록을 지웠어요', 'info');
+        return;
+      }
+      var card = e.target.closest('[data-open]');
+      if (!card) return;
+      var rec = arc.all().filter(function (r) { return r.id === card.getAttribute('data-open'); })[0];
+      if (!rec) return;
+      goTab('studio');
+      if (rec.kind === 'text' && rec.src) {
+        setMode('text');
+        $('#srcText').value = rec.src;
+        state.out = rec.out || '';
+        $('#outText').textContent = state.out;
+        if (rec.to) { state.to = rec.to; $('#dstLang').value = rec.to; }
+        if (rec.from && rec.from !== 'auto') { state.from = rec.from; $('#srcLang').value = rec.from; }
+        updateCounts();
+        $('#outEmpty').classList.toggle('hidden', !!state.out);
+        project.openProject(rec.id);
+      } else if (rec.kind === 'web' && rec.url) {
+        setMode('web');
+        $('#webUrl').value = rec.url;
+        webTranslate();
+      } else if (rec.kind === 'doc') {
+        setMode('doc');
+        Lemon.toast('문서는 파일을 다시 올려 주세요', 'info');
+      } else if (rec.kind === 'image') {
+        setMode('image');
+        Lemon.toast('이미지는 사진을 다시 올려 주세요', 'info');
+      }
+    });
+  });
+
+  $('#btnClearArc').addEventListener('click', function () {
+    if (!confirm('보관함의 모든 기록을 지울까요?')) return;
+    arc.clear();
+    project.newProject();
+    renderArchive();
+    Lemon.toast('보관함을 비웠어요', 'info');
+  });
+
+  /* ============================================================
+     Home samples
+   ============================================================ */
+  var SAMPLES = [
+    { t: 'Where is the nearest subway station?', to: 'ko' },
+    { t: '이 근처에 조용한 카페 있어요?', to: 'en' },
+    { t: '本日は臨時休業とさせていただきます。', to: 'ko' },
+    { t: 'Le musée est fermé le lundi.', to: 'ko' }
+  ];
+  function renderSamples() {
+    $('#homeSamples').innerHTML = SAMPLES.map(function (s, i) {
+      return '<button class="glass-card p-3 text-left card-lift" data-sample="' + i + '">' +
+        '<div class="flex items-center justify-between mb-1">' +
+        '<span class="text-[9px] font-black tracking-widest uppercase" style="color:var(--brand)">' + esc(langName(detectLang(s.t))) + '</span>' +
+        '<span class="text-[9px] font-mono text-neutral-400">→ ' + esc(langName(s.to)) + '</span>' +
+        '</div>' +
+        '<p class="text-[12px] font-semibold leading-snug line-clamp-2">' + esc(s.t) + '</p></button>';
+    }).join('');
+  }
+  document.addEventListener('click', function (e) {
+    var s = e.target.closest('[data-sample]');
+    if (!s) return;
+    var item = SAMPLES[Number(s.getAttribute('data-sample'))];
+    if (!item) return;
+    setMode('text');
+    goTab('studio');
+    $('#srcText').value = item.t;
+    state.to = item.to; $('#dstLang').value = item.to;
+    state.from = 'auto'; $('#srcLang').value = 'auto';
+    updateCounts(); runText(true);
+  });
+
+  /* ============================================================
+     Boot
+   ============================================================ */
+  function boot() {
+    initLangSelects();
+    renderSamples();
+    renderRecent();
+    renderArchive();
+    updateCounts();
+
+    // restore last auto-saved session
+    var id = project.id();
+    if (id) {
+      var rec = project.restore(id);
+      if (rec && rec.src) {
+        $('#srcText').value = rec.src;
+        state.out = rec.out || '';
+        if (rec.to) { state.to = rec.to; $('#dstLang').value = rec.to; }
+        updateCounts();
+        if (state.out) { $('#outText').textContent = state.out; $('#outEmpty').classList.add('hidden'); }
+      }
+    }
+    if (!window.Tesseract) {
+      $('#imgStatus').textContent = '글자 인식 엔진을 불러오지 못했어요 (네트워크 확인)';
+    }
+    // keep canvas responsive
+    var rt = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(function () { layoutCanvas(); }, 200);
+    });
+    if (matchMedia('(max-width: 767px)').matches) {
+      $('#btnSwap').classList.remove('hidden');
+      $('#btnSwap').classList.add('flex');
+      $('#btnSwap').style.position = 'static';
+      $('#btnSwap').style.margin = '0 auto';
+      $('#btnSwap').style.transform = 'none';
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  window.__lemonTranslate = { state: state, IMG: IMG, WEB: WEB, DOC: DOC, detectLang: detectLang, translateText: translateText, runText: runText };
+})();
+</script>
+</body>
+</html>

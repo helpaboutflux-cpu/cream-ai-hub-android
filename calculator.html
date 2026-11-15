@@ -1,0 +1,1777 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Calculator — 공학 계산기·함수 그래프·단위 변환</title>
+<meta name="description" content="사칙연산부터 삼각함수·로그·계승까지, 함수 그래프 플로터와 실시간 단위·진법 변환을 한 화면에 담은 무료 계산기입니다.">
+<meta name="theme-color" content="#0e7490">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230e7490'/%3E%3Crect x='8' y='6' width='16' height='6' rx='2' fill='white' opacity='.9'/%3E%3Ccircle cx='11' cy='18' r='2' fill='white'/%3E%3Ccircle cx='16' cy='18' r='2' fill='white'/%3E%3Ccircle cx='21' cy='18' r='2' fill='white'/%3E%3Ccircle cx='11' cy='25' r='2' fill='white'/%3E%3Ccircle cx='16' cy='25' r='2' fill='white'/%3E%3Ccircle cx='21' cy='25' r='2' fill='white'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+        brand: { DEFAULT: '#0e7490', light: '#f59e0b', deep: '#155e75', 50: '#ecfeff', 100: '#cffafe', 200: '#a5f3fc', 300: '#67e8f9', 400: '#22d3ee', 500: '#06b6d4', 600: '#0891b2', 700: '#0e7490', 800: '#155e75', 900: '#164e63', 950: '#083344' }
+      }
+    }
+  }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0e7490; --brand-2: #f59e0b; --brand-deep: #155e75; }
+
+  .glass-card {
+    background: rgba(255, 255, 255, .76);
+    border: 1px solid rgba(228, 228, 235, .95);
+    border-radius: 1.35rem;
+    box-shadow: 0 2px 4px rgba(16, 16, 20, .03), 0 24px 50px -40px rgba(16, 16, 20, .5);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    transition: border-color .25s ease, box-shadow .3s ease, transform .3s cubic-bezier(.22, 1, .36, 1);
+  }
+  .dark .glass-card {
+    background: rgba(17, 17, 22, .7);
+    border-color: rgba(44, 44, 54, .9);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 26px 60px -44px rgba(0, 0, 0, .95);
+  }
+  .glass-tint { background-image: linear-gradient(155deg, color-mix(in srgb, var(--brand) 9%, transparent), transparent 58%); }
+  .dark .glass-tint { background-image: linear-gradient(155deg, color-mix(in srgb, var(--brand) 20%, transparent), transparent 60%); }
+
+  /* display */
+  .display-shell {
+    border-radius: 1.2rem;
+    background:
+      radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 60%),
+      linear-gradient(180deg, rgba(255,255,255,.9), rgba(248,248,250,.9));
+    border: 1px solid rgba(224, 224, 232, .95);
+    transition: box-shadow .3s, border-color .3s;
+  }
+  .dark .display-shell {
+    background:
+      radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--brand) 30%, transparent), transparent 62%),
+      linear-gradient(180deg, rgba(14,14,18,.96), rgba(10,10,13,.96));
+    border-color: rgba(44, 44, 54, .95);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .display-shell.flash { border-color: color-mix(in srgb, var(--brand-2) 60%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-2) 16%, transparent); }
+  #calcExpr::-webkit-outer-spin-button, #calcExpr::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .calc-result { font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .calc-result.pop { animation: resPop .36s cubic-bezier(.34, 1.56, .64, 1) both; }
+  @keyframes resPop { 0% { transform: scale(.92); opacity: .4; } 60% { transform: scale(1.03); } 100% { transform: none; opacity: 1; } }
+
+  /* keys */
+  .key {
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 2.85rem;
+    border-radius: .95rem;
+    font-weight: 700;
+    font-size: .95rem;
+    border: 1px solid rgb(230 230 236);
+    background: rgba(255, 255, 255, .92);
+    color: rgb(30 30 36);
+    transition: transform .12s cubic-bezier(.34, 1.56, .64, 1), background-color .18s, border-color .18s, color .18s, box-shadow .18s;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .dark .key { background: rgba(28, 28, 34, .9); border-color: rgb(45, 45, 52); color: rgb(238 238 242); }
+  .key:hover { border-color: color-mix(in srgb, var(--brand) 45%, transparent); color: var(--brand); }
+  .dark .key:hover { color: color-mix(in srgb, var(--brand-2) 65%, white); }
+  .key:active, .key.pressed { transform: scale(.92); }
+  .key-fn { font-size: .82rem; font-weight: 700; background: rgba(240, 248, 250, .95); color: rgb(60 78 84); }
+  .dark .key-fn { background: rgba(20, 30, 34, .92); color: rgb(178 206 212); }
+  .key-fn:hover { color: var(--brand); }
+  .key-op { font-size: 1.02rem; color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, white); border-color: color-mix(in srgb, var(--brand) 18%, transparent); }
+  .dark .key-op { color: color-mix(in srgb, var(--brand-2) 75%, white); background: color-mix(in srgb, var(--brand) 22%, #16161a); border-color: rgba(60, 60, 70, .9); }
+  .key-util { font-size: .78rem; font-weight: 800; color: rgb(120 120 132); }
+  .dark .key-util { color: rgb(150 150 162); }
+  .key-eq {
+    color: #fff; border-color: transparent;
+    background-image: linear-gradient(140deg, var(--brand), var(--brand-2));
+    box-shadow: 0 12px 24px -14px color-mix(in srgb, var(--brand) 90%, transparent);
+    font-size: 1.15rem;
+  }
+  .key-eq:hover { color: #fff; filter: brightness(1.05); }
+  .key-press-flash { position: absolute; inset: 0; background: color-mix(in srgb, var(--brand) 24%, transparent); opacity: 0; pointer-events: none; }
+  .key.pressed .key-press-flash { animation: keyFlash .34s ease-out; }
+  @keyframes keyFlash { 0% { opacity: .8; } 100% { opacity: 0; } }
+
+  .hist-item { border-radius: .8rem; transition: background-color .18s, transform .16s, border-color .18s; border: 1px solid transparent; }
+  .hist-item:hover { background: color-mix(in srgb, var(--brand) 7%, transparent); border-color: color-mix(in srgb, var(--brand) 22%, transparent); transform: translateX(2px); }
+
+  .seg-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .3rem .55rem; border-radius: .65rem;
+    font-size: .68rem; font-weight: 800;
+    border: 1px solid rgb(230 230 236); color: rgb(96 96 108); background: rgba(255,255,255,.7);
+    transition: all .18s;
+  }
+  .dark .seg-chip { border-color: rgb(45,45,52); color: rgb(160 160 172); background: rgba(24,24,30,.7); }
+  .seg-chip.on { color: #fff; border-color: transparent; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+  .seg-chip:hover { color: var(--brand); }
+
+  .fn-row { border-radius: .9rem; border: 1px solid rgb(232 232 238); transition: border-color .2s, box-shadow .2s, transform .2s; }
+  .dark .fn-row { border-color: rgb(42 42 50); }
+  .fn-row:focus-within { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 12%, transparent); }
+  .fn-row:hover { transform: translateY(-1px); }
+  .sw { width: 1rem; height: 1rem; border-radius: .35rem; border: 2px solid currentColor; display: inline-block; position: relative; flex-shrink: 0; }
+  .sw.on::after { content: ''; position: absolute; inset: 1px; border-radius: .2rem; background: currentColor; }
+
+  #graphCanvas { display: block; width: 100%; max-width: 100%; border-radius: 1rem; touch-action: none; cursor: grab; }
+  #graphCanvas.dragging { cursor: grabbing; }
+
+  .unit-card { border-radius: 1rem; }
+
+  @media (max-width: 420px) {
+    .key { min-height: 2.6rem; font-size: .88rem; border-radius: .8rem; }
+    .key-fn { font-size: .74rem; }
+    .key-eq { font-size: 1.05rem; }
+  }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-24 opacity-25"></div>
+<div class="ambient-orb brand-grad w-80 h-80 top-1/2 -right-28 o2 opacity-20"></div>
+<div class="ambient-orb w-64 h-64 bottom-16 left-1/3 o3 opacity-15" style="background:#f59e0b"></div>
+
+<!-- Header -->
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <rect x="4" y="3" width="16" height="18" rx="2.5"></rect>
+            <rect x="7" y="6" width="10" height="3.4" rx="1"></rect>
+            <circle cx="8.2" cy="13.4" r="1"></circle><circle cx="12" cy="13.4" r="1"></circle><circle cx="15.8" cy="13.4" r="1"></circle>
+            <circle cx="8.2" cy="17.4" r="1"></circle><circle cx="12" cy="17.4" r="1"></circle><circle cx="15.8" cy="17.4" r="1"></circle>
+          </svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Calculator</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">공학용</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">계산 · 그래프 · 단위 변환</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <span id="angleChip" class="hidden md:inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M4 20V4"></path><path d="M4 20 17 7"></path></svg>
+        <span id="angleChipText">DEG</span>
+      </span>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Tabs -->
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs" role="tablist">
+      <button class="nav-tab" data-tab="home" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="calc" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"></rect><rect x="7" y="6" width="10" height="3.4" rx="1"></rect><circle cx="8.2" cy="13.4" r=".9"></circle><circle cx="12" cy="13.4" r=".9"></circle><circle cx="15.8" cy="13.4" r=".9"></circle><circle cx="8.2" cy="17.4" r=".9"></circle><circle cx="12" cy="17.4" r=".9"></circle><circle cx="15.8" cy="17.4" r=".9"></circle></svg>
+        <span>계산기</span>
+      </button>
+      <button class="nav-tab" data-tab="graph" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V4M4 20h16"></path><path d="M6.5 16.5c2-7 4.5-10 6.5-7s3.5 6 6.5 1.5"></path></svg>
+        <span>그래프</span>
+      </button>
+      <button class="nav-tab" data-tab="convert" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h13l-3-3M20 16H7l3 3"></path></svg>
+        <span>단위 변환</span>
+      </button>
+      <button class="nav-tab" data-tab="archive" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path><line x1="10" y1="13" x2="14" y2="13"></line></svg>
+        <span>보관함</span>
+        <span id="arcCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-5 sm:p-10 relative">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-7 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"></circle></svg>
+            공학용 · 그래프 · 단위 변환을 한 곳에
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.16] tracking-tight">
+            계산은 빠르게,<br>
+            <span class="brand-text">그래프는 바로</span> 눈으로.
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            사칙연산부터 삼각함수·로그·계승까지 한 판에 담았습니다. 함수를 입력하면 캔버스에 즉시 그려지고, 길이·무게·온도·데이터·진법 변환은 입력하는 순간 함께 바뀝니다.
+          </p>
+          <div class="flex flex-wrap gap-2.5 pt-1">
+            <button class="primary-btn btn-shimmer" data-goto="calc">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2.5"></rect><rect x="7" y="6" width="10" height="3.4" rx="1"></rect><circle cx="8.2" cy="13.4" r=".9"></circle><circle cx="12" cy="13.4" r=".9"></circle><circle cx="15.8" cy="13.4" r=".9"></circle></svg>
+              계산기 열기
+            </button>
+            <button class="ghost-btn" data-goto="graph">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V4M4 20h16"></path><path d="M6.5 16.5c2-7 4.5-10 6.5-7s3.5 6 6.5 1.5"></path></svg>
+              그래프 그리기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>키보드 입력 지원</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>히스토리 테이프</span>
+            <span class="icon-inline"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>설치 없이 무료</span>
+          </div>
+        </div>
+
+        <div class="glass-card p-4 space-y-3">
+          <div class="rounded-2xl p-3.5 bg-neutral-950 text-neutral-100 font-mono">
+            <p class="text-[11px] text-neutral-400 mb-1">sin(30) + 2^5 − √81</p>
+            <p class="text-2xl font-bold calc-result tracking-tight">27.5</p>
+          </div>
+          <div class="grid grid-cols-4 gap-1.5">
+            <div class="key key-fn !min-h-[2.1rem] !text-[10px]">sin</div>
+            <div class="key key-fn !min-h-[2.1rem] !text-[10px]">cos</div>
+            <div class="key key-fn !min-h-[2.1rem] !text-[10px]">log</div>
+            <div class="key key-op !min-h-[2.1rem] !text-[11px]">÷</div>
+            <div class="key !min-h-[2.1rem] !text-[11px]">7</div>
+            <div class="key !min-h-[2.1rem] !text-[11px]">8</div>
+            <div class="key !min-h-[2.1rem] !text-[11px]">9</div>
+            <div class="key key-op !min-h-[2.1rem] !text-[11px]">×</div>
+            <div class="key !min-h-[2.1rem] !text-[11px]">4</div>
+            <div class="key !min-h-[2.1rem] !text-[11px]">5</div>
+            <div class="key !min-h-[2.1rem] !text-[11px]">6</div>
+            <div class="key key-eq !min-h-[2.1rem] !text-[11px]">=</div>
+          </div>
+          <div class="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400">
+            <span class="icon-inline"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"></path></svg>함수 20종</span>
+            <span class="icon-inline"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>히스토리 자동 저장</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-3 gap-3 stagger">
+      <button class="glass-card glass-tint p-4 text-left card-lift" data-goto="calc">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3 shadow-lg">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black mb-1">공학용 계산기</h3>
+        <p class="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">괄호·지수·루트·계승·로그·삼각함수, DEG/RAD 전환과 메모리 키까지.</p>
+      </button>
+      <button class="glass-card glass-tint p-4 text-left card-lift" data-goto="graph">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3 shadow-lg">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 20V4M4 20h16"></path><path d="M6.5 16.5c2-7 4.5-10 6.5-7s3.5 6 6.5 1.5"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black mb-1">함수 그래프</h3>
+        <p class="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">여러 함수를 색으로 나눠 그리고, 끌어서 이동하고 휠로 확대합니다.</p>
+      </button>
+      <button class="glass-card glass-tint p-4 text-left card-lift" data-goto="convert">
+        <div class="w-9 h-9 rounded-xl brand-grad flex items-center justify-center text-white mb-3 shadow-lg">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 8h13l-3-3M20 16H7l3 3"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black mb-1">단위 · 진법 변환</h3>
+        <p class="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">길이·무게·넓이·온도·데이터·속도 8종과 2·8·10·16진법을 실시간 변환.</p>
+      </button>
+    </div>
+
+    <div class="glass-card p-5 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-[15px] font-black tracking-tight">바로 계산해 보기</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">눌러서 식을 계산기로 불러옵니다.</p>
+        </div>
+        <span class="chip">키보드로도 입력</span>
+      </div>
+      <div id="homeExamples" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
+    </div>
+
+    <div class="grid sm:grid-cols-4 gap-3">
+      <div class="glass-card p-4">
+        <div class="flex items-baseline gap-1.5 mb-1"><span class="text-2xl font-black brand-text mono">20</span><span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">함수</span></div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">sin·cos·tan·asin·log·ln·√·∛·abs·exp·round 등</p>
+      </div>
+      <div class="glass-card p-4">
+        <div class="flex items-baseline gap-1.5 mb-1"><span class="text-2xl font-black brand-text mono">8</span><span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">단위 분류</span></div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">길이·무게·넓이·부피·온도·데이터·속도·시간</p>
+      </div>
+      <div class="glass-card p-4">
+        <div class="flex items-baseline gap-1.5 mb-1"><span class="text-2xl font-black brand-text mono">4</span><span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">진법</span></div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">2·8·10·16진법을 동시에, 비트 표기까지</p>
+      </div>
+      <div class="glass-card p-4">
+        <div class="flex items-baseline gap-1.5 mb-1"><span class="text-2xl font-black brand-text mono">0</span><span class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">원</span></div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">가입·설치 없이 브라우저에서 바로</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CALCULATOR ================= -->
+  <section data-view="calc" class="hidden">
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_19rem] gap-4 items-start">
+
+      <div class="space-y-3">
+        <div id="displayShell" class="display-shell p-4">
+          <div class="flex items-center justify-between mb-2 gap-2">
+            <div class="flex items-center gap-1.5">
+              <button class="seg-chip on" data-angle="deg">DEG</button>
+              <button class="seg-chip" data-angle="rad">RAD</button>
+              <span id="memBadge" class="seg-chip hidden">M</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="mini-btn !w-7 !h-7" data-act="copy-result" title="결과 복사">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
+              </button>
+              <button class="mini-btn !w-7 !h-7" data-act="clear" title="모두 지우기 (Esc)">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg>
+              </button>
+            </div>
+          </div>
+          <input id="calcExpr" class="w-full bg-transparent outline-none text-right font-semibold text-[15px] sm:text-[17px] tracking-tight calc-result text-neutral-700 dark:text-neutral-200 placeholder-neutral-400 dark:placeholder-neutral-600" inputmode="text" autocomplete="off" spellcheck="false" placeholder="식을 입력하세요  예) sin(30)+2^4" value="">
+          <div class="flex items-end justify-end gap-2 mt-1">
+            <span id="liveHint" class="text-[11px] text-neutral-400 dark:text-neutral-500 mb-1.5 mono hidden"></span>
+            <span id="calcResult" class="calc-result text-[30px] sm:text-[38px] font-black leading-none tracking-tight">0</span>
+          </div>
+          <p id="calcError" class="text-[11px] font-bold text-rose-500 text-right mt-1.5 hidden"></p>
+        </div>
+
+        <div class="glass-card p-2.5">
+          <div class="grid grid-cols-5 gap-1.5">
+            <button class="key key-util" data-act="mem-clear">MC</button>
+            <button class="key key-util" data-act="mem-recall">MR</button>
+            <button class="key key-util" data-act="mem-add">M+</button>
+            <button class="key key-util" data-act="mem-sub">M−</button>
+            <button class="key key-util" data-act="clear">C</button>
+
+            <button class="key key-fn" data-ins="sin(">sin</button>
+            <button class="key key-fn" data-ins="cos(">cos</button>
+            <button class="key key-fn" data-ins="tan(">tan</button>
+            <button class="key key-fn" data-ins="ln(">ln</button>
+            <button class="key key-util" data-act="back">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6H9l-5 6 5 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"></path><path d="M13 10l4 4M17 10l-4 4"></path></svg>
+            </button>
+
+            <button class="key key-fn" data-ins="√(">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 13h3l2.5 6L14 5h6"></path></svg>
+            </button>
+            <button class="key key-fn" data-ins="(">(</button>
+            <button class="key key-fn" data-ins=")">)</button>
+            <button class="key key-fn" data-ins="^">x<sup class="text-[9px]">y</sup></button>
+            <button class="key key-op" data-ins="÷">÷</button>
+
+            <button class="key key-fn" data-ins="log(">log</button>
+            <button class="key key-fn" data-ins="!">n!</button>
+            <button class="key key-fn" data-ins="π">π</button>
+            <button class="key key-fn" data-ins="e">e</button>
+            <button class="key key-op" data-ins="×">×</button>
+
+            <button class="key" data-ins="7">7</button>
+            <button class="key" data-ins="8">8</button>
+            <button class="key" data-ins="9">9</button>
+            <button class="key key-fn" data-ins="%">%</button>
+            <button class="key key-op" data-ins="−">−</button>
+
+            <button class="key" data-ins="4">4</button>
+            <button class="key" data-ins="5">5</button>
+            <button class="key" data-ins="6">6</button>
+            <button class="key key-fn" data-ins="Ans">Ans</button>
+            <button class="key key-op" data-ins="+">+</button>
+
+            <button class="key" data-ins="1">1</button>
+            <button class="key" data-ins="2">2</button>
+            <button class="key" data-ins="3">3</button>
+            <button class="key key-util" data-act="negate">±</button>
+            <button class="key key-eq" data-act="equals" style="grid-row: span 2">=</button>
+
+            <button class="key col-span-2" data-ins="0">0</button>
+            <button class="key" data-ins=".">.</button>
+            <button class="key key-fn" data-ins="1÷(">1/x</button>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mt-2 px-1">
+            <div class="flex items-center gap-1.5">
+              <button class="seg-chip" data-act="insert-x">변수 x</button>
+              <button class="seg-chip" data-act="ans-append">결과 이어쓰기</button>
+            </div>
+            <span class="text-[10px] text-neutral-400 dark:text-neutral-500">Enter 결과 · Esc 지우기 · Backspace 한 글자</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-3.5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-black tracking-widest uppercase text-neutral-500 dark:text-neutral-400">히스토리</span>
+            <span id="histCount" class="text-[10px] font-mono text-neutral-400">0</span>
+          </div>
+          <div class="flex items-center gap-0.5">
+            <button class="mini-btn !w-7 !h-7" data-act="hist-save" title="보관함에 저장">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8"></path></svg>
+            </button>
+            <button class="mini-btn !w-7 !h-7" data-act="hist-clear" title="히스토리 지우기">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div id="histList" class="space-y-1 max-h-[26rem] overflow-y-auto thin-scroll pr-0.5"></div>
+        <div id="histEmpty" class="text-center py-8">
+          <div class="w-11 h-11 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-2 float-y">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+          </div>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">계산하면 여기에<br>차곡차곡 쌓입니다</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GRAPH ================= -->
+  <section data-view="graph" class="hidden">
+    <div class="grid lg:grid-cols-[19rem_minmax(0,1fr)] gap-4 items-start">
+
+      <div class="space-y-3 order-2 lg:order-1 min-w-0">
+        <div class="glass-card p-3.5">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[10px] font-black tracking-widest uppercase text-neutral-500 dark:text-neutral-400">함수</span>
+            <button class="mini-btn !w-7 !h-7" data-act="add-fn" title="함수 추가">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+          </div>
+          <div id="fnList" class="space-y-1.5"></div>
+          <div class="mt-2.5 grid grid-cols-2 gap-1.5">
+            <button class="pill-btn !py-1.5 !text-[10.5px]" data-act="zoom-in">확대</button>
+            <button class="pill-btn !py-1.5 !text-[10.5px]" data-act="zoom-out">축소</button>
+            <button class="pill-btn !py-1.5 !text-[10.5px]" data-act="reset-view">원점으로</button>
+            <button class="pill-btn !py-1.5 !text-[10.5px]" data-act="graph-png">PNG 저장</button>
+          </div>
+        </div>
+
+        <div class="glass-card p-3.5">
+          <span class="text-[10px] font-black tracking-widest uppercase text-neutral-500 dark:text-neutral-400">예시</span>
+          <div id="graphPresets" class="flex flex-wrap gap-1.5 mt-2"></div>
+        </div>
+
+        <div class="glass-card p-3.5">
+          <span class="text-[10px] font-black tracking-widest uppercase text-neutral-500 dark:text-neutral-400">읽는 법</span>
+          <ul class="mt-2 space-y-1.5 text-[10.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            <li class="icon-inline"><span class="w-1 h-1 rounded-full bg-current"></span>끌어서 이동</li>
+            <li class="icon-inline"><span class="w-1 h-1 rounded-full bg-current"></span>휠 또는 두 손가락으로 확대·축소</li>
+            <li class="icon-inline"><span class="w-1 h-1 rounded-full bg-current"></span>커서를 올리면 좌표와 함숫값</li>
+            <li class="icon-inline"><span class="w-1 h-1 rounded-full bg-current"></span>그래프는 라디안 기준</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="glass-card p-2.5 order-1 lg:order-2 min-w-0 overflow-hidden">
+        <div class="relative min-w-0">
+          <canvas id="graphCanvas"></canvas>
+          <div id="graphTip" class="absolute pointer-events-none px-2 py-1 rounded-lg text-[10px] font-bold bg-neutral-950/85 text-white hidden mono"></div>
+        </div>
+        <div class="flex items-center justify-between mt-2 px-1 text-[10px] text-neutral-400 dark:text-neutral-500">
+          <span id="graphRange" class="mono">x: -10 ~ 10</span>
+          <span id="graphReadout" class="mono"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CONVERT ================= -->
+  <section data-view="convert" class="hidden space-y-4">
+    <div class="glass-card glass-tint p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-black tracking-widest uppercase text-neutral-500 dark:text-neutral-400">단위 변환</span>
+          <span id="unitCatLabel" class="chip !text-[9px] !py-0.5">길이</span>
+        </div>
+        <div id="unitCats" class="flex gap-1 overflow-x-auto no-scrollbar max-w-full"></div>
+      </div>
+      <div class="grid sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
+        <div class="unit-card p-3 bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800">
+          <input id="unitFromVal" class="w-full bg-transparent outline-none text-2xl font-black calc-result" inputmode="decimal" value="1">
+          <select id="unitFromUnit" class="lemon-select !mt-2 !py-1 !text-[11px] !font-bold"></select>
+        </div>
+        <button id="unitSwap" class="swap-btn mx-auto" style="width:2.2rem;height:2.2rem" title="단위 바꾸기">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 8h13l-3-3M20 16H7l3 3"></path></svg>
+        </button>
+        <div class="unit-card p-3 bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800">
+          <input id="unitToVal" class="w-full bg-transparent outline-none text-2xl font-black calc-result" inputmode="decimal" value="100">
+          <select id="unitToUnit" class="lemon-select !mt-2 !py-1 !text-[11px] !font-bold"></select>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 mt-2.5">
+        <p id="unitFormula" class="text-[10.5px] text-neutral-500 dark:text-neutral-400 mono"></p>
+        <button class="ghost-btn !py-1 !px-2 !text-[10px] ml-auto" data-act="unit-copy">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>
+          복사
+        </button>
+      </div>
+      <div id="unitQuick" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-3"></div>
+    </div>
+
+    <div class="glass-card p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <span class="text-[10px] font-black tracking-widest uppercase text-neutral-500 dark:text-neutral-400">진법 변환</span>
+        <div class="flex gap-1">
+          <button class="seg-chip on" data-base="10">10진</button>
+          <button class="seg-chip" data-base="2">2진</button>
+          <button class="seg-chip" data-base="8">8진</button>
+          <button class="seg-chip" data-base="16">16진</button>
+        </div>
+      </div>
+      <input id="baseInput" class="w-full rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 px-3 py-2.5 text-xl font-black calc-result outline-none focus:border-brand-500" inputmode="text" value="2026" spellcheck="false" autocomplete="off">
+      <p id="baseError" class="text-[10.5px] font-bold text-rose-500 mt-1 hidden"></p>
+      <div class="grid sm:grid-cols-2 gap-2 mt-3">
+        <div class="unit-card p-3 border border-neutral-200 dark:border-neutral-800">
+          <span class="text-[9.5px] font-black tracking-widest uppercase text-neutral-400">10진</span>
+          <p id="baseDec" class="text-lg font-black calc-result mt-0.5 break-all">2026</p>
+        </div>
+        <div class="unit-card p-3 border border-neutral-200 dark:border-neutral-800">
+          <span class="text-[9.5px] font-black tracking-widest uppercase text-neutral-400">16진</span>
+          <p id="baseHex" class="text-lg font-black calc-result mt-0.5 break-all">7EA</p>
+        </div>
+        <div class="unit-card p-3 border border-neutral-200 dark:border-neutral-800">
+          <span class="text-[9.5px] font-black tracking-widest uppercase text-neutral-400">8진</span>
+          <p id="baseOct" class="text-lg font-black calc-result mt-0.5 break-all">3752</p>
+        </div>
+        <div class="unit-card p-3 border border-neutral-200 dark:border-neutral-800">
+          <span class="text-[9.5px] font-black tracking-widest uppercase text-neutral-400">2진</span>
+          <p id="baseBin" class="text-[13px] font-black calc-result mt-0.5 break-all leading-relaxed">11111101010</p>
+        </div>
+      </div>
+      <div class="flex items-center justify-between mt-2">
+        <span id="baseBits" class="text-[10px] text-neutral-400 dark:text-neutral-500 mono">11비트</span>
+        <button class="ghost-btn !py-1 !px-2 !text-[10px]" data-act="base-copy">복사</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="flex items-end justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">보관함</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">저장한 계산과 그래프는 이 브라우저에 남습니다.</p>
+      </div>
+      <button id="btnClearArc" class="ghost-btn !py-2 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
+        전체 삭제
+      </button>
+    </div>
+    <div id="archiveList" class="grid sm:grid-cols-2 gap-3"></div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2">
+      <span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Calculator</span>
+      <span class="opacity-40">·</span>
+      <span>Lemon soft 독립 웹 프로덕트</span>
+    </div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="translate.html" class="hover:text-brand-600 dark:hover:text-brand-400">Translate</a>
+      <a href="chart.html" class="hover:text-brand-600 dark:hover:text-brand-400">Chart</a>
+      <a href="finance.html" class="hover:text-brand-600 dark:hover:text-brand-400">Finance</a>
+      <a href="table.html" class="hover:text-brand-600 dark:hover:text-brand-400">Table</a>
+      <a href="money.html" class="hover:text-brand-600 dark:hover:text-brand-400">Money</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = Lemon.esc;
+
+  /* ============================================================
+     Expression engine
+     ============================================================ */
+  var FUNCS = {
+    sin: 1, cos: 1, tan: 1, asin: 1, acos: 1, atan: 1,
+    sinh: 1, cosh: 1, tanh: 1, log: 1, ln: 1, sqrt: 1, cbrt: 1,
+    abs: 1, exp: 1, round: 1, floor: 1, ceil: 1, sign: 1
+  };
+  var CONSTS = { pi: Math.PI, 'π': Math.PI, e: Math.E, tau: Math.PI * 2 };
+
+  function normExpr(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/–/g, '-')
+      .replace(/√/g, 'sqrt').replace(/π/g, 'pi').replace(/√/g, 'sqrt')
+      .replace(/Ans/gi, 'ans').replace(/,/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function tokenize(src) {
+    var s = normExpr(src), i = 0, out = [];
+    while (i < s.length) {
+      var c = s[i];
+      if (c === ' ') { i++; continue; }
+      if (/[0-9.]/.test(c)) {
+        var num = '';
+        while (i < s.length && /[0-9.]/.test(s[i])) { num += s[i++]; }
+        if (s[i] === 'e' && /[0-9+\-]/.test(s[i + 1] || '')) {
+          num += s[i++];
+          if (s[i] === '+' || s[i] === '-') num += s[i++];
+          while (i < s.length && /[0-9]/.test(s[i])) num += s[i++];
+        }
+        if ((num.match(/\./g) || []).length > 1) throw new Error('숫자 형식');
+        out.push({ t: 'num', v: parseFloat(num) });
+        continue;
+      }
+      if (/[a-zA-Z_]/.test(c)) {
+        var id = '';
+        while (i < s.length && /[a-zA-Z_]/.test(s[i])) { id += s[i++]; }
+        out.push({ t: 'id', v: id.toLowerCase() });
+        continue;
+      }
+      if ('+-*/^()!%'.indexOf(c) > -1) { out.push({ t: 'op', v: c }); i++; continue; }
+      throw new Error('알 수 없는 문자: ' + c);
+    }
+    return out;
+  }
+
+  function factorial(n) {
+    if (n < 0 || Math.abs(n - Math.round(n)) > 1e-9) throw new Error('계승은 0 이상 정수만');
+    if (n > 170) return Infinity;
+    var r = 1;
+    for (var i = 2; i <= n; i++) r *= i;
+    return r;
+  }
+
+  function evalExpr(expr, ctx) {
+    ctx = ctx || {};
+    var deg = !!ctx.deg;
+    var vars = ctx.vars || {};
+    var ans = ctx.ans === undefined ? 0 : ctx.ans;
+    var toks = tokenize(expr);
+    var p = 0;
+
+    function peek() { return toks[p]; }
+    function next() { return toks[p++]; }
+    function isOp(v) { var t = peek(); return t && t.t === 'op' && t.v === v; }
+
+    function toRad(v) { return deg ? v * Math.PI / 180 : v; }
+    function fromRad(v) { return deg ? v * 180 / Math.PI : v; }
+
+    function parseExpr() {
+      var v = parseTerm();
+      while (peek() && peek().t === 'op' && (peek().v === '+' || peek().v === '-')) {
+        var op = next().v;
+        var r = parseTerm();
+        v = op === '+' ? v + r : v - r;
+      }
+      return v;
+    }
+    function parseTerm() {
+      var v = parseUnary();
+      for (; ;) {
+        var t = peek();
+        if (t && t.t === 'op' && (t.v === '*' || t.v === '/')) {
+          next();
+          var r = parseUnary();
+          if (t.v === '/') {
+            if (r === 0) throw new Error('0으로 나눌 수 없어요');
+            v = v / r;
+          } else v = v * r;
+        } else if (t && (t.t === 'num' || t.t === 'id' || (t.t === 'op' && t.v === '('))) {
+          // implicit multiplication: 2pi, 3(4+5), 2sin(30)
+          var r2 = parseUnary();
+          v = v * r2;
+        } else break;
+      }
+      return v;
+    }
+    function parseUnary() {
+      if (isOp('-')) { next(); return -parseUnary(); }
+      if (isOp('+')) { next(); return parseUnary(); }
+      return parsePower();
+    }
+    function parsePower() {
+      var base = parsePostfix();
+      if (isOp('^')) { next(); var exp = parseUnary(); return Math.pow(base, exp); }
+      return base;
+    }
+    function parsePostfix() {
+      var v = parsePrimary();
+      for (; ;) {
+        if (isOp('!')) { next(); v = factorial(v); continue; }
+        if (isOp('%')) { next(); v = v / 100; continue; }
+        break;
+      }
+      return v;
+    }
+    function parsePrimary() {
+      var t = peek();
+      if (!t) throw new Error('식이 끝나지 않았어요');
+      if (t.t === 'num') { next(); return t.v; }
+      if (t.t === 'op' && t.v === '(') {
+        next();
+        var v = parseExpr();
+        if (!isOp(')')) throw new Error('괄호가 닫히지 않았어요');
+        next();
+        return v;
+      }
+      if (t.t === 'id') {
+        next();
+        var name = t.v;
+        if (name === 'ans') return ans;
+        if (name === 'x') {
+          if (vars.x === undefined) throw new Error('x 값이 없어요');
+          return vars.x;
+        }
+        if (CONSTS[name] !== undefined) {
+          if (name === 'e' && isOp('^')) { /* e^x handled by power */ }
+          return CONSTS[name];
+        }
+        if (name === 'sqrt') {
+          // sqrt(...) or sqrt9 style
+          var a0;
+          if (isOp('(')) { next(); a0 = parseExpr(); if (!isOp(')')) throw new Error('괄호가 닫히지 않았어요'); next(); }
+          else a0 = parsePostfix();
+          if (a0 < 0) throw new Error('음수의 제곱근');
+          return Math.sqrt(a0);
+        }
+        if (FUNCS[name]) {
+          var a;
+          if (isOp('(')) { next(); a = parseExpr(); if (!isOp(')')) throw new Error('괄호가 닫히지 않았어요'); next(); }
+          else a = parsePostfix();
+          return applyFunc(name, a, deg);
+        }
+        throw new Error('알 수 없는 이름: ' + name);
+      }
+      throw new Error('식을 해석할 수 없어요');
+    }
+
+    var result = parseExpr();
+    if (p < toks.length) throw new Error('식을 해석할 수 없어요');
+    if (typeof result !== 'number' || !isFinite(result)) {
+      if (result === Infinity || result === -Infinity) return result;
+      throw new Error('결과가 숫자가 아니에요');
+    }
+    return result;
+  }
+
+  function applyFunc(name, a, deg) {
+    var r;
+    switch (name) {
+      case 'sin': r = Math.sin(deg ? a * Math.PI / 180 : a); break;
+      case 'cos': r = Math.cos(deg ? a * Math.PI / 180 : a); break;
+      case 'tan': r = Math.tan(deg ? a * Math.PI / 180 : a); break;
+      case 'asin': if (a < -1 || a > 1) throw new Error('asin 정의역'); r = Math.asin(a); return deg ? r * 180 / Math.PI : r;
+      case 'acos': if (a < -1 || a > 1) throw new Error('acos 정의역'); r = Math.acos(a); return deg ? r * 180 / Math.PI : r;
+      case 'atan': r = Math.atan(a); return deg ? r * 180 / Math.PI : r;
+      case 'sinh': r = Math.sinh(a); break;
+      case 'cosh': r = Math.cosh(a); break;
+      case 'tanh': r = Math.tanh(a); break;
+      case 'log': if (a <= 0) throw new Error('log는 0보다 커야 해요'); r = Math.log10(a); break;
+      case 'ln': if (a <= 0) throw new Error('ln은 0보다 커야 해요'); r = Math.log(a); break;
+      case 'sqrt': if (a < 0) throw new Error('음수의 제곱근'); r = Math.sqrt(a); break;
+      case 'cbrt': r = Math.cbrt(a); break;
+      case 'abs': r = Math.abs(a); break;
+      case 'exp': r = Math.exp(a); break;
+      case 'round': r = Math.round(a); break;
+      case 'floor': r = Math.floor(a); break;
+      case 'ceil': r = Math.ceil(a); break;
+      case 'sign': r = Math.sign(a); break;
+      default: throw new Error('알 수 없는 함수');
+    }
+    return r;
+  }
+
+  function fmt(v, digits) {
+    if (v === Infinity) return '∞';
+    if (v === -Infinity) return '−∞';
+    if (Number.isNaN(v)) return 'NaN';
+    if (v === 0) return '0';
+    var d = digits || 10;
+    var abs = Math.abs(v);
+    if (abs >= 1e13 || abs < 1e-9) {
+      return v.toExponential(6).replace('e', ' × 10^').replace('+', '');
+    }
+    var s = v.toPrecision(d);
+    if (s.indexOf('e') > -1) return v.toExponential(6);
+    if (s.indexOf('.') > -1) s = s.replace(/0+$/, '').replace(/\.$/, '');
+    return s;
+  }
+
+  /* ============================================================
+     State + persistence
+     ============================================================ */
+  var state = {
+    deg: true, ans: 0, memory: 0, history: [],
+    fns: [], graph: { cx: 0, cy: 0, scale: 40 },
+    unit: { cat: 'length', from: 'm', to: 'cm', value: 1 },
+    base: 10
+  };
+  var project = Lemon.project('lemon_calc_proj', { max: 20 });
+  var arc = project.archive;
+  project.bind($('#asBadge'));
+
+  /* ============================================================
+     Tabs
+   ============================================================ */
+  var goTab = Lemon.initTabs('home');
+  document.addEventListener('click', function (e) {
+    var g = e.target.closest('[data-goto]');
+    if (g) { goTab(g.getAttribute('data-goto')); }
+  });
+
+  /* ============================================================
+     Calculator
+   ============================================================ */
+  var exprEl = $('#calcExpr');
+  var resEl = $('#calcResult');
+  var errEl = $('#calcError');
+  var liveEl = $('#liveHint');
+
+  function setResult(text, pop) {
+    resEl.textContent = text;
+    if (pop) { resEl.classList.remove('pop'); void resEl.offsetWidth; resEl.classList.add('pop'); }
+  }
+  function showError(msg) {
+    errEl.textContent = msg || '';
+    errEl.classList.toggle('hidden', !msg);
+    if (msg) {
+      var shell = $('#displayShell');
+      shell.classList.remove('shake'); void shell.offsetWidth; shell.classList.add('shake');
+    }
+  }
+
+  function livePreview() {
+    var raw = exprEl.value.trim();
+    if (!raw) { liveEl.classList.add('hidden'); liveEl.textContent = ''; return; }
+    try {
+      var v = evalExpr(raw, { deg: state.deg, ans: state.ans });
+      liveEl.textContent = '= ' + fmt(v);
+      liveEl.classList.remove('hidden');
+      showError('');
+    } catch (e) {
+      liveEl.classList.add('hidden');
+    }
+  }
+
+  function calc(record) {
+    var raw = exprEl.value.trim();
+    if (!raw) return;
+    var v;
+    try {
+      v = evalExpr(raw, { deg: state.deg, ans: state.ans });
+    } catch (e) {
+      showError(String(e.message || '식을 확인해 주세요'));
+      setResult('—');
+      Lemon.toast('식을 확인해 주세요', 'err');
+      return;
+    }
+    showError('');
+    var text = fmt(v);
+    setResult(text, true);
+    liveEl.classList.add('hidden');
+    state.ans = v;
+    var shell = $('#displayShell');
+    shell.classList.add('flash');
+    setTimeout(function () { shell.classList.remove('flash'); }, 460);
+    if (record !== false) {
+      state.history.unshift({ expr: raw, result: text, ts: Date.now() });
+      state.history = state.history.slice(0, 60);
+      renderHistory();
+      saveProject();
+      Lemon.hap(10);
+    }
+  }
+
+  function insert(text) {
+    var el = exprEl;
+    var start = el.selectionStart === null ? el.value.length : el.selectionStart;
+    var end = el.selectionEnd === null ? el.value.length : el.selectionEnd;
+    var before = el.value.slice(0, start), after = el.value.slice(end);
+    el.value = before + text + after;
+    var pos = start + text.length;
+    try { el.setSelectionRange(pos, pos); } catch (e) { }
+    el.focus();
+    livePreview();
+  }
+
+  function backspace() {
+    var el = exprEl;
+    var start = el.selectionStart === null ? el.value.length : el.selectionStart;
+    var end = el.selectionEnd === null ? el.value.length : el.selectionEnd;
+    if (start === end && start > 0) {
+      el.value = el.value.slice(0, start - 1) + el.value.slice(end);
+      try { el.setSelectionRange(start - 1, start - 1); } catch (e) { }
+    } else {
+      el.value = el.value.slice(0, start) + el.value.slice(end);
+      try { el.setSelectionRange(start, start); } catch (e) { }
+    }
+    el.focus();
+    livePreview();
+  }
+
+  function clearAll() {
+    exprEl.value = '';
+    setResult('0');
+    showError('');
+    liveEl.classList.add('hidden');
+    exprEl.focus();
+  }
+
+  function negate() {
+    var v = exprEl.value.trim();
+    if (!v) return;
+    if (/^-\(.*\)$/.test(v)) exprEl.value = v.slice(2, -1);
+    else if (/^-[\d.]+$/.test(v)) exprEl.value = v.slice(1);
+    else exprEl.value = '-(' + v + ')';
+    exprEl.focus();
+    livePreview();
+  }
+
+  function renderHistory() {
+    var box = $('#histList');
+    $('#histCount').textContent = state.history.length;
+    $('#histEmpty').classList.toggle('hidden', state.history.length > 0);
+    box.innerHTML = state.history.map(function (h, i) {
+      return '<div class="hist-item p-2 flex items-start gap-2 cursor-pointer" data-hist="' + i + '">' +
+        '<div class="min-w-0 flex-1 text-right">' +
+        '<p class="text-[10.5px] text-neutral-400 dark:text-neutral-500 truncate">' + esc(h.expr) + '</p>' +
+        '<p class="text-[14px] font-black calc-result truncate">' + esc(h.result) + '</p>' +
+        '</div>' +
+        '<button class="mini-btn !w-6 !h-6 shrink-0" data-hist-val="' + i + '" title="값만 넣기">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 12h9M15 8l3 4-3 4"></path></svg></button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function saveProject() {
+    project.touch(function () {
+      return {
+        kind: 'calc', title: exprEl.value.trim().slice(0, 46) || '계산',
+        history: state.history.slice(0, 20), ans: state.ans, deg: state.deg,
+        fns: state.fns.map(function (f) { return { expr: f.expr, color: f.color, on: f.on }; })
+      };
+    });
+  }
+
+  /* keypad + actions */
+  document.addEventListener('click', function (e) {
+    var ins = e.target.closest('[data-ins]');
+    if (ins) {
+      var el = ins;
+      el.classList.add('pressed');
+      setTimeout(function () { el.classList.remove('pressed'); }, 220);
+      insert(ins.getAttribute('data-ins'));
+      Lemon.hap(6);
+      return;
+    }
+    var act = e.target.closest('[data-act]');
+    if (act) {
+      var a = act.getAttribute('data-act');
+      if (a === 'equals') calc(true);
+      else if (a === 'clear') clearAll();
+      else if (a === 'back') backspace();
+      else if (a === 'negate') negate();
+      else if (a === 'mem-clear') { state.memory = 0; updateMem(); Lemon.toast('메모리를 지웠어요', 'info'); }
+      else if (a === 'mem-recall') { insert(fmt(state.memory)); }
+      else if (a === 'mem-add' || a === 'mem-sub') {
+        var val;
+        try { val = evalExpr(exprEl.value.trim() || '0', { deg: state.deg, ans: state.ans }); }
+        catch (err) { Lemon.toast('먼저 계산할 식을 입력해 주세요', 'err'); return; }
+        state.memory += a === 'mem-add' ? val : -val;
+        updateMem();
+        Lemon.toast('메모리 ' + fmt(state.memory), 'ok');
+      }
+      else if (a === 'copy-result') Lemon.copy(resEl.textContent, '결과를 복사했어요');
+      else if (a === 'ans-append') { insert(fmt(state.ans)); }
+      else if (a === 'insert-x') insert('x');
+      else if (a === 'hist-save') saveHistoryToArchive();
+      else if (a === 'hist-clear') { state.history = []; renderHistory(); saveProject(); Lemon.toast('히스토리를 비웠어요', 'info'); }
+      return;
+    }
+    var h = e.target.closest('[data-hist]');
+    if (h) {
+      var rec = state.history[Number(h.getAttribute('data-hist'))];
+      if (rec) { exprEl.value = rec.expr; resEl.textContent = rec.result; livePreview(); exprEl.focus(); }
+      return;
+    }
+    var hv = e.target.closest('[data-hist-val]');
+    if (hv) {
+      var r2 = state.history[Number(hv.getAttribute('data-hist-val'))];
+      if (r2) insert(r2.result);
+      return;
+    }
+    var ang = e.target.closest('[data-angle]');
+    if (ang) {
+      state.deg = ang.getAttribute('data-angle') === 'deg';
+      $$('[data-angle]').forEach(function (b) { b.classList.toggle('on', b === ang); });
+      $('#angleChipText').textContent = state.deg ? 'DEG' : 'RAD';
+      livePreview();
+    }
+  });
+
+  function updateMem() {
+    var b = $('#memBadge');
+    b.classList.toggle('hidden', !state.memory);
+    b.textContent = 'M ' + fmt(state.memory, 6);
+  }
+
+  function saveHistoryToArchive() {
+    if (!state.history.length) { Lemon.toast('저장할 계산이 없어요', 'err'); return; }
+    var title = state.history[0].expr + ' = ' + state.history[0].result;
+    var rec = arc.add({ kind: 'calc', title: title, items: state.history.slice(0, 30) });
+    if (rec) { renderArchive(); Lemon.toast('보관함에 저장했어요', 'ok'); }
+    else Lemon.toast('저장 공간이 부족해요', 'err');
+  }
+
+  exprEl.addEventListener('input', function () { livePreview(); showError(''); });
+  exprEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); calc(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); clearAll(); }
+  });
+
+  /* global keyboard: numbers/operators reach the calculator when nothing else is focused */
+  document.addEventListener('keydown', function (e) {
+    if ($('[data-view="calc"]').classList.contains('hidden')) return;
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^[0-9.+\-*/^()!%]$/.test(e.key) || /^[a-z]$/i.test(e.key)) {
+      e.preventDefault();
+      insert(e.key === '*' ? '×' : e.key === '/' ? '÷' : e.key === '-' ? '−' : e.key);
+    } else if (e.key === 'Enter') { e.preventDefault(); calc(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); clearAll(); }
+    else if (e.key === 'Backspace') { e.preventDefault(); backspace(); }
+  });
+
+  /* ============================================================
+     Graph
+   ============================================================ */
+  var PALETTE = ['#0e7490', '#f59e0b', '#e11d48', '#7c3aed', '#059669', '#2563eb'];
+  var GRAPH = { canvas: null, ctx: null, w: 0, h: 0, dpr: 1, dragging: false, lastX: 0, lastY: 0, pinch: null, hoverX: null };
+
+  function fnColor(i) { return PALETTE[i % PALETTE.length]; }
+
+  function initFns() {
+    if (!state.fns.length) {
+      state.fns = [
+        { expr: 'sin(x)', on: true, color: fnColor(0) },
+        { expr: 'x^2/6 - 3', on: true, color: fnColor(1) }
+      ];
+    }
+    renderFnList();
+  }
+
+  function renderFnList() {
+    var box = $('#fnList');
+    box.innerHTML = state.fns.map(function (f, i) {
+      return '<div class="fn-row flex items-center gap-1.5 p-1.5" data-fn="' + i + '">' +
+        '<button class="sw ' + (f.on ? 'on' : '') + '" data-fn-toggle="' + i + '" style="color:' + f.color + '" title="표시"></button>' +
+        '<span class="text-[10px] font-bold text-neutral-400 shrink-0 mono">y=</span>' +
+        '<input class="flex-1 min-w-0 bg-transparent outline-none text-[12px] font-semibold mono" data-fn-expr="' + i + '" value="' + esc(f.expr) + '" spellcheck="false" autocomplete="off">' +
+        '<button class="mini-btn !w-6 !h-6 shrink-0" data-fn-del="' + i + '" title="삭제">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button>' +
+        '</div>';
+    }).join('') + (state.fns.length ? '' : '<p class="text-[11px] text-neutral-400 px-1 py-2">+ 버튼으로 함수를 추가하세요</p>');
+  }
+
+  function graphSize() {
+    var c = GRAPH.canvas;
+    var host = c.parentElement;
+    var cssW = Math.max(240, host.clientWidth);
+    var cssH = window.innerWidth < 640 ? 300 : 460;
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = Math.round(cssW * dpr);
+    c.height = Math.round(cssH * dpr);
+    c.style.width = cssW + 'px';
+    c.style.height = cssH + 'px';
+    GRAPH.w = cssW; GRAPH.h = cssH; GRAPH.dpr = dpr;
+    var ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    GRAPH.ctx = ctx;
+  }
+
+  function graphTheme() {
+    var dark = document.documentElement.classList.contains('dark');
+    return {
+      dark: dark,
+      bg: dark ? '#0b0b0f' : '#ffffff',
+      grid: dark ? 'rgba(255,255,255,.07)' : 'rgba(16,16,20,.07)',
+      gridStrong: dark ? 'rgba(255,255,255,.16)' : 'rgba(16,16,20,.16)',
+      axis: dark ? 'rgba(255,255,255,.45)' : 'rgba(16,16,20,.45)',
+      label: dark ? 'rgba(255,255,255,.55)' : 'rgba(16,16,20,.5)'
+    };
+  }
+
+  function niceStep(pxPerUnit) {
+    var raw = 64 / pxPerUnit;
+    var pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    var n = raw / pow;
+    var mult = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+    return mult * pow;
+  }
+
+  function drawGraph() {
+    if (!GRAPH.ctx) return;
+    var ctx = GRAPH.ctx, W = GRAPH.w, H = GRAPH.h, th = graphTheme();
+    var g = state.graph;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = th.bg;
+    ctx.fillRect(0, 0, W, H);
+    var cx = W / 2 + g.cx, cy = H / 2 + g.cy, s = g.scale;
+    function X(x) { return cx + x * s; }
+    function Y(y) { return cy - y * s; }
+
+    var step = niceStep(s);
+    var xMin = (0 - cx) / s, xMax = (W - cx) / s;
+    var yMin = (cy - H) / s, yMax = cy / s;
+
+    // grid
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = th.grid;
+    ctx.beginPath();
+    for (var x = Math.ceil(xMin / step) * step; x <= xMax; x += step) {
+      var px = Math.round(X(x)) + .5;
+      ctx.moveTo(px, 0); ctx.lineTo(px, H);
+    }
+    for (var y = Math.ceil(yMin / step) * step; y <= yMax; y += step) {
+      var py = Math.round(Y(y)) + .5;
+      ctx.moveTo(0, py); ctx.lineTo(W, py);
+    }
+    ctx.stroke();
+
+    // axes
+    ctx.strokeStyle = th.axis;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(Y(0)) + .5); ctx.lineTo(W, Math.round(Y(0)) + .5);
+    ctx.moveTo(Math.round(X(0)) + .5, 0); ctx.lineTo(Math.round(X(0)) + .5, H);
+    ctx.stroke();
+
+    // labels: x along the bottom, y beside the vertical axis
+    ctx.fillStyle = th.label;
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    var labelStep = niceStep(s * 1.0);
+    for (var xl = Math.ceil(xMin / labelStep) * labelStep; xl <= xMax; xl += labelStep) {
+      if (Math.abs(xl) < 1e-9) continue;
+      ctx.fillText(fmt(xl, 4), X(xl), H - 3);
+    }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (var yl = Math.ceil(yMin / labelStep) * labelStep; yl <= yMax; yl += labelStep) {
+      if (Math.abs(yl) < 1e-9) continue;
+      var lyp = Y(yl);
+      var lxp = Math.min(W - 4, Math.max(26, X(0) - 6));
+      ctx.fillText(fmt(yl, 4), lxp, lyp);
+    }
+
+    // curves
+    state.fns.forEach(function (f) {
+      if (!f.on) return;
+      var expr = f.expr.trim();
+      if (!expr) return;
+      ctx.strokeStyle = f.color;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      var prevY = null, started = false, err = false;
+      for (var px2 = 0; px2 <= W; px2 += 1) {
+        var xv = (px2 - cx) / s;
+        var yv;
+        try {
+          yv = evalExpr(expr.replace(/\bx\b/g, '(' + xv + ')'), { deg: false, ans: state.ans });
+        } catch (e) { err = true; break; }
+        if (!isFinite(yv) || Math.abs(yv) > 1e9) { started = false; prevY = null; continue; }
+        var pyv = cy - yv * s;
+        if (!started || prevY === null || Math.abs(pyv - prevY) > H * 1.6) {
+          ctx.moveTo(px2, pyv);
+          started = true;
+        } else {
+          ctx.lineTo(px2, pyv);
+        }
+        prevY = pyv;
+      }
+      if (!err) ctx.stroke();
+    });
+
+    // hover line + dots
+    if (GRAPH.hoverX !== null) {
+      var hx = GRAPH.hoverX;
+      ctx.strokeStyle = th.gridStrong;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(hx, 0); ctx.lineTo(hx, H); ctx.stroke();
+      var xval = (hx - cx) / s;
+      var parts = [];
+      state.fns.forEach(function (f) {
+        if (!f.on || !f.expr.trim()) return;
+        var yv2;
+        try { yv2 = evalExpr(f.expr.trim().replace(/\bx\b/g, '(' + xval + ')'), { deg: false, ans: state.ans }); }
+        catch (e) { return; }
+        if (!isFinite(yv2)) return;
+        var py2 = cy - yv2 * s;
+        if (py2 < -40 || py2 > H + 40) return;
+        ctx.fillStyle = f.color;
+        ctx.beginPath(); ctx.arc(hx, py2, 3.4, 0, Math.PI * 2); ctx.fill();
+        parts.push(fmt(yv2, 4));
+      });
+      $('#graphReadout').textContent = 'x = ' + fmt(xval, 4) + (parts.length ? '  ·  y = ' + parts.join(' / ') : '');
+    } else {
+      $('#graphReadout').textContent = '';
+    }
+    $('#graphRange').textContent = 'x: ' + fmt(xMin, 3) + ' ~ ' + fmt(xMax, 3);
+  }
+
+  function bindGraph() {
+    GRAPH.canvas = $('#graphCanvas');
+    graphSize();
+    drawGraph();
+
+    var c = GRAPH.canvas;
+    c.addEventListener('pointerdown', function (e) {
+      GRAPH.dragging = true;
+      GRAPH.lastX = e.clientX; GRAPH.lastY = e.clientY;
+      c.classList.add('dragging');
+      try { c.setPointerCapture(e.pointerId); } catch (err) { }
+    });
+    c.addEventListener('pointermove', function (e) {
+      var rect = c.getBoundingClientRect();
+      GRAPH.hoverX = e.clientX - rect.left;
+      if (GRAPH.dragging) {
+        var dx = e.clientX - GRAPH.lastX, dy = e.clientY - GRAPH.lastY;
+        state.graph.cx += dx; state.graph.cy += dy;
+        GRAPH.lastX = e.clientX; GRAPH.lastY = e.clientY;
+      }
+      drawGraph();
+    });
+    c.addEventListener('pointerup', function () { GRAPH.dragging = false; c.classList.remove('dragging'); });
+    c.addEventListener('pointercancel', function () { GRAPH.dragging = false; c.classList.remove('dragging'); });
+    c.addEventListener('pointerleave', function () {
+      GRAPH.dragging = false;
+      c.classList.remove('dragging');
+      GRAPH.hoverX = null;
+      drawGraph();
+    });
+    c.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var rect = c.getBoundingClientRect();
+      var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      var factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      zoomAt(mx, my, factor);
+    }, { passive: false });
+
+    // pinch zoom
+    var pts = {};
+    c.addEventListener('pointerdown', function (e) { pts[e.pointerId] = { x: e.clientX, y: e.clientY }; });
+    c.addEventListener('pointermove', function (e) {
+      if (!pts[e.pointerId]) return;
+      var ids = Object.keys(pts);
+      var prev = pts[e.pointerId];
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (ids.length === 2) {
+        var other = pts[ids.filter(function (k) { return k !== String(e.pointerId); })[0]];
+        if (!other) return;
+        var dNow = Math.hypot(pts[ids[0]].x - pts[ids[1]].x, pts[ids[0]].y - pts[ids[1]].y);
+        if (GRAPH.pinch) {
+          var factor2 = dNow / GRAPH.pinch;
+          if (isFinite(factor2) && factor2 > 0) {
+            var rect2 = c.getBoundingClientRect();
+            zoomAt((e.clientX - rect2.left), (e.clientY - rect2.top), factor2);
+          }
+        }
+        GRAPH.pinch = dNow;
+      }
+    });
+    c.addEventListener('pointerup', function (e) { delete pts[e.pointerId]; GRAPH.pinch = null; });
+    c.addEventListener('pointercancel', function (e) { delete pts[e.pointerId]; GRAPH.pinch = null; });
+  }
+
+  function zoomAt(mx, my, factor) {
+    var g = state.graph;
+    var cx = GRAPH.w / 2 + g.cx, cy = GRAPH.h / 2 + g.cy;
+    var wx = (mx - cx) / g.scale, wy = (cy - my) / g.scale;
+    g.scale = Math.max(2, Math.min(4000, g.scale * factor));
+    g.cx = mx - wx * g.scale - GRAPH.w / 2;
+    g.cy = my + wy * g.scale - GRAPH.h / 2;
+    drawGraph();
+  }
+
+  /* fn list events */
+  document.addEventListener('input', function (e) {
+    var inp = e.target.closest('[data-fn-expr]');
+    if (!inp) return;
+    var i = Number(inp.getAttribute('data-fn-expr'));
+    if (!state.fns[i]) return;
+    state.fns[i].expr = inp.value;
+    drawGraph();
+    saveProject();
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-fn-toggle]');
+    if (t) {
+      var i = Number(t.getAttribute('data-fn-toggle'));
+      state.fns[i].on = !state.fns[i].on;
+      renderFnList(); drawGraph(); saveProject();
+      return;
+    }
+    var d = e.target.closest('[data-fn-del]');
+    if (d) {
+      var j = Number(d.getAttribute('data-fn-del'));
+      state.fns.splice(j, 1);
+      state.fns.forEach(function (f, k) { f.color = fnColor(k); });
+      renderFnList(); drawGraph(); saveProject();
+      return;
+    }
+    var act = e.target.closest('[data-act]');
+    if (!act) return;
+    var a = act.getAttribute('data-act');
+    if (a === 'add-fn') {
+      if (state.fns.length >= 6) { Lemon.toast('함수는 6개까지 그릴 수 있어요', 'info'); return; }
+      state.fns.push({ expr: '', on: true, color: fnColor(state.fns.length) });
+      renderFnList();
+      var inputs = $$('[data-fn-expr]');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+      saveProject();
+    }
+    if (a === 'zoom-in') { zoomAt(GRAPH.w / 2, GRAPH.h / 2, 1.25); }
+    if (a === 'zoom-out') { zoomAt(GRAPH.w / 2, GRAPH.h / 2, 0.8); }
+    if (a === 'reset-view') { state.graph = { cx: 0, cy: 0, scale: 40 }; drawGraph(); }
+    if (a === 'graph-png') graphPng();
+  });
+
+  function graphPng() {
+    drawGraph();
+    GRAPH.canvas.toBlob(function (b) {
+      if (b) { Lemon.downloadBlob('lemon-graph-' + Date.now() + '.png', b); Lemon.toast('그래프를 PNG로 저장했어요', 'ok'); }
+      else Lemon.toast('저장하지 못했어요', 'err');
+    }, 'image/png');
+  }
+
+  var PRESETS = [
+    { n: 'sin(x)·x', e: 'sin(x)*x' },
+    { n: 'x² − 4', e: 'x^2-4' },
+    { n: '1/x', e: '1/x' },
+    { n: 'e^x', e: 'e^x' },
+    { n: 'ln(x)', e: 'ln(x)' },
+    { n: '|x|', e: 'abs(x)' }
+  ];
+  function renderPresets() {
+    $('#graphPresets').innerHTML = PRESETS.map(function (p, i) {
+      return '<button class="pill-btn !py-1 !px-2 !text-[10px]" data-preset="' + i + '">' + esc(p.n) + '</button>';
+    }).join('');
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-preset]');
+    if (!b) return;
+    var p = PRESETS[Number(b.getAttribute('data-preset'))];
+    if (!p) return;
+    state.fns = [{ expr: p.e, on: true, color: fnColor(0) }];
+    renderFnList();
+    state.graph = { cx: 0, cy: 0, scale: 40 };
+    drawGraph();
+    saveProject();
+  });
+
+  /* ============================================================
+     Unit conversion
+     ============================================================ */
+  var UNITS = {
+    length: {
+      label: '길이',
+      units: [
+        { k: 'mm', n: '밀리미터', f: 0.001 }, { k: 'cm', n: '센티미터', f: 0.01 }, { k: 'm', n: '미터', f: 1 },
+        { k: 'km', n: '킬로미터', f: 1000 }, { k: 'in', n: '인치', f: 0.0254 }, { k: 'ft', n: '피트', f: 0.3048 },
+        { k: 'yd', n: '야드', f: 0.9144 }, { k: 'mi', n: '마일', f: 1609.344 }, { k: 'nmi', n: '해리', f: 1852 }
+      ],
+      def: ['m', 'cm']
+    },
+    mass: {
+      label: '무게',
+      units: [
+        { k: 'mg', n: '밀리그램', f: 0.000001 }, { k: 'g', n: '그램', f: 0.001 }, { k: 'kg', n: '킬로그램', f: 1 },
+        { k: 't', n: '톤', f: 1000 }, { k: 'oz', n: '온스', f: 0.0283495 }, { k: 'lb', n: '파운드', f: 0.453592 },
+        { k: 'geun', n: '근', f: 0.6 }
+      ],
+      def: ['kg', 'lb']
+    },
+    area: {
+      label: '넓이',
+      units: [
+        { k: 'cm2', n: '제곱센티미터', f: 0.0001 }, { k: 'm2', n: '제곱미터', f: 1 }, { k: 'km2', n: '제곱킬로미터', f: 1e6 },
+        { k: 'pyeong', n: '평', f: 3.305785 }, { k: 'ft2', n: '제곱피트', f: 0.092903 }, { k: 'ha', n: '헥타르', f: 10000 },
+        { k: 'acre', n: '에이커', f: 4046.86 }
+      ],
+      def: ['m2', 'pyeong']
+    },
+    volume: {
+      label: '부피',
+      units: [
+        { k: 'ml', n: '밀리리터', f: 0.001 }, { k: 'l', n: '리터', f: 1 }, { k: 'm3', n: '세제곱미터', f: 1000 },
+        { k: 'cup', n: '컵(240mL)', f: 0.24 }, { k: 'tbsp', n: '큰술', f: 0.015 }, { k: 'gal', n: '갤런(US)', f: 3.78541 }
+      ],
+      def: ['l', 'ml']
+    },
+    temp: {
+      label: '온도',
+      units: [{ k: 'c', n: '섭씨', f: 1 }, { k: 'f', n: '화씨', f: 1 }, { k: 'k', n: '켈빈', f: 1 }],
+      def: ['c', 'f']
+    },
+    data: {
+      label: '데이터',
+      units: [
+        { k: 'b', n: '비트', f: 1 / 8 }, { k: 'byte', n: '바이트', f: 1 }, { k: 'kb', n: '킬로바이트', f: 1024 },
+        { k: 'mb', n: '메가바이트', f: 1024 * 1024 }, { k: 'gb', n: '기가바이트', f: 1024 * 1024 * 1024 },
+        { k: 'tb', n: '테라바이트', f: Math.pow(1024, 4) }
+      ],
+      def: ['mb', 'gb']
+    },
+    speed: {
+      label: '속도',
+      units: [
+        { k: 'ms', n: '미터/초', f: 1 }, { k: 'kmh', n: '킬로미터/시', f: 1 / 3.6 }, { k: 'mph', n: '마일/시', f: 0.44704 },
+        { k: 'knot', n: '노트', f: 0.514444 }, { k: 'fts', n: '피트/초', f: 0.3048 }
+      ],
+      def: ['kmh', 'ms']
+    },
+    time: {
+      label: '시간',
+      units: [
+        { k: 'ms', n: '밀리초', f: 0.001 }, { k: 's', n: '초', f: 1 }, { k: 'min', n: '분', f: 60 },
+        { k: 'h', n: '시간', f: 3600 }, { k: 'd', n: '일', f: 86400 }, { k: 'wk', n: '주', f: 604800 }
+      ],
+      def: ['h', 'min']
+    }
+  };
+
+  function unitList(cat) { return UNITS[cat].units; }
+  function unitDef(cat, k) { return unitList(cat).filter(function (u) { return u.k === k; })[0]; }
+
+  function convertUnit(cat, from, to, v) {
+    if (cat === 'temp') {
+      var c;
+      if (from === 'c') c = v; else if (from === 'f') c = (v - 32) * 5 / 9; else c = v - 273.15;
+      if (to === 'c') return c;
+      if (to === 'f') return c * 9 / 5 + 32;
+      return c + 273.15;
+    }
+    var fd = unitDef(cat, from), td = unitDef(cat, to);
+    if (!fd || !td) return NaN;
+    return v * fd.f / td.f;
+  }
+
+  function fillUnitSelects() {
+    var cat = state.unit.cat;
+    var opts = unitList(cat).map(function (u) {
+      return '<option value="' + u.k + '">' + esc(u.n) + ' (' + u.k + ')</option>';
+    }).join('');
+    $('#unitFromUnit').innerHTML = opts;
+    $('#unitToUnit').innerHTML = opts;
+    var def = UNITS[cat].def;
+    $('#unitFromUnit').value = state.unit.from || def[0];
+    $('#unitToUnit').value = state.unit.to || def[1];
+  }
+
+  function renderUnitCats() {
+    $('#unitCats').innerHTML = Object.keys(UNITS).map(function (k) {
+      return '<button class="seg-chip ' + (state.unit.cat === k ? 'on' : '') + '" data-cat="' + k + '">' + esc(UNITS[k].label) + '</button>';
+    }).join('');
+    $('#unitCatLabel').textContent = UNITS[state.unit.cat].label;
+  }
+
+  function syncUnits(source) {
+    var cat = state.unit.cat;
+    var from = $('#unitFromUnit').value, to = $('#unitToUnit').value;
+    state.unit.from = from; state.unit.to = to;
+    var fromValEl = $('#unitFromVal'), toValEl = $('#unitToVal');
+    var srcEl = source === 'to' ? toValEl : fromValEl;
+    var dstEl = source === 'to' ? fromValEl : toValEl;
+    var raw = srcEl.value.replace(/,/g, '').trim();
+    if (raw === '' || raw === '-' || raw === '.') { dstEl.value = ''; return; }
+    var v = parseFloat(raw);
+    if (isNaN(v)) { dstEl.value = ''; return; }
+    var out = source === 'to' ? convertUnit(cat, to, from, v) : convertUnit(cat, from, to, v);
+    dstEl.value = fmtNumber(out);
+    $('#unitFormula').textContent = fmtNumber(v) + ' ' + (source === 'to' ? to : from) + ' = ' +
+      fmtNumber(out) + ' ' + (source === 'to' ? from : to);
+    renderQuick();
+    saveProject();
+  }
+
+  function fmtNumber(v) {
+    if (!isFinite(v)) return '-';
+    var abs = Math.abs(v);
+    if (abs !== 0 && (abs >= 1e12 || abs < 1e-6)) return v.toExponential(4);
+    var s = Math.round(v * 1e10) / 1e10;
+    return String(s);
+  }
+
+  function renderQuick() {
+    var cat = state.unit.cat;
+    var from = $('#unitFromUnit').value || UNITS[cat].def[0];
+    var others = unitList(cat).filter(function (u) { return u.k !== from; }).slice(0, 4);
+    var v = parseFloat($('#unitFromVal').value) || 0;
+    $('#unitQuick').innerHTML = others.map(function (u) {
+      return '<div class="unit-card p-2 border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/40">' +
+        '<span class="text-[9px] font-bold text-neutral-400">' + esc(u.n) + '</span>' +
+        '<p class="text-[12.5px] font-black calc-result truncate">' + esc(fmtNumber(convertUnit(cat, from, u.k, v))) + '</p></div>';
+    }).join('');
+  }
+
+  /* ============================================================
+     Base conversion
+   ============================================================ */
+  function parseBase(str, base) {
+    var s = String(str).trim().toUpperCase().replace(/^0X/, '');
+    if (!s) return null;
+    if (base === 10 && /^[-+]?[0-9]+$/.test(s)) return Number(s);
+    var digits = '0123456789ABCDEF';
+    var neg = false;
+    if (s[0] === '-') { neg = true; s = s.slice(1); }
+    var val = 0;
+    for (var i = 0; i < s.length; i++) {
+      var d = digits.indexOf(s[i]);
+      if (d < 0 || d >= base) return null;
+      val = val * base + d;
+    }
+    if (val > Number.MAX_SAFE_INTEGER) return null;
+    return neg ? -val : val;
+  }
+
+  function syncBase() {
+    var base = state.base;
+    var raw = $('#baseInput').value;
+    var v = parseBase(raw, base);
+    var errEl2 = $('#baseError');
+    if (v === null) {
+      errEl2.textContent = base + '진수에 맞지 않는 글자가 있어요';
+      errEl2.classList.remove('hidden');
+      return;
+    }
+    errEl2.classList.add('hidden');
+    $('#baseDec').textContent = v.toLocaleString('en-US').replace(/,/g, ',');
+    $('#baseHex').textContent = v.toString(16).toUpperCase();
+    $('#baseOct').textContent = v.toString(8);
+    var bin = v.toString(2);
+    $('#baseBin').textContent = bin.replace(/(.{4})(?=.)/g, '$1 ');
+    $('#baseBits').textContent = (bin.length > 1 ? bin.length : 1) + '비트' + (v < 0 ? ' · 음수' : '');
+    saveProject();
+  }
+
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-cat]');
+    if (c) {
+      state.unit.cat = c.getAttribute('data-cat');
+      var def = UNITS[state.unit.cat].def;
+      state.unit.from = def[0]; state.unit.to = def[1];
+      renderUnitCats();
+      fillUnitSelects();
+      $('#unitFromVal').value = state.unit.cat === 'temp' ? '20' : '1';
+      syncUnits('from');
+      return;
+    }
+    var b = e.target.closest('[data-base]');
+    if (b) {
+      var nb = Number(b.getAttribute('data-base'));
+      var cur = parseBase($('#baseInput').value, state.base);
+      state.base = nb;
+      $$('[data-base]').forEach(function (x) { x.classList.toggle('on', x === b); });
+      if (cur !== null) {
+        $('#baseInput').value = nb === 10 ? String(cur) : cur.toString(nb).toUpperCase();
+      }
+      syncBase();
+      return;
+    }
+    var act = e.target.closest('[data-act]');
+    if (!act) return;
+    var a = act.getAttribute('data-act');
+    if (a === 'unit-copy') Lemon.copy($('#unitToVal').value + ' ' + $('#unitToUnit').value, '변환 결과를 복사했어요');
+    if (a === 'base-copy') Lemon.copy($('#baseDec').textContent + ' (10진)', '10진 값을 복사했어요');
+  });
+
+  $('#unitFromVal').addEventListener('input', function () { syncUnits('from'); });
+  $('#unitToVal').addEventListener('input', function () { syncUnits('to'); });
+  $('#unitFromUnit').addEventListener('change', function () { syncUnits('from'); });
+  $('#unitToUnit').addEventListener('change', function () { syncUnits('from'); });
+  $('#unitSwap').addEventListener('click', function () {
+    var f = $('#unitFromUnit').value;
+    $('#unitFromUnit').value = $('#unitToUnit').value;
+    $('#unitToUnit').value = f;
+    syncUnits('from');
+  });
+  $('#baseInput').addEventListener('input', syncBase);
+
+  /* ============================================================
+     Archive
+   ============================================================ */
+  function renderArchive() {
+    var list = arc.all();
+    $('#arcCount').textContent = list.length;
+    var box = $('#archiveList');
+    if (!list.length) {
+      box.innerHTML = '<div class="glass-card p-10 text-center sm:col-span-2">' +
+        '<div class="w-12 h-12 mx-auto rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 mb-3">' +
+        '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"></rect><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"></path></svg></div>' +
+        '<p class="text-[12px] font-bold">아직 저장한 계산이 없어요</p>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">히스토리 오른쪽 위 저장 버튼을 누르면 여기에 담깁니다.</p></div>';
+      return;
+    }
+    box.innerHTML = list.map(function (it) {
+      return '<div class="glass-card p-4 card-lift">' +
+        '<div class="flex items-center justify-between gap-2 mb-1.5">' +
+        '<span class="chip !text-[9px] !py-0.5">계산</span>' +
+        '<span class="text-[10px] text-neutral-400 mono">' + Lemon.timeAgo(it.ts) + '</span>' +
+        '</div>' +
+        '<p class="text-[12.5px] font-bold leading-snug break-all line-clamp-2">' + esc(it.title || '') + '</p>' +
+        '<div class="flex items-center justify-between mt-2.5">' +
+        '<button class="text-[10px] font-bold" style="color:var(--brand)" data-open="' + it.id + '">불러오기</button>' +
+        '<button class="mini-btn !w-7 !h-7" data-del="' + it.id + '" title="삭제">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg></button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  $('#archiveList').addEventListener('click', function (e) {
+    var del = e.target.closest('[data-del]');
+    if (del) {
+      arc.remove(del.getAttribute('data-del'));
+      renderArchive();
+      Lemon.toast('기록을 지웠어요', 'info');
+      return;
+    }
+    var open = e.target.closest('[data-open]');
+    if (!open) return;
+    var rec = arc.all().filter(function (r) { return r.id === open.getAttribute('data-open'); })[0];
+    if (!rec) return;
+    if (rec.items && rec.items.length) {
+      state.history = rec.items.slice();
+      renderHistory();
+      goTab('calc');
+      exprEl.value = rec.items[0].expr;
+      setResult(rec.items[0].result);
+      Lemon.toast('계산 기록을 불러왔어요', 'ok');
+    }
+  });
+  $('#btnClearArc').addEventListener('click', function () {
+    if (!confirm('보관함의 모든 기록을 지울까요?')) return;
+    arc.clear();
+    renderArchive();
+    Lemon.toast('보관함을 비웠어요', 'info');
+  });
+
+  /* ============================================================
+     Home examples
+   ============================================================ */
+  var EXAMPLES = [
+    { l: '공학', e: 'sin(30) + 2^5 - √81', d: '삼각함수와 지수·루트' },
+    { l: '일상', e: '35000 × 3 + 12000', d: '장보기 합계' },
+    { l: '할인', e: '(48000 - 48000 × 0.15) ÷ 4', d: '할인 후 1인당 금액' },
+    { l: '금융', e: '1200000 × (1 + 0.035)^3', d: '3년 복리' },
+    { l: '통계', e: '√((1-3)^2 + (4-3)^2 + (7-3)^2)', d: '편차 제곱합의 제곱근' },
+    { l: '조합', e: '10! ÷ (8! × 2!)', d: '10명 중 2명 뽑는 경우의 수' }
+  ];
+  function renderExamples() {
+    $('#homeExamples').innerHTML = EXAMPLES.map(function (x, i) {
+      return '<button class="glass-card p-3 text-left card-lift" data-example="' + i + '">' +
+        '<div class="flex items-center justify-between mb-1">' +
+        '<span class="text-[9px] font-black tracking-widest uppercase" style="color:var(--brand)">' + esc(x.l) + '</span>' +
+        '<span class="text-[9px] text-neutral-400">' + esc(x.d) + '</span>' +
+        '</div>' +
+        '<p class="text-[12px] font-semibold leading-snug mono break-all">' + esc(x.e) + '</p></button>';
+    }).join('');
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-example]');
+    if (!b) return;
+    var x = EXAMPLES[Number(b.getAttribute('data-example'))];
+    if (!x) return;
+    goTab('calc');
+    exprEl.value = x.e;
+    livePreview();
+    calc(true);
+  });
+
+  /* ============================================================
+     Boot
+   ============================================================ */
+  function boot() {
+    renderExamples();
+    renderHistory();
+    renderArchive();
+    updateMem();
+    renderUnitCats();
+    fillUnitSelects();
+    syncUnits('from');
+    syncBase();
+    initFns();
+    bindGraph();
+    renderPresets();
+    exprEl.focus();
+
+    var id = project.id();
+    if (id) {
+      var rec = project.restore(id);
+      if (rec) {
+        if (rec.history && rec.history.length) { state.history = rec.history; renderHistory(); }
+        if (typeof rec.ans === 'number') state.ans = rec.ans;
+        if (typeof rec.deg === 'boolean') {
+          state.deg = rec.deg;
+          $$('[data-angle]').forEach(function (b) { b.classList.toggle('on', (b.getAttribute('data-angle') === 'deg') === state.deg); });
+          $('#angleChipText').textContent = state.deg ? 'DEG' : 'RAD';
+        }
+        if (rec.fns && rec.fns.length) {
+          state.fns = rec.fns.map(function (f, i) { return { expr: f.expr || '', on: f.on !== false, color: fnColor(i) }; });
+          renderFnList();
+          drawGraph();
+        }
+      }
+    }
+
+    document.addEventListener('lemon:theme', function () { setTimeout(drawGraph, 30); });
+    var rt = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(function () {
+        if ($('[data-view="graph"]').classList.contains('hidden')) return;
+        graphSize(); drawGraph();
+      }, 180);
+    });
+    document.addEventListener('lemon:view', function (e) {
+      if (e.detail && e.detail.view === 'graph') { setTimeout(function () { graphSize(); drawGraph(); }, 60); }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  window.__lemonCalc = { state: state, evalExpr: evalExpr, fmt: fmt, drawGraph: drawGraph, calc: calc, convertUnit: convertUnit, parseBase: parseBase, syncUnits: syncUnits };
+})();
+</script>
+</body>
+</html>
