@@ -3840,7 +3840,8 @@ html.dark .imp-status[data-state="work"]{color:var(--aqua-2)}
     'empty-doc': '문서에서 읽을 수 있는 내용을 찾지 못했어요.',
     'rtf': 'RTF 문서는 아직 지원하지 않아요. Word나 아래아한글에서 .docx / .hwpx로 저장해 주세요.',
     'doc-binary': '예전 Word 바이너리(.doc 97-2003) 형식이에요. Word에서 .docx로 저장한 뒤 다시 불러와 주세요.',
-    'big': '파일이 너무 커요(권장 30MB 이하). 나누어 불러와 주세요.'
+    'big': '파일이 너무 커요(권장 30MB 이하). 나누어 불러와 주세요.',
+    'unsupported': '지원하지 않는 형식이에요. .hwpx · .hwp · .docx · .doc · .md · .txt · .html · .json 파일을 선택해 주세요.'
   };
   var IMP_ACCEPT = ['hwpx', 'hwp', 'docx', 'doc', 'md', 'txt', 'html', 'json'];
 
@@ -4109,7 +4110,7 @@ html.dark .imp-status[data-state="work"]{color:var(--aqua-2)}
   /* ================= HWP 5.0 (OLE2 + deflate + 레코드) ================= */
   function cfbOpen(buf) {
     var b = u8of(buf);
-    if (!(b[0] === 0xD0 && b[1] === 0xCF && b[2] === 0x11 && b[3] === 0xE0)) throw impErr('hwp-broken');
+    if (!(b[0] === 0xD0 && b[1] === 0xCF && b[2] === 0x11 && b[3] === 0xE0)) throw impErr('hwp-old');
     var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
     var ss = 1 << dv.getUint16(0x1E, true);
     var mss = 1 << dv.getUint16(0x20, true);
@@ -4381,10 +4382,10 @@ html.dark .imp-status[data-state="work"]{color:var(--aqua-2)}
   async function parseHwp(buf) {
     var cfb = cfbOpen(buf);
     var fh = cfb.find('FileHeader');
-    if (!fh) throw impErr('hwp-old');
+    if (!fh) throw impErr('hwp-broken');
     var fhData = null, fhCands = cfb.candidates(fh);
     for (var i = 0; i < fhCands.length; i++) if (dec8(fhCands[i].subarray(0, 17)) === 'HWP Document File') { fhData = fhCands[i]; break; }
-    if (!fhData) throw impErr('hwp-old');
+    if (!fhData) throw impErr('hwp-broken');
     if (fhData.length < 40) throw impErr('hwp-broken');
     var flags = u32(fhData, 36);
     if (flags & 2) throw impErr('hwp-locked');
@@ -4807,6 +4808,8 @@ html.dark .imp-status[data-state="work"]{color:var(--aqua-2)}
       if (!out.trim()) throw impErr('empty-doc');
       return { html: out };
     }
+    var probe = b.subarray(0, Math.min(b.length, 4096));
+    for (var q = 0; q < probe.length; q++) if (probe[q] === 0) throw impErr('unsupported');
     out = txtToHtml(text);
     if (!out.trim()) throw impErr('empty-doc');
     return { html: out };
@@ -4898,7 +4901,7 @@ html.dark .imp-status[data-state="work"]{color:var(--aqua-2)}
       refreshAll();
       moveInk();
     }, 90);
-    toast('“' + String(title).slice(0, 24) + '” 문서를 불러왔어요', 'ok');
+    toast('문서를 불러왔어요', 'ok');
     hap(14);
   }
 
