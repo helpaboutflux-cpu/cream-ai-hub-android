@@ -1,0 +1,3838 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Player — 로컬 음악 플레이어 & 뮤직 스튜디오</title>
+<meta name="description" content="기기에 있는 MP3·FLAC·M4A·WAV·OGG를 브라우저 IndexedDB에 담아 두고 10밴드 EQ, 실시간 비주얼라이저, LRC 가사, 재생 대기열로 듣는 무서버 음악 플레이어. 서버도 계정도 없이 평생 무료.">
+<meta name="theme-color" content="#120a24">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23120a24'/%3E%3Ccircle cx='12' cy='12' r='8' fill='none' stroke='%2322e3b6' stroke-width='1.4'/%3E%3Ccircle cx='12' cy='12' r='3.2' fill='%237b2ff7'/%3E%3Ccircle cx='12' cy='12' r='1' fill='%23eafff9'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#08060f', 900: '#100c1a', 850: '#161022', 800: '#241c33', 700: '#3a2f4f', 200: '#e6e1ef', 100: '#f3f0f8' },
+    brand: { 50: '#f3ecff', 100: '#e4d5ff', 200: '#c9adff', 300: '#a97cff', 400: '#8d4ffb', 500: '#7b2ff7', 600: '#6a1fdd', 700: '#5517b3', 800: '#42128a', 900: '#2f0c63', 950: '#1c0740' },
+    mint: { 50: '#e5fff8', 100: '#c6fdec', 200: '#8ff9da', 300: '#54f0c6', 400: '#22e3b6', 500: '#0fc79c', 600: '#09a17e', 700: '#0b8066', 800: '#0b6352', 900: '#0a5144' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #7b2ff7;
+    --brand-2: #22e3b6;
+    --brand-deep: #3d0f7a;
+    --inc: #22e3b6;
+    --warm: #ffb35c;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    letter-spacing: -0.02em;
+    background-color: #faf8ff;
+    overflow-x: hidden;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  .dark body { background-color: #08060f; }
+
+  /* ---------------- brand washes ---------------- */
+  .brand-wash {
+    background:
+      radial-gradient(70% 60% at 12% -10%, rgba(123, 47, 247, .18), transparent 70%),
+      radial-gradient(60% 50% at 95% 0%, rgba(34, 227, 182, .14), transparent 72%);
+  }
+  .dark .brand-wash {
+    background:
+      radial-gradient(70% 60% at 12% -10%, rgba(123, 47, 247, .34), transparent 70%),
+      radial-gradient(60% 50% at 95% 0%, rgba(34, 227, 182, .18), transparent 72%);
+  }
+
+  /* ---------------- hero vinyl ---------------- */
+  .hero-stage { position: relative; }
+  .vinyl {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 9999px;
+    background:
+      radial-gradient(circle at 50% 50%, #0b0712 0 8%, rgba(0, 0, 0, 0) 8.4%),
+      repeating-radial-gradient(circle at 50% 50%, #100c18 0 1.6px, #1d1629 1.6px 3.2px),
+      radial-gradient(circle at 30% 25%, #2b2140, #0a070f 70%);
+    box-shadow: inset 0 0 70px rgba(0, 0, 0, .85), 0 40px 70px -40px rgba(0, 0, 0, .95);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .vinyl::before {
+    content: '';
+    position: absolute; inset: 0; border-radius: 9999px;
+    background: conic-gradient(from 210deg, transparent 0 12%, rgba(123, 47, 247, .38) 22%, transparent 38%, rgba(34, 227, 182, .3) 58%, transparent 76%, rgba(255, 179, 92, .22) 88%, transparent 100%);
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+  .vinyl::after {
+    content: '';
+    position: absolute; inset: -30%; border-radius: 9999px;
+    background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, .16) 50%, transparent 58%);
+    pointer-events: none;
+  }
+  .vinyl.spinning { animation: vinylSpin 14s linear infinite; }
+  @keyframes vinylSpin { to { transform: rotate(360deg); } }
+  .vinyl-label {
+    position: absolute; inset: 34%;
+    border-radius: 9999px;
+    background: radial-gradient(circle at 38% 30%, #a97cff, #6a1fdd 55%, #2f0c63 100%);
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .16);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .vinyl-label span {
+    width: 8%; height: 8%; min-width: 6px; min-height: 6px;
+    border-radius: 9999px; background: #08060f;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, .14);
+  }
+  .vinyl-shade {
+    position: absolute; inset: 0; border-radius: 9999px;
+    background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, .12), transparent 45%);
+    pointer-events: none;
+  }
+
+  /* hero equalizer bars */
+  .eq-bars { display: flex; align-items: flex-end; gap: 4px; height: 46px; }
+  .eq-bars i {
+    display: block; width: 5px; border-radius: 4px;
+    background: linear-gradient(to top, var(--brand), var(--brand-2));
+    transform-origin: bottom;
+    animation: barDance 1.35s ease-in-out infinite;
+    opacity: .9;
+  }
+  .eq-bars i:nth-child(1) { height: 40%; animation-delay: -.45s; }
+  .eq-bars i:nth-child(2) { height: 74%; animation-delay: -.2s; }
+  .eq-bars i:nth-child(3) { height: 100%; animation-delay: -.75s; }
+  .eq-bars i:nth-child(4) { height: 62%; animation-delay: -.1s; }
+  .eq-bars i:nth-child(5) { height: 84%; animation-delay: -.6s; }
+  .eq-bars i:nth-child(6) { height: 46%; animation-delay: -.32s; }
+  .eq-bars i:nth-child(7) { height: 68%; animation-delay: -.9s; }
+  @keyframes barDance { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+
+  /* ---------------- dropzone ---------------- */
+  .dropzone {
+    position: relative;
+    border-radius: 1.35rem;
+    border: 1.5px dashed rgba(123, 47, 247, .35);
+    background:
+      linear-gradient(180deg, rgba(123, 47, 247, .05), rgba(34, 227, 182, .04));
+    transition: border-color .2s ease, background-color .2s ease, transform .24s cubic-bezier(.22, 1, .36, 1), box-shadow .3s ease;
+  }
+  .dark .dropzone { border-color: rgba(169, 124, 255, .3); background: linear-gradient(180deg, rgba(123, 47, 247, .12), rgba(34, 227, 182, .06)); }
+  .dropzone:hover { border-color: rgba(123, 47, 247, .6); transform: translateY(-2px); }
+  .dropzone.hot {
+    border-color: var(--brand-2);
+    background: linear-gradient(180deg, rgba(34, 227, 182, .16), rgba(123, 47, 247, .14));
+    box-shadow: 0 0 0 6px rgba(34, 227, 182, .1), 0 24px 50px -30px rgba(34, 227, 182, .6);
+    transform: scale(1.006);
+  }
+  .dropzone.hot .dz-ico { transform: translateY(-6px) scale(1.06); }
+  .dz-ico { transition: transform .3s cubic-bezier(.34, 1.56, .64, 1); }
+
+  /* drag overlay */
+  .drag-veil {
+    position: fixed; inset: 0; z-index: 120;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(8, 6, 15, .72);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    opacity: 0; pointer-events: none; transition: opacity .18s ease;
+  }
+  .drag-veil.on { opacity: 1; }
+  .drag-veil .dv-card {
+    border: 2px dashed rgba(34, 227, 182, .6);
+    border-radius: 1.6rem; padding: 2.4rem 2.8rem;
+    background: rgba(18, 10, 36, .9); color: #fff;
+    transform: scale(.94); transition: transform .24s cubic-bezier(.34, 1.56, .64, 1);
+    text-align: center;
+  }
+  .drag-veil.on .dv-card { transform: none; }
+
+  /* ---------------- now playing ---------------- */
+  .np-art-wrap { position: relative; }
+  .np-art {
+    position: relative; z-index: 2;
+    border-radius: 1.25rem; overflow: hidden;
+    box-shadow: 0 30px 60px -30px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .08);
+    background: #100c1a;
+    aspect-ratio: 1 / 1;
+  }
+  .np-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .np-vinyl {
+    position: absolute; top: 8%; right: -9%; width: 46%; aspect-ratio: 1;
+    border-radius: 9999px;
+    background: repeating-radial-gradient(circle at 50% 50%, #0e0a16 0 1.5px, #1c1528 1.5px 3px);
+    box-shadow: 0 0 30px rgba(0, 0, 0, .7), inset 0 0 20px rgba(0, 0, 0, .9);
+    z-index: 1; transition: transform .5s ease;
+  }
+  .np-vinyl::after {
+    content: ''; position: absolute; inset: 38%; border-radius: 9999px;
+    background: radial-gradient(circle at 40% 35%, #a97cff, #4a1290);
+  }
+  .np-vinyl.spinning { animation: vinylSpin 8s linear infinite; }
+
+  .seek-wrap { position: relative; height: 22px; display: flex; align-items: center; }
+  .seek-track {
+    position: absolute; left: 0; right: 0; height: 6px; border-radius: 9999px;
+    background: rgba(120, 120, 140, .22); overflow: hidden;
+  }
+  .dark .seek-track { background: rgba(255, 255, 255, .13); }
+  .seek-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background-image: linear-gradient(90deg, var(--brand), var(--brand-2));
+    border-radius: 9999px;
+    transition: width .08s linear;
+  }
+  .seek-thumb {
+    position: absolute; left: 0; width: 13px; height: 13px; border-radius: 9999px;
+    background: #fff; border: 2px solid var(--brand);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+    transform: translateX(-50%); pointer-events: none;
+    transition: left .08s linear, transform .15s ease;
+  }
+  .seek-wrap:hover .seek-thumb { transform: translateX(-50%) scale(1.22); }
+  input.seek-input {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+    opacity: 0; cursor: pointer;
+  }
+
+  .ctrl-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2.6rem; height: 2.6rem; border-radius: 9999px;
+    color: #52525b; transition: color .18s ease, background-color .18s ease, transform .16s ease;
+  }
+  .dark .ctrl-btn { color: #a1a1aa; }
+  .ctrl-btn:hover { color: var(--brand); background: rgba(123, 47, 247, .08); }
+  .ctrl-btn:active { transform: scale(.9); }
+  .ctrl-btn.on { color: var(--brand); background: rgba(123, 47, 247, .12); }
+  .ctrl-btn.on::after {
+    content: ''; position: absolute; bottom: 2px; width: 3px; height: 3px; border-radius: 9999px;
+    background: currentColor;
+  }
+  .ctrl-btn { position: relative; }
+  .play-btn {
+    width: 4.1rem; height: 4.1rem; border-radius: 9999px; color: #fff;
+    background-image: linear-gradient(140deg, var(--brand), var(--brand-2));
+    box-shadow: 0 18px 36px -16px rgba(123, 47, 247, .8), inset 0 1px 0 rgba(255, 255, 255, .25);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: transform .18s cubic-bezier(.34, 1.56, .64, 1), box-shadow .24s ease, filter .2s;
+  }
+  .play-btn:hover { transform: translateY(-2px) scale(1.03); filter: brightness(1.05); }
+  .play-btn:active { transform: scale(.94); }
+  .play-btn svg { width: 1.65rem; height: 1.65rem; }
+
+  /* ---------------- visualizer ---------------- */
+  .viz-shell {
+    position: relative; border-radius: 1.1rem; overflow: hidden;
+    background: radial-gradient(120% 120% at 20% 0%, #1a1030, #0c0817 70%);
+    border: 1px solid rgba(255, 255, 255, .07);
+  }
+  .viz-shell canvas { display: block; width: 100%; height: 168px; }
+  .viz-badge {
+    position: absolute; top: .55rem; left: .65rem;
+    font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+    color: rgba(255, 255, 255, .5);
+  }
+
+  /* ---------------- track rows ---------------- */
+  .track-row {
+    display: flex; align-items: center; gap: .65rem;
+    padding: .45rem .55rem; border-radius: .85rem;
+    transition: background-color .16s ease, transform .16s ease;
+    position: relative;
+  }
+  .track-row:hover { background: rgba(123, 47, 247, .06); }
+  .dark .track-row:hover { background: rgba(255, 255, 255, .045); }
+  .track-row.playing { background: linear-gradient(90deg, rgba(123, 47, 247, .13), rgba(34, 227, 182, .07)); }
+  .track-row.playing .tr-title { color: var(--brand); }
+  .dark .track-row.playing .tr-title { color: #c9adff; }
+  .track-row.dragging { opacity: .4; }
+  .track-row.drop-target { box-shadow: inset 0 2px 0 var(--brand-2); }
+  .tr-art {
+    width: 2.5rem; height: 2.5rem; border-radius: .6rem; object-fit: cover;
+    flex-shrink: 0; background: #161022;
+  }
+  .tr-title { font-size: .8rem; font-weight: 700; line-height: 1.25; }
+  .tr-sub { font-size: .68rem; color: #8b8b96; }
+  .tr-dur { font-size: .7rem; color: #8b8b96; font-variant-numeric: tabular-nums; }
+  .tr-act {
+    width: 1.9rem; height: 1.9rem; border-radius: .55rem; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #9b9ba6; transition: all .15s ease;
+  }
+  .tr-act:hover { color: var(--brand); background: rgba(123, 47, 247, .1); }
+  .tr-act svg { width: .95rem; height: .95rem; }
+  .playing-dot { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+  .playing-dot i { width: 2px; border-radius: 2px; background: var(--brand); animation: barDance 1s ease-in-out infinite; }
+  .playing-dot i:nth-child(1) { height: 6px; }
+  .playing-dot i:nth-child(2) { height: 11px; animation-delay: -.3s; }
+  .playing-dot i:nth-child(3) { height: 8px; animation-delay: -.55s; }
+
+  /* ---------------- lyrics ---------------- */
+  .lyr-scroll {
+    max-height: 268px; overflow-y: auto; scroll-behavior: smooth;
+    mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+  }
+  .lyr-line {
+    display: block; width: 100%; text-align: left;
+    padding: .3rem .4rem; border-radius: .5rem;
+    font-size: .82rem; line-height: 1.55; color: #9898a3;
+    transition: color .2s ease, transform .24s cubic-bezier(.22, 1, .36, 1), background-color .2s ease;
+  }
+  .lyr-line:hover { color: #fff; background: rgba(255, 255, 255, .05); }
+  .lyr-line.on { color: #fff; font-weight: 800; transform: translateX(4px); background: linear-gradient(90deg, rgba(123, 47, 247, .35), transparent); }
+  .lyr-line.past { color: #6b6b76; }
+  .lyr-line .lyr-ts { font-size: 9px; font-family: ui-monospace, monospace; color: #7b7b88; margin-right: .4rem; }
+  .lyr-empty { font-size: .78rem; color: #8b8b96; }
+
+  /* ---------------- EQ ---------------- */
+  .eq-band { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) 2.9rem; align-items: center; gap: .5rem; }
+  .eq-band .eq-f { font-size: 9.5px; font-family: ui-monospace, monospace; color: #8b8b96; white-space: nowrap; }
+  .eq-band .eq-v { font-size: 10px; font-family: ui-monospace, monospace; text-align: right; color: #8b8b96; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .eq-curve { width: 100%; height: 62px; display: block; }
+
+  /* ---------------- switch ---------------- */
+  .sw { position: relative; width: 42px; height: 24px; border-radius: 9999px; background: #d4d4d8; transition: background-color .22s ease; flex-shrink: 0; }
+  .dark .sw { background: #3f3f46; }
+  .sw::after {
+    content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+    border-radius: 9999px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+    transition: transform .26s cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .sw.on { background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+  .sw.on::after { transform: translateX(18px); }
+
+  /* ---------------- mini player ---------------- */
+  .mini-player {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    transform: translateY(115%);
+    transition: transform .42s cubic-bezier(.22, 1, .36, 1);
+    background: rgba(255, 255, 255, .92);
+    border-top: 1px solid rgba(0, 0, 0, .06);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .dark .mini-player { background: rgba(12, 8, 22, .93); border-color: rgba(255, 255, 255, .08); }
+  .mini-player.up { transform: none; visibility: visible; }
+  .mini-player { visibility: hidden; }
+  .mini-prog { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: rgba(120, 120, 140, .16); }
+  .mini-prog i { display: block; height: 100%; width: 0%; background-image: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .2s linear; }
+  body.has-mini { padding-bottom: 84px; }
+  .has-mini .toast-offset { bottom: 92px; }
+
+  /* ---------------- misc ---------------- */
+  .stat-num { font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+  .pl-chip { transition: all .16s ease; }
+  .pl-chip.on { border-color: transparent; color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 10px 22px -14px rgba(123, 47, 247, .9); }
+  .queue-item { transition: background-color .16s ease, opacity .16s ease; }
+  .queue-item.dragging { opacity: .35; }
+  .queue-item.over { box-shadow: inset 0 2px 0 var(--brand-2); }
+  .spin-slow { animation: vinylSpin 22s linear infinite; }
+  .glow-pulse { animation: glowPulse 3.2s ease-in-out infinite; }
+  @keyframes glowPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34, 227, 182, .0); } 50% { box-shadow: 0 0 34px -6px rgba(34, 227, 182, .35); } }
+  .progress-strip { height: 3px; border-radius: 3px; background: rgba(120, 120, 140, .18); overflow: hidden; }
+  .progress-strip i { display: block; height: 100%; width: 0%; background-image: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .3s ease; }
+
+  @media (max-width: 640px) {
+    .viz-shell canvas { height: 130px; }
+    .np-art-wrap { max-width: 300px; margin: 0 auto; }
+    .lyr-scroll { max-height: 224px; }
+    .mini-player .mini-art { width: 2.5rem; height: 2.5rem; }
+    .track-row { gap: .5rem; }
+    .tr-art { width: 2.25rem; height: 2.25rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vinyl.spinning, .np-vinyl.spinning, .eq-bars i, .playing-dot i, .spin-slow, .glow-pulse { animation: none !important; }
+  }
+</style>
+</head>
+<body class="bg-[#faf8ff] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"></path></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none"></rect><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor" stroke="none"></rect></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 5.5v13L8.5 12z" fill="currentColor" stroke="none"></path><rect x="4.6" y="5" width="2.1" height="14" rx="1" fill="currentColor" stroke="none"></rect></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5.5v13L15.5 12z" fill="currentColor" stroke="none"></path><rect x="17.3" y="5" width="2.1" height="14" rx="1" fill="currentColor" stroke="none"></rect></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16 4h4v4"></path><path d="M20 4l-6.5 6.5"></path><path d="M16 20h4v-4"></path><path d="M20 20l-6.5-6.5"></path><path d="M4 7h2.6c1.2 0 2.3.6 3 1.6l5 7.2c.7 1 1.8 1.6 3 1.6H20"></path><path d="M4 17h2.6c1.2 0 2.3-.6 3-1.6"></path></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4 12V9a4 4 0 0 1 4-4h9"></path><path d="M14 2.5 17 5.5l-3 3"></path><path d="M20 12v3a4 4 0 0 1-4 4H7"></path><path d="M10 21.5 7 18.5l3-3"></path></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.4L12.5 6v12L7.4 14.5H4z"></path><path d="M16 9.2a4 4 0 0 1 0 5.6"></path><path d="M18.8 6.6a7.6 7.6 0 0 1 0 10.8"></path></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5h3.4L12.5 6v12L7.4 14.5H4z"></path><path d="M16.5 9.5l5 5"></path><path d="M21.5 9.5l-5 5"></path></symbol>
+    <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="2.6"></circle><path d="M12 3v3M12 18v3M3 12h3M18 12h3"></path></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"></path><circle cx="6.5" cy="18" r="2.6"></circle><circle cx="16.5" cy="16" r="2.6"></circle></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"></path></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4"></path><path d="M7.5 8.5 12 4l4.5 4.5"></path><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"></path></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2.5l1.6-5 2.2 11 2.4-14 2.3 17 2.2-12 1.6 6 1.6-3H21"></path></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h6M14 6h6M4 12h10M18 12h2M4 18h3M11 18h9"></path><circle cx="12" cy="6" r="1.8"></circle><circle cx="16" cy="12" r="1.8"></circle><circle cx="9" cy="18" r="1.8"></circle></symbol>
+    <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M4 5h16M4 9.5h10M4 14h13M4 18.5h7"></path></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 6h11M4 11h11M4 16h7"></path><path d="M18 10v9"></path><circle cx="16" cy="19" r="2"></circle></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6 7l1 13h10l1-13"></path><path d="M10 11v6M14 11v6"></path></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M14.5 4.5a2.1 2.1 0 0 1 3 3L7 18l-4 1 1-4z"></path><path d="M4 21h16"></path></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="18.5" r="1.4" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.5 4.5"></path></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"></path><path d="M7.5 10.5 12 15l4.5-4.5"></path><path d="M4 19h16"></path></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></symbol>
+    <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"></circle><path d="M12 9.5v4l2.5 2"></path><path d="M9 3h6"></path></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"></path></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7v5.4l3.4 2"></path></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"></rect></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"></path><circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"></path></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"></path></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"></path></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H6M11 6l-6 6 6 6"></path></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="15" cy="6" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="9" cy="12" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="15" cy="12" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="9" cy="18" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="15" cy="18" r="1.3" fill="currentColor" stroke="none"></circle></symbol>
+    <symbol id="i-playlist" viewBox="0 0 24 24"><path d="M4 6h11M4 11h11M4 16h7"></path><path d="M17 4v10.5"></path><circle cx="15" cy="16" r="2.2"></circle></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z"></path><path d="M18.5 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"></path></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"></path></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z"></path></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 1.8v2M12 20.2v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1.8 12h2M20.2 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></symbol>
+  </defs>
+</svg>
+
+<div class="brand-wash fixed inset-0 pointer-events-none" style="z-index:-1"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-20"></div>
+<div class="ambient-orb o2 w-80 h-80 top-1/3 -right-24 opacity-[.14]" style="background:#22e3b6"></div>
+<div class="ambient-orb o3 w-64 h-64 bottom-10 left-1/4 opacity-[.1]" style="background:#ffb35c"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.4"></circle><circle cx="12" cy="12" r="2.4"></circle><path d="M12 3.6v2.2M12 18.2v2.2M3.6 12h2.2M18.2 12h2.2"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Player</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-mint-200 dark:border-mint-800 text-mint-700 dark:text-mint-300 bg-mint-50 dark:bg-mint-900/30 font-bold">LOCAL</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">로컬 음악 플레이어 & 뮤직 스튜디오</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <div class="hidden md:flex items-center gap-1.5 mr-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-mint-400 pulse-soft"></span>
+        <span>서버 0 · 계정 0 · 평생 무료</span>
+      </div>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#i-moon"></use></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#i-sun"></use></svg>
+      </button>
+      <button id="btnAddTop" class="primary-btn !px-3 !py-2 !text-[11px] btn-shimmer">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><use href="#i-plus"></use></svg>
+        <span class="hidden sm:inline">음악 추가</span>
+        <span class="sm:hidden">추가</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"></use></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sliders"></use></svg>
+        <span>플레이어 스튜디오</span>
+        <span id="nowDot" class="nav-dot"></span>
+      </button>
+      <button class="nav-tab" data-tab="library">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-list"></use></svg>
+        <span>보관함</span>
+        <span id="tabTrackCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.08fr_.92fr] gap-8 lg:gap-12 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"></use></svg>
+            파일은 내 브라우저에만
+          </span>
+          <h1 class="text-[30px] sm:text-[42px] font-black leading-[1.1] tracking-tight">
+            내 음악은,<br><span class="brand-text">내 브라우저 안에.</span>
+          </h1>
+          <p class="text-sm sm:text-[15px] text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            기기에 있는 MP3·FLAC·M4A를 끌어다 놓으면 IndexedDB에 그대로 담깁니다.
+            새로고침해도, 비행기 모드에서도 그대로. 10밴드 EQ와 실시간 비주얼라이저로 스튜디오처럼 들어 보세요.
+          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button data-goto="studio" class="primary-btn btn-shimmer">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-play"></use></svg>
+              플레이어 열기
+            </button>
+            <button id="btnAddHero" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-plus"></use></svg>
+              음악 추가하기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><use href="#i-check"></use></svg>MP3 · FLAC · M4A · WAV · OGG</span>
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><use href="#i-check"></use></svg>용량 제한 없는 IndexedDB</span>
+            <span class="inline-flex items-center gap-1.5"><svg class="w-3.5 h-3.5" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><use href="#i-check"></use></svg>잠금화면 제어</span>
+          </div>
+        </div>
+
+        <div class="hero-stage">
+          <div class="relative mx-auto max-w-[330px] sm:max-w-[360px]">
+            <div class="vinyl spinning glow-pulse" id="heroVinyl">
+              <div class="vinyl-shade"></div>
+              <div class="vinyl-label"><span></span></div>
+            </div>
+            <div class="absolute -left-3 sm:-left-6 bottom-6 rounded-2xl px-3.5 py-3 bg-white/85 dark:bg-neutral-900/85 border border-neutral-200/80 dark:border-white/10 shadow-xl backdrop-blur-md flex items-center gap-3">
+              <div class="eq-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="leading-tight">
+                <p class="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">NOW PLAYING</p>
+                <p id="heroTrackName" class="text-[12px] font-bold max-w-[118px] truncate">아직 재생한 곡이 없어요</p>
+              </div>
+            </div>
+            <div class="absolute -right-1 sm:-right-4 top-4 rounded-xl px-3 py-2 bg-white/85 dark:bg-neutral-900/85 border border-neutral-200/80 dark:border-white/10 shadow-lg backdrop-blur-md">
+              <p class="text-[9px] font-mono text-neutral-500 dark:text-neutral-400">10-BAND EQ</p>
+              <p class="text-[11px] font-black brand-text">STUDIO</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- dropzone -->
+    <div id="dropzone" class="dropzone p-5 sm:p-7 cursor-pointer select-none" role="button" tabindex="0" aria-label="음악 파일 추가">
+      <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+        <div class="dz-ico w-14 h-14 rounded-2xl brand-grad-soft border border-brand-200/60 dark:border-brand-800/60 flex items-center justify-center shrink-0">
+          <svg class="w-6 h-6" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+        </div>
+        <div class="flex-1 text-center sm:text-left">
+          <h3 class="font-bold text-sm sm:text-base">음악 파일을 끌어다 놓으세요</h3>
+          <p class="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
+            여러 곡을 한 번에, 폴더째로도 됩니다. 태그(제목·아티스트·앨범·커버)를 읽어 자동으로 정리하고, 파일 원본은 브라우저에만 저장해요.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="btnPickFiles" class="pill-btn">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-plus"></use></svg>
+            파일 선택
+          </button>
+          <button id="btnPickFolder" class="pill-btn">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"></use></svg>
+            폴더 선택
+          </button>
+        </div>
+      </div>
+      <div id="addProgress" class="mt-4 hidden">
+        <div class="flex items-center justify-between text-[10px] font-mono text-neutral-500 dark:text-neutral-400 mb-1.5">
+          <span id="addProgressLabel">음악을 담는 중…</span>
+          <span id="addProgressCount">0 / 0</span>
+        </div>
+        <div class="progress-strip"><i id="addProgressBar"></i></div>
+      </div>
+    </div>
+
+    <!-- stats -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4 sm:p-5 card-lift">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">보관한 곡</span>
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><use href="#i-music"></use></svg>
+        </div>
+        <p class="stat-num text-2xl sm:text-3xl font-black mt-2"><span id="statTracks">0</span><span class="text-xs font-bold text-neutral-400 ml-1">곡</span></p>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1" id="statTracksSub">아직 비어 있어요</p>
+      </div>
+      <div class="panel p-4 sm:p-5 card-lift">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">총 재생 시간</span>
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><use href="#i-clock"></use></svg>
+        </div>
+        <p class="stat-num text-2xl sm:text-3xl font-black mt-2"><span id="statDuration">0분</span></p>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1" id="statDurationSub">플레이리스트 전체 기준</p>
+      </div>
+      <div class="panel p-4 sm:p-5 card-lift">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">플레이리스트</span>
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><use href="#i-playlist"></use></svg>
+        </div>
+        <p class="stat-num text-2xl sm:text-3xl font-black mt-2"><span id="statPlaylists">0</span><span class="text-xs font-bold text-neutral-400 ml-1">개</span></p>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">나만의 재생 목록</p>
+      </div>
+      <div class="panel p-4 sm:p-5 card-lift">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">보관 용량</span>
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><use href="#i-disc"></use></svg>
+        </div>
+        <p class="stat-num text-2xl sm:text-3xl font-black mt-2"><span id="statBytes">0 MB</span></p>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1" id="statBytesSub">브라우저 저장소 사용량</p>
+      </div>
+    </div>
+
+    <!-- recent + playlists -->
+    <div class="grid lg:grid-cols-[1.15fr_.85fr] gap-4">
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-sm flex items-center gap-2">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-clock"></use></svg>
+            최근 재생
+          </h2>
+          <button data-goto="library" class="text-[11px] font-semibold text-neutral-500 hover:text-brand-500 transition">보관함 전체</button>
+        </div>
+        <div id="recentList" class="space-y-0.5">
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-6 text-center">아직 재생 기록이 없어요. 첫 곡을 담아 보세요.</p>
+        </div>
+      </div>
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-sm flex items-center gap-2">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-playlist"></use></svg>
+            플레이리스트
+          </h2>
+          <button id="btnNewPlaylistHome" class="text-[11px] font-semibold text-neutral-500 hover:text-brand-500 transition">새로 만들기</button>
+        </div>
+        <div id="homePlaylists" class="space-y-1.5">
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-6 text-center">플레이리스트를 만들면 여기에 모여요.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- feature strip -->
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center border border-brand-200/60 dark:border-brand-800/60">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wave"></use></svg>
+        </div>
+        <h3 class="font-bold text-[13px] mt-2.5">실시간 비주얼라이저</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">주파수 바·파형·원형 링 3가지 모드로 듣는 음악을 눈으로 봅니다.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center border border-brand-200/60 dark:border-brand-800/60">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-sliders"></use></svg>
+        </div>
+        <h3 class="font-bold text-[13px] mt-2.5">10밴드 그래픽 EQ</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">Flat·Bass·Vocal·Rock·Jazz·Electronic 프리셋과 커스텀 슬라이더.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center border border-brand-200/60 dark:border-brand-800/60">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-lyrics"></use></svg>
+        </div>
+        <h3 class="font-bold text-[13px] mt-2.5">LRC 가사 싱크</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">.lrc 파일을 불러오면 재생에 맞춰 가사가 따라 흐르고, 줄을 눌러 이동합니다.</p>
+      </div>
+      <div class="panel p-4 card-lift">
+        <div class="w-9 h-9 rounded-xl brand-grad-soft flex items-center justify-center border border-brand-200/60 dark:border-brand-800/60">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"></use></svg>
+        </div>
+        <h3 class="font-bold text-[13px] mt-2.5">계정도 서버도 없음</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">파일은 업로드되지 않고 내 브라우저 안에만 남습니다. 평생 무료.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-4">
+
+    <div class="grid lg:grid-cols-[1.02fr_.98fr] gap-4 items-start">
+
+      <!-- ---- now playing ---- -->
+      <div class="panel p-4 sm:p-6 relative overflow-hidden">
+        <div class="absolute -top-24 -right-20 w-64 h-64 rounded-full pointer-events-none" style="background:radial-gradient(circle, rgba(123,47,247,.22), transparent 68%)"></div>
+        <div class="flex items-center justify-between gap-2 mb-4">
+          <span class="chip">
+            <span class="w-1.5 h-1.5 rounded-full bg-mint-400 pulse-soft"></span>
+            NOW PLAYING
+          </span>
+          <div class="flex items-center gap-1.5">
+            <button id="btnSleep" class="pill-btn !py-1.5 !px-2.5 !text-[10px]" title="수면 타이머">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-timer"></use></svg>
+              <span id="sleepLabel">타이머</span>
+            </button>
+            <span id="npFormat" class="hidden sm:inline text-[9px] font-mono px-2 py-1 rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400">—</span>
+          </div>
+        </div>
+
+        <div class="np-art-wrap mx-auto max-w-[330px] sm:max-w-[300px] mb-5">
+          <div class="np-vinyl" id="npVinyl"></div>
+          <div class="np-art">
+            <img id="npArt" alt="앨범 커버" src="">
+            <div id="npArtEmpty" class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-6" style="display:none">
+              <svg class="w-9 h-9 float-y" style="color:#6b5a86" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-music"></use></svg>
+              <p class="text-[11px] text-neutral-400 leading-relaxed">재생할 곡을 골라 주세요<br>보관함에서 곡을 누르면 바로 시작해요</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-center space-y-1 mb-4">
+          <h2 id="npTitle" class="text-lg sm:text-xl font-black tracking-tight truncate">아직 재생한 곡이 없어요</h2>
+          <p id="npArtist" class="text-xs text-neutral-500 dark:text-neutral-400 truncate">음악을 추가하면 여기에 표시됩니다</p>
+          <p id="npAlbum" class="text-[10px] font-mono text-neutral-400 truncate h-4"></p>
+        </div>
+
+        <div class="mb-1">
+          <div class="seek-wrap" id="seekWrap">
+            <div class="seek-track"><div class="seek-fill" id="seekFill"></div></div>
+            <div class="seek-thumb" id="seekThumb" style="left:0%"></div>
+            <input id="seekInput" class="seek-input" type="range" min="0" max="1000" value="0" step="1" aria-label="재생 위치">
+          </div>
+          <div class="flex items-center justify-between text-[10px] font-mono text-neutral-500 dark:text-neutral-400 tabular mt-1">
+            <span id="tCur">0:00</span>
+            <span id="tDur">0:00</span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-center gap-1.5 sm:gap-3 my-3">
+          <button id="btnShuffle" class="ctrl-btn" title="셔플" aria-label="셔플">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shuffle"></use></svg>
+          </button>
+          <button id="btnPrev" class="ctrl-btn" title="이전 곡" aria-label="이전 곡">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><use href="#i-prev"></use></svg>
+          </button>
+          <button id="btnPlay" class="play-btn" title="재생 / 일시정지" aria-label="재생">
+            <svg id="icoPlay" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+            <svg id="icoPause" class="hidden" viewBox="0 0 24 24" fill="currentColor"><use href="#i-pause"></use></svg>
+          </button>
+          <button id="btnNext" class="ctrl-btn" title="다음 곡" aria-label="다음 곡">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><use href="#i-next"></use></svg>
+          </button>
+          <button id="btnRepeat" class="ctrl-btn" title="반복" aria-label="반복">
+            <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-repeat"></use></svg>
+            <span id="repeatOne" class="hidden absolute -top-0.5 -right-0.5 text-[8px] font-black w-3.5 h-3.5 rounded-full bg-brand-500 text-white items-center justify-center">1</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2.5 mt-4">
+          <button id="btnMute" class="ctrl-btn !w-8 !h-8 shrink-0" title="음소거" aria-label="음소거">
+            <svg id="icoVol" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-volume"></use></svg>
+            <svg id="icoMute" class="w-4 h-4 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-mute"></use></svg>
+          </button>
+          <input id="volInput" class="lemon-range flex-1" type="range" min="0" max="100" value="85" aria-label="볼륨">
+          <span id="volLabel" class="text-[10px] font-mono text-neutral-500 dark:text-neutral-400 w-7 text-right">85</span>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-center gap-x-2 gap-y-2">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mr-1">SPEED</span>
+          <button data-rate="0.5" class="pill-btn !py-1 !px-2 !text-[10px]">0.5x</button>
+          <button data-rate="0.75" class="pill-btn !py-1 !px-2 !text-[10px]">0.75x</button>
+          <button data-rate="1" class="pill-btn !py-1 !px-2 !text-[10px] on">1x</button>
+          <button data-rate="1.25" class="pill-btn !py-1 !px-2 !text-[10px]">1.25x</button>
+          <button data-rate="1.5" class="pill-btn !py-1 !px-2 !text-[10px]">1.5x</button>
+          <button data-rate="2" class="pill-btn !py-1 !px-2 !text-[10px]">2x</button>
+          <span class="flex-1"></span>
+          <button id="btnAddToPlaylist" class="pill-btn !py-1 !px-2 !text-[10px]">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-plus"></use></svg>
+            목록에 담기
+          </button>
+        </div>
+      </div>
+
+      <!-- ---- right column ---- -->
+      <div class="space-y-4">
+
+        <!-- visualizer -->
+        <div class="panel p-3 sm:p-4">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <h2 class="font-bold text-[13px] flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-wave"></use></svg>
+              비주얼라이저
+            </h2>
+            <div class="flex items-center gap-1">
+              <button data-viz="bars" class="pill-btn !py-1 !px-2 !text-[10px] on">바</button>
+              <button data-viz="wave" class="pill-btn !py-1 !px-2 !text-[10px]">파형</button>
+              <button data-viz="ring" class="pill-btn !py-1 !px-2 !text-[10px]">링</button>
+            </div>
+          </div>
+          <div class="viz-shell">
+            <span class="viz-badge" id="vizMode">FREQUENCY</span>
+            <canvas id="vizCanvas"></canvas>
+          </div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-2 px-1">재생 중인 소리의 주파수를 실시간으로 그립니다. 브라우저 안에서만 계산해요.</p>
+        </div>
+
+        <!-- EQ -->
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-bold text-[13px] flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-sliders"></use></svg>
+              10밴드 이퀄라이저
+            </h2>
+            <button id="eqToggle" class="sw on" role="switch" aria-checked="true" aria-label="EQ 켜기/끄기"></button>
+          </div>
+          <canvas id="eqCurve" class="eq-curve mb-2"></canvas>
+          <div class="flex flex-wrap gap-1.5 mb-3" id="eqPresets">
+            <button data-preset="flat" class="pill-btn !py-1 !px-2.5 !text-[10px] on">Flat</button>
+            <button data-preset="bass" class="pill-btn !py-1 !px-2.5 !text-[10px]">Bass Boost</button>
+            <button data-preset="vocal" class="pill-btn !py-1 !px-2.5 !text-[10px]">Vocal</button>
+            <button data-preset="rock" class="pill-btn !py-1 !px-2.5 !text-[10px]">Rock</button>
+            <button data-preset="jazz" class="pill-btn !py-1 !px-2.5 !text-[10px]">Jazz</button>
+            <button data-preset="electronic" class="pill-btn !py-1 !px-2.5 !text-[10px]">Electronic</button>
+            <span id="eqCustomTag" class="hidden text-[10px] font-mono px-2 py-1 rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-800">Custom</span>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-x-5 gap-y-1.5" id="eqBands"></div>
+          <div class="flex items-center justify-between mt-3">
+            <p class="text-[10px] text-neutral-500 dark:text-neutral-400">슬라이더를 움직이면 Custom으로 저장됩니다.</p>
+            <button id="eqReset" class="text-[10px] font-semibold text-neutral-500 hover:text-brand-500 transition">초기화</button>
+          </div>
+        </div>
+
+        <!-- lyrics -->
+        <div class="panel p-4 sm:p-5" style="background-image:linear-gradient(160deg, rgba(123,47,247,.10), rgba(34,227,182,.05))">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-bold text-[13px] flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-lyrics"></use></svg>
+              가사
+            </h2>
+            <div class="flex items-center gap-1">
+              <button id="btnLyricImport" class="pill-btn !py-1 !px-2 !text-[10px]">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-upload"></use></svg>
+                .lrc
+              </button>
+              <button id="btnLyricEdit" class="pill-btn !py-1 !px-2 !text-[10px]">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"></use></svg>
+                편집
+              </button>
+            </div>
+          </div>
+          <div id="lyrScroll" class="lyr-scroll pr-1">
+            <p class="lyr-empty py-6 text-center">가사가 없어요. .lrc 파일을 불러오거나 직접 붙여넣으면 재생에 맞춰 따라갑니다.</p>
+          </div>
+          <input id="lrcInput" type="file" accept=".lrc,.txt,text/plain" class="hidden">
+        </div>
+
+        <!-- queue -->
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-bold text-[13px] flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-queue"></use></svg>
+              재생 대기열
+              <span id="queueCount" class="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">0</span>
+            </h2>
+            <div class="flex items-center gap-1">
+              <button id="btnQueueFill" class="text-[10px] font-semibold text-neutral-500 hover:text-brand-500 transition">전체 담기</button>
+              <span class="text-neutral-300 dark:text-neutral-700">|</span>
+              <button id="btnQueueClear" class="text-[10px] font-semibold text-neutral-500 hover:text-rose-500 transition">비우기</button>
+            </div>
+          </div>
+          <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mb-2" id="upNext">다음 곡이 없어요</p>
+          <div id="queueList" class="space-y-1 max-h-[248px] overflow-y-auto pr-1">
+            <p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">보관함에서 곡을 추가하면 여기에 쌓입니다.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= LIBRARY ================= -->
+  <section data-view="library" class="hidden space-y-4">
+
+    <div class="panel p-4 sm:p-5">
+      <div class="flex flex-col md:flex-row md:items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <h1 class="text-lg sm:text-xl font-black tracking-tight flex items-center gap-2">
+            <svg class="w-5 h-5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-list"></use></svg>
+            보관함
+          </h1>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">곡·플레이리스트·재생 기록이 모두 이 브라우저의 IndexedDB에 저장됩니다.</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <div class="relative flex-1 min-w-[170px]">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-search"></use></svg>
+            <input id="searchInput" class="lemon-input !pl-9 !py-2 !text-xs" type="search" placeholder="곡·아티스트·앨범 검색">
+          </div>
+          <select id="sortSelect" class="lemon-select !w-auto !py-2 !text-xs">
+            <option value="added">최근 추가순</option>
+            <option value="title">제목순</option>
+            <option value="artist">아티스트순</option>
+            <option value="duration">재생시간순</option>
+            <option value="played">최근 재생순</option>
+          </select>
+          <button id="btnAddLib" class="primary-btn !py-2 !px-3 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><use href="#i-plus"></use></svg>
+            음악 추가
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[.36fr_.64fr] gap-4 items-start">
+
+      <!-- playlists -->
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold text-sm flex items-center gap-1.5">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-playlist"></use></svg>
+            플레이리스트
+          </h2>
+          <button id="btnNewPlaylist" class="pill-btn !py-1 !px-2 !text-[10px]">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-plus"></use></svg>
+            새로 만들기
+          </button>
+        </div>
+        <button id="plAll" class="pl-chip w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-brand-200 dark:border-brand-800 text-left mb-1.5">
+          <span class="w-8 h-8 rounded-lg brand-grad flex items-center justify-center shrink-0">
+            <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-music"></use></svg>
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-[12px] font-bold truncate">전체 트랙</span>
+            <span class="block text-[10px] text-neutral-500 dark:text-neutral-400" id="plAllCount">0곡</span>
+          </span>
+        </button>
+        <div id="playlistList" class="space-y-1.5">
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">아직 플레이리스트가 없어요.<br>곡을 모아 하나 만들어 보세요.</p>
+        </div>
+        <div class="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-800 space-y-1.5">
+          <button id="btnExport" class="w-full flex items-center gap-2 text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 hover:text-brand-500 transition px-1 py-1.5">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-download"></use></svg>
+            라이브러리 백업 (JSON)
+          </button>
+          <button id="btnImport" class="w-full flex items-center gap-2 text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 hover:text-brand-500 transition px-1 py-1.5">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+            백업 가져오기 (메타데이터)
+          </button>
+        </div>
+      </div>
+
+      <!-- tracks -->
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3 gap-2">
+          <div class="min-w-0">
+            <h2 id="libTitle" class="font-bold text-sm truncate">전체 트랙</h2>
+            <p id="libSub" class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">0곡 · 0분</p>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button id="btnPlayAll" class="pill-btn !py-1.5 !px-2.5 !text-[10px]">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+              전체 재생
+            </button>
+            <button id="btnLibMenu" class="icon-btn !w-8 !h-8" aria-label="트랙 정렬 메뉴">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-dots"></use></svg>
+            </button>
+          </div>
+        </div>
+        <div id="trackList" class="space-y-0.5 min-h-[120px]">
+          <div class="text-center py-10">
+            <svg class="w-10 h-10 mx-auto float-y" style="color:#8a7ba6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-music"></use></svg>
+            <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-3 leading-relaxed">아직 음악이 없어요.<br>위의 <span class="font-bold text-brand-500">음악 추가</span>를 눌러 파일을 담아 보세요.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-sm flex items-center gap-1.5">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-clock"></use></svg>
+            재생 기록
+          </h2>
+          <button id="btnClearHistory" class="text-[10px] font-semibold text-neutral-500 hover:text-rose-500 transition">기록 지우기</button>
+        </div>
+        <div id="historyList" class="space-y-0.5 max-h-[240px] overflow-y-auto pr-1">
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">재생 기록이 없어요.</p>
+        </div>
+      </div>
+
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-sm flex items-center gap-1.5">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-disc"></use></svg>
+            저장 공간
+          </h2>
+          <button id="btnPersist" class="text-[10px] font-semibold text-neutral-500 hover:text-brand-500 transition">영구 보관 요청</button>
+        </div>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mb-2" id="storageLabel">브라우저 저장소 상태를 확인하는 중…</p>
+        <div class="progress-strip mb-1"><i id="storageBar"></i></div>
+        <div class="flex items-center justify-between text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+          <span id="storageUsed">0 MB</span>
+          <span id="storageQuota">—</span>
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+          <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 px-2.5 py-2">
+            <p class="text-neutral-500 dark:text-neutral-400">오디오 파일</p>
+            <p class="font-bold text-[11px] mt-0.5" id="storageAudio">0 MB</p>
+          </div>
+          <div class="rounded-lg border border-neutral-200 dark:border-neutral-800 px-2.5 py-2">
+            <p class="text-neutral-500 dark:text-neutral-400">DB</p>
+            <p class="font-bold text-[11px] mt-0.5">lemon_player_v1</p>
+          </div>
+        </div>
+        <button id="btnWipe" class="mt-3 w-full text-[10px] font-semibold text-rose-500 hover:text-rose-600 transition py-1.5">보관함 전체 비우기</button>
+        <p class="text-[10px] text-neutral-400 mt-1 leading-relaxed">파일은 이 기기의 브라우저에만 있습니다. 브라우저 데이터를 지우면 함께 사라지니, 소중한 파일은 원본을 남겨 두세요.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200 dark:border-neutral-800 py-6 mt-2">
+  <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500">
+    <div class="flex items-center gap-2">
+      <span class="text-neutral-900 dark:text-white font-semibold">Lemon Player</span>
+      <span>—</span>
+      <span>Lemon soft가 만든 서비스</span>
+    </div>
+    <div class="flex items-center gap-3 flex-wrap justify-center">
+      <a href="index.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Developer Hub</a>
+      <span>·</span>
+      <a href="focus.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Focus</a>
+      <span>·</span>
+      <a href="voice.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Voice</a>
+      <span>·</span>
+      <a href="clip.html" class="hover:underline text-neutral-600 dark:text-neutral-400">Lemon Clip</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ================= MINI PLAYER ================= -->
+<div id="miniPlayer" class="mini-player" role="region" aria-label="미니 플레이어">
+  <div class="mini-prog"><i id="miniProgFill"></i></div>
+  <div class="max-w-6xl mx-auto px-3 sm:px-6 py-2 flex items-center gap-2.5">
+    <img id="miniArt" class="mini-art w-10 h-10 rounded-lg object-cover bg-neutral-200 dark:bg-neutral-800 shrink-0" alt="">
+    <button id="miniOpen" class="min-w-0 flex-1 text-left">
+      <p id="miniTitle" class="text-[12px] font-bold truncate">재생 중인 곡이 없어요</p>
+      <p id="miniArtist" class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">보관함에서 곡을 선택하세요</p>
+    </button>
+    <button id="miniPlay" class="ctrl-btn !w-9 !h-9 shrink-0" aria-label="재생/일시정지">
+      <svg id="miniIcoPlay" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>
+      <svg id="miniIcoPause" class="w-4 h-4 hidden" viewBox="0 0 24 24" fill="currentColor"><use href="#i-pause"></use></svg>
+    </button>
+    <button id="miniNext" class="ctrl-btn !w-9 !h-9 shrink-0" aria-label="다음 곡">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><use href="#i-next"></use></svg>
+    </button>
+    <button id="miniExpand" class="ctrl-btn !w-9 !h-9 shrink-0 hidden sm:inline-flex" aria-label="플레이어 열기">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-up"></use></svg>
+    </button>
+  </div>
+</div>
+
+<!-- drag veil -->
+<div id="dragVeil" class="drag-veil">
+  <div class="dv-card">
+    <svg class="w-10 h-10 mx-auto mb-3" style="color:var(--brand-2)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-upload"></use></svg>
+    <p class="text-sm font-bold">여기에 놓으면 보관함에 담겨요</p>
+    <p class="text-[11px] text-white/60 mt-1">MP3 · FLAC · M4A · WAV · OGG</p>
+  </div>
+</div>
+
+<!-- hidden inputs -->
+<input id="fileInput" type="file" accept="audio/*,.mp3,.flac,.m4a,.aac,.wav,.ogg,.oga,.opus,.weba" multiple class="hidden">
+<input id="folderInput" type="file" webkitdirectory directory multiple class="hidden">
+<input id="coverInput" type="file" accept="image/*" class="hidden">
+<input id="importInput" type="file" accept=".json,application/json" class="hidden">
+
+<!-- ================= MODALS ================= -->
+<div id="modalActions" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="actTitle">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full p-5">
+    <div class="flex items-start justify-between gap-3 mb-3">
+      <div class="min-w-0">
+        <p class="text-[10px] font-mono uppercase tracking-wider text-neutral-500">TRACK</p>
+        <h3 id="actTitle" class="font-bold text-sm truncate">곡</h3>
+        <p id="actSub" class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5"></p>
+      </div>
+      <button class="icon-btn !w-8 !h-8" data-close aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="space-y-1" id="actList">
+      <button data-act="play" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left text-[12px] font-semibold transition">
+        <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>재생
+      </button>
+      <button data-act="next" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left text-[12px] font-semibold transition">
+        <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="currentColor"><use href="#i-next"></use></svg>다음 곡으로
+      </button>
+      <button data-act="queue" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left text-[12px] font-semibold transition">
+        <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-queue"></use></svg>대기열 맨 뒤에 추가
+      </button>
+      <button data-act="playlist" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left text-[12px] font-semibold transition">
+        <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-playlist"></use></svg>플레이리스트에 담기
+      </button>
+      <button data-act="edit" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left text-[12px] font-semibold transition">
+        <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-edit"></use></svg>정보·가사 수정
+      </button>
+      <button data-act="delete" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/30 text-left text-[12px] font-semibold text-rose-500 transition">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>보관함에서 삭제
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="modalEdit" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="editHead">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 id="editHead" class="font-bold text-sm">곡 정보 수정</h3>
+      <button class="icon-btn !w-8 !h-8" data-close aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="flex items-center gap-3 mb-3">
+      <img id="editCoverPrev" class="w-14 h-14 rounded-xl object-cover bg-neutral-200 dark:bg-neutral-800" alt="커버 미리보기">
+      <div class="flex-1">
+        <button id="btnEditCover" class="pill-btn !py-1.5 !px-2.5 !text-[10px]">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-upload"></use></svg>
+          커버 이미지 바꾸기
+        </button>
+        <button id="btnEditCoverClear" class="text-[10px] text-neutral-500 hover:text-rose-500 ml-2">생성 커버로</button>
+        <p class="text-[10px] text-neutral-400 mt-1">비워 두면 제목에서 자동 생성합니다.</p>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-2.5">
+      <label class="col-span-2 space-y-1">
+        <span class="lemon-label">제목</span>
+        <input id="editTitle" class="lemon-input !py-2 !text-xs" type="text" maxlength="120">
+      </label>
+      <label class="space-y-1">
+        <span class="lemon-label">아티스트</span>
+        <input id="editArtist" class="lemon-input !py-2 !text-xs" type="text" maxlength="80">
+      </label>
+      <label class="space-y-1">
+        <span class="lemon-label">앨범</span>
+        <input id="editAlbum" class="lemon-input !py-2 !text-xs" type="text" maxlength="80">
+      </label>
+      <label class="space-y-1">
+        <span class="lemon-label">연도</span>
+        <input id="editYear" class="lemon-input !py-2 !text-xs" type="text" maxlength="10" inputmode="numeric">
+      </label>
+      <label class="space-y-1">
+        <span class="lemon-label">아티스트 정렬</span>
+        <input id="editAlbumArtist" class="lemon-input !py-2 !text-xs" type="text" maxlength="80" placeholder="선택">
+      </label>
+      <label class="col-span-2 space-y-1">
+        <span class="lemon-label">가사 (LRC 타임스탬프 지원)</span>
+        <textarea id="editLyrics" class="lemon-textarea !text-xs" rows="6" placeholder="[00:12.40] 첫 소절&#10;[00:17.10] 두 번째 소절&#10;타임스탬프가 없으면 일반 가사로 표시합니다."></textarea>
+      </label>
+    </div>
+    <div class="flex items-center justify-end gap-2 mt-4">
+      <button class="ghost-btn !py-2 !text-[11px]" data-close>취소</button>
+      <button id="btnEditSave" class="primary-btn !py-2 !px-4 !text-[11px]">저장</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalPlaylist" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="plHead">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full p-5">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h3 id="plHead" class="font-bold text-sm">플레이리스트에 담기</h3>
+        <p id="plSub" class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">담을 목록을 선택하세요.</p>
+      </div>
+      <button class="icon-btn !w-8 !h-8" data-close aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <div id="plPickList" class="space-y-1.5 max-h-[240px] overflow-y-auto mb-3">
+      <p class="text-[11px] text-neutral-500 py-4 text-center">아직 플레이리스트가 없어요.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <input id="plNewName" class="lemon-input !py-2 !text-xs flex-1" type="text" maxlength="60" placeholder="새 플레이리스트 이름">
+      <button id="btnPlCreate" class="pill-btn !py-2 !px-3 !text-[11px]">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><use href="#i-plus"></use></svg>
+        만들기
+      </button>
+    </div>
+    <div class="flex items-center justify-end gap-2 mt-4">
+      <button class="ghost-btn !py-2 !text-[11px]" data-close>닫기</button>
+      <button id="btnPlApply" class="primary-btn !py-2 !px-4 !text-[11px]">담기</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalSleep" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="sleepHead">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full p-5">
+    <div class="flex items-center justify-between mb-1">
+      <h3 id="sleepHead" class="font-bold text-sm">수면 타이머</h3>
+      <button class="icon-btn !w-8 !h-8" data-close aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mb-3">정한 시간이 지나면 소리를 서서히 줄이고 재생을 멈춥니다.</p>
+    <div class="grid grid-cols-3 gap-2">
+      <button data-sleep="10" class="pill-btn">10분</button>
+      <button data-sleep="20" class="pill-btn">20분</button>
+      <button data-sleep="30" class="pill-btn">30분</button>
+      <button data-sleep="45" class="pill-btn">45분</button>
+      <button data-sleep="60" class="pill-btn">60분</button>
+      <button data-sleep="90" class="pill-btn">90분</button>
+    </div>
+    <button data-sleep="track" class="pill-btn w-full mt-2">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-music"></use></svg>
+      이 곡이 끝나면 멈추기
+    </button>
+    <button id="btnSleepOff" class="w-full mt-2 text-[11px] font-semibold text-neutral-500 hover:text-rose-500 transition py-2">타이머 해제</button>
+  </div>
+</div>
+
+<div id="modalConfirm" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="cfmHead">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full p-5">
+    <h3 id="cfmHead" class="font-bold text-sm">확인</h3>
+    <p id="cfmDesc" class="text-[12px] text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed"></p>
+    <div class="flex items-center justify-end gap-2 mt-4">
+      <button id="cfmCancel" class="ghost-btn !py-2 !text-[11px]">취소</button>
+      <button id="cfmOk" class="primary-btn !py-2 !px-4 !text-[11px]">확인</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalName" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="nmHead">
+  <div class="lm-backdrop" data-close></div>
+  <div class="lm-card w-full p-5">
+    <h3 id="nmHead" class="font-bold text-sm">이름</h3>
+    <input id="nmInput" class="lemon-input !py-2 !text-xs mt-3" type="text" maxlength="60" placeholder="이름을 입력하세요">
+    <div class="flex items-center justify-end gap-2 mt-3">
+      <button class="ghost-btn !py-2 !text-[11px]" data-close>취소</button>
+      <button id="nmOk" class="primary-btn !py-2 !px-4 !text-[11px]">저장</button>
+    </div>
+  </div>
+</div>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var doc = document;
+  function $(sel, root) { return (root || doc).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || doc).querySelectorAll(sel)); }
+  function byId(id) { return doc.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function uid(prefix) { return (prefix || 'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function hashStr(s) {
+    var h = 2166136261;
+    s = String(s || '');
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return Math.abs(h >>> 0);
+  }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtTime(sec) {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    var m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+    return m + ':' + pad2(s);
+  }
+  function fmtLong(sec) {
+    if (!isFinite(sec) || sec <= 0) return '0분';
+    var h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    if (h > 0) return h + '시간 ' + m + '분';
+    return Math.max(1, m) + '분';
+  }
+  function fmtBytes(b) {
+    if (!b || b < 0) return '0 B';
+    var u = ['B', 'KB', 'MB', 'GB'], i = 0;
+    while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+    return (b >= 10 || i === 0 ? Math.round(b) : b.toFixed(1)) + ' ' + u[i];
+  }
+  function toast(msg, type) { try { Lemon.toast(msg, type || 'ok'); } catch (e) { } }
+  function hap(ms) { try { Lemon.hap(ms || 10); } catch (e) { } }
+
+  /* ============================================================
+     IndexedDB — lemon_player_v1
+     tracks   : 오디오 Blob + 메타데이터 + 커버 + 가사
+     playlists: 이름과 곡 id 배열
+     kv       : 재생 상태·기록
+     ============================================================ */
+  var DB_NAME = 'lemon_player_v1', DB_VER = 1;
+  var db = null, dbReady = null, dbFailed = false;
+
+  function openDB() {
+    if (dbReady) return dbReady;
+    dbReady = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('no-indexeddb')); return; }
+      var rq;
+      try { rq = indexedDB.open(DB_NAME, DB_VER); } catch (e) { reject(e); return; }
+      rq.onupgradeneeded = function () {
+        var d = rq.result;
+        if (!d.objectStoreNames.contains('tracks')) d.createObjectStore('tracks', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('playlists')) d.createObjectStore('playlists', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv', { keyPath: 'key' });
+      };
+      rq.onsuccess = function () { db = rq.result; resolve(db); };
+      rq.onerror = function () { reject(rq.error || new Error('idb-open')); };
+      rq.onblocked = function () { reject(new Error('idb-blocked')); };
+    }).catch(function (err) {
+      dbFailed = true;
+      toast('브라우저 저장소를 열 수 없어 이번 세션만 메모리에 보관합니다', 'err');
+      throw err;
+    });
+    return dbReady;
+  }
+  function store(name, mode) { return db.transaction(name, mode || 'readonly').objectStore(name); }
+  function reqP(rq) {
+    return new Promise(function (res, rej) {
+      rq.onsuccess = function () { res(rq.result); };
+      rq.onerror = function () { rej(rq.error); };
+    });
+  }
+  function dbAll(name) { return openDB().then(function () { return reqP(store(name).getAll()); }); }
+  function dbPut(name, val) {
+    return openDB().then(function () {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(name, 'readwrite');
+        tx.objectStore(name).put(val);
+        tx.oncomplete = function () { res(val); };
+        tx.onerror = function () { rej(tx.error); };
+        tx.onabort = function () { rej(tx.error || new Error('aborted')); };
+      });
+    });
+  }
+  function dbDel(name, key) {
+    return openDB().then(function () {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(name, 'readwrite');
+        tx.objectStore(name).delete(key);
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+  function dbClear(name) {
+    return openDB().then(function () {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(name, 'readwrite');
+        tx.objectStore(name).clear();
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+
+  /* ============================================================
+     상태
+     ============================================================ */
+  var EQ_FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  var EQ_PRESETS = {
+    flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    bass: [7.5, 6.5, 5, 3.2, .8, -.6, -1, 0, 0, 0],
+    vocal: [-2.5, -1.5, -.5, 1.8, 4, 5, 4.2, 2.2, .2, -1],
+    rock: [5.5, 4.5, 2.2, -.5, -1.5, 0, 2.4, 4.2, 5, 5.4],
+    jazz: [3.5, 2.5, 1, 2, -.8, -1.2, 0, 1.6, 2.4, 3],
+    electronic: [5.6, 4.6, 1.4, 0, -1.2, 1.2, 2.4, 4.2, 5.4, 6.2]
+  };
+  var state = {
+    volume: .85, muted: false, rate: 1, shuffle: false, repeat: 'off',
+    eqOn: true, eqPreset: 'flat', eqGains: EQ_PRESETS.flat.slice(),
+    queue: [], currentId: null, viz: 'bars'
+  };
+  var tracks = [], trackMap = {}, playlists = [], history = [];
+  var coverUrls = {}, genCoverCache = {};
+  var saveStateTimer = null;
+
+  function saveState() {
+    clearTimeout(saveStateTimer);
+    saveStateTimer = setTimeout(function () {
+      dbPut('kv', { key: 'state', value: state }).catch(function () { });
+    }, 260);
+  }
+  function flushState() {
+    clearTimeout(saveStateTimer);
+    return dbPut('kv', { key: 'state', value: state }).catch(function () { });
+  }
+  function saveHistory() {
+    dbPut('kv', { key: 'history', value: history.slice(0, 200) }).catch(function () { });
+  }
+
+  /* ============================================================
+     메타데이터 파싱 — MP3(ID3v2) · FLAC · M4A · WAV · OGG
+     ============================================================ */
+  function bytesStr(buf, off, len) {
+    var s = '';
+    for (var i = 0; i < len && off + i < buf.length; i++) s += String.fromCharCode(buf[off + i]);
+    return s;
+  }
+  function rd32be(b, o) { return ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0; }
+  function rd32le(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
+  function rd24be(b, o) { return (b[o] << 16) | (b[o + 1] << 8) | b[o + 2]; }
+  function syncsafe(b, o) { return ((b[o] & 127) << 21) | ((b[o + 1] & 127) << 14) | ((b[o + 2] & 127) << 7) | (b[o + 3] & 127); }
+  function indexOfByte(b, from, byte, to) {
+    var end = to == null ? b.length : Math.min(to, b.length);
+    for (var i = from; i < end; i++) if (b[i] === byte) return i;
+    return -1;
+  }
+  function indexOfStr(b, from, str, to) {
+    var end = (to == null ? b.length : Math.min(to, b.length)) - str.length;
+    outer: for (var i = from; i <= end; i++) {
+      for (var j = 0; j < str.length; j++) if (b[i + j] !== str.charCodeAt(j)) continue outer;
+      return i;
+    }
+    return -1;
+  }
+  function decodeText(b, off, len, enc) {
+    var sub = b.subarray(off, off + len);
+    var label = 'utf-8';
+    if (enc === 0) label = 'windows-1252';
+    else if (enc === 1) label = 'utf-16le';
+    else if (enc === 2) label = 'utf-16be';
+    var s = '';
+    try { s = new TextDecoder(label).decode(sub); } catch (e) { s = bytesStr(b, off, len); }
+    return s.replace(/\u0000+$/g, '').replace(/^\uFEFF/, '').trim();
+  }
+  function cleanTag(v) {
+    if (!v) return '';
+    return String(v).replace(/\u0000/g, '').trim();
+  }
+
+  function parseID3(buf) {
+    if (buf.length < 12 || bytesStr(buf, 0, 3) !== 'ID3') return null;
+    var ver = buf[3], flags = buf[5];
+    var size = syncsafe(buf, 6);
+    var out = { title: '', artist: '', album: '', year: '', genre: '', cover: null, albumArtist: '' };
+    var off = 10;
+    if (flags & 0x40) off += 4;
+    var end = Math.min(buf.length, 10 + size);
+    while (off + 10 <= end) {
+      var fid = bytesStr(buf, off, 4);
+      if (!/^[A-Z0-9]{4}$/.test(fid)) break;
+      var fsize = (ver === 4) ? syncsafe(buf, off + 4) : rd32be(buf, off + 4);
+      if (fsize <= 0 || off + 10 + fsize > end + 4) break;
+      var dstart = off + 10;
+      var fflags2 = buf[off + 9];
+      if (fid === 'APIC' && (!out.cover || fsize > out.cover.size)) {
+        try {
+          var p = dstart, enc = buf[p]; p++;
+          var mimeEnd = indexOfByte(buf, p, 0, dstart + fsize);
+          var mime = bytesStr(buf, p, mimeEnd - p);
+          p = mimeEnd + 1;
+          var picType = buf[p]; p++;
+          var descEnd;
+          if (enc === 1 || enc === 2) {
+            descEnd = p;
+            while (descEnd + 1 < dstart + fsize && !(buf[descEnd] === 0 && buf[descEnd + 1] === 0)) descEnd += 2;
+            p = descEnd + 2;
+          } else {
+            descEnd = indexOfByte(buf, p, 0, dstart + fsize);
+            p = descEnd + 1;
+          }
+          var data = buf.subarray(p, dstart + fsize);
+          if (data.length > 64) {
+            out.cover = { blob: new Blob([data], { type: mime || 'image/jpeg' }), size: data.length };
+          }
+        } catch (e) { }
+      } else if (fid === 'TIT2' || fid === 'TPE1' || fid === 'TALB' || fid === 'TYER' || fid === 'TDRC' || fid === 'TCON' || fid === 'TPE2') {
+        var enc2 = buf[dstart];
+        var txt = decodeText(buf, dstart + 1, fsize - 1, enc2);
+        if (fid === 'TIT2') out.title = txt;
+        else if (fid === 'TPE1') out.artist = txt;
+        else if (fid === 'TALB') out.album = txt;
+        else if (fid === 'TPE2') out.albumArtist = txt;
+        else if (fid === 'TCON') out.genre = txt.replace(/^\(\d+\)/, '');
+        else out.year = (txt.match(/\d{4}/) || [''])[0];
+      }
+      off = dstart + fsize + ((ver === 3 && (fflags2 & 0x80)) ? 4 : 0);
+    }
+    return out;
+  }
+
+  function parseVorbisComments(buf, start, end) {
+    var out = {};
+    try {
+      var p = start;
+      var vlen = rd32le(buf, p); p += 4 + vlen;
+      var count = rd32le(buf, p); p += 4;
+      for (var i = 0; i < count && p + 4 <= end; i++) {
+        var len = rd32le(buf, p); p += 4;
+        var line = decodeText(buf, p, len, 3);
+        p += len;
+        var eq = line.indexOf('=');
+        if (eq < 0) continue;
+        var k = line.slice(0, eq).toUpperCase(), v = line.slice(eq + 1);
+        if (!out[k]) out[k] = v;
+      }
+    } catch (e) { }
+    return out;
+  }
+
+  function parseFLAC(buf) {
+    if (bytesStr(buf, 0, 4) !== 'fLaC') return null;
+    var out = { title: '', artist: '', album: '', year: '', genre: '', cover: null, duration: 0 };
+    var p = 4;
+    while (p + 4 <= buf.length) {
+      var head = buf[p];
+      var last = head & 0x80, type = head & 0x7f;
+      var len = rd24be(buf, p + 1);
+      var start = p + 4, end = Math.min(buf.length, start + len);
+      if (type === 0 && len >= 18) {
+        var b = start + 10;
+        var sampleRate = (buf[b] << 12) | (buf[b + 1] << 4) | (buf[b + 2] >> 4);
+        var total = ((buf[b + 3] & 0x0f) * 4294967296) + rd32be(buf, b + 4);
+        if (sampleRate > 0 && total > 0) out.duration = total / sampleRate;
+      } else if (type === 4) {
+        var c = parseVorbisComments(buf, start, end);
+        out.title = c.TITLE || '';
+        out.artist = c.ARTIST || '';
+        out.album = c.ALBUM || '';
+        out.year = (c.DATE || c.YEAR || '').slice(0, 4);
+        out.genre = c.GENRE || '';
+        out.albumArtist = c.ALBUMARTIST || '';
+      } else if (type === 6 && !out.cover) {
+        try {
+          var q = start;
+          q += 4; // picture type
+          var mlen = rd32be(buf, q); q += 4;
+          var mime = bytesStr(buf, q, mlen); q += mlen;
+          var dlen = rd32be(buf, q); q += 4 + dlen;
+          q += 16; // width height depth colors
+          var plen = rd32be(buf, q); q += 4;
+          if (plen > 64) out.cover = { blob: new Blob([buf.subarray(q, q + plen)], { type: mime || 'image/jpeg' }), size: plen };
+        } catch (e) { }
+      }
+      if (last) break;
+      p = start + len;
+    }
+    return out;
+  }
+
+  function parseOGG(buf) {
+    var idx = indexOfStr(buf, 0, 'OpusTags', 262144);
+    var start = -1;
+    if (idx >= 0) start = idx + 8;
+    else {
+      var v = indexOfStr(buf, 0, '\u0003vorbis', 262144);
+      if (v >= 0) start = v + 7;
+    }
+    if (start < 0) return null;
+    var c = parseVorbisComments(buf, start, buf.length);
+    return {
+      title: c.TITLE || '', artist: c.ARTIST || '', album: c.ALBUM || '',
+      year: (c.DATE || '').slice(0, 4), genre: c.GENRE || '', cover: null, albumArtist: c.ALBUMARTIST || ''
+    };
+  }
+
+  function decodeMp4Text(buf, off, len, dtype) {
+    var t = dtype & 0x00ffffff;
+    if (t === 2) return decodeText(buf, off, len, 1);
+    if (t === 1) return decodeText(buf, off, len, 3);
+    return decodeText(buf, off, len, 3);
+  }
+
+  function parseM4A(buf) {
+    var out = { title: '', artist: '', album: '', year: '', genre: '', cover: null, albumArtist: '' };
+    var map = { '\u00a9nam': 'title', '\u00a9ART': 'artist', '\u00a9alb': 'album', '\u00a9gen': 'genre', '\u00a9day': 'year', 'aART': 'albumArtist' };
+    function walk(start, end, depth) {
+      var o = start;
+      while (o + 8 <= end && depth < 9) {
+        var size = rd32be(buf, o);
+        var type = bytesStr(buf, o + 4, 4);
+        var hdr = 8;
+        if (size === 1) { size = rd32be(buf, o + 8) * 4294967296 + rd32be(buf, o + 12); hdr = 16; }
+        if (size < hdr || o + size > end + 8) break;
+        var body = o + hdr, bodyEnd = Math.min(o + size, end);
+        if (type === 'moov' || type === 'udta' || type === 'ilst' || type === 'trak' || type === 'mdia' || type === 'minf' || type === 'stbl') {
+          walk(body, bodyEnd, depth + 1);
+        } else if (type === 'meta') {
+          walk(body + 4, bodyEnd, depth + 1);
+        } else if (type === 'covr' || map[type]) {
+          var p = body;
+          if (p + 16 <= bodyEnd) {
+            var dsz = rd32be(buf, p);
+            if (bytesStr(buf, p + 4, 4) === 'data') {
+              var dtype = rd32be(buf, p + 8);
+              var payload = p + 16;
+              var plen = Math.min(o + size, bodyEnd) - payload;
+              if (type === 'covr') {
+                if (!out.cover && plen > 64) {
+                  var isPng = (dtype & 0xffffff) === 14;
+                  out.cover = { blob: new Blob([buf.subarray(payload, payload + plen)], { type: isPng ? 'image/png' : 'image/jpeg' }), size: plen };
+                }
+              } else {
+                out[map[type]] = decodeMp4Text(buf, payload, plen, dtype);
+              }
+            }
+          }
+        }
+        o += size;
+      }
+    }
+    walk(0, buf.length, 0);
+    return out;
+  }
+
+  function parseWAV(buf) {
+    if (bytesStr(buf, 0, 4) !== 'RIFF' || bytesStr(buf, 8, 4) !== 'WAVE') return null;
+    var out = { title: '', artist: '', album: '', year: '', genre: '', cover: null, duration: 0 };
+    var p = 12;
+    while (p + 8 <= buf.length) {
+      var id = bytesStr(buf, p, 4);
+      var size = rd32le(buf, p + 4);
+      var start = p + 8, end = Math.min(buf.length, start + size);
+      if (id === 'fmt ' && size >= 16) {
+        var byteRate = rd32le(buf, start + 8);
+        out._byteRate = byteRate;
+        out._channels = buf[start + 2] | (buf[start + 3] << 8);
+        out._bits = buf[start + 14] | (buf[start + 15] << 8);
+      } else if (id === 'data') {
+        out._dataSize = size;
+        if (out._byteRate) out.duration = size / out._byteRate;
+      } else if (id === 'LIST' && bytesStr(buf, start, 4) === 'INFO') {
+        var q = start + 4;
+        while (q + 8 <= end) {
+          var sid = bytesStr(buf, q, 4), slen = rd32le(buf, q + 4);
+          var val = decodeText(buf, q + 8, Math.max(0, slen - 1), 3);
+          if (sid === 'INAM') out.title = val;
+          else if (sid === 'IART') out.artist = val;
+          else if (sid === 'IPRD') out.album = val;
+          else if (sid === 'ICRD') out.year = (val.match(/\d{4}/) || [''])[0];
+          else if (sid === 'IGNR') out.genre = val;
+          q += 8 + slen + (slen % 2);
+        }
+      } else if ((id === 'id3 ' || id === 'ID3 ') && !out.title) {
+        var t = parseID3(buf.subarray(start, end));
+        if (t) {
+          out.title = t.title; out.artist = t.artist; out.album = t.album;
+          out.year = t.year; out.genre = t.genre; out.cover = t.cover;
+        }
+      }
+      p = start + size + (size % 2);
+      if (size <= 0) break;
+    }
+    return out;
+  }
+
+  function metaFromName(name) {
+    var base = name.replace(/\.[a-z0-9]{1,6}$/i, '').replace(/_/g, ' ').trim();
+    base = base.replace(/^\s*\d{1,3}[\s.\-]+/, '');
+    var out = { title: base, artist: '' };
+    var m = base.split(/\s+-\s+/);
+    if (m.length >= 2) { out.artist = m[0].trim(); out.title = m.slice(1).join(' - ').trim(); }
+    return out;
+  }
+
+  async function parseMeta(file) {
+    var head = await file.slice(0, Math.min(file.size, 2 * 1024 * 1024)).arrayBuffer();
+    var buf = new Uint8Array(head);
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+    var meta = null;
+    try {
+      if (bytesStr(buf, 0, 3) === 'ID3') meta = parseID3(buf);
+      if (!meta && ext === 'flac') meta = parseFLAC(buf);
+      if (!meta && (ext === 'm4a' || ext === 'mp4' || ext === 'aac' || ext === 'm4b')) meta = parseM4A(buf);
+      if (!meta && (ext === 'wav' || ext === 'wave')) meta = parseWAV(buf);
+      if (!meta && (ext === 'ogg' || ext === 'oga' || ext === 'opus')) meta = parseOGG(buf);
+      if (!meta && bytesStr(buf, 0, 4) === 'fLaC') meta = parseFLAC(buf);
+      if (!meta && bytesStr(buf, 4, 4) === 'ftyp') meta = parseM4A(buf);
+      if (!meta && bytesStr(buf, 0, 4) === 'RIFF') meta = parseWAV(buf);
+    } catch (e) { meta = null; }
+    var fb = metaFromName(file.name);
+    meta = meta || {};
+    return {
+      title: cleanTag(meta.title) || fb.title || file.name,
+      artist: cleanTag(meta.artist) || fb.artist || '알 수 없는 아티스트',
+      album: cleanTag(meta.album) || '싱글',
+      albumArtist: cleanTag(meta.albumArtist) || '',
+      year: cleanTag(meta.year) || '',
+      genre: cleanTag(meta.genre) || '',
+      cover: meta.cover || null,
+      duration: meta.duration || 0
+    };
+  }
+
+  function probeDuration(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var a = doc.createElement('audio');
+      var done = false;
+      function finish(v) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        a.removeAttribute('src');
+        try { a.load(); } catch (e) { }
+        URL.revokeObjectURL(url);
+        resolve(v || 0);
+      }
+      var timer = setTimeout(function () { finish(0); }, 7000);
+      a.preload = 'metadata';
+      a.onloadedmetadata = function () { finish(isFinite(a.duration) ? a.duration : 0); };
+      a.onerror = function () { finish(0); };
+      try { a.src = url; } catch (e) { finish(0); }
+    });
+  }
+
+  /* ============================================================
+     생성형 앨범 커버
+     ============================================================ */
+  function genCover(seed) {
+    seed = seed || 'lemon player';
+    if (genCoverCache[seed]) return genCoverCache[seed];
+    var h = hashStr(seed);
+    var hue1 = h % 360;
+    var hue2 = (hue1 + 68 + ((h >>> 9) % 110)) % 360;
+    var hue3 = (hue1 + 200 + ((h >>> 4) % 70)) % 360;
+    var cv = doc.createElement('canvas');
+    cv.width = 512; cv.height = 512;
+    var c = cv.getContext('2d');
+    var g = c.createLinearGradient(0, 0, 512, 512);
+    g.addColorStop(0, 'hsl(' + hue1 + ',58%,26%)');
+    g.addColorStop(.52, 'hsl(' + hue2 + ',66%,15%)');
+    g.addColorStop(1, 'hsl(' + hue3 + ',52%,10%)');
+    c.fillStyle = g; c.fillRect(0, 0, 512, 512);
+
+    var glow = c.createRadialGradient(170, 130, 8, 200, 170, 340);
+    glow.addColorStop(0, 'hsla(' + hue2 + ',92%,66%,.55)');
+    glow.addColorStop(.6, 'hsla(' + hue1 + ',80%,45%,.16)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = glow; c.fillRect(0, 0, 512, 512);
+
+    c.save();
+    c.globalAlpha = .5;
+    c.strokeStyle = 'rgba(255,255,255,.18)';
+    for (var r = 40; r < 420; r += 13) { c.beginPath(); c.arc(256, 256, r, 0, Math.PI * 2); c.lineWidth = 1; c.stroke(); }
+    c.restore();
+
+    c.save();
+    c.beginPath(); c.arc(256, 256, 190, 0, Math.PI * 2);
+    var disc = c.createRadialGradient(205, 195, 18, 256, 256, 200);
+    disc.addColorStop(0, 'hsla(' + hue2 + ',95%,72%,.9)');
+    disc.addColorStop(.55, 'hsla(' + hue1 + ',85%,38%,.92)');
+    disc.addColorStop(1, 'rgba(6,4,12,.96)');
+    c.fillStyle = disc; c.fill();
+    c.clip();
+    c.globalAlpha = .28; c.strokeStyle = '#fff';
+    for (var r2 = 12; r2 < 200; r2 += 7) { c.beginPath(); c.arc(256, 256, r2, 0, Math.PI * 2); c.lineWidth = 1.4; c.stroke(); }
+    c.restore();
+
+    c.save();
+    c.translate(256, 256);
+    c.rotate(((h % 90) / 90) * Math.PI);
+    var sweep = c.createLinearGradient(-230, -30, 240, 80);
+    sweep.addColorStop(0, 'rgba(255,255,255,0)');
+    sweep.addColorStop(.45, 'rgba(255,255,255,.16)');
+    sweep.addColorStop(.5, 'rgba(255,255,255,.34)');
+    sweep.addColorStop(.55, 'rgba(255,255,255,.14)');
+    sweep.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sweep; c.fillRect(-260, -16, 520, 96);
+    c.restore();
+
+    c.beginPath(); c.arc(256, 256, 34, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(8,5,14,.92)'; c.fill();
+    c.beginPath(); c.arc(256, 256, 9, 0, Math.PI * 2);
+    c.fillStyle = 'hsla(' + hue2 + ',95%,72%,.95)'; c.fill();
+
+    var dots = 26;
+    c.globalAlpha = .5;
+    for (var i = 0; i < dots; i++) {
+      var hh = hashStr(seed + i);
+      var dx = 20 + (hh % 472), dy = 20 + ((hh >>> 8) % 472);
+      var rad = 1 + ((hh >>> 3) % 3);
+      c.beginPath(); c.arc(dx, dy, rad, 0, Math.PI * 2);
+      c.fillStyle = i % 3 === 0 ? 'rgba(255,255,255,.55)' : 'hsla(' + hue2 + ',95%,75%,.5)';
+      c.fill();
+    }
+    c.globalAlpha = 1;
+
+    var out = cv.toDataURL('image/jpeg', .86);
+    genCoverCache[seed] = out;
+    return out;
+  }
+
+  function coverOf(t) {
+    if (!t) return genCover('lemon player');
+    if (t.coverBlob) {
+      if (!coverUrls[t.id]) {
+        try { coverUrls[t.id] = URL.createObjectURL(t.coverBlob); } catch (e) { return genCover(t.coverSeed || t.title); }
+      }
+      return coverUrls[t.id];
+    }
+    return genCover(t.coverSeed || ((t.title || '') + '|' + (t.artist || '')));
+  }
+
+  /* ============================================================
+     오디오 엔진 — Web Audio · 10밴드 EQ · 분석기
+     ============================================================ */
+  var audio = new Audio();
+  audio.preload = 'metadata';
+  audio.crossOrigin = 'anonymous';
+  var actx = null, srcNode = null, filters = [], analyser = null;
+  var freqData = null, waveData = null;
+  var audioUrls = {};
+  var graphFailed = false;
+  var seeking = false;
+
+  function audioURL(t) {
+    if (!t || !t.blob) return '';
+    if (!audioUrls[t.id]) {
+      try { audioUrls[t.id] = URL.createObjectURL(t.blob); } catch (e) { return ''; }
+    }
+    return audioUrls[t.id];
+  }
+  function dropAudioURL(id) {
+    if (audioUrls[id]) { try { URL.revokeObjectURL(audioUrls[id]); } catch (e) { } delete audioUrls[id]; }
+    if (coverUrls[id]) { try { URL.revokeObjectURL(coverUrls[id]); } catch (e) { } delete coverUrls[id]; }
+  }
+
+  function buildGraph() {
+    if (actx || graphFailed) return actx;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { graphFailed = true; return null; }
+    try {
+      actx = new AC();
+      srcNode = actx.createMediaElementSource(audio);
+      filters = EQ_FREQS.map(function (f) {
+        var b = actx.createBiquadFilter();
+        b.type = 'peaking';
+        b.frequency.value = f;
+        b.Q.value = 1.05;
+        b.gain.value = state.eqOn ? state.eqGains[EQ_FREQS.indexOf(f)] || 0 : 0;
+        return b;
+      });
+      var node = srcNode;
+      filters.forEach(function (f) { node.connect(f); node = f; });
+      analyser = actx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = .82;
+      node.connect(analyser);
+      analyser.connect(actx.destination);
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+      waveData = new Uint8Array(analyser.fftSize);
+      applyEQ();
+    } catch (e) {
+      graphFailed = true;
+      actx = null;
+    }
+    return actx;
+  }
+
+  function applyEQ() {
+    if (!filters.length) return;
+    for (var i = 0; i < filters.length; i++) {
+      var g = state.eqOn ? (state.eqGains[i] || 0) : 0;
+      try { filters[i].gain.setTargetAtTime(g, actx.currentTime, .03); } catch (e) { filters[i].gain.value = g; }
+    }
+  }
+
+  function ensureRunning() {
+    var ctx = buildGraph();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(function () { });
+    }
+  }
+
+  /* ---------------- 재생 ---------------- */
+  function trackIndexOf(id) {
+    for (var i = 0; i < tracks.length; i++) if (tracks[i].id === id) return i;
+    return -1;
+  }
+  function allIds() { return tracks.map(function (t) { return t.id; }); }
+
+  function setQueue(ids, currentId) {
+    state.queue = (ids || []).slice();
+    if (currentId) state.currentId = currentId;
+    saveState();
+    renderQueue();
+    renderNowPlaying();
+  }
+
+  function playTrack(id, opts) {
+    opts = opts || {};
+    var t = trackMap[id];
+    if (!t) { toast('곡을 찾을 수 없어요', 'err'); return; }
+    if (opts.list && opts.list.length) {
+      state.queue = opts.list.slice();
+    } else if (state.queue.indexOf(id) < 0) {
+      state.queue = allIds();
+    }
+    state.currentId = id;
+    loadTrack(id, true);
+    saveState();
+    goView('studio');
+  }
+
+  function loadTrack(id, autoplay, keepTime) {
+    var t = trackMap[id];
+    if (!t) return;
+    var url = audioURL(t);
+    var changed = audio.getAttribute('src') !== url;
+    state.currentId = id;
+    if (changed) {
+      audio.src = url;
+      try { audio.load(); } catch (e) { }
+    }
+    audio.playbackRate = state.rate;
+    audio.volume = state.muted ? 0 : state.volume;
+    if (!keepTime && changed) {
+      audio.currentTime = 0;
+      setSeek(0);
+    }
+    updateMediaSession(t);
+    renderNowPlaying();
+    renderQueue();
+    renderLyrics(true);
+    renderHomeHeroTrack();
+    if (autoplay) playAudio();
+    updateMini();
+    flushState();
+  }
+
+  function playAudio() {
+    if (!state.currentId) { toast('먼저 곡을 골라 주세요', 'info'); goView('library'); return; }
+    if (!state.queue.length || state.queue.indexOf(state.currentId) < 0) {
+      state.queue = allIds();
+      saveState();
+      renderQueue();
+    }
+    ensureRunning();
+    var p = audio.play();
+    if (p && p.catch) {
+      p.catch(function (err) {
+        if (String(err && err.name) === 'NotAllowedError') toast('재생 버튼을 한 번 더 눌러 주세요', 'info');
+      });
+    }
+  }
+  function pauseAudio() { audio.pause(); }
+  function togglePlay() {
+    if (!state.currentId) { goView('library'); toast('보관함에서 곡을 선택하세요', 'info'); return; }
+    if (audio.paused) playAudio(); else pauseAudio();
+    hap(8);
+  }
+
+  function playNext(user) {
+    if (!state.queue.length) {
+      if (user) toast('대기열이 비어 있어요', 'info');
+      return;
+    }
+    var cur = state.queue.indexOf(state.currentId);
+    if (cur < 0) cur = -1;
+    if (state.repeat === 'one' && !user) { audio.currentTime = 0; playAudio(); return; }
+    var nid = null;
+    if (state.shuffle) {
+      if (state.queue.length === 1) nid = state.queue[0];
+      else {
+        var guard = 0;
+        do { nid = state.queue[Math.floor(Math.random() * state.queue.length)]; guard++; } while (nid === state.currentId && guard < 24);
+      }
+    } else if (cur + 1 < state.queue.length) {
+      nid = state.queue[cur + 1];
+    } else if (state.repeat === 'all') {
+      nid = state.queue[0];
+    }
+    if (!nid) {
+      if (state.repeat === 'one' && user) { audio.currentTime = 0; playAudio(); return; }
+      audio.pause();
+      toast('대기열의 마지막 곡이에요', 'info');
+      return;
+    }
+    loadTrack(nid, true);
+    if (user) hap(10);
+  }
+
+  function playPrev() {
+    if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+    var cur = state.queue.indexOf(state.currentId);
+    var nid = null;
+    if (state.shuffle) nid = state.queue[Math.floor(Math.random() * state.queue.length)];
+    else if (cur > 0) nid = state.queue[cur - 1];
+    else if (state.repeat === 'all') nid = state.queue[state.queue.length - 1];
+    if (!nid) { audio.currentTime = 0; return; }
+    loadTrack(nid, true);
+  }
+
+  function recordHistory(id) {
+    history = history.filter(function (h) { return h.id !== id; });
+    history.unshift({ id: id, at: Date.now() });
+    if (history.length > 200) history = history.slice(0, 200);
+    saveHistory();
+    var t = trackMap[id];
+    if (t) { t.playCount = (t.playCount || 0) + 1; t.lastPlayed = Date.now(); dbPut('tracks', t).catch(function () { }); }
+  }
+
+  /* ---------------- 미디어 세션 ---------------- */
+  function updateMediaSession(t) {
+    if (!('mediaSession' in navigator) || !t) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: t.title || '제목 없음',
+        artist: t.artist || '',
+        album: t.album || '',
+        artwork: [{ src: coverOf(t), sizes: '512x512', type: 'image/jpeg' }]
+      });
+    } catch (e) { }
+  }
+  function bindMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    var ms = navigator.mediaSession;
+    function safe(action, fn) { try { ms.setActionHandler(action, fn); } catch (e) { } }
+    safe('play', function () { playAudio(); });
+    safe('pause', function () { pauseAudio(); });
+    safe('previoustrack', function () { playPrev(); });
+    safe('nexttrack', function () { playNext(true); });
+    safe('stop', function () { pauseAudio(); audio.currentTime = 0; });
+    safe('seekbackward', function () { audio.currentTime = Math.max(0, audio.currentTime - 10); });
+    safe('seekforward', function () { audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); });
+    safe('seekto', function (d) { if (d && typeof d.seekTime === 'number') audio.currentTime = d.seekTime; });
+  }
+
+  /* ---------------- 수면 타이머 ---------------- */
+  var sleep = { kind: null, endsAt: 0, atEnd: false, tick: null };
+  function sleepLabelUpdate() {
+    var el = byId('sleepLabel');
+    if (!el) return;
+    if (sleep.atEnd) { el.textContent = '곡 끝'; return; }
+    if (!sleep.endsAt) { el.textContent = '타이머'; return; }
+    var left = Math.max(0, Math.ceil((sleep.endsAt - Date.now()) / 1000));
+    el.textContent = Math.floor(left / 60) + ':' + pad2(left % 60);
+  }
+  function startSleepTicker() {
+    clearInterval(sleep.tick);
+    sleepLabelUpdate();
+    sleep.tick = setInterval(function () {
+      if (sleep.endsAt && Date.now() >= sleep.endsAt) { finishSleep(); return; }
+      sleepLabelUpdate();
+    }, 1000);
+  }
+  function setSleep(minutes) {
+    sleep.kind = 'time'; sleep.atEnd = false;
+    sleep.endsAt = Date.now() + minutes * 60000;
+    startSleepTicker();
+    closeAll();
+    ensureRunning();
+    toast(minutes + '분 뒤에 재생을 멈출게요', 'ok');
+    hap(12);
+  }
+  function setSleepTrack() {
+    sleep.kind = 'track'; sleep.atEnd = true; sleep.endsAt = 0;
+    startSleepTicker(); closeAll();
+    toast('이 곡이 끝나면 멈춥니다', 'ok');
+  }
+  function clearSleep() {
+    sleep.kind = null; sleep.endsAt = 0; sleep.atEnd = false;
+    clearInterval(sleep.tick); sleep.tick = null;
+    sleepLabelUpdate();
+  }
+  function finishSleep() {
+    clearSleep();
+    fadeOutAndPause(function () { toast('수면 타이머로 재생을 멈췄어요', 'info'); });
+  }
+  function fadeOutAndPause(done) {
+    var startVol = audio.volume, steps = 18, i = 0;
+    var id = setInterval(function () {
+      i++;
+      audio.volume = startVol * (1 - i / steps);
+      if (i >= steps) {
+        clearInterval(id);
+        audio.pause();
+        audio.volume = state.muted ? 0 : state.volume;
+        if (done) done();
+      }
+    }, 220);
+  }
+
+  /* ---------------- 가사 ---------------- */
+  function parseLRC(text) {
+    var lines = String(text || '').split(/\r?\n/);
+    var out = [], synced = false;
+    var tagRe = /\[(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
+    var metaRe = /^\[(ar|ti|al|by|offset|length|re|ve|tool|encoding|au):/i;
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i];
+      if (metaRe.test(raw.trim())) continue;
+      var stamps = [], m;
+      tagRe.lastIndex = 0;
+      while ((m = tagRe.exec(raw))) {
+        var mm = parseInt(m[1], 10), ss = parseInt(m[2], 10);
+        var frac = m[3] ? parseInt(m[3], 10) / Math.pow(10, m[3].length) : 0;
+        stamps.push(mm * 60 + ss + frac);
+      }
+      var textPart = raw.replace(tagRe, '').trim();
+      if (stamps.length) {
+        synced = true;
+        for (var s = 0; s < stamps.length; s++) out.push({ t: stamps[s], text: textPart });
+      } else if (textPart) {
+        out.push({ t: null, text: textPart });
+      }
+    }
+    out.sort(function (a, b) {
+      if (a.t == null) return 1;
+      if (b.t == null) return -1;
+      return a.t - b.t;
+    });
+    return { synced: synced, lines: out };
+  }
+  var lyricState = { trackId: null, lines: [], synced: false, active: -1 };
+
+  function renderLyrics(reset) {
+    var box = byId('lyrScroll');
+    if (!box) return;
+    var t = trackMap[state.currentId];
+    var lrc = t && t.lrc ? t.lrc : '';
+    var parsed = parseLRC(lrc);
+    lyricState.trackId = state.currentId;
+    lyricState.lines = parsed.lines;
+    lyricState.synced = parsed.synced;
+    lyricState.active = -1;
+    if (!parsed.lines.length) {
+      box.innerHTML = '<p class="lyr-empty py-6 text-center">가사가 없어요. .lrc 파일을 불러오거나 직접 붙여넣으면 재생에 맞춰 따라갑니다.</p>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < parsed.lines.length; i++) {
+      var L = parsed.lines[i];
+      html += '<button class="lyr-line" data-lyr="' + i + '">' +
+        (L.t != null ? '<span class="lyr-ts">' + fmtTime(L.t) + '</span>' : '') +
+        esc(L.text) + '</button>';
+    }
+    box.innerHTML = html;
+    if (parsed.synced) highlightLyrics(audio.currentTime);
+    if (reset) box.scrollTop = 0;
+  }
+
+  function highlightLyrics(time) {
+    if (!lyricState.synced || !lyricState.lines.length) return;
+    var idx = -1;
+    for (var i = 0; i < lyricState.lines.length; i++) {
+      var L = lyricState.lines[i];
+      if (L.t != null && L.t <= time + .12) idx = i; else if (L.t != null && L.t > time + .12) break;
+    }
+    if (idx === lyricState.active) return;
+    var prev = lyricState.active;
+    lyricState.active = idx;
+    var box = byId('lyrScroll');
+    if (!box) return;
+    var nodes = box.querySelectorAll('.lyr-line');
+    for (var k = 0; k < nodes.length; k++) {
+      nodes[k].classList.toggle('on', k === idx);
+      nodes[k].classList.toggle('past', idx >= 0 && k < idx);
+    }
+    if (idx >= 0 && nodes[idx]) {
+      var line = nodes[idx];
+      var target = line.offsetTop - box.clientHeight * 0.42;
+      try { box.scrollTo({ top: Math.max(0, target), behavior: 'smooth' }); } catch (e) { box.scrollTop = Math.max(0, target); }
+      if (prev < 0) { }
+    }
+  }
+
+  /* ============================================================
+     비주얼라이저
+     ============================================================ */
+  var vizRaf = 0, vizW = 0, vizH = 0, vizMode = 'bars';
+
+  function sizeViz() {
+    var cv = byId('vizCanvas');
+    if (!cv) return;
+    var rect = cv.getBoundingClientRect();
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    vizW = Math.max(1, Math.round(rect.width));
+    vizH = Math.max(1, Math.round(rect.height));
+    cv.width = Math.round(vizW * dpr);
+    cv.height = Math.round(vizH * dpr);
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function vizData() {
+    var n = 72;
+    var arr = new Array(n);
+    var live = analyser && !audio.paused;
+    if (live) {
+      try { analyser.getByteFrequencyData(freqData); } catch (e) { live = false; }
+    }
+    var now = performance.now() / 640;
+    for (var i = 0; i < n; i++) {
+      if (live) {
+        var bin = Math.floor(Math.pow(i / n, 1.55) * (freqData.length * .72)) + 2;
+        var v = (freqData[bin] || 0) / 255;
+        arr[i] = Math.pow(v, 1.18);
+      } else {
+        var idle = Math.sin(now + i * .42) * .5 + .5;
+        arr[i] = .04 + idle * .09 + (i % 7 === 0 ? .03 : 0);
+      }
+    }
+    return arr;
+  }
+
+  function drawViz() {
+    vizRaf = requestAnimationFrame(drawViz);
+    if (doc.hidden) return;
+    var cv = byId('vizCanvas');
+    if (!cv || !vizW) return;
+    var c = cv.getContext('2d');
+    c.clearRect(0, 0, vizW, vizH);
+    var data = vizData();
+    var current = vizMode;
+
+    if (current === 'wave') {
+      var wd = waveData;
+      var live = analyser && !audio.paused;
+      if (live) { try { analyser.getByteTimeDomainData(wd); } catch (e) { live = false; } }
+      var grad = c.createLinearGradient(0, 0, vizW, 0);
+      grad.addColorStop(0, '#7b2ff7'); grad.addColorStop(.55, '#a97cff'); grad.addColorStop(1, '#22e3b6');
+      c.beginPath();
+      for (var x = 0; x <= vizW; x += 2) {
+        var v;
+        if (live) v = (wd[Math.floor(x / vizW * wd.length)] - 128) / 128;
+        else v = Math.sin(x / 42 + performance.now() / 900) * .12;
+        var y = vizH / 2 + v * vizH * .34;
+        if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      }
+      c.strokeStyle = grad; c.lineWidth = 2.2; c.lineJoin = 'round';
+      c.shadowColor = 'rgba(34,227,182,.55)'; c.shadowBlur = 14;
+      c.stroke();
+      c.shadowBlur = 0;
+      c.beginPath();
+      for (var x2 = 0; x2 <= vizW; x2 += 2) {
+        var v2;
+        if (live) v2 = (wd[Math.floor(x2 / vizW * wd.length)] - 128) / 128;
+        else v2 = Math.sin(x2 / 42 + performance.now() / 900) * .12;
+        var y2 = vizH / 2 - v2 * vizH * .34;
+        c.lineTo(x2, y2);
+      }
+      c.strokeStyle = 'rgba(123,47,247,.35)'; c.lineWidth = 1.4; c.stroke();
+      return;
+    }
+
+    if (current === 'ring') {
+      var cx = vizW / 2, cy = vizH / 2;
+      var base = Math.min(vizW, vizH) * .19;
+      var n = data.length;
+      c.save();
+      c.translate(cx, cy);
+      for (var i = 0; i < n; i++) {
+        var ang = (i / n) * Math.PI * 2 - Math.PI / 2;
+        var amp = 8 + data[i] * Math.min(vizW, vizH) * .3;
+        var x1 = Math.cos(ang) * base, y1 = Math.sin(ang) * base;
+        var x2 = Math.cos(ang) * (base + amp), y2 = Math.sin(ang) * (base + amp);
+        var lg = c.createLinearGradient(x1, y1, x2, y2);
+        lg.addColorStop(0, 'rgba(123,47,247,.85)');
+        lg.addColorStop(1, 'rgba(34,227,182,.9)');
+        c.strokeStyle = lg; c.lineWidth = 2.4; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+      }
+      c.beginPath(); c.arc(0, 0, base - 3, 0, Math.PI * 2);
+      c.strokeStyle = 'rgba(255,255,255,.14)'; c.lineWidth = 1; c.stroke();
+      c.beginPath(); c.arc(0, 0, base * .42, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(123,47,247,.18)'; c.fill();
+      c.strokeStyle = 'rgba(34,227,182,.4)'; c.lineWidth = 1.2; c.stroke();
+      c.restore();
+      return;
+    }
+
+    var bars = data.length;
+    var gap = 2;
+    var bw = Math.max(2, (vizW - gap * (bars - 1)) / bars);
+    var grad2 = c.createLinearGradient(0, vizH, 0, 0);
+    grad2.addColorStop(0, '#7b2ff7');
+    grad2.addColorStop(.55, '#b478ff');
+    grad2.addColorStop(1, '#22e3b6');
+    for (var b = 0; b < bars; b++) {
+      var h = Math.max(3, data[b] * (vizH - 26));
+      var x3 = b * (bw + gap);
+      var r = Math.min(bw / 2, 3);
+      c.fillStyle = grad2;
+      c.globalAlpha = .9;
+      var y3 = vizH - 12 - h;
+      c.beginPath();
+      if (c.roundRect) c.roundRect(x3, y3, bw, h, r);
+      else { c.moveTo(x3, y3); c.arcTo(x3 + bw, y3, x3 + bw, y3 + h, r); c.arcTo(x3 + bw, y3 + h, x3, y3 + h, r); c.arcTo(x3, y3 + h, x3, y3, r); c.arcTo(x3, y3, x3 + bw, y3, r); }
+      c.fill();
+      c.globalAlpha = .16;
+      c.fillRect(x3, vizH - 10, bw, 4);
+    }
+    c.globalAlpha = 1;
+  }
+
+  /* ============================================================
+     화면 렌더링
+     ============================================================ */
+  var goView = function () { };
+  var searchQuery = '', sortMode = 'added', activePlaylistId = null;
+  var actTrackId = null, editTrackId = null, playlistTrackId = null;
+  var pendingCover = undefined;
+
+  function isAudioFile(f) {
+    if (!f) return false;
+    if (f.type && f.type.indexOf('audio/') === 0) return true;
+    return /\.(mp3|flac|m4a|m4b|aac|wav|wave|ogg|oga|opus|weba|aif|aiff)$/i.test(f.name || '');
+  }
+  function extOf(name) {
+    var m = String(name || '').match(/\.([a-z0-9]{1,6})$/i);
+    return m ? m[1].toUpperCase() : 'AUDIO';
+  }
+  function sortTracks() {
+    tracks.sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
+  }
+
+  function renderAll() {
+    renderHomeStats();
+    renderRecent();
+    renderHomePlaylists();
+    renderTracks();
+    renderPlaylists();
+    renderHistory();
+    renderStorage();
+    renderNowPlaying();
+    renderQueue();
+    updateMini();
+    renderHomeHeroTrack();
+    renderEqState();
+  }
+
+  function renderHomeHeroTrack() {
+    var el = byId('heroTrackName');
+    if (!el) return;
+    var t = trackMap[state.currentId];
+    el.textContent = t ? (t.title || '제목 없음') : '아직 재생한 곡이 없어요';
+  }
+
+  function renderHomeStats() {
+    byId('statTracks').textContent = String(tracks.length);
+    byId('statTracksSub').textContent = tracks.length ? (new Set(tracks.map(function (t) { return t.artist; })).size + '명의 아티스트') : '아직 비어 있어요';
+    var dur = tracks.reduce(function (s, t) { return s + (t.duration || 0); }, 0);
+    byId('statDuration').textContent = fmtLong(dur);
+    byId('statDurationSub').textContent = tracks.length ? '약 ' + Math.max(1, Math.round(dur / 60)) + '분의 음악' : '플레이리스트 전체 기준';
+    byId('statPlaylists').textContent = String(playlists.length);
+    var bytes = tracks.reduce(function (s, t) { return s + (t.size || 0); }, 0);
+    byId('statBytes').textContent = fmtBytes(bytes);
+    if (byId('plAllCount')) byId('plAllCount').textContent = tracks.length + '곡';
+    if (byId('tabTrackCount')) byId('tabTrackCount').textContent = String(tracks.length);
+  }
+
+  function renderRecent() {
+    var box = byId('recentList');
+    if (!box) return;
+    var seen = {}, list = [];
+    for (var i = 0; i < history.length && list.length < 6; i++) {
+      var h = history[i];
+      if (!trackMap[h.id] || seen[h.id]) continue;
+      seen[h.id] = 1; list.push({ t: trackMap[h.id], at: h.at });
+    }
+    if (!list.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-6 text-center">아직 재생 기록이 없어요. 첫 곡을 담아 보세요.</p>';
+      return;
+    }
+    var html = '';
+    for (var k = 0; k < list.length; k++) {
+      var t = list[k].t;
+      html += '<div class="track-row" data-id="' + t.id + '" data-row-wrap="1">' +
+        '<button class="tr-act" data-row="play" aria-label="재생"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg></button>' +
+        '<img class="tr-art" src="' + coverOf(t) + '" alt="" loading="lazy">' +
+        '<div class="min-w-0 flex-1"><p class="tr-title truncate">' + esc(t.title) + '</p><p class="tr-sub truncate">' + esc(t.artist) + '</p></div>' +
+        '<span class="tr-dur">' + (t.duration ? fmtTime(t.duration) : '—') + '</span>' +
+        '<button class="tr-act" data-row="menu" aria-label="더보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-dots"></use></svg></button>' +
+        '</div>';
+    }
+    box.innerHTML = html;
+    markPlayingRows();
+  }
+
+  function renderHomePlaylists() {
+    var box = byId('homePlaylists');
+    if (!box) return;
+    if (!playlists.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-6 text-center">플레이리스트를 만들면 여기에 모여요.</p>';
+      return;
+    }
+    var html = '';
+    playlists.slice(0, 4).forEach(function (p) {
+      html += '<div class="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800/60 transition">' +
+        '<button class="w-8 h-8 rounded-lg brand-grad flex items-center justify-center shrink-0" data-pl-play="' + p.id + '" aria-label="재생">' +
+        '<svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg></button>' +
+        '<button class="min-w-0 flex-1 text-left" data-pl-open="' + p.id + '"><p class="text-[12px] font-bold truncate">' + esc(p.name) + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400">' + p.trackIds.length + '곡</p></button>' +
+        '<svg class="w-3.5 h-3.5 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-arrow-right"></use></svg>' +
+        '</div>';
+    });
+    box.innerHTML = html;
+  }
+
+  function renderNowPlaying() {
+    var t = trackMap[state.currentId];
+    var titleEl = byId('npTitle'), artistEl = byId('npArtist'), albumEl = byId('npAlbum');
+    var art = byId('npArt'), artEmpty = byId('npArtEmpty');
+    if (!titleEl) return;
+    if (!t) {
+      titleEl.textContent = '아직 재생한 곡이 없어요';
+      artistEl.textContent = '음악을 추가하면 여기에 표시됩니다';
+      albumEl.textContent = '';
+      art.style.opacity = '0';
+      artEmpty.style.display = 'flex';
+      byId('npFormat').textContent = '—';
+      byId('tDur').textContent = '0:00';
+      byId('tCur').textContent = '0:00';
+      setSeek(0);
+    } else {
+      titleEl.textContent = t.title || '제목 없음';
+      artistEl.textContent = t.artist || '알 수 없는 아티스트';
+      albumEl.textContent = [t.album, t.year].filter(Boolean).join(' · ');
+      art.src = coverOf(t);
+      art.style.opacity = '1';
+      artEmpty.style.display = 'none';
+      byId('npFormat').textContent = extOf(t.name) + (t.size ? ' · ' + fmtBytes(t.size) : '');
+      var durTxt = isFinite(audio.duration) && audio.duration ? fmtTime(audio.duration) : (t.duration ? fmtTime(t.duration) : '0:00');
+      byId('tDur').textContent = durTxt;
+    }
+    // rate pills
+    $$('[data-rate]').forEach(function (b) {
+      b.classList.toggle('on', Math.abs(parseFloat(b.getAttribute('data-rate')) - state.rate) < .01);
+    });
+    byId('btnShuffle').classList.toggle('on', !!state.shuffle);
+    var rep = byId('btnRepeat');
+    rep.classList.toggle('on', state.repeat !== 'off');
+    var one = byId('repeatOne');
+    if (one) { one.style.display = state.repeat === 'one' ? 'inline-flex' : 'none'; }
+    byId('icoVol').classList.toggle('hidden', state.muted);
+    byId('icoMute').classList.toggle('hidden', !state.muted);
+    byId('volInput').value = Math.round(state.volume * 100);
+    byId('volLabel').textContent = String(Math.round(state.volume * 100));
+    try { Lemon.refreshRange(byId('volInput')); } catch (e) { }
+    document.title = t ? (t.title + ' · Lemon Player') : 'Lemon Player — 로컬 음악 플레이어 & 뮤직 스튜디오';
+    updateMini();
+    markPlayingRows();
+  }
+
+  function markPlayingRows() {
+    $$('.track-row[data-id]').forEach(function (row) {
+      var on = row.getAttribute('data-id') === state.currentId;
+      row.classList.toggle('playing', on);
+      var btn = row.querySelector('[data-row="play"]');
+      if (btn) {
+        if (on && !audio.paused) btn.innerHTML = '<span class="playing-dot"><i></i><i></i><i></i></span>';
+        else if (on) btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><use href="#i-pause"></use></svg>';
+        else btn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg>';
+      }
+    });
+  }
+
+  function currentList() {
+    var list;
+    if (activePlaylistId) {
+      var pl = null;
+      for (var i = 0; i < playlists.length; i++) if (playlists[i].id === activePlaylistId) pl = playlists[i];
+      if (!pl) { activePlaylistId = null; list = allIds(); }
+      else list = pl.trackIds.filter(function (id) { return !!trackMap[id]; });
+    } else {
+      list = allIds();
+    }
+    var q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(function (id) {
+        var t = trackMap[id];
+        return t && ((t.title || '').toLowerCase().indexOf(q) > -1 || (t.artist || '').toLowerCase().indexOf(q) > -1 || (t.album || '').toLowerCase().indexOf(q) > -1);
+      });
+    }
+    if (sortMode !== 'added' && !activePlaylistId) {
+      list = list.slice().sort(function (a, b) {
+        var x = trackMap[a], y = trackMap[b];
+        if (sortMode === 'title') return String(x.title).localeCompare(String(y.title), 'ko');
+        if (sortMode === 'artist') return String(x.artist).localeCompare(String(y.artist), 'ko');
+        if (sortMode === 'duration') return (y.duration || 0) - (x.duration || 0);
+        if (sortMode === 'played') return (y.lastPlayed || 0) - (x.lastPlayed || 0);
+        return 0;
+      });
+    } else if (sortMode === 'played' && activePlaylistId) {
+      list = list.slice().sort(function (a, b) { return (trackMap[b].lastPlayed || 0) - (trackMap[a].lastPlayed || 0); });
+    }
+    return list;
+  }
+
+  function renderTracks() {
+    var box = byId('trackList');
+    if (!box) return;
+    var list = currentList();
+    var pl = null;
+    if (activePlaylistId) { for (var i = 0; i < playlists.length; i++) if (playlists[i].id === activePlaylistId) pl = playlists[i]; }
+    byId('libTitle').textContent = pl ? pl.name : '전체 트랙';
+    var dur = list.reduce(function (s, id) { return s + (trackMap[id].duration || 0); }, 0);
+    byId('libSub').textContent = list.length + '곡 · ' + fmtLong(dur) + (searchQuery ? ' · 검색 "' + searchQuery + '"' : '');
+    if (!list.length) {
+      box.innerHTML = '<div class="text-center py-10">' +
+        '<svg class="w-10 h-10 mx-auto float-y" style="color:#8a7ba6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-music"></use></svg>' +
+        '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-3 leading-relaxed">' +
+        (searchQuery ? '검색 결과가 없어요.' : (pl ? '이 플레이리스트는 비어 있어요. 곡의 메뉴에서 담아 보세요.' : '아직 음악이 없어요.<br>위의 음악 추가를 눌러 파일을 담아 보세요.')) + '</p></div>';
+      return;
+    }
+    var html = '';
+    for (var k = 0; k < list.length; k++) {
+      var t = trackMap[list[k]];
+      html += '<div class="track-row" data-id="' + t.id + '">' +
+        '<button class="tr-act" data-row="play" aria-label="재생"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg></button>' +
+        '<img class="tr-art" src="' + coverOf(t) + '" alt="" loading="lazy">' +
+        '<div class="min-w-0 flex-1"><p class="tr-title truncate">' + esc(t.title) + '</p>' +
+        '<p class="tr-sub truncate">' + esc(t.artist) + (t.album ? ' · ' + esc(t.album) : '') + '</p></div>' +
+        '<span class="tr-dur">' + (t.duration ? fmtTime(t.duration) : '—') + '</span>' +
+        '<button class="tr-act hidden sm:inline-flex" data-row="queue" aria-label="대기열에 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><use href="#i-plus"></use></svg></button>' +
+        '<button class="tr-act" data-row="menu" aria-label="더보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-dots"></use></svg></button>' +
+        '</div>';
+    }
+    box.innerHTML = html;
+    markPlayingRows();
+  }
+
+  function renderPlaylists() {
+    var box = byId('playlistList');
+    if (!box) return;
+    byId('plAll').classList.toggle('on', !activePlaylistId);
+    if (!playlists.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">아직 플레이리스트가 없어요.<br>곡을 모아 하나 만들어 보세요.</p>';
+      return;
+    }
+    var html = '';
+    playlists.forEach(function (p) {
+      var on = activePlaylistId === p.id;
+      html += '<div class="flex items-center gap-1 ' + (on ? 'rounded-xl bg-brand-50 dark:bg-brand-900/20' : '') + '">' +
+        '<button class="pl-chip flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded-xl text-left" data-pl-open="' + p.id + '">' +
+        '<span class="w-7 h-7 rounded-lg ' + (on ? 'brand-grad' : 'bg-neutral-100 dark:bg-neutral-800') + ' flex items-center justify-center shrink-0">' +
+        '<svg class="w-3.5 h-3.5 ' + (on ? 'text-white' : 'text-neutral-500') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-playlist"></use></svg></span>' +
+        '<span class="min-w-0 flex-1"><span class="block text-[11.5px] font-bold truncate">' + esc(p.name) + '</span>' +
+        '<span class="block text-[9.5px] text-neutral-500 dark:text-neutral-400">' + p.trackIds.length + '곡</span></span></button>' +
+        '<button class="tr-act" data-pl-play="' + p.id + '" aria-label="재생"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#i-play"></use></svg></button>' +
+        '<button class="tr-act" data-pl-menu="' + p.id + '" aria-label="더보기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-dots"></use></svg></button>' +
+        '</div>';
+    });
+    box.innerHTML = html;
+  }
+
+  function renderHistory() {
+    var box = byId('historyList');
+    if (!box) return;
+    if (!history.length) { box.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">재생 기록이 없어요.</p>'; return; }
+    var html = '';
+    history.slice(0, 30).forEach(function (h) {
+      var t = trackMap[h.id];
+      if (!t) return;
+      html += '<div class="flex items-center gap-2 px-1.5 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800/60 transition">' +
+        '<img class="w-7 h-7 rounded-md object-cover shrink-0" src="' + coverOf(t) + '" alt="" loading="lazy">' +
+        '<button class="min-w-0 flex-1 text-left" data-play-id="' + t.id + '"><p class="text-[11.5px] font-semibold truncate">' + esc(t.title) + '</p>' +
+        '<p class="text-[9.5px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(t.artist) + '</p></button>' +
+        '<span class="text-[9px] text-neutral-400 shrink-0">' + (window.Lemon && Lemon.timeAgo ? Lemon.timeAgo(h.at) : '') + '</span>' +
+        '</div>';
+    });
+    box.innerHTML = html || '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">재생 기록이 없어요.</p>';
+  }
+
+  var storageQuota = 0;
+  function renderStorage() {
+    if (!byId('storageLabel')) return;
+    var bytes = tracks.reduce(function (s, t) { return s + (t.size || 0); }, 0);
+    byId('storageAudio').textContent = fmtBytes(bytes);
+    byId('storageUsed').textContent = fmtBytes(bytes);
+    byId('storageBar').style.width = storageQuota ? Math.min(100, (bytes / storageQuota * 100)).toFixed(1) + '%' : '0%';
+    byId('storageQuota').textContent = storageQuota ? '여유 ' + fmtBytes(Math.max(0, storageQuota - bytes)) : '—';
+    var label = tracks.length + '곡 · ' + fmtBytes(bytes) + '를 이 브라우저에 보관 중입니다.';
+    byId('storageLabel').textContent = label;
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(function (est) {
+        if (est && est.quota) {
+          storageQuota = est.quota;
+          var used = est.usage || bytes;
+          byId('storageBar').style.width = Math.min(100, (used / est.quota * 100)).toFixed(1) + '%';
+          byId('storageQuota').textContent = '여유 ' + fmtBytes(Math.max(0, est.quota - used));
+          if (navigator.storage.persisted) {
+            navigator.storage.persisted().then(function (yes) {
+              byId('storageLabel').textContent = (yes ? '영구 보관 중 · ' : '') + tracks.length + '곡 · ' + fmtBytes(bytes) + '를 이 브라우저에 보관 중입니다.';
+              byId('btnPersist').textContent = yes ? '영구 보관됨' : '영구 보관 요청';
+            }).catch(function () { });
+          }
+        }
+      }).catch(function () { });
+    }
+  }
+
+  function renderQueue() {
+    var box = byId('queueList');
+    if (!box) return;
+    if (byId('queueCount')) byId('queueCount').textContent = String(state.queue.length);
+    var up = '다음 곡이 없어요';
+    var ci = state.queue.indexOf(state.currentId);
+    if (ci >= 0 && state.repeat !== 'one') {
+      if (state.shuffle) up = '셔플 중 · 다음 곡은 무작위';
+      else if (ci + 1 < state.queue.length) up = '다음 곡 · ' + (trackMap[state.queue[ci + 1]] ? trackMap[state.queue[ci + 1]].title : '');
+      else up = '마지막 곡입니다';
+    } else if (ci >= 0) up = '한 곡 반복 중';
+    if (byId('upNext')) byId('upNext').textContent = up;
+    if (!state.queue.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">보관함에서 곡을 추가하면 여기에 쌓입니다.</p>';
+      return;
+    }
+    var html = '';
+    state.queue.forEach(function (id, idx) {
+      var t = trackMap[id];
+      if (!t) return;
+      var on = id === state.currentId;
+      html += '<div class="queue-item flex items-center gap-2 px-1.5 py-1.5 rounded-lg ' + (on ? 'bg-brand-50 dark:bg-brand-900/20' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800/60') + '" draggable="true" data-qid="' + id + '" data-qidx="' + idx + '">' +
+        '<button class="cursor-grab text-neutral-400 shrink-0" data-q="drag" aria-label="순서 이동"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><use href="#i-grip"></use></svg></button>' +
+        '<span class="text-[9px] font-mono text-neutral-400 w-4 text-right shrink-0">' + (idx + 1) + '</span>' +
+        '<img class="w-7 h-7 rounded-md object-cover shrink-0" src="' + coverOf(t) + '" alt="" loading="lazy">' +
+        '<button class="min-w-0 flex-1 text-left" data-q="play"><p class="text-[11px] font-semibold truncate ' + (on ? 'text-brand-600 dark:text-brand-300' : '') + '">' + esc(t.title) + '</p>' +
+        '<p class="text-[9px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(t.artist) + '</p></button>' +
+        '<button class="tr-act" data-q="up" aria-label="위로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-up"></use></svg></button>' +
+        '<button class="tr-act" data-q="down" aria-label="아래로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-down"></use></svg></button>' +
+        '<button class="tr-act" data-q="del" aria-label="대기열에서 빼기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#i-close"></use></svg></button>' +
+        '</div>';
+    });
+    box.innerHTML = html || '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 py-5 text-center">대기열이 비어 있어요.</p>';
+  }
+
+  function updateMini() {
+    var t = trackMap[state.currentId];
+    var el = byId('miniPlayer');
+    if (!el) return;
+    el.classList.toggle('up', !!t);
+    doc.body.classList.toggle('has-mini', !!t);
+    if (!t) return;
+    byId('miniArt').src = coverOf(t);
+    byId('miniTitle').textContent = t.title || '제목 없음';
+    byId('miniArtist').textContent = t.artist || '';
+  }
+
+  /* ---------------- EQ UI ---------------- */
+  function buildEqBands() {
+    var box = byId('eqBands');
+    if (!box) return;
+    var html = '';
+    for (var i = 0; i < EQ_FREQS.length; i++) {
+      var f = EQ_FREQS[i] >= 1000 ? (EQ_FREQS[i] / 1000) + 'k' : EQ_FREQS[i];
+      html += '<div class="eq-band">' +
+        '<span class="eq-f">' + f + ' Hz</span>' +
+        '<input class="lemon-range eq-range" data-band="' + i + '" type="range" min="-12" max="12" step="0.5" value="' + (state.eqGains[i] || 0) + '" aria-label="' + f + ' Hz">' +
+        '<span class="eq-v" data-bandval="' + i + '">0</span>' +
+        '</div>';
+    }
+    box.innerHTML = html;
+    $$('.eq-range', box).forEach(function (r) {
+      try { Lemon.refreshRange(r); } catch (e) { }
+      r.addEventListener('input', function () {
+        var i = parseInt(r.getAttribute('data-band'), 10);
+        state.eqGains[i] = parseFloat(r.value);
+        state.eqPreset = 'custom';
+        applyEQ();
+        syncEqUI();
+        saveState();
+      });
+    });
+    syncEqUI();
+  }
+
+  function syncEqUI() {
+    var values = state.eqGains;
+    $$('.eq-range').forEach(function (r) {
+      var i = parseInt(r.getAttribute('data-band'), 10);
+      if (parseFloat(r.value) !== values[i]) r.value = values[i];
+      try { Lemon.refreshRange(r); } catch (e) { }
+    });
+    $$('[data-bandval]').forEach(function (el) {
+      var i = parseInt(el.getAttribute('data-bandval'), 10);
+      var v = values[i] || 0;
+      el.textContent = (v > 0 ? '+' : '') + v.toFixed(v % 1 ? 1 : 0);
+      el.style.color = Math.abs(v) >= .5 ? 'var(--brand)' : '';
+    });
+    $$('#eqPresets [data-preset]').forEach(function (b) {
+      b.classList.toggle('on', state.eqPreset === b.getAttribute('data-preset'));
+    });
+    byId('eqCustomTag').classList.toggle('hidden', state.eqPreset !== 'custom');
+    byId('eqToggle').classList.toggle('on', state.eqOn);
+    byId('eqToggle').setAttribute('aria-checked', state.eqOn ? 'true' : 'false');
+    drawEqCurve();
+  }
+  function renderEqState() { syncEqUI(); }
+
+  function drawEqCurve() {
+    var cv = byId('eqCurve');
+    if (!cv) return;
+    var rect = cv.getBoundingClientRect();
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var w = Math.max(1, Math.round(rect.width)), h = Math.max(1, Math.round(rect.height));
+    cv.width = w * dpr; cv.height = h * dpr;
+    var c = cv.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    var pad = 6;
+    c.strokeStyle = 'rgba(130,130,150,.18)';
+    c.lineWidth = 1;
+    for (var gy = 0; gy <= 2; gy++) {
+      var yy = pad + (h - pad * 2) * (gy / 2);
+      c.beginPath(); c.moveTo(0, yy); c.lineTo(w, yy); c.stroke();
+    }
+    var n = EQ_FREQS.length;
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+      var x = (i / (n - 1)) * (w - 4) + 2;
+      var v = state.eqOn ? (state.eqGains[i] || 0) : 0;
+      var y = pad + (1 - (v + 12) / 24) * (h - pad * 2);
+      pts.push([x, y]);
+    }
+    c.beginPath();
+    c.moveTo(pts[0][0], pts[0][1]);
+    for (var k = 1; k < pts.length; k++) {
+      var prev = pts[k - 1], cur = pts[k];
+      var mx = (prev[0] + cur[0]) / 2;
+      c.bezierCurveTo(mx, prev[1], mx, cur[1], cur[0], cur[1]);
+    }
+    var line = c.createLinearGradient(0, 0, w, 0);
+    line.addColorStop(0, '#7b2ff7'); line.addColorStop(1, '#22e3b6');
+    c.strokeStyle = line; c.lineWidth = 2; c.lineJoin = 'round';
+    c.stroke();
+    c.lineTo(pts[pts.length - 1][0], h); c.lineTo(pts[0][0], h); c.closePath();
+    var fill = c.createLinearGradient(0, 0, w, 0);
+    fill.addColorStop(0, 'rgba(123,47,247,.18)');
+    fill.addColorStop(1, 'rgba(34,227,182,.12)');
+    c.fillStyle = fill; c.fill();
+  }
+
+  /* ============================================================
+     시간·재생 UI
+     ============================================================ */
+  function setSeek(sec) {
+    var dur = isFinite(audio.duration) && audio.duration ? audio.duration : (trackMap[state.currentId] ? trackMap[state.currentId].duration : 0);
+    var ratio = dur ? clamp(sec / dur, 0, 1) : 0;
+    var pct = (ratio * 100).toFixed(2) + '%';
+    var fill = byId('seekFill'), thumb = byId('seekThumb');
+    if (fill) fill.style.width = pct;
+    if (thumb) thumb.style.left = pct;
+    if (byId('seekInput') && !seeking) byId('seekInput').value = String(Math.round(ratio * 1000));
+    if (byId('tCur')) byId('tCur').textContent = fmtTime(sec);
+    if (byId('miniProgFill')) byId('miniProgFill').style.width = pct;
+  }
+
+  function setPlayStateUI() {
+    var playing = !audio.paused && !!state.currentId;
+    byId('icoPlay').classList.toggle('hidden', playing);
+    byId('icoPause').classList.toggle('hidden', !playing);
+    byId('btnPlay').setAttribute('aria-label', playing ? '일시정지' : '재생');
+    byId('miniIcoPlay').classList.toggle('hidden', playing);
+    byId('miniIcoPause').classList.toggle('hidden', !playing);
+    byId('npVinyl').classList.toggle('spinning', playing);
+    var hero = byId('heroVinyl');
+    if (hero) hero.classList.toggle('spinning', playing || !state.currentId);
+    if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch (e) { } }
+    markPlayingRows();
+  }
+
+  audio.addEventListener('loadedmetadata', function () {
+    var t = trackMap[state.currentId];
+    if (t) {
+      var d = isFinite(audio.duration) ? audio.duration : 0;
+      if (d && Math.abs((t.duration || 0) - d) > .5) {
+        t.duration = d;
+        dbPut('tracks', t).catch(function () { });
+        renderHomeStats();
+        renderTracks();
+      }
+      byId('tDur').textContent = fmtTime(audio.duration || 0);
+    }
+    setSeek(audio.currentTime || 0);
+  });
+
+  audio.addEventListener('timeupdate', function () {
+    if (!seeking) setSeek(audio.currentTime);
+    if (lyricState.synced) highlightLyrics(audio.currentTime);
+    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && isFinite(audio.duration) && audio.duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: audio.duration,
+          playbackRate: audio.playbackRate,
+          position: Math.min(audio.currentTime, audio.duration)
+        });
+      } catch (e) { }
+    }
+  });
+
+  audio.addEventListener('play', function () {
+    setPlayStateUI();
+    var t = trackMap[state.currentId];
+    if (t) recordHistory(t.id);
+    if (byId('nowDot')) byId('nowDot').classList.add('nav-on');
+    renderRecent();
+    renderHistory();
+  });
+  audio.addEventListener('pause', setPlayStateUI);
+  audio.addEventListener('ratechange', function () { if (byId('npFormat')) renderNowPlaying(); });
+
+  audio.addEventListener('ended', function () {
+    if (sleep.atEnd) { clearSleep(); fadeOutAndPause(function () { toast('수면 타이머로 재생을 멈췄어요', 'info'); }); return; }
+    playNext(false);
+  });
+
+  audio.addEventListener('error', function () {
+    if (!state.currentId) return;
+    toast('이 파일은 브라우저에서 재생할 수 없어요 (코덱 확인)', 'err');
+    setPlayStateUI();
+  });
+
+  /* ============================================================
+     파일 추가
+     ============================================================ */
+  var adding = false;
+  function progressShow(total) {
+    byId('addProgress').classList.remove('hidden');
+    byId('addProgressCount').textContent = '0 / ' + total;
+    byId('addProgressBar').style.width = '0%';
+    byId('addProgressLabel').textContent = '음악을 담는 중…';
+  }
+  function progressSet(done, total, label) {
+    byId('addProgressCount').textContent = done + ' / ' + total;
+    byId('addProgressBar').style.width = (total ? (done / total * 100) : 0).toFixed(1) + '%';
+    if (label) byId('addProgressLabel').textContent = label;
+  }
+  function progressHide(delay) {
+    setTimeout(function () { byId('addProgress').classList.add('hidden'); }, delay || 900);
+  }
+
+  async function addFiles(fileList) {
+    if (adding) { toast('이미 담는 중이에요', 'info'); return; }
+    var files = Array.prototype.slice.call(fileList || []).filter(isAudioFile);
+    if (!files.length) { toast('음원 파일이 아니에요 (MP3·FLAC·M4A·WAV·OGG)', 'err'); return; }
+    adding = true;
+    progressShow(files.length);
+    var added = 0, dup = 0, failed = 0, firstId = null;
+    try {
+      await openDB();
+    } catch (e) {
+      adding = false; progressHide(0);
+      return;
+    }
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      progressSet(i, files.length, '태그 읽는 중 · ' + f.name.slice(0, 34));
+      try {
+        var isDup = tracks.some(function (t) { return t.name === f.name && t.size === f.size; });
+        if (isDup) { dup++; progressSet(i + 1, files.length); continue; }
+        var meta = await parseMeta(f);
+        var dur = meta.duration || await probeDuration(f);
+        var rec = {
+          id: uid('tr'),
+          name: f.name,
+          type: f.type || 'audio/mpeg',
+          size: f.size,
+          title: meta.title,
+          artist: meta.artist,
+          album: meta.album,
+          albumArtist: meta.albumArtist,
+          year: meta.year,
+          genre: meta.genre,
+          duration: dur || 0,
+          addedAt: Date.now(),
+          playCount: 0,
+          lastPlayed: 0,
+          coverBlob: meta.cover ? meta.cover.blob : null,
+          coverSeed: (meta.title || f.name) + '|' + (meta.artist || ''),
+          lrc: '',
+          blob: f
+        };
+        try {
+          await dbPut('tracks', rec);
+        } catch (err) {
+          if (String(err && err.name).indexOf('Quota') > -1 || /quota/i.test(String(err && err.message))) {
+            toast('브라우저 저장 공간이 가득 찼어요. 보관함에서 곡을 정리해 주세요', 'err');
+            break;
+          }
+          throw err;
+        }
+        tracks.push(rec);
+        trackMap[rec.id] = rec;
+        if (!firstId) firstId = rec.id;
+        added++;
+      } catch (e) {
+        failed++;
+      }
+      progressSet(i + 1, files.length, '담는 중 · ' + f.name.slice(0, 34));
+      await new Promise(function (r) { setTimeout(r, 0); });
+    }
+    sortTracks();
+    if (added && !state.currentId && firstId) {
+      loadTrack(firstId, false);
+    }
+    renderAll();
+    progressSet(files.length, files.length, added ? '완료' : '담은 곡이 없어요');
+    progressHide(1000);
+    adding = false;
+    try {
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () { });
+    } catch (e) { }
+    if (added) {
+      toast(added + '곡을 보관함에 담았어요' + (dup ? ' · ' + dup + '곡은 이미 있음' : '') + (failed ? ' · ' + failed + '곡 실패' : ''), 'ok');
+      hap(16);
+      if (!audio.src) renderAll();
+    } else if (dup) {
+      toast('이미 담긴 곡이에요 (' + dup + '곡)', 'info');
+    } else if (failed) {
+      toast('파일을 읽지 못했어요 (' + failed + '곡)', 'err');
+    }
+  }
+
+  /* ============================================================
+     플레이리스트
+     ============================================================ */
+  function findPlaylist(id) {
+    for (var i = 0; i < playlists.length; i++) if (playlists[i].id === id) return playlists[i];
+    return null;
+  }
+  async function createPlaylist(name, ids) {
+    name = String(name || '').trim();
+    if (!name) { toast('이름을 입력해 주세요', 'err'); return null; }
+    var p = { id: uid('pl'), name: name, trackIds: [], createdAt: Date.now() };
+    playlists.unshift(p);
+    await dbPut('playlists', p);
+    if (ids && ids.length) await addToPlaylist(p.id, ids);
+    renderAll();
+    toast('"' + name + '" 플레이리스트를 만들었어요', 'ok');
+    return p;
+  }
+  async function addToPlaylist(pid, ids) {
+    var p = findPlaylist(pid);
+    if (!p) return;
+    ids.forEach(function (id) { if (trackMap[id] && p.trackIds.indexOf(id) < 0) p.trackIds.push(id); });
+    await dbPut('playlists', p);
+    renderAll();
+  }
+  async function removeFromPlaylist(pid, id) {
+    var p = findPlaylist(pid);
+    if (!p) return;
+    p.trackIds = p.trackIds.filter(function (x) { return x !== id; });
+    await dbPut('playlists', p);
+    renderAll();
+  }
+  async function deletePlaylist(pid) {
+    var p = findPlaylist(pid);
+    if (!p) return;
+    playlists = playlists.filter(function (x) { return x.id !== pid; });
+    if (activePlaylistId === pid) activePlaylistId = null;
+    await dbDel('playlists', pid);
+    renderAll();
+    toast('플레이리스트를 지웠어요', 'ok');
+  }
+  function playPlaylist(pid) {
+    var p = findPlaylist(pid);
+    if (!p) return;
+    var ids = p.trackIds.filter(function (id) { return !!trackMap[id]; });
+    if (!ids.length) { toast('이 플레이리스트는 비어 있어요', 'info'); return; }
+    playTrack(ids[0], { list: ids });
+  }
+
+  /* ============================================================
+     모달
+     ============================================================ */
+  function openModal(id) { var m = byId(id); if (m) m.classList.add('open'); }
+  function closeAll() { $$('.lemon-modal.open').forEach(function (m) { m.classList.remove('open'); }); }
+
+  function confirmDialog(title, desc, okLabel) {
+    return new Promise(function (resolve) {
+      byId('cfmHead').textContent = title;
+      byId('cfmDesc').textContent = desc || '';
+      byId('cfmOk').textContent = okLabel || '확인';
+      function done(v) {
+        closeAll();
+        byId('cfmOk').onclick = null;
+        byId('cfmCancel').onclick = null;
+        resolve(v);
+      }
+      byId('cfmOk').onclick = function () { done(true); };
+      byId('cfmCancel').onclick = function () { done(false); };
+      openModal('modalConfirm');
+    });
+  }
+  function nameDialog(title, value, placeholder) {
+    return new Promise(function (resolve) {
+      byId('nmHead').textContent = title;
+      byId('nmInput').value = value || '';
+      byId('nmInput').placeholder = placeholder || '이름을 입력하세요';
+      function done(v) { closeAll(); byId('nmOk').onclick = null; resolve(v); }
+      byId('nmOk').onclick = function () { done(byId('nmInput').value.trim() || null); };
+      openModal('modalName');
+      setTimeout(function () { try { byId('nmInput').focus(); byId('nmInput').select(); } catch (e) { } }, 120);
+    });
+  }
+
+  function openActions(id) {
+    var t = trackMap[id];
+    if (!t) return;
+    actTrackId = id;
+    byId('actTitle').textContent = t.title || '제목 없음';
+    byId('actSub').textContent = [t.artist, t.album].filter(Boolean).join(' · ');
+    openModal('modalActions');
+  }
+
+  function openEdit(id) {
+    var t = trackMap[id];
+    if (!t) return;
+    editTrackId = id;
+    pendingCover = undefined;
+    byId('editTitle').value = t.title || '';
+    byId('editArtist').value = t.artist || '';
+    byId('editAlbum').value = t.album || '';
+    byId('editYear').value = t.year || '';
+    byId('editAlbumArtist').value = t.albumArtist || '';
+    byId('editLyrics').value = t.lrc || '';
+    byId('editCoverPrev').src = coverOf(t);
+    openModal('modalEdit');
+  }
+
+  function openPlaylistPicker(id) {
+    playlistTrackId = id;
+    var t = trackMap[id];
+    var box = byId('plPickList');
+    byId('plSub').textContent = t ? (t.title + '을(를) 담을 목록') : '담을 목록을 선택하세요';
+    if (!playlists.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-500 py-4 text-center">아직 플레이리스트가 없어요. 아래에서 새로 만들어 보세요.</p>';
+    } else {
+      box.innerHTML = playlists.map(function (p) {
+        return '<label class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">' +
+          '<input type="checkbox" class="pl-pick accent-purple-600" value="' + p.id + '" style="width:16px;height:16px">' +
+          '<span class="min-w-0 flex-1"><span class="block text-[12px] font-semibold truncate">' + esc(p.name) + '</span>' +
+          '<span class="block text-[10px] text-neutral-500 dark:text-neutral-400">' + p.trackIds.length + '곡' + (t && p.trackIds.indexOf(id) > -1 ? ' · 이미 담김' : '') + '</span></span>' +
+          '</label>';
+      }).join('');
+    }
+    openModal('modalPlaylist');
+  }
+
+  async function deleteTrack(id) {
+    var t = trackMap[id];
+    if (!t) return;
+    var ok = await confirmDialog('곡을 삭제할까요?', '"' + (t.title || t.name) + '" 파일을 보관함에서 지웁니다. 원본 파일은 기기에 그대로 있습니다.', '삭제');
+    if (!ok) return;
+    try { await dbDel('tracks', id); } catch (e) { }
+    tracks = tracks.filter(function (x) { return x.id !== id; });
+    delete trackMap[id];
+    dropAudioURL(id);
+    state.queue = state.queue.filter(function (q) { return q !== id; });
+    for (var i = 0; i < playlists.length; i++) {
+      if (playlists[i].trackIds.indexOf(id) > -1) {
+        playlists[i].trackIds = playlists[i].trackIds.filter(function (q) { return q !== id; });
+        dbPut('playlists', playlists[i]).catch(function () { });
+      }
+    }
+    history = history.filter(function (h) { return h.id !== id; });
+    saveHistory();
+    if (state.currentId === id) {
+      audio.pause();
+      state.currentId = null;
+      audio.removeAttribute('src');
+      try { audio.load(); } catch (e) { }
+    }
+    saveState();
+    renderAll();
+    toast('삭제했어요', 'ok');
+  }
+
+  /* ============================================================
+     재생 설정 액션
+     ============================================================ */
+  function setRate(r) {
+    r = clamp(parseFloat(r) || 1, .5, 2);
+    state.rate = r;
+    audio.playbackRate = r;
+    saveState();
+    renderNowPlaying();
+    hap(8);
+    toast('재생 속도 ' + r + 'x', 'info');
+  }
+  function applyPreset(name) {
+    var g = EQ_PRESETS[name];
+    if (!g) return;
+    state.eqGains = g.slice();
+    state.eqPreset = name;
+    state.eqOn = true;
+    applyEQ();
+    syncEqUI();
+    saveState();
+    hap(8);
+  }
+  function setEqGain(i, v) {
+    v = clamp(parseFloat(v) || 0, -12, 12);
+    state.eqGains[i] = v;
+    state.eqPreset = 'custom';
+    applyEQ();
+    syncEqUI();
+    saveState();
+  }
+
+  /* ============================================================
+     백업
+     ============================================================ */
+  function exportBackup() {
+    var data = {
+      app: 'Lemon Player',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      tracks: tracks.map(function (t) {
+        return {
+          name: t.name, title: t.title, artist: t.artist, album: t.album,
+          albumArtist: t.albumArtist, year: t.year, genre: t.genre,
+          duration: t.duration, size: t.size, addedAt: t.addedAt, lrc: t.lrc || ''
+        };
+      }),
+      playlists: playlists.map(function (p) {
+        return {
+          name: p.name,
+          items: p.trackIds.map(function (id) {
+            var t = trackMap[id];
+            return t ? { name: t.name, title: t.title, artist: t.artist } : null;
+          }).filter(Boolean)
+        };
+      })
+    };
+    var name = 'lemon-player-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    try {
+      Lemon.downloadBlob(name, new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      toast('백업 파일을 내려받았어요 (음원 제외)', 'ok');
+    } catch (e) {
+      toast('백업을 만들지 못했어요', 'err');
+    }
+  }
+
+  async function importBackup(file) {
+    var data;
+    try { data = JSON.parse(await file.text()); } catch (e) { toast('JSON 파일을 읽을 수 없어요', 'err'); return; }
+    if (!data || !Array.isArray(data.tracks)) { toast('Lemon Player 백업 파일이 아니에요', 'err'); return; }
+    var updated = 0;
+    for (var i = 0; i < data.tracks.length; i++) {
+      var m = data.tracks[i];
+      var found = null;
+      for (var j = 0; j < tracks.length; j++) {
+        var t = tracks[j];
+        if ((m.name && t.name === m.name) || (m.title && t.title === m.title && (!m.artist || t.artist === m.artist))) { found = t; break; }
+      }
+      if (!found) continue;
+      ['album', 'albumArtist', 'year', 'genre', 'lrc'].forEach(function (k) {
+        if (m[k]) found[k] = m[k];
+      });
+      if (!found.title && m.title) found.title = m.title;
+      await dbPut('tracks', found);
+      updated++;
+    }
+    var made = 0;
+    for (var p = 0; p < (data.playlists || []).length; p++) {
+      var src = data.playlists[p];
+      var ids = [];
+      (src.items || []).forEach(function (it) {
+        for (var k = 0; k < tracks.length; k++) {
+          if ((it.name && tracks[k].name === it.name) || (it.title && tracks[k].title === it.title && (!it.artist || tracks[k].artist === it.artist))) {
+            if (ids.indexOf(tracks[k].id) < 0) ids.push(tracks[k].id);
+            break;
+          }
+        }
+      });
+      var exists = playlists.some(function (x) { return x.name === src.name; });
+      if (!ids.length && !src.name) continue;
+      var np = { id: uid('pl'), name: (src.name || '가져온 목록') + (exists ? ' (가져옴)' : ''), trackIds: ids, createdAt: Date.now() };
+      playlists.unshift(np);
+      await dbPut('playlists', np);
+      made++;
+    }
+    renderAll();
+    toast('메타데이터 ' + updated + '곡 · 플레이리스트 ' + made + '개를 가져왔어요', 'ok');
+  }
+
+  async function wipeAll() {
+    var ok = await confirmDialog('보관함을 모두 비울까요?', '담아 둔 음악 ' + tracks.length + '곡과 플레이리스트, 재생 기록이 모두 지워집니다. 기기의 원본 파일은 그대로 남습니다.', '전부 삭제');
+    if (!ok) return;
+    try {
+      await dbClear('tracks'); await dbClear('playlists'); await dbClear('kv');
+    } catch (e) { }
+    Object.keys(audioUrls).forEach(function (k) { try { URL.revokeObjectURL(audioUrls[k]); } catch (e) { } });
+    Object.keys(coverUrls).forEach(function (k) { try { URL.revokeObjectURL(coverUrls[k]); } catch (e) { } });
+    audioUrls = {}; coverUrls = {};
+    tracks = []; trackMap = {}; playlists = []; history = [];
+    state.queue = []; state.currentId = null;
+    audio.pause(); audio.removeAttribute('src');
+    try { audio.load(); } catch (e) { }
+    renderAll();
+    toast('보관함을 비웠어요', 'ok');
+  }
+
+  /* ============================================================
+     이벤트 바인딩
+     ============================================================ */
+  function bindCommon() {
+    doc.addEventListener('click', function (e) {
+      var closeBtn = e.target.closest('[data-close]');
+      if (closeBtn) { closeAll(); return; }
+      var goto = e.target.closest('[data-goto]');
+      if (goto) { goView(goto.getAttribute('data-goto')); return; }
+    });
+    doc.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeAll();
+    });
+  }
+
+  function bindAdding() {
+    ['btnAddTop', 'btnAddHero', 'btnPickFiles', 'btnAddLib'].forEach(function (id) {
+      var b = byId(id);
+      if (b) b.addEventListener('click', function (e) { e.stopPropagation(); byId('fileInput').click(); });
+    });
+    byId('btnPickFolder').addEventListener('click', function (e) { e.stopPropagation(); byId('folderInput').click(); });
+    var dz = byId('dropzone');
+    dz.addEventListener('click', function (e) { if (!e.target.closest('button')) byId('fileInput').click(); });
+    dz.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); byId('fileInput').click(); } });
+
+    byId('fileInput').addEventListener('change', function (e) {
+      var files = e.target.files;
+      addFiles(files);
+      e.target.value = '';
+    });
+    byId('folderInput').addEventListener('change', function (e) {
+      var files = e.target.files;
+      addFiles(files);
+      e.target.value = '';
+    });
+
+    var dragDepth = 0;
+    function hasFiles(e) {
+      if (!e.dataTransfer) return false;
+      var types = e.dataTransfer.types || [];
+      for (var i = 0; i < types.length; i++) if (types[i] === 'Files') return true;
+      return false;
+    }
+    window.addEventListener('dragenter', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth++;
+      byId('dragVeil').classList.add('on');
+      dz.classList.add('hot');
+    });
+    window.addEventListener('dragover', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'copy'; } catch (err) { }
+    });
+    window.addEventListener('dragleave', function (e) {
+      if (!hasFiles(e)) return;
+      dragDepth--;
+      if (dragDepth <= 0) { dragDepth = 0; byId('dragVeil').classList.remove('on'); dz.classList.remove('hot'); }
+    });
+    window.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth = 0;
+      byId('dragVeil').classList.remove('on');
+      dz.classList.remove('hot');
+      if (e.dataTransfer.files && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    });
+  }
+
+  function bindTrackLists() {
+    function rowAction(e) {
+      var row = e.target.closest('.track-row');
+      if (!row) return;
+      var id = row.getAttribute('data-id');
+      var act = e.target.closest('[data-row]');
+      var action = act ? act.getAttribute('data-row') : 'play';
+      if (action === 'play') {
+        if (id === state.currentId && !audio.paused) { audio.pause(); return; }
+        if (id === state.currentId) { playAudio(); return; }
+        playTrack(id, { list: currentList() });
+      } else if (action === 'queue') {
+        if (state.queue.indexOf(id) < 0) state.queue.push(id);
+        saveState(); renderQueue();
+        toast('대기열에 추가했어요', 'ok');
+        hap(8);
+      } else if (action === 'menu') {
+        openActions(id);
+      }
+    }
+    ['trackList', 'recentList'].forEach(function (id) {
+      var el = byId(id);
+      if (el) el.addEventListener('click', rowAction);
+    });
+    byId('historyList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-play-id]');
+      if (b) playTrack(b.getAttribute('data-play-id'), { list: allIds() });
+    });
+  }
+
+  function bindPlaylists() {
+    function handler(e) {
+      var open = e.target.closest('[data-pl-open]');
+      if (open) {
+        activePlaylistId = open.getAttribute('data-pl-open');
+        if (!findPlaylist(activePlaylistId)) activePlaylistId = null;
+        renderTracks(); renderPlaylists();
+        byId('trackList').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      var play = e.target.closest('[data-pl-play]');
+      if (play) { playPlaylist(play.getAttribute('data-pl-play')); return; }
+      var menu = e.target.closest('[data-pl-menu]');
+      if (menu) { playlistMenu(menu.getAttribute('data-pl-menu')); return; }
+    }
+    byId('playlistList').addEventListener('click', handler);
+    byId('homePlaylists').addEventListener('click', handler);
+    byId('plAll').addEventListener('click', function () { activePlaylistId = null; renderTracks(); renderPlaylists(); });
+
+    byId('btnNewPlaylist').addEventListener('click', newPlaylistFlow);
+    byId('btnNewPlaylistHome').addEventListener('click', newPlaylistFlow);
+    byId('btnExport').addEventListener('click', exportBackup);
+    byId('btnImport').addEventListener('click', function () { byId('importInput').click(); });
+    byId('importInput').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) importBackup(f);
+      e.target.value = '';
+    });
+  }
+
+  async function newPlaylistFlow() {
+    var name = await nameDialog('새 플레이리스트', '', '예: 밤에 듣는 곡');
+    if (!name) return;
+    var p = await createPlaylist(name, []);
+    if (p) {
+      activePlaylistId = p.id;
+      renderTracks(); renderPlaylists();
+      goView('library');
+    }
+  }
+
+  async function playlistMenu(pid) {
+    var p = findPlaylist(pid);
+    if (!p) return;
+    var choice = await chooseDialog('"' + p.name + '"', ['이름 바꾸기', '순서대로 재생', '삭제'], 'fl');
+    if (!choice) return;
+    if (choice === 0) {
+      var nn = await nameDialog('플레이리스트 이름', p.name);
+      if (nn) { p.name = nn; await dbPut('playlists', p); renderAll(); toast('이름을 바꿨어요', 'ok'); }
+    } else if (choice === 1) {
+      playPlaylist(pid);
+    } else if (choice === 2) {
+      var ok = await confirmDialog('플레이리스트를 삭제할까요?', '"' + p.name + '" 목록만 지워집니다. 곡은 보관함에 남습니다.', '삭제');
+      if (ok) deletePlaylist(pid);
+    }
+  }
+
+  /* 간단 선택 모달 (actions 모달 재사용) */
+  function chooseDialog(title, options, scope) {
+    return new Promise(function (resolve) {
+      byId('actTitle').textContent = title;
+      byId('actSub').textContent = '원하는 작업을 선택하세요';
+      var list = byId('actList');
+      var html = '';
+      options.forEach(function (label, i) {
+        html += '<button data-choice="' + i + '" class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-left text-[12px] font-semibold transition">' + esc(label) + '</button>';
+      });
+      list.innerHTML = html;
+      list.onclick = function (e) {
+        var b = e.target.closest('[data-choice]');
+        if (!b) return;
+        var idx = parseInt(b.getAttribute('data-choice'), 10);
+        closeAll();
+        resolve(idx);
+      };
+      openModal('modalActions');
+    });
+  }
+
+  function bindQueue() {
+    var box = byId('queueList');
+    box.addEventListener('click', function (e) {
+      var item = e.target.closest('[data-qid]');
+      if (!item) return;
+      var id = item.getAttribute('data-qid');
+      var act = e.target.closest('[data-q]');
+      var q = act ? act.getAttribute('data-q') : 'play';
+      var idx = state.queue.indexOf(id);
+      if (q === 'play') { loadTrack(id, true); }
+      else if (q === 'del') {
+        state.queue = state.queue.filter(function (x) { return x !== id; });
+        saveState(); renderQueue();
+      } else if (q === 'up' && idx > 0) {
+        state.queue.splice(idx - 1, 0, state.queue.splice(idx, 1)[0]);
+        saveState(); renderQueue();
+      } else if (q === 'down' && idx > -1 && idx < state.queue.length - 1) {
+        state.queue.splice(idx + 1, 0, state.queue.splice(idx, 1)[0]);
+        saveState(); renderQueue();
+      }
+    });
+
+    var dragging = null;
+    box.addEventListener('dragstart', function (e) {
+      var item = e.target.closest('[data-qid]');
+      if (!item) return;
+      dragging = item.getAttribute('data-qid');
+      item.classList.add('dragging');
+      try {
+        e.dataTransfer.setData('text/plain', dragging);
+        e.dataTransfer.effectAllowed = 'move';
+      } catch (err) { }
+    });
+    box.addEventListener('dragover', function (e) {
+      if (!dragging) return;
+      e.preventDefault();
+      var over = e.target.closest('[data-qid]');
+      $$('.queue-item.over', box).forEach(function (x) { x.classList.remove('over'); });
+      if (over && over.getAttribute('data-qid') !== dragging) over.classList.add('over');
+    });
+    box.addEventListener('drop', function (e) {
+      if (!dragging) return;
+      e.preventDefault();
+      var over = e.target.closest('[data-qid]');
+      $$('.queue-item.over', box).forEach(function (x) { x.classList.remove('over'); });
+      if (!over) return;
+      var toId = over.getAttribute('data-qid');
+      if (toId === dragging) return;
+      var from = state.queue.indexOf(dragging);
+      state.queue = state.queue.filter(function (x) { return x !== dragging; });
+      var to = state.queue.indexOf(toId);
+      state.queue.splice(to < 0 ? state.queue.length : to, 0, dragging);
+      saveState(); renderQueue();
+    });
+    box.addEventListener('dragend', function () {
+      dragging = null;
+      $$('.queue-item.dragging, .queue-item.over', box).forEach(function (x) { x.classList.remove('dragging'); x.classList.remove('over'); });
+    });
+
+    byId('btnQueueFill').addEventListener('click', function () {
+      state.queue = allIds();
+      saveState(); renderQueue();
+      toast(state.queue.length + '곡을 대기열에 담았어요', 'ok');
+    });
+    byId('btnQueueClear').addEventListener('click', function () {
+      state.queue = [];
+      saveState(); renderQueue();
+      toast('대기열을 비웠어요', 'info');
+    });
+  }
+
+  function bindStudio() {
+    byId('btnPlay').addEventListener('click', togglePlay);
+    byId('btnNext').addEventListener('click', function () { playNext(true); });
+    byId('btnPrev').addEventListener('click', playPrev);
+    byId('btnShuffle').addEventListener('click', function () {
+      state.shuffle = !state.shuffle;
+      saveState(); renderNowPlaying(); renderQueue();
+      toast(state.shuffle ? '셔플 켜짐' : '셔플 꺼짐', 'info');
+      hap(8);
+    });
+    byId('btnRepeat').addEventListener('click', function () {
+      state.repeat = state.repeat === 'off' ? 'all' : (state.repeat === 'all' ? 'one' : 'off');
+      saveState(); renderNowPlaying(); renderQueue();
+      toast(state.repeat === 'off' ? '반복 꺼짐' : (state.repeat === 'all' ? '전체 반복' : '한 곡 반복'), 'info');
+      hap(8);
+    });
+    byId('btnMute').addEventListener('click', function () {
+      state.muted = !state.muted;
+      audio.volume = state.muted ? 0 : state.volume;
+      saveState(); renderNowPlaying();
+    });
+    byId('volInput').addEventListener('input', function () {
+      var v = parseInt(this.value, 10) / 100;
+      state.volume = v;
+      if (v > 0) state.muted = false;
+      audio.volume = state.muted ? 0 : state.volume;
+      byId('volLabel').textContent = String(Math.round(v * 100));
+      try { Lemon.refreshRange(this); } catch (e) { }
+      saveState();
+    });
+    byId('seekInput').addEventListener('input', function () {
+      seeking = true;
+      var dur = isFinite(audio.duration) ? audio.duration : (trackMap[state.currentId] ? trackMap[state.currentId].duration : 0);
+      var sec = (parseInt(this.value, 10) / 1000) * (dur || 0);
+      var fill = byId('seekFill'), thumb = byId('seekThumb');
+      if (fill) fill.style.width = (parseInt(this.value, 10) / 10) + '%';
+      if (thumb) thumb.style.left = (parseInt(this.value, 10) / 10) + '%';
+      byId('tCur').textContent = fmtTime(sec);
+    });
+    byId('seekInput').addEventListener('change', function () {
+      var dur = isFinite(audio.duration) ? audio.duration : (trackMap[state.currentId] ? trackMap[state.currentId].duration : 0);
+      var sec = (parseInt(this.value, 10) / 1000) * (dur || 0);
+      try { audio.currentTime = sec; } catch (e) { }
+      seeking = false;
+      setSeek(sec);
+    });
+    $$('[data-rate]').forEach(function (b) {
+      b.addEventListener('click', function () { setRate(b.getAttribute('data-rate')); });
+    });
+
+    byId('btnSleep').addEventListener('click', function () { openModal('modalSleep'); });
+    $$('[data-sleep]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var v = b.getAttribute('data-sleep');
+        if (v === 'track') setSleepTrack(); else setSleep(parseInt(v, 10));
+      });
+    });
+    byId('btnSleepOff').addEventListener('click', function () { clearSleep(); closeAll(); toast('타이머를 해제했어요', 'info'); });
+
+    byId('btnAddToPlaylist').addEventListener('click', function () {
+      if (!state.currentId) { toast('먼저 곡을 골라 주세요', 'info'); return; }
+      openPlaylistPicker(state.currentId);
+    });
+
+    /* lyrics */
+    byId('btnLyricImport').addEventListener('click', function () { byId('lrcInput').click(); });
+    byId('lrcInput').addEventListener('change', async function (e) {
+      var f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      if (!state.currentId) { toast('먼저 곡을 선택해 주세요', 'info'); return; }
+      var text = await f.text();
+      var t = trackMap[state.currentId];
+      t.lrc = text.slice(0, 200000);
+      await dbPut('tracks', t);
+      renderLyrics(true);
+      toast('.lrc 가사를 붙였어요', 'ok');
+    });
+    byId('btnLyricEdit').addEventListener('click', function () {
+      if (!state.currentId) { toast('먼저 곡을 선택해 주세요', 'info'); return; }
+      openEdit(state.currentId);
+      setTimeout(function () { try { byId('editLyrics').focus(); } catch (e) { } }, 200);
+    });
+    byId('lyrScroll').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-lyr]');
+      if (!b) return;
+      var i = parseInt(b.getAttribute('data-lyr'), 10);
+      var L = lyricState.lines[i];
+      if (L && L.t != null) { try { audio.currentTime = L.t; } catch (err) { } setSeek(L.t); }
+    });
+  }
+
+  var ACTIONS_HTML = '';
+  function refreshPicker() {
+    var t = playlistTrackId ? trackMap[playlistTrackId] : null;
+    var box = byId('plPickList');
+    var checked = $$('#plPickList input:checked').map(function (c) { return c.value; });
+    if (!playlists.length) {
+      box.innerHTML = '<p class="text-[11px] text-neutral-500 py-4 text-center">아직 플레이리스트가 없어요. 아래에서 새로 만들어 보세요.</p>';
+      return;
+    }
+    box.innerHTML = playlists.map(function (p) {
+      var on = checked.indexOf(p.id) > -1;
+      return '<label class="flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">' +
+        '<input type="checkbox" class="pl-pick accent-purple-600" value="' + p.id + '" style="width:16px;height:16px"' + (on ? ' checked' : '') + '>' +
+        '<span class="min-w-0 flex-1"><span class="block text-[12px] font-semibold truncate">' + esc(p.name) + '</span>' +
+        '<span class="block text-[10px] text-neutral-500 dark:text-neutral-400">' + p.trackIds.length + '곡' + (t && p.trackIds.indexOf(t.id) > -1 ? ' · 이미 담김' : '') + '</span></span>' +
+        '</label>';
+    }).join('');
+  }
+
+  function bindModals() {
+    byId('actList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      if (!b) return;
+      var id = actTrackId;
+      var act = b.getAttribute('data-act');
+      if (!id) return;
+      if (act === 'play') { closeAll(); playTrack(id, { list: currentList() }); }
+      else if (act === 'next') {
+        var ci = state.queue.indexOf(state.currentId);
+        state.queue = state.queue.filter(function (x) { return x !== id; });
+        if (ci < 0) state.queue.unshift(id); else state.queue.splice(ci + 1, 0, id);
+        saveState(); renderQueue(); closeAll();
+        toast('다음 곡으로 예약했어요', 'ok');
+      }
+      else if (act === 'queue') {
+        if (state.queue.indexOf(id) < 0) state.queue.push(id);
+        saveState(); renderQueue(); closeAll();
+        toast('대기열에 추가했어요', 'ok');
+      }
+      else if (act === 'playlist') { closeAll(); openPlaylistPicker(id); }
+      else if (act === 'edit') { closeAll(); openEdit(id); }
+      else if (act === 'delete') { closeAll(); deleteTrack(id); }
+    });
+
+    byId('coverInput').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!f) return;
+      pendingCover = f;
+      try { byId('editCoverPrev').src = URL.createObjectURL(f); } catch (err) { }
+    });
+    byId('btnEditCover').addEventListener('click', function () { byId('coverInput').click(); });
+    byId('btnEditCoverClear').addEventListener('click', function () {
+      pendingCover = null;
+      byId('editCoverPrev').src = genCover(byId('editTitle').value || 'lemon');
+    });
+
+    byId('btnEditSave').addEventListener('click', async function () {
+      var t = trackMap[editTrackId];
+      if (!t) { closeAll(); return; }
+      t.title = byId('editTitle').value.trim() || t.title;
+      t.artist = byId('editArtist').value.trim() || '알 수 없는 아티스트';
+      t.album = byId('editAlbum').value.trim() || '싱글';
+      t.year = byId('editYear').value.trim();
+      t.albumArtist = byId('editAlbumArtist').value.trim();
+      t.lrc = byId('editLyrics').value;
+      if (pendingCover === null) {
+        t.coverBlob = null;
+        t.coverSeed = t.title + '|' + t.artist + '|' + Date.now();
+      } else if (pendingCover) {
+        t.coverBlob = pendingCover;
+        t.coverMime = pendingCover.type;
+      }
+      if (coverUrls[t.id]) { try { URL.revokeObjectURL(coverUrls[t.id]); } catch (e) { } delete coverUrls[t.id]; }
+      try { await dbPut('tracks', t); } catch (e) { toast('저장하지 못했어요', 'err'); return; }
+      closeAll();
+      renderAll();
+      if (state.currentId === t.id) { renderLyrics(true); updateMediaSession(t); }
+      toast('곡 정보를 저장했어요', 'ok');
+      hap(12);
+    });
+
+    byId('btnPlCreate').addEventListener('click', async function () {
+      var name = byId('plNewName').value.trim();
+      if (!name) { toast('이름을 입력해 주세요', 'err'); return; }
+      var p = await createPlaylist(name, playlistTrackId ? [playlistTrackId] : []);
+      byId('plNewName').value = '';
+      if (p) { refreshPicker(); }
+    });
+    byId('btnPlApply').addEventListener('click', async function () {
+      var ids = $$('#plPickList input:checked').map(function (c) { return c.value; });
+      if (!ids.length) { toast('담을 플레이리스트를 선택해 주세요', 'info'); return; }
+      if (playlistTrackId) {
+        for (var i = 0; i < ids.length; i++) await addToPlaylist(ids[i], [playlistTrackId]);
+        toast(ids.length + '개 플레이리스트에 담았어요', 'ok');
+      }
+      closeAll();
+    });
+  }
+
+  function bindLibrary() {
+    var timer = null;
+    byId('searchInput').addEventListener('input', function () {
+      var v = this.value;
+      clearTimeout(timer);
+      timer = setTimeout(function () { searchQuery = v; renderTracks(); }, 160);
+    });
+    byId('sortSelect').addEventListener('change', function () {
+      sortMode = this.value;
+      renderTracks();
+    });
+    byId('btnPlayAll').addEventListener('click', function () {
+      var list = currentList();
+      if (!list.length) { toast('재생할 곡이 없어요', 'info'); return; }
+      if (state.shuffle) list = list.slice().sort(function () { return Math.random() - .5; });
+      playTrack(list[0], { list: list });
+    });
+    byId('btnLibMenu').addEventListener('click', function () {
+      byId('sortSelect').focus();
+      toast('정렬 기준을 고를 수 있어요', 'info');
+    });
+    byId('btnClearHistory').addEventListener('click', async function () {
+      var ok = await confirmDialog('재생 기록을 지울까요?', '최근 재생 목록만 비웁니다. 곡과 플레이리스트는 그대로 남습니다.', '지우기');
+      if (!ok) return;
+      history = []; saveHistory(); renderAll();
+      toast('재생 기록을 지웠어요', 'ok');
+    });
+    byId('btnPersist').addEventListener('click', async function () {
+      if (!navigator.storage || !navigator.storage.persist) { toast('이 브라우저는 영구 보관을 지원하지 않아요', 'info'); return; }
+      try {
+        var ok = await navigator.storage.persist();
+        toast(ok ? '영구 보관이 설정됐어요. 브라우저가 임의로 지우지 않습니다' : '브라우저가 요청을 받아들이지 않았어요', ok ? 'ok' : 'info');
+        renderStorage();
+      } catch (e) { toast('요청하지 못했어요', 'err'); }
+    });
+    byId('btnWipe').addEventListener('click', wipeAll);
+  }
+
+  function bindVizEq() {
+    $$('[data-viz]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        vizMode = b.getAttribute('data-viz');
+        state.viz = vizMode;
+        saveState();
+        $$('[data-viz]').forEach(function (x) { x.classList.toggle('on', x === b); });
+        byId('vizMode').textContent = vizMode === 'bars' ? 'FREQUENCY' : (vizMode === 'wave' ? 'WAVEFORM' : 'RADIAL');
+        sizeViz();
+        hap(8);
+      });
+    });
+    $$('#eqPresets [data-preset]').forEach(function (b) {
+      b.addEventListener('click', function () { applyPreset(b.getAttribute('data-preset')); });
+    });
+    byId('eqToggle').addEventListener('click', function () {
+      state.eqOn = !state.eqOn;
+      applyEQ();
+      syncEqUI();
+      saveState();
+      toast(state.eqOn ? 'EQ 켜짐' : 'EQ 꺼짐 (원음)', 'info');
+      hap(8);
+    });
+    byId('eqReset').addEventListener('click', function () { applyPreset('flat'); toast('EQ를 초기화했어요', 'ok'); });
+  }
+
+  function bindMini() {
+    byId('miniPlay').addEventListener('click', togglePlay);
+    byId('miniNext').addEventListener('click', function () { playNext(true); });
+    byId('miniOpen').addEventListener('click', function () { goView('studio'); });
+    byId('miniExpand').addEventListener('click', function () { goView('studio'); });
+  }
+
+  function bindKeys() {
+    doc.addEventListener('keydown', function (e) {
+      var tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+      else if (e.code === 'ArrowRight') { if (state.currentId) { e.preventDefault(); audio.currentTime = Math.min((audio.duration || 0), audio.currentTime + 5); } }
+      else if (e.code === 'ArrowLeft') { if (state.currentId) { e.preventDefault(); audio.currentTime = Math.max(0, audio.currentTime - 5); } }
+      else if (e.code === 'ArrowUp') { e.preventDefault(); state.volume = clamp(state.volume + .05, 0, 1); state.muted = false; audio.volume = state.volume; saveState(); renderNowPlaying(); }
+      else if (e.code === 'ArrowDown') { e.preventDefault(); state.volume = clamp(state.volume - .05, 0, 1); audio.volume = state.muted ? 0 : state.volume; saveState(); renderNowPlaying(); }
+      else if (e.code === 'KeyM') { byId('btnMute').click(); }
+      else if (e.code === 'KeyN') { playNext(true); }
+      else if (e.code === 'KeyP') { playPrev(); }
+    });
+  }
+
+  /* ============================================================
+     부팅
+     ============================================================ */
+  async function boot() {
+    goView = Lemon.initTabs ? (Lemon.initTabs('home') || function () { }) : function () { };
+    ACTIONS_HTML = byId('actList').innerHTML;
+    buildEqBands();
+    bindCommon();
+    bindAdding();
+    bindTrackLists();
+    bindPlaylists();
+    bindQueue();
+    bindStudio();
+    bindModals();
+    bindLibrary();
+    bindVizEq();
+    bindMini();
+    bindKeys();
+    bindMediaSession();
+    sizeViz();
+    drawViz();
+
+    doc.addEventListener('lemon:view', function (e) {
+      var v = e.detail && e.detail.view;
+      if (v === 'studio') { sizeViz(); setTimeout(function () { drawEqCurve(); sizeViz(); }, 60); }
+      if (v === 'library') renderTracks();
+    });
+    window.addEventListener('resize', function () { sizeViz(); drawEqCurve(); });
+
+    try {
+      var res = await Promise.all([dbAll('tracks'), dbAll('playlists'), dbAll('kv')]);
+      tracks = (res[0] || []).filter(function (t) { return t && t.id; });
+      playlists = (res[1] || []).filter(function (p) { return p && p.id && Array.isArray(p.trackIds); });
+      var kv = res[2] || [];
+      kv.forEach(function (row) {
+        if (!row || !row.key) return;
+        var v = row.value;
+        if (row.key === 'state' && v && typeof v === 'object') {
+          if (typeof v.volume === 'number') state.volume = clamp(v.volume, 0, 1);
+          if (typeof v.muted === 'boolean') state.muted = v.muted;
+          if (isFinite(v.rate)) state.rate = clamp(v.rate, .5, 2);
+          if (typeof v.shuffle === 'boolean') state.shuffle = v.shuffle;
+          if (v.repeat === 'all' || v.repeat === 'one' || v.repeat === 'off') state.repeat = v.repeat;
+          if (typeof v.eqOn === 'boolean') state.eqOn = v.eqOn;
+          if (Array.isArray(v.eqGains) && v.eqGains.length === 10) state.eqGains = v.eqGains.map(function (x) { return clamp(parseFloat(x) || 0, -12, 12); });
+          if (typeof v.eqPreset === 'string') state.eqPreset = v.eqPreset;
+          if (Array.isArray(v.queue)) state.queue = v.queue;
+          if (v.currentId) state.currentId = v.currentId;
+          if (v.viz === 'bars' || v.viz === 'wave' || v.viz === 'ring') state.viz = v.viz;
+        } else if (row.key === 'history' && Array.isArray(v)) {
+          history = v.filter(function (h) { return h && h.id; });
+        }
+      });
+    } catch (e) { /* IndexedDB 사용 불가 시 메모리로 동작 */ }
+
+    tracks.forEach(function (t) { trackMap[t.id] = t; });
+    tracks = tracks.filter(function (t) { return !!trackMap[t.id]; });
+    sortTracks();
+    state.queue = (state.queue || []).filter(function (id) { return !!trackMap[id]; });
+    if (state.currentId && !trackMap[state.currentId]) state.currentId = null;
+    if (state.currentId && (!state.queue.length || state.queue.indexOf(state.currentId) < 0)) state.queue = allIds();
+    if (state.eqGains.length !== 10) state.eqGains = EQ_PRESETS.flat.slice();
+    vizMode = state.viz || 'bars';
+    $$('[data-viz]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-viz') === vizMode); });
+    if (byId('vizMode')) byId('vizMode').textContent = vizMode === 'bars' ? 'FREQUENCY' : (vizMode === 'wave' ? 'WAVEFORM' : 'RADIAL');
+
+    audio.playbackRate = state.rate;
+    audio.volume = state.muted ? 0 : state.volume;
+    renderAll();
+    renderLyrics(true);
+    if (state.currentId) loadTrack(state.currentId, false);
+
+    var viewHash = (location.hash || '').replace('#', '');
+    if (viewHash === 'studio') { sizeViz(); drawEqCurve(); }
+    window.__playerReady = true;
+    doc.dispatchEvent(new CustomEvent('lemon:player-ready'));
+  }
+
+  window.Player = {
+    dbName: DB_NAME,
+    tracks: function () { return tracks.slice(); },
+    playlists: function () { return playlists.slice(); },
+    state: state,
+    addFiles: addFiles,
+    playTrack: playTrack,
+    loadTrack: loadTrack,
+    play: playAudio,
+    pause: pauseAudio,
+    toggle: togglePlay,
+    next: playNext,
+    prev: playPrev,
+    seek: function (s) { try { audio.currentTime = s; } catch (e) { } setSeek(s); },
+    setRate: setRate,
+    eqPreset: applyPreset,
+    eqGain: setEqGain,
+    refresh: renderAll,
+    parseMeta: parseMeta,
+    parseLRC: parseLRC,
+    genCover: genCover,
+    coverOf: coverOf,
+    audio: audio,
+    audioGraph: function () {
+      return {
+        state: actx ? actx.state : null,
+        filters: filters.map(function (f) { return Math.round(f.gain.value * 100) / 100; }),
+        analyser: !!analyser,
+        bands: EQ_FREQS.slice()
+      };
+    },
+    lyrics: function () {
+      return { synced: lyricState.synced, count: lyricState.lines.length, active: lyricState.active };
+    },
+    history: function () { return history.slice(); },
+    createPlaylist: createPlaylist,
+    addToPlaylist: addToPlaylist,
+    playPlaylist: playPlaylist,
+    deletePlaylist: deletePlaylist,
+    deleteTrack: deleteTrack,
+    exportBackup: exportBackup,
+    importBackup: importBackup,
+    wipe: wipeAll,
+    storage: function () {
+      return {
+        tracks: tracks.length,
+        bytes: tracks.reduce(function (s, t) { return s + (t.size || 0); }, 0),
+        queue: state.queue.length
+      };
+    }
+  };
+
+  function restoreActionsHTML() {
+    if (ACTIONS_HTML) {
+      var list = byId('actList');
+      list.innerHTML = ACTIONS_HTML;
+      list.onclick = null;
+    }
+  }
+  var __openActions = openActions;
+  openActions = function (id) { restoreActionsHTML(); __openActions(id); };
+
+  boot();
+})();
+</script>
+</body>
+</html>
