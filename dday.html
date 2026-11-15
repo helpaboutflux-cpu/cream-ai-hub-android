@@ -1,0 +1,2665 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon D-Day — 디데이·기념일 카운터 & 위젯 카드 스튜디오</title>
+<meta name="description" content="시험과 목표일은 D-N으로, 함께한 날은 D+N으로. 100일·1주년 기념일을 자동으로 계산하고 실시간 초 카운트다운과 감성 PNG 위젯 카드로 남기는 무서버 디데이 스튜디오.">
+<meta name="theme-color" content="#e0596b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23e0596b'/%3E%3Cpath d='M7 5.5v13M7 5.5h9.5l-1.8 3.4 1.8 3.4H7' fill='none' stroke='%23fff5f2' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#0c0910', 900: '#141017', 850: '#1a1520', 800: '#272029', 700: '#3d333e', 600: '#5a4d59', 500: '#7a6c78', 400: '#a196a0', 300: '#c7bdc4', 200: '#e8e0e3', 100: '#f4eff1' },
+    brand: { 50: '#fff1ef', 100: '#ffdfda', 200: '#ffc0b6', 300: '#ff9a8c', 400: '#fb7a69', 500: '#e0596b', 600: '#c93f57', 700: '#a22a45', 800: '#7c1f36', 900: '#5a1728', 950: '#360b17' },
+    wine: { 50: '#fdf2f5', 100: '#fbe0e7', 200: '#f5c2cf', 300: '#ec95ab', 400: '#dd6284', 500: '#c53e66', 600: '#a82a51', 700: '#8a1f45', 800: '#691834', 900: '#4b1024' }
+  } } }
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #e0596b; --brand-2: #ff9a6c; --brand-deep: #8a1f45;
+    --paper: #fff9f7; --ink: #241016;
+    --c1: #ff9d6c; --c2: #e0566b; --tint: #fff;
+  }
+  body { background: var(--paper); color: var(--ink); font-family: "Liberation Sans", "Noto Sans CJK KR", -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+  .dark body { background: #0c0910; color: #f6eef1; }
+  .page-bg { position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background:
+      radial-gradient(820px 420px at 12% -6%, rgba(255,157,108,.24), transparent 64%),
+      radial-gradient(760px 400px at 88% 4%, rgba(224,86,107,.20), transparent 62%),
+      linear-gradient(180deg, #fff9f7 0%, #fff6f3 48%, #fdf1ee 100%);
+  }
+  .dark .page-bg {
+    background:
+      radial-gradient(860px 460px at 10% -8%, rgba(224,86,107,.30), transparent 66%),
+      radial-gradient(720px 420px at 92% 2%, rgba(138,31,69,.36), transparent 64%),
+      linear-gradient(180deg, #0c0910 0%, #100b12 52%, #0b080e 100%);
+  }
+
+  /* ---------- hero / type ---------- */
+  .display { font-family: "Liberation Sans", "Noto Sans CJK KR", -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Segoe UI", sans-serif; letter-spacing: -.045em; }
+  .serif { font-family: "Iowan Old Style", Georgia, "Nanum Myeongjo", "Times New Roman", serif; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: var(--brand-deep); }
+  .dark .eyebrow { color: #f0a1b5; }
+
+  /* ---------- countdown card (container-relative type) ---------- */
+  .card-face {
+    container-type: inline-size;
+    position: relative; overflow: hidden; isolation: isolate;
+    width: 100%; aspect-ratio: 3 / 4;
+    border-radius: 1.5rem;
+    background-image: linear-gradient(152deg, var(--c1) 0%, var(--c2) 96%);
+    color: var(--tint);
+    box-shadow: 0 30px 60px -34px rgba(74, 18, 36, .70), 0 2px 6px rgba(74, 18, 36, .10);
+    transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s ease;
+  }
+  .card-face.is-photo { color: #fff; }
+  .card-face.is-photo .cf-title, .card-face.is-photo .cf-dnum, .card-face.is-photo .cf-date,
+  .card-face.is-photo .cf-sub, .card-face.is-photo .cf-note, .card-face.is-photo .live-row {
+    text-shadow: 0 1px 14px rgba(10,2,8,.45), 0 1px 2px rgba(10,2,8,.35);
+  }
+  .cf-ph { position: absolute; inset: 0; background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0; transition: opacity .4s ease; }
+  .card-face.is-photo .cf-ph { opacity: 1; }
+  .cf-veil { position: absolute; inset: 0; opacity: 0; background: linear-gradient(178deg, rgba(18,6,12,var(--veil, .45)) 0%, rgba(18,6,12,calc(var(--veil, .45) + .24)) 58%, rgba(18,6,12,calc(var(--veil, .45) + .42)) 100%); transition: opacity .4s ease; }
+  .card-face.is-photo .cf-veil { opacity: 1; }
+  .cf-glow { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 80% at 88% -10%, rgba(255,255,255,.34), transparent 58%),
+                radial-gradient(80% 60% at 4% 108%, rgba(255,255,255,.16), transparent 62%);
+  }
+  .cf-grain { position: absolute; inset: 0; pointer-events: none; opacity: .22; mix-blend-mode: soft-light;
+    background-image: radial-gradient(rgba(255,255,255,.7) .5px, transparent .6px); background-size: 3px 3px; }
+  .cf-mark { position: absolute; right: -7cqi; bottom: -5cqi; width: 54cqi; height: 54cqi; opacity: .085; pointer-events: none; transform: rotate(-9deg); }
+  .cf-mark svg { width: 100%; height: 100%; stroke-width: .9; }
+  .cf-inner { position: relative; height: 100%; display: flex; flex-direction: column; padding: 3.9cqi 4.1cqi 3.2cqi; }
+  .cf-inner::after { content: ''; position: absolute; inset: 1.9cqi; border-radius: 2.4cqi; border: 1px solid rgba(255,255,255,.17); pointer-events: none; }
+  .card-face.tone-dark .cf-inner::after { border-color: rgba(0,0,0,.10); }
+  .cf-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.4cqi; }
+  .cf-icon { width: 8.6cqi; height: 8.6cqi; border-radius: 3cqi; display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,.20); border: 1px solid rgba(255,255,255,.32); flex-shrink: 0; }
+  .cf-icon svg { width: 4.6cqi; height: 4.6cqi; }
+  .card-face.tone-dark .cf-icon { background: rgba(0,0,0,.14); border-color: rgba(0,0,0,.14); }
+  .cf-badge { font-size: 2.6cqi; font-weight: 900; letter-spacing: .16em; padding: .8cqi 1.5cqi; border-radius: 1.4cqi;
+    border: 1px solid rgba(255,255,255,.34); background: rgba(255,255,255,.16); white-space: nowrap; line-height: 1.1; }
+  .card-face.tone-dark .cf-badge { border-color: rgba(0,0,0,.18); background: rgba(0,0,0,.08); }
+  .cf-mid { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; }
+  .cf-title { font-weight: 800; font-size: 5.2cqi; line-height: 1.32; letter-spacing: -.025em;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+  .cf-dday { display: flex; align-items: baseline; gap: .8cqi; margin-top: 1.2cqi; }
+  .cf-dnum { font-weight: 900; font-size: 19cqi; line-height: .92; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+  .cf-dnum.sm { font-size: 9.4cqi; letter-spacing: -.03em; }
+  .cf-prep { font-weight: 900; font-size: 8.4cqi; opacity: .9; letter-spacing: -.03em; }
+  .cf-unit { font-size: 3.9cqi; font-weight: 800; opacity: .84; }
+  .cf-sub { margin-top: 1.1cqi; font-size: 3.3cqi; font-weight: 650; opacity: .78; letter-spacing: .005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cf-date { margin-top: 1.5cqi; font-size: 3.4cqi; font-weight: 750; letter-spacing: .03em; opacity: .88; display: inline-flex; align-items: center; gap: 1cqi; white-space: nowrap; overflow: hidden; }
+  .cf-date .dotline { width: 4.5cqi; height: 1px; background: currentColor; opacity: .5; flex-shrink: 0; }
+  .cf-bottom { display: flex; flex-direction: column; align-items: flex-start; gap: .9cqi; margin-top: 2.2cqi; }
+  .cf-note { font-size: 3.1cqi; line-height: 1.42; opacity: .76; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; max-width: 92%; word-break: break-word; }
+  .cf-brand { font-size: 1.95cqi; font-weight: 900; letter-spacing: .16em; opacity: .5; white-space: nowrap; }
+
+  .card-face.lay-split .cf-mid { justify-content: flex-end; }
+  .card-face.lay-split .cf-title { font-size: 5.8cqi; }
+  .card-face.lay-split .cf-dnum { font-size: 22cqi; }
+  .card-face.lay-split .cf-date { margin-top: 1cqi; }
+  .card-face.lay-rail .cf-inner { padding-left: 9.5cqi; }
+  .card-face.lay-rail .cf-inner::before { content: ''; position: absolute; left: 5.4cqi; top: 14cqi; bottom: 12cqi; width: 1px;
+    background: linear-gradient(to bottom, currentColor, transparent); opacity: .34; }
+  .card-face.lay-rail .cf-mid { justify-content: center; }
+  .card-face.lay-rail .cf-title,
+  .card-face.lay-rail .cf-date { position: relative; }
+  .card-face.lay-rail .cf-title::before,
+  .card-face.lay-rail .cf-date::before { content: ''; position: absolute; left: -4.6cqi; top: .5em; width: 1.5cqi; height: 1.5cqi; border-radius: 9999px;
+    background: currentColor; box-shadow: 0 0 0 1.1cqi rgba(255,255,255,.18); }
+  .card-face.lay-center .cf-mid { align-items: center; text-align: center; }
+  .card-face.lay-center .cf-dday { justify-content: center; }
+  .card-face.lay-center .cf-date { justify-content: center; }
+  .card-face.lay-center .cf-bottom { align-items: center; }
+  .card-face.ff-serif .cf-title, .card-face.ff-serif .cf-dnum { font-family: "Iowan Old Style", Georgia, "Nanum Myeongjo", serif; letter-spacing: -.03em; }
+  .card-face.ff-mono .cf-title, .card-face.ff-mono .cf-dnum { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -.05em; }
+  .card-face.ff-round .cf-title, .card-face.ff-round .cf-dnum { font-family: "Trebuchet MS", "Verdana", "Apple SD Gothic Neo", sans-serif; }
+
+  .live-row { display: flex; align-items: baseline; gap: 0; margin-top: 1.3cqi; font-variant-numeric: tabular-nums; font-size: 3.4cqi; font-weight: 800; opacity: .9; font-family: ui-monospace, "Liberation Mono", Menlo, monospace; letter-spacing: -.02em; }
+  .live-row b { font-weight: 800; letter-spacing: -.01em; }
+  .live-row b[data-u="d"]:not(:empty) { margin-right: .7cqi; opacity: .82; }
+  .live-row span.sep { opacity: .45; font-weight: 800; }
+
+  /* ---------- hero stage ---------- */
+  .stage-card { position: relative; width: min(100%, 330px); margin-inline: auto; }
+  .stage-card .card-face { animation: cardFloat 7s ease-in-out infinite; }
+  @keyframes cardFloat { 0%,100% { transform: translateY(0) rotate(-.6deg); } 50% { transform: translateY(-11px) rotate(.7deg); } }
+  .stage-card .float-chip {
+    position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: .35rem;
+    padding: .42rem .62rem; border-radius: .8rem; font-size: 10.5px; font-weight: 800;
+    background: rgba(255,255,255,.92); color: #4b1024; border: 1px solid rgba(224,86,107,.22);
+    box-shadow: 0 12px 26px -16px rgba(74,18,36,.6); backdrop-filter: blur(8px);
+    animation: chipFloat 5.4s ease-in-out infinite;
+  }
+  .dark .stage-card .float-chip { background: rgba(24,16,22,.94); color: #ffd9df; border-color: rgba(224,86,107,.34); }
+  .float-chip.fc1 { top: 46%; right: -1.55rem; animation-delay: .3s; }
+  .float-chip.fc2 { top: 63%; left: -1.55rem; animation-delay: 1.1s; }
+  @keyframes chipFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+  .hero-ring { position: absolute; inset: -8% -6% -4%; z-index: -1; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(255,154,108,.34), transparent 72%); filter: blur(12px); animation: ringPulse 6s ease-in-out infinite; }
+  @keyframes ringPulse { 0%,100% { transform: scale(1); opacity: .75; } 50% { transform: scale(1.06); opacity: 1; } }
+
+  /* ---------- timeline ---------- */
+  .timeline { position: relative; padding-left: 1.55rem; }
+  .timeline::before { content: ''; position: absolute; left: .42rem; top: .6rem; bottom: .6rem; width: 2px; border-radius: 2px;
+    background: linear-gradient(to bottom, rgba(224,86,107,.65), rgba(255,154,108,.45), rgba(224,86,107,.06)); }
+  .tl-item { position: relative; padding: .34rem 0 .34rem .1rem; }
+  .tl-item::before { content: ''; position: absolute; left: -1.28rem; top: .82rem; width: .6rem; height: .6rem; border-radius: 9999px;
+    background: #fff; border: 2px solid var(--brand); box-shadow: 0 0 0 4px rgba(224,86,107,.12); transition: transform .2s ease, box-shadow .2s ease; }
+  .tl-item.is-today::before { background: var(--brand); box-shadow: 0 0 0 6px rgba(224,86,107,.18); animation: dotPulse 2.2s ease-in-out infinite; }
+  .tl-item.is-past::before { border-color: #c9bcc3; box-shadow: none; }
+  .dark .tl-item.is-past::before { border-color: #4a3f47; }
+  @keyframes dotPulse { 0%,100% { box-shadow: 0 0 0 4px rgba(224,86,107,.22); } 50% { box-shadow: 0 0 0 9px rgba(224,86,107,.02); } }
+  .tl-row { display: flex; align-items: center; gap: .65rem; padding: .62rem .8rem; border-radius: .95rem; border: 1px solid transparent;
+    transition: background-color .2s, border-color .2s, transform .2s; cursor: pointer; }
+  .tl-row:hover { background: rgba(224,86,107,.06); border-color: rgba(224,86,107,.16); transform: translateX(2px); }
+  .dark .tl-row:hover { background: rgba(224,86,107,.10); border-color: rgba(224,86,107,.22); }
+
+  /* ---------- milestone chips ---------- */
+  .ms-chip { display: flex; align-items: center; gap: .55rem; padding: .62rem .8rem; border-radius: 1rem;
+    border: 1px solid rgba(224,86,107,.18); background: rgba(255,255,255,.72); transition: transform .22s, box-shadow .22s, border-color .2s; }
+  .dark .ms-chip { background: rgba(26,21,32,.6); border-color: rgba(224,86,107,.22); }
+  .ms-chip:hover { transform: translateY(-2px); box-shadow: 0 14px 26px -22px rgba(74,18,36,.8); border-color: rgba(224,86,107,.36); }
+  .ms-dot { width: .5rem; height: .5rem; border-radius: 9999px; background: linear-gradient(135deg, var(--brand), var(--brand-2)); flex-shrink: 0; }
+
+  /* ---------- template tiles ---------- */
+  .tpl { position: relative; overflow: hidden; text-align: left; padding: .8rem .85rem; border-radius: 1rem;
+    border: 1px solid rgba(36,16,22,.10); background: rgba(255,255,255,.8); transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .22s, border-color .2s; }
+  .dark .tpl { border-color: rgba(255,255,255,.10); background: rgba(26,21,32,.66); }
+  .tpl:hover { transform: translateY(-3px) scale(1.012); box-shadow: 0 18px 34px -26px rgba(74,18,36,.85); border-color: rgba(224,86,107,.4); }
+  .tpl:active { transform: scale(.98); }
+  .tpl .tpl-ic { width: 1.9rem; height: 1.9rem; border-radius: .65rem; display: inline-flex; align-items: center; justify-content: center; color: #fff; }
+
+  /* ---------- swatches ---------- */
+  .swatch { position: relative; width: 100%; aspect-ratio: 1.55; border-radius: .78rem; border: 2px solid transparent; overflow: hidden;
+    transition: transform .18s, border-color .18s, box-shadow .18s; }
+  .swatch:hover { transform: translateY(-2px); }
+  .swatch.on { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(224,86,107,.16); }
+  .swatch .sw-name { position: absolute; left: .3rem; bottom: .25rem; font-size: 8.5px; font-weight: 800; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.45); }
+  .ic-pick { display: inline-flex; align-items: center; justify-content: center; width: 2.35rem; height: 2.35rem; border-radius: .75rem;
+    border: 1px solid rgba(36,16,22,.12); background: rgba(255,255,255,.7); color: #6b4a55; transition: all .16s; }
+  .dark .ic-pick { border-color: rgba(255,255,255,.12); background: rgba(26,21,32,.7); color: #d0bcc4; }
+  .ic-pick svg { width: 1.15rem; height: 1.15rem; }
+  .ic-pick:hover { color: var(--brand); border-color: rgba(224,86,107,.45); transform: translateY(-1px); }
+  .ic-pick.on { color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; box-shadow: 0 8px 18px -10px rgba(224,86,107,.8); }
+
+  /* ---------- archive cards ---------- */
+  .arch-card { position: relative; border-radius: 1.2rem; overflow: hidden; border: 1px solid rgba(36,16,22,.09);
+    background: rgba(255,255,255,.8); transition: transform .24s cubic-bezier(.2,.8,.2,1), box-shadow .24s, border-color .2s; }
+  .dark .arch-card { border-color: rgba(255,255,255,.09); background: rgba(20,16,23,.8); }
+  .arch-card:hover { transform: translateY(-4px); box-shadow: 0 24px 42px -30px rgba(74,18,36,.8); border-color: rgba(224,86,107,.3); }
+  .arch-thumb { position: relative; aspect-ratio: 16 / 9; background-image: linear-gradient(140deg, var(--c1), var(--c2)); color: var(--tint); padding: .8rem .9rem; overflow: hidden; }
+  .arch-thumb .at-ph { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .72; }
+  .arch-thumb .at-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(18,6,12,.16), rgba(18,6,12,.5)); }
+  .arch-thumb .at-body { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+  .arch-thumb .at-num { font-weight: 900; font-size: 1.55rem; letter-spacing: -.05em; line-height: 1; }
+
+  /* ---------- misc ---------- */
+  .seg-pill { display: inline-flex; padding: 3px; border-radius: .8rem; background: rgba(36,16,22,.06); }
+  .dark .seg-pill { background: rgba(255,255,255,.06); }
+  .seg-pill button { padding: .34rem .62rem; border-radius: .6rem; font-size: 11px; font-weight: 800; color: #7a5f68; transition: background .18s, color .18s, box-shadow .18s; }
+  .dark .seg-pill button { color: #b7a2ab; }
+  .seg-pill button.on { background: #fff; color: #8a1f45; box-shadow: 0 1px 4px rgba(74,18,36,.14); }
+  .dark .seg-pill button.on { background: rgba(255,255,255,.16); color: #fff; }
+  .empty-box { border: 1.5px dashed rgba(224,86,107,.28); border-radius: 1.3rem; background: rgba(255,255,255,.55); }
+  .dark .empty-box { border-color: rgba(224,86,107,.3); background: rgba(22,17,26,.55); }
+  .soft-line { border-color: rgba(36,16,22,.09); }
+  .dark .soft-line { border-color: rgba(255,255,255,.09); }
+  .mob-dock { display: none; }
+  #pvCard { max-width: 372px; margin: 0 auto; }
+  #sharedCard { max-width: 352px; margin: 0 auto; }
+  #detailCard { max-width: 320px; margin: 0 auto; }
+  @media (max-width: 767px) {
+    .mob-dock {
+      display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+      padding: .5rem .7rem calc(.5rem + env(safe-area-inset-bottom));
+      background: rgba(255,255,255,.9); border-top: 1px solid rgba(36,16,22,.08);
+      backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+      align-items: center; gap: .4rem;
+    }
+    .dark .mob-dock { background: rgba(12,9,16,.92); border-color: rgba(255,255,255,.08); }
+    .mob-dock button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .16rem; padding: .38rem .2rem;
+      border-radius: .8rem; font-size: 10px; font-weight: 800; color: #8a7079; transition: color .18s, background .18s; }
+    .dark .mob-dock button { color: #a896a0; }
+    .mob-dock button svg { width: 1.15rem; height: 1.15rem; }
+    .mob-dock button.on { color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 10px 20px -14px rgba(224,86,107,.9); }
+    body { padding-bottom: 4.6rem; }
+    .stage-card { width: min(100%, 318px); }
+    .float-chip.fc1 { right: -.85rem; }
+    .float-chip.fc2 { left: -.75rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage-card .card-face, .float-chip, .hero-ring, .tl-item.is-today::before { animation: none !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+<div class="page-bg"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-24 opacity-[.22]"></div>
+<div class="ambient-orb w-80 h-80 top-1/3 -right-28 opacity-[.16]" style="background:#ff9a6c"></div>
+<div class="ambient-orb o3 w-64 h-64 bottom-10 left-1/3 opacity-[.12]" style="background:#8a1f45"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b soft-line">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4.5v15"></path><path d="M7 4.5h10l-2.2 3.9L17 12.3H7"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon D-Day</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-900/30 font-bold">DATE</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">디데이·기념일 카운터</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+      <button id="btnNewTop" class="primary-btn !px-3 !py-2 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span class="hidden sm:inline">새 디데이</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="hidden md:block sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b soft-line">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>디데이 스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5"></path><path d="M9.5 11.5h5"></path></svg>
+        <span>보관함</span>
+        <span id="tabCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+<!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+
+    <div class="hero-shell p-5 sm:p-9">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 lg:gap-10 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v3M16 3.5v3"></path><path d="M4 8.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 12.5h16"></path></svg>
+            남은 날도, 함께한 날도
+          </span>
+          <h1 class="text-[27px] sm:text-[38px] font-black leading-[1.14] tracking-tight">
+            그날까지 몇 밤 남았는지,<br><span class="brand-text">카드 한 장에.</span>
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            시험·여행·마감은 <b class="text-neutral-800 dark:text-neutral-200">D-N</b>으로, 만난 날과 시작한 날은 <b class="text-neutral-800 dark:text-neutral-200">D+N</b>으로.
+            100일과 1주년은 알아서 계산해 두고, 마음에 드는 카드는 고해상도 PNG로 저장합니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button data-goto="studio" class="primary-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              디데이 만들기
+            </button>
+            <button data-goto="archive" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5"></path></svg>
+              보관함 열기
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+            <span class="inline-flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z"></path><path d="M12 7.4v5l3.2 1.9"></path></svg>
+              초 단위 실시간 카운트다운
+            </span>
+            <span class="inline-flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5 12 3.5l8.5 4-8.5 4z"></path><path d="M7 9.5v4.4c0 1.6 2.2 2.9 5 2.9s5-1.3 5-2.9V9.5"></path></svg>
+              100일·1주년 자동 계산
+            </span>
+            <span class="inline-flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.4"></circle><path d="M20.5 15.5 15 10l-8 9.5"></path></svg>
+              고해상도 PNG 위젯
+            </span>
+          </div>
+        </div>
+
+        <div class="stage-card" id="heroStage">
+          <div class="hero-ring"></div>
+          <div class="float-chip fc1" id="heroChipTop">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12.5 9 17.5 20 6.5"></polyline></svg>
+            <span id="heroChipTopText">D-DAY</span>
+          </div>
+          <div class="float-chip fc2" id="heroChipBottom">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z"></path><path d="M12 7.4v5l3.2 1.9"></path></svg>
+            <span id="heroChipBottomText">00:00:00</span>
+          </div>
+          <div id="heroCard"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-2 sm:gap-3">
+      <div class="panel p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+        <span class="hidden sm:flex w-9 h-9 rounded-xl brand-grad-soft items-center justify-center" style="color:var(--brand)">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16M4 12h16M4 17.5h9"></path></svg>
+        </span>
+        <div>
+          <p class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">등록한 디데이</p>
+          <p class="text-base sm:text-lg font-black leading-tight"><span id="statTotal">0</span><span class="text-[11px] font-bold ml-0.5 text-neutral-400">개</span></p>
+        </div>
+      </div>
+      <div class="panel p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+        <span class="hidden sm:flex w-9 h-9 rounded-xl brand-grad-soft items-center justify-center" style="color:var(--brand)">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z"></path><path d="M12 7.4V12l3.4 2"></path></svg>
+        </span>
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">가장 가까운 날</p>
+          <p class="text-[11.5px] sm:text-sm font-black leading-tight truncate" id="statNext">—</p>
+        </div>
+      </div>
+      <div class="panel p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+        <span class="hidden sm:flex w-9 h-9 rounded-xl brand-grad-soft items-center justify-center" style="color:var(--brand)">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.5 5.3 5.8.8-4.2 4.1 1 5.8-5.1-2.8-5.1 2.8 1-5.8L3.7 9.7l5.8-.8z"></path></svg>
+        </span>
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">오늘</p>
+          <p class="text-[11.5px] sm:text-sm font-black leading-tight" id="statToday">—</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[1.15fr_.85fr] gap-5 items-start">
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-base font-black tracking-tight inline-flex items-center gap-2">
+              <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5V21"></path><path d="M5 7.5h14M5 13h14M5 18.5h14"></path></svg>
+              다가오는 일정
+            </h2>
+            <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">가까운 순서로 이어지는 나의 타임라인</p>
+          </div>
+          <button data-goto="archive" class="text-[11px] font-bold text-neutral-500 hover:text-brand-600 dark:hover:text-brand-300 transition">전체 보기</button>
+        </div>
+        <div id="tlList" class="timeline"></div>
+      </div>
+
+      <div class="space-y-5">
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-black tracking-tight inline-flex items-center gap-2">
+              <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.5 5.3 5.8.8-4.2 4.1 1 5.8-5.1-2.8-5.1 2.8 1-5.8L3.7 9.7l5.8-.8z"></path></svg>
+              곧 오는 기념일
+            </h2>
+            <span class="text-[10px] font-bold text-neutral-400">자동 계산</span>
+          </div>
+          <div id="msList" class="space-y-2"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5">
+          <h2 class="text-base font-black tracking-tight inline-flex items-center gap-2 mb-1">
+            <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.4"></circle><path d="M20.5 15.5 15 10l-8 9.5"></path></svg>
+            카드 위젯
+          </h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mb-3">배경·사진·아이콘·글꼴을 골라 1080px PNG로 저장하고, 링크 하나로 그대로 보여 줍니다.</p>
+          <div class="grid grid-cols-3 gap-2" id="miniGallery"></div>
+          <button data-goto="studio" class="ghost-btn w-full mt-3 !text-[11px] !py-2">
+            카드 꾸미러 가기
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel p-4 sm:p-5">
+      <div class="flex items-end justify-between mb-3">
+        <div>
+          <h2 class="text-base font-black tracking-tight">바로 시작하기</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">누르면 날짜만 맞춰 스튜디오가 열립니다</p>
+        </div>
+        <span class="hidden sm:inline text-[10px] font-bold text-neutral-400">템플릿 6종</span>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5" id="tplGrid"></div>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden">
+    <div class="lg:hidden panel p-3 mb-3 flex items-center gap-3" id="miniPreviewWrap">
+      <div id="pvMini" class="w-[92px] shrink-0"></div>
+      <div class="min-w-0 flex-1">
+        <p class="text-[11px] font-black">실시간 미리보기</p>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">카드를 누르면 아래에서 크게 볼 수 있어요</p>
+        <p id="pvMiniLabel" class="text-[12px] font-black mt-1" style="color:var(--brand)">D-100</p>
+      </div>
+      <button id="btnMiniJump" class="icon-btn" aria-label="미리보기로 이동">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M6 13l6 6 6-6"></path></svg>
+      </button>
+    </div>
+    <div class="grid lg:grid-cols-[1.02fr_.98fr] gap-5 items-start">
+
+      <div class="space-y-4">
+        <div class="panel p-4 sm:p-5 space-y-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h1 class="text-lg font-black tracking-tight">디데이 스튜디오</h1>
+              <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">날짜와 마음을 적으면 카드가 됩니다</p>
+            </div>
+            <span id="asBadge" class="as-badge">자동 저장 대기</span>
+          </div>
+
+          <div>
+            <p class="lemon-label mb-1.5">디데이 유형</p>
+            <div class="grid grid-cols-2 gap-1.5" id="typeGrid">
+              <button class="pill-btn !justify-start !text-[11px] !py-2.5 type-btn on" data-type="countdown">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z"></path><path d="M12 7.4V12l3.4 2"></path></svg>
+                카운트다운 D-N
+              </button>
+              <button class="pill-btn !justify-start !text-[11px] !py-2.5 type-btn" data-type="elapsed">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5s-7-4.4-7-9.3A4.2 4.2 0 0 1 12 7.7a4.2 4.2 0 0 1 7 3.5c0 4.9-7 9.3-7 9.3z"></path></svg>
+                기념일 D+N
+              </button>
+              <button class="pill-btn !justify-start !text-[11px] !py-2.5 type-btn" data-type="yearly">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5"></path><path d="M8 3.5v4M16 3.5v4"></path></svg>
+                매년 반복
+              </button>
+              <button class="pill-btn !justify-start !text-[11px] !py-2.5 type-btn" data-type="live">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z"></path><path d="M12 7.8v4.4l3 1.8"></path><path d="M12 1.5v1.6M22.5 12h-1.6M12 22.5v-1.6M1.5 12h1.6"></path></svg>
+                실시간 카운트
+              </button>
+            </div>
+            <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed" id="typeHint">목표일까지 남은 날을 셉니다. 지나면 자동으로 D+로 넘어갑니다.</p>
+          </div>
+
+          <div>
+            <label class="lemon-label block mb-1.5" for="inTitle">제목</label>
+            <input id="inTitle" class="lemon-input" maxlength="40" placeholder="예: 수능, 우리 100일, 제주 여행">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="lemon-label block mb-1.5" for="inDate" id="lblDate">날짜</label>
+              <input id="inDate" type="date" class="lemon-input">
+            </div>
+            <div>
+              <label class="lemon-label block mb-1.5" for="inTime" id="lblTime">시간 (선택)</label>
+              <input id="inTime" type="time" class="lemon-input">
+            </div>
+          </div>
+          <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 -mt-1" id="dateHint"></p>
+
+          <div>
+            <label class="lemon-label block mb-1.5" for="inNote">한 줄 메모</label>
+            <input id="inNote" class="lemon-input" maxlength="60" placeholder="예: 매일 조금씩, 끝까지">
+          </div>
+
+          <div id="msBox" class="rounded-2xl border soft-line bg-white/60 dark:bg-neutral-900/40 p-3 hidden">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-[11px] font-black inline-flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.5 5.3 5.8.8-4.2 4.1 1 5.8-5.1-2.8-5.1 2.8 1-5.8L3.7 9.7l5.8-.8z"></path></svg>
+                자동 기념일 계산
+              </p>
+              <span class="text-[9.5px] font-bold text-neutral-400">100일·200일·1주년</span>
+            </div>
+            <div id="msCalc" class="flex flex-wrap gap-1.5"></div>
+          </div>
+        </div>
+
+        <div class="panel p-4 sm:p-5 space-y-4">
+          <div>
+            <p class="lemon-label mb-1.5">아이콘</p>
+            <div class="flex flex-wrap gap-1.5" id="iconGrid"></div>
+          </div>
+
+          <div>
+            <p class="lemon-label mb-1.5">배경 테마</p>
+            <div class="grid grid-cols-4 gap-1.5" id="themeGrid"></div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <p class="lemon-label mb-1.5">글꼴</p>
+              <div class="seg-pill w-full" id="fontSeg">
+                <button data-font="sans" class="on flex-1">고딕</button>
+                <button data-font="serif" class="flex-1">명조</button>
+                <button data-font="mono" class="flex-1">모노</button>
+                <button data-font="round" class="flex-1">둥근</button>
+              </div>
+            </div>
+            <div>
+              <p class="lemon-label mb-1.5">레이아웃</p>
+              <div class="seg-pill w-full" id="layoutSeg">
+                <button data-layout="center" class="on flex-1">중앙</button>
+                <button data-layout="split" class="flex-1">스플릿</button>
+                <button data-layout="rail" class="flex-1">레일</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <p class="lemon-label">배경 사진</p>
+              <button id="btnPhotoClear" class="text-[10px] font-bold text-neutral-400 hover:text-brand-600 dark:hover:text-brand-300 transition hidden">사진 빼기</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <label for="inPhoto" class="pill-btn !text-[11px] !py-2 cursor-pointer flex-1">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><circle cx="8.5" cy="9.5" r="1.4"></circle><path d="M20.5 15.5 15 10l-8 9.5"></path></svg>
+                <span id="photoLabel">사진 선택</span>
+              </label>
+              <input id="inPhoto" type="file" accept="image/*" class="hidden">
+              <div class="w-[38%]">
+                <input id="inVeil" type="range" class="lemon-range" min="10" max="80" value="45" aria-label="사진 어둡기">
+              </div>
+            </div>
+            <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5">사진은 서버로 가지 않고 이 브라우저 안에만 저장됩니다.</p>
+          </div>
+
+          <div class="flex items-center justify-between rounded-xl border soft-line px-3 py-2.5">
+            <div>
+              <p class="text-[11.5px] font-bold">초 단위 실시간 표시</p>
+              <p class="text-[10px] text-neutral-500 dark:text-neutral-400">카드 아래에 시:분:초 카운트를 붙입니다</p>
+            </div>
+            <button id="swSec" class="switch on" role="switch" aria-checked="true"><span class="sr-only">초 단위 표시</span></button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btnSave" class="primary-btn !py-2.5">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h11L19.5 8v11.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"></path><path d="M8 4.5v5h7v-5M8 20.5v-6h8v6"></path></svg>
+              <span id="saveLabel">보관함에 저장</span>
+            </button>
+            <button id="btnPng" class="ghost-btn !py-2.5">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"></path><path d="M8 10.5l4 4 4-4"></path><path d="M4.5 16.5v2.5a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-2.5"></path></svg>
+              PNG 카드
+            </button>
+            <button id="btnShare" class="ghost-btn !py-2.5">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5.5" r="2.6"></circle><circle cx="6" cy="12" r="2.6"></circle><circle cx="18" cy="18.5" r="2.6"></circle><path d="M8.4 10.8 15.6 6.7M8.4 13.2l7.2 4.1"></path></svg>
+              공유 링크
+            </button>
+            <button id="btnReset" class="ghost-btn !py-2.5">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.6-5.9"></path><path d="M4 4v4.5h4.5"></path></svg>
+              새로 만들기
+            </button>
+          </div>
+          <button id="btnDelete" class="hidden w-full text-[11px] font-bold text-rose-500 hover:text-rose-600 py-1">이 디데이 삭제</button>
+        </div>
+      </div>
+
+      <div class="space-y-4 lg:sticky lg:top-[8.6rem]">
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-[11px] font-black inline-flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12s3.2-5.5 8.5-5.5S20.5 12 20.5 12s-3.2 5.5-8.5 5.5S3.5 12 3.5 12z"></path><circle cx="12" cy="12" r="2.4"></circle></svg>
+              실시간 미리보기
+            </p>
+            <span class="text-[10px] font-bold text-neutral-400" id="pvStamp">3 : 4</span>
+          </div>
+          <div id="pvCard"></div>
+          <div id="pvLive" class="mt-3 text-center"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5">
+          <p class="text-[11px] font-black mb-2">계산 결과</p>
+          <div class="space-y-1.5 text-[11.5px]" id="calcInfo"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5">
+          <p class="text-[11px] font-black inline-flex items-center gap-1.5 mb-2">
+            <svg class="w-3.5 h-3.5" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5s-7-4.4-7-9.3A4.2 4.2 0 0 1 12 7.7a4.2 4.2 0 0 1 7 3.5c0 4.9-7 9.3-7 9.3z"></path></svg>
+            만들기 팁
+          </p>
+          <ul class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed space-y-1.5 list-disc pl-4">
+            <li>기념일에 시작 날짜를 넣으면 100일·200일·1주년 날짜를 자동으로 계산합니다.</li>
+            <li>매년 반복은 생일·결혼기념일처럼 해마다 돌아오는 날에 쓰세요.</li>
+            <li>저장한 카드는 보관함에서 언제든 다시 꾸미고 PNG로 내려받을 수 있습니다.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section data-view="archive" class="hidden space-y-4">
+    <div class="panel p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 class="text-lg font-black tracking-tight inline-flex items-center gap-2">
+            내 보관함
+            <span id="archCount" class="text-[10px] font-mono px-2 py-0.5 rounded-full brand-grad-soft" style="color:var(--brand-deep)">0</span>
+          </h1>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">이 브라우저에만 저장됩니다 · IndexedDB</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btnBackup" class="ghost-btn !py-2 !px-2.5 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"></path><path d="M8 10.5l4 4 4-4"></path><path d="M4.5 16.5v2.5a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-2.5"></path></svg>
+            JSON 백업
+          </button>
+          <button id="btnRestore" class="ghost-btn !py-2 !px-2.5 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5v-11"></path><path d="M8 13.5l4-4 4 4"></path><path d="M4.5 7.5V5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1v2.5"></path></svg>
+            복원
+          </button>
+          <input id="inRestore" type="file" accept="application/json,.json" class="hidden">
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 mt-3">
+        <div class="relative flex-1 min-w-[10rem]">
+          <svg class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l4.5 4.5"></path></svg>
+          <input id="inSearch" class="lemon-input !pl-8 !py-2 !text-[12px]" placeholder="제목·메모로 찾기">
+        </div>
+        <div class="seg-pill" id="filterSeg">
+          <button data-filter="all" class="on">전체</button>
+          <button data-filter="upcoming">다가오는</button>
+          <button data-filter="elapsed">기념일</button>
+          <button data-filter="yearly">반복</button>
+        </div>
+        <select id="selSort" class="lemon-select !w-auto !py-2 !text-[11px]">
+          <option value="near">가까운 순</option>
+          <option value="recent">최근 만든 순</option>
+          <option value="name">이름 순</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="archGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5"></div>
+
+    <div id="archEmpty" class="empty-box p-10 text-center hidden">
+      <div class="float-y inline-flex w-14 h-14 rounded-2xl brand-grad-soft items-center justify-center mb-3" style="color:var(--brand)">
+        <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v3M16 3.5v3"></path><path d="M4 8.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M8 13h8M8 16.5h5"></path></svg>
+      </div>
+      <p class="font-black text-sm">아직 담긴 디데이가 없어요</p>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">첫 디데이를 만들면 여기에 모입니다.</p>
+      <button data-goto="studio" class="primary-btn !py-2 !text-[11.5px] mt-3 mx-auto">디데이 만들기</button>
+    </div>
+  </section>
+</main>
+
+<nav class="mob-dock" id="mobDock">
+  <button data-tab="home" class="on">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+    <span>홈</span>
+  </button>
+  <button data-tab="studio">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+    <span>스튜디오</span>
+  </button>
+  <button data-tab="archive">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5"></path></svg>
+    <span>보관함</span>
+  </button>
+</nav>
+
+<!-- ================= MODALS ================= -->
+<div class="lemon-modal" id="mDetail">
+  <div class="lm-backdrop" data-close="mDetail"></div>
+  <div class="lm-card !max-w-[26rem] w-full">
+    <div class="p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-[11px] font-black text-neutral-500 dark:text-neutral-400">디데이 상세</p>
+        <button class="icon-btn !w-8 !h-8" data-close="mDetail" aria-label="닫기">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+        </button>
+      </div>
+      <div id="detailCard"></div>
+      <div id="detailLive" class="mt-3 text-center"></div>
+      <div id="detailMs" class="mt-3 space-y-1.5"></div>
+      <div class="grid grid-cols-2 gap-2 mt-4">
+        <button id="btnDetailEdit" class="ghost-btn !py-2.5 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path></svg>
+          꾸미기
+        </button>
+        <button id="btnDetailPng" class="ghost-btn !py-2.5 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"></path><path d="M8 10.5l4 4 4-4"></path><path d="M4.5 16.5v2.5a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-2.5"></path></svg>
+          PNG 저장
+        </button>
+        <button id="btnDetailShare" class="ghost-btn !py-2.5 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5"></path><path d="M14 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5"></path></svg>
+          공유
+        </button>
+        <button id="btnDetailDelete" class="ghost-btn !py-2.5 !text-[11.5px] !text-rose-500">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15"></path><path d="M9 7V4.5h6V7"></path><path d="M6 7l1 13h10l1-13"></path></svg>
+          삭제
+        </button>
+      </div>
+      <button id="btnDetailLive" class="ghost-btn w-full mt-2 !py-2.5 !text-[11.5px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z"></path><path d="M12 7.4V12l3.4 2"></path></svg>
+        실시간 카운트다운 크게 보기
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="lemon-modal" id="mPng">
+  <div class="lm-backdrop" data-close="mPng"></div>
+  <div class="lm-card !max-w-[22rem] w-full">
+    <div class="p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-sm font-black">PNG 카드 저장</p>
+        <button class="icon-btn !w-8 !h-8" data-close="mPng" aria-label="닫기">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+        </button>
+      </div>
+      <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mb-3">카드 전체를 고해상도 이미지로 그립니다.</p>
+      <div class="space-y-2">
+        <button class="png-opt w-full text-left rounded-xl border soft-line p-3 hover:border-brand-400 transition flex items-center gap-3" data-size="story">
+          <span class="w-9 h-9 rounded-lg brand-grad-soft flex items-center justify-center" style="color:var(--brand)">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2"></rect></svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block text-[12px] font-bold">스토리 위젯 · 1080 × 1920</span>
+            <span class="block text-[10px] text-neutral-500 dark:text-neutral-400">잠금화면·스토리에 그대로</span>
+          </span>
+        </button>
+        <button class="png-opt w-full text-left rounded-xl border soft-line p-3 hover:border-brand-400 transition flex items-center gap-3" data-size="square">
+          <span class="w-9 h-9 rounded-lg brand-grad-soft flex items-center justify-center" style="color:var(--brand)">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block text-[12px] font-bold">정사각 카드 · 1080 × 1080</span>
+            <span class="block text-[10px] text-neutral-500 dark:text-neutral-400">프로필·피드에 올리기 좋게</span>
+          </span>
+        </button>
+        <button class="png-opt w-full text-left rounded-xl border soft-line p-3 hover:border-brand-400 transition flex items-center gap-3" data-size="wide">
+          <span class="w-9 h-9 rounded-lg brand-grad-soft flex items-center justify-center" style="color:var(--brand)">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"></rect></svg>
+          </span>
+          <span class="min-w-0">
+            <span class="block text-[12px] font-bold">데스크톱 배경 · 1920 × 1080</span>
+            <span class="block text-[10px] text-neutral-500 dark:text-neutral-400">모니터 배경화면용</span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lemon-modal" id="mShare">
+  <div class="lm-backdrop" data-close="mShare"></div>
+  <div class="lm-card !max-w-[26rem] w-full">
+    <div class="p-4 sm:p-5">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-sm font-black">공유 링크</p>
+        <button class="icon-btn !w-8 !h-8" data-close="mShare" aria-label="닫기">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+        </button>
+      </div>
+      <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mb-3">받는 사람은 앱 설치 없이 바로 카운트다운을 보고, 자기 보관함에 담을 수 있습니다.</p>
+      <textarea id="shareUrl" class="lemon-textarea !text-[11px] !font-mono" rows="3" readonly></textarea>
+      <p id="shareNote" class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1.5"></p>
+      <div class="grid grid-cols-2 gap-2 mt-3">
+        <button id="btnCopyLink" class="primary-btn !py-2.5 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M6.5 15H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1.5"></path></svg>
+          링크 복사
+        </button>
+        <button id="btnOpenLink" class="ghost-btn !py-2.5 !text-[11.5px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"></path><path d="M9 7h8v8"></path></svg>
+          미리 보기
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lemon-modal" id="mConfirm">
+  <div class="lm-backdrop" data-close="mConfirm"></div>
+  <div class="lm-card !max-w-[20rem] w-full">
+    <div class="p-5 text-center">
+      <div class="w-11 h-11 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-rose-50 dark:bg-rose-950/50 text-rose-500">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15"></path><path d="M9 7V4.5h6V7"></path><path d="M6 7l1 13h10l1-13"></path></svg>
+      </div>
+      <p class="text-sm font-black" id="confirmTitle">삭제할까요?</p>
+      <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1" id="confirmText">이 디데이를 보관함에서 지웁니다.</p>
+      <div class="grid grid-cols-2 gap-2 mt-4">
+        <button class="ghost-btn !py-2.5 !text-[11.5px]" data-close="mConfirm">취소</button>
+        <button id="btnConfirmYes" class="primary-btn !py-2.5 !text-[11.5px] !from-rose-500 !to-rose-600" style="background-image:linear-gradient(135deg,#f43f5e,#be123c)">삭제</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="stageView" class="fixed inset-0 z-[76] hidden">
+  <div class="absolute inset-0" style="background:radial-gradient(120% 90% at 50% 0%, #3a1226 0%, #170a13 55%, #0a060c 100%)"></div>
+  <div class="relative h-full w-full overflow-y-auto no-scrollbar">
+    <div class="min-h-full flex flex-col items-center justify-center px-6 py-10 text-white text-center">
+      <button id="btnStageClose" class="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 transition flex items-center justify-center" aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+      <span class="text-[10px] font-black tracking-[.28em] text-white/45">LEMON D-DAY</span>
+      <p id="stageLabel" class="mt-4 text-[13px] font-bold text-rose-200/80">D-2</p>
+      <h2 id="stageTitle" class="mt-1 text-2xl font-black tracking-tight max-w-[16rem] leading-tight">제목</h2>
+      <div id="stageBig" class="mt-5 display font-black leading-none" style="font-size:clamp(2.6rem, 14vw, 5.2rem); letter-spacing:-.05em; font-variant-numeric:tabular-nums;"></div>
+      <p id="stageDate" class="mt-4 text-[12px] font-semibold text-white/60"></p>
+      <div id="stageProg" class="mt-8 w-full max-w-[18rem]"></div>
+      <p class="mt-8 text-[10px] text-white/35">초 단위로 흐르는 실시간 카운트다운</p>
+    </div>
+  </div>
+</div>
+
+<div id="sharedView" class="fixed inset-0 z-[70] hidden">
+  <div class="absolute inset-0 bg-[#0c0910]/80 backdrop-blur-md"></div>
+  <div class="relative h-full w-full overflow-y-auto no-scrollbar">
+    <div class="min-h-full w-full flex flex-col items-center justify-center px-5 py-10">
+      <div class="w-full max-w-[22rem]">
+        <div class="flex items-center justify-between mb-3 text-white/80">
+          <span class="text-[10px] font-black tracking-[.2em]">LEMON D-DAY</span>
+          <button id="btnSharedClose" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 transition flex items-center justify-center" aria-label="닫기">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+          </button>
+        </div>
+        <div id="sharedCard"></div>
+        <div id="sharedLive" class="mt-3 text-center text-white"></div>
+        <div class="grid grid-cols-1 gap-2 mt-4">
+          <button id="btnSharedSave" class="primary-btn !py-3">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h11L19.5 8v11.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"></path><path d="M8 4.5v5h7v-5"></path></svg>
+            내 보관함에 담기
+          </button>
+          <button id="btnSharedPng" class="ghost-btn !py-2.5 !bg-white/10 !border-white/20 !text-white hover:!text-white">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11"></path><path d="M8 10.5l4 4 4-4"></path><path d="M4.5 16.5v2.5a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-2.5"></path></svg>
+            PNG 카드로 저장
+          </button>
+        </div>
+        <p class="text-center text-[10px] text-white/50 mt-4">Lemon soft가 만든 서비스</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="border-t soft-line mt-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2">
+      <span class="w-6 h-6 rounded-lg brand-grad flex items-center justify-center text-white">
+        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4.5v15"></path><path d="M7 4.5h10l-2.2 3.9L17 12.3H7"></path></svg>
+      </span>
+      <span class="font-bold text-neutral-700 dark:text-neutral-300">Lemon D-Day</span>
+      <span class="text-neutral-400">·</span>
+      <span>Lemon soft가 만든 서비스</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="hover:underline">서비스 허브</a>
+      <a href="manager.html" class="hover:underline">저장공간 관리</a>
+      <button id="btnFooterTop" class="hover:underline">맨 위로</button>
+    </div>
+  </div>
+</footer>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 1. helpers ================= */
+  var $ = function (id) { return document.getElementById(id); };
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  function toast(m, t) { try { Lemon.toast(m, t || 'ok'); } catch (e) { } }
+  function hap(ms) { try { Lemon.hap(ms); } catch (e) { } }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  /* ================= 2. icons ================= */
+  var ICONS = {
+    heart: ['M12 20.2s-7.1-4.4-7.1-9.4A4.2 4.2 0 0 1 12 7.8a4.2 4.2 0 0 1 7.1 3c0 5-7.1 9.4-7.1 9.4z'],
+    cake: ['M4 20h16', 'M5.2 20v-5.6h13.6V20', 'M8.6 14.4v-2.2', 'M12 14.4v-2.2', 'M15.4 14.4v-2.2', 'M6.2 9.9c1.9-1.5 3.8-1.5 5.8 0s3.9 1.5 5.8 0', 'M12 6.6V8'],
+    book: ['M4.5 5.5A1.5 1.5 0 0 1 6 4h13v16H6a1.5 1.5 0 0 1-1.5-1.5z', 'M8.5 4v16', 'M11.6 9.5h4.2', 'M11.6 13h4.2'],
+    plane: ['M21 4 3.5 11.2l6 1.8L11.6 19l3-4.3 5 1.9z', 'M9.5 13 21 4'],
+    ring: ['M12 21a6 6 0 1 0 0-12 6 6 0 0 0 0 12z', 'M9 7.6 12 3.2l3 4.4', 'M10.4 5.4h3.2'],
+    star: ['M12 3.6l2.5 5.3 5.8.8-4.2 4.1 1 5.8-5.1-2.8-5.1 2.8 1-5.8L3.7 9.7l5.8-.8z'],
+    calendar: ['M4 7.5h16V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z', 'M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5', 'M8 3.5v4', 'M16 3.5v4', 'M8 12h3', 'M8 15.5h6'],
+    gift: ['M4 11h16v8.2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z', 'M3 7.4h18V11H3z', 'M12 7.4V20', 'M12 7.4S9.2 3.6 6.8 5.4C4.4 7.2 12 7.4 12 7.4z', 'M12 7.4s2.8-3.8 5.2-2C19.6 7.2 12 7.4 12 7.4z'],
+    clock: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M12 7.5V12l3.4 2'],
+    coffee: ['M3.8 8h12.4v5.8a5 5 0 0 1-5 5H8.8a5 5 0 0 1-5-5z', 'M16.2 9.6h1.7a2.4 2.4 0 0 1 0 4.8h-1.7', 'M4 21h13'],
+    camera: ['M4 8.5h3.2L8.6 6.4h6.8l1.4 2.1H20V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z', 'M12 17.2a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2z'],
+    flag: ['M6 21V4h12l-2.6 4.1L18 12.2H6', 'M6 4h12'],
+    target: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M12 7.8a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4z', 'M12 11.4a.7.7 0 1 0 0 1.4.7.7 0 0 0 0-1.4z'],
+    cap: ['M3 9.6 12 5.2l9 4.4-9 4.4z', 'M7 11.8v4.1c0 1.5 2.2 2.6 5 2.6s5-1.1 5-2.6v-4.1'],
+    sun: ['M12 6.6a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8z', 'M12 2.2v1.8', 'M12 20v1.8', 'M4.4 4.4l1.3 1.3', 'M18.3 18.3l1.3 1.3', 'M2.2 12h1.8', 'M20 12h1.8', 'M4.4 19.6l1.3-1.3', 'M18.3 5.7l1.3-1.3'],
+    moon: ['M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8z'],
+    briefcase: ['M3.5 8.6h17V19a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z', 'M9 8.6V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2.6', 'M3.5 13h17'],
+    sparkle: ['M12 3.5l1.7 4.4 4.4 1.7-4.4 1.7L12 15.7l-1.7-4.4L5.9 9.6l4.4-1.7z', 'M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z'],
+    pin: ['M12 21s6.5-6.1 6.5-10.4A6.5 6.5 0 0 0 5.5 10.6C5.5 14.9 12 21 12 21z', 'M12 12.6a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z']
+  };
+  var ICON_KEYS = ['heart', 'star', 'cake', 'ring', 'plane', 'book', 'cap', 'calendar', 'flag', 'target', 'clock', 'coffee', 'camera', 'gift', 'sparkle', 'sun', 'moon', 'briefcase', 'pin', 'home'];
+
+  function iconSVG(key, cls) {
+    var d = ICONS[key] || ICONS.heart;
+    var out = '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">';
+    for (var i = 0; i < d.length; i++) out += '<path d="' + d[i] + '"></path>';
+    return out + '</svg>';
+  }
+
+  /* ================= 3. themes / fonts / layouts ================= */
+  var THEMES = [
+    { id: 'sunset', name: '선셋', c1: '#ff9d6c', c2: '#e0566b', ink: '#fff8f4', tone: 'light' },
+    { id: 'wine', name: '딥와인', c1: '#8a1f45', c2: '#3a0d20', ink: '#ffe9ef', tone: 'dark' },
+    { id: 'dawn', name: '새벽', c1: '#ffe4d4', c2: '#ffb39b', ink: '#5c2436', tone: 'dark' },
+    { id: 'midnight', name: '미드나잇', c1: '#33162a', c2: '#6d1f3f', ink: '#ffe6ec', tone: 'dark' },
+    { id: 'ember', name: '엠버', c1: '#ff7043', c2: '#b3163e', ink: '#fff5f0', tone: 'light' },
+    { id: 'quartz', name: '로즈쿼츠', c1: '#ffe7ea', c2: '#f3b0c2', ink: '#7a2340', tone: 'dark' },
+    { id: 'cocoa', name: '코코아', c1: '#4b2a27', c2: '#8a4a3a', ink: '#ffe9dc', tone: 'dark' },
+    { id: 'bloom', name: '블룸', c1: '#ffb3c7', c2: '#c2447a', ink: '#fff6f9', tone: 'light' }
+  ];
+  var FONTS = [
+    { id: 'sans', name: '고딕', stack: '"Liberation Sans","Noto Sans CJK KR","Pretendard","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif' },
+    { id: 'serif', name: '명조', stack: '"Liberation Serif","Noto Serif CJK KR",Georgia,"Nanum Myeongjo",serif' },
+    { id: 'mono', name: '모노', stack: '"Liberation Mono",ui-monospace,"SFMono-Regular",Menlo,monospace' },
+    { id: 'round', name: '둥근', stack: '"Liberation Sans","Noto Sans CJK KR","Trebuchet MS","Apple SD Gothic Neo",sans-serif' }
+  ];
+  var LAYOUTS = ['center', 'split', 'rail'];
+  var TYPES = ['countdown', 'elapsed', 'yearly', 'live'];
+
+  function themeOf(id) {
+    for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === id) return THEMES[i];
+    return THEMES[0];
+  }
+  function fontOf(id) {
+    for (var i = 0; i < FONTS.length; i++) if (FONTS[i].id === id) return FONTS[i];
+    return FONTS[0];
+  }
+
+  /* ================= 4. date math ================= */
+  var DAY = 86400000;
+  var WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+
+  function startOfDay(d) { var x = new Date(d.getTime()); x.setHours(0, 0, 0, 0); return x; }
+  function todayStr() { return isoOf(new Date()); }
+  function isoOf(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function parseItemDate(dateStr, timeStr, fallbackTime) {
+    if (!dateStr) return null;
+    var p = String(dateStr).split('-');
+    if (p.length < 3) return null;
+    var t = String(timeStr || fallbackTime || '00:00').split(':');
+    var d = new Date(+p[0], (+p[1]) - 1, +p[2], +(t[0] || 0), +(t[1] || 0), 0, 0);
+    if (isNaN(d.getTime())) return null;
+    return d;
+  }
+  function dayDiff(a, b) { return Math.round((startOfDay(a) - startOfDay(b)) / DAY); }
+  function dotDate(d) { return d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()); }
+  function dateWithWeek(d) { return dotDate(d) + ' (' + WEEK[d.getDay()] + ')'; }
+  function timeText(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function shortDate(item) { var d = parseItemDate(item.date, item.time, ''); return d ? pad(d.getMonth() + 1) + '.' + pad(d.getDate()) : ''; }
+  function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+
+  var MILESTONES = [
+    [30, '30일'], [50, '50일'], [100, '100일'], [200, '200일'], [300, '300일'],
+    [365, '1주년'], [400, '400일'], [500, '500일'], [600, '600일'], [700, '700일'],
+    [730, '2주년'], [800, '800일'], [900, '900일'], [1000, '1000일'],
+    [1095, '3주년'], [1461, '4주년'], [1826, '5주년'], [2557, '7주년'], [2922, '8주년'], [3652, '10주년']
+  ];
+
+  function compute(item, now) {
+    now = now || new Date();
+    var base = parseItemDate(item.date, item.time, '00:00');
+    if (!base) return null;
+    var type = item.type || 'countdown';
+    var res = { type: type, label: '', pre: '', num: '', unit: '', sub: '', target: base, ms: 0, days: 0, base: base };
+
+    if (type === 'elapsed') {
+      var n = dayDiff(now, base);
+      res.days = n;
+      if (n >= 0) { res.pre = 'D+'; res.num = String(n); res.unit = '일'; res.label = 'D+' + n; }
+      else { res.pre = 'D-'; res.num = String(-n); res.unit = '일'; res.label = 'D-' + (-n); }
+      res.ms = now.getTime() - base.getTime();
+      res.line = '시작 ' + dateWithWeek(base) + (item.time ? ' ' + item.time : '');
+      var next = nextMilestone(base, n);
+      res.nextMs = next;
+      res.sub = next ? '다음 ' + next.name + '까지 ' + next.left + '일' : '';
+      return res;
+    }
+
+    if (type === 'yearly') {
+      var y = now.getFullYear();
+      var occ = new Date(y, base.getMonth(), base.getDate(), base.getHours(), base.getMinutes(), 0, 0);
+      if (occ.getTime() < now.getTime() && dayDiff(occ, now) < 0) occ = new Date(y + 1, base.getMonth(), base.getDate(), base.getHours(), base.getMinutes(), 0, 0);
+      if (dayDiff(occ, now) < 0) occ = new Date(y + 1, base.getMonth(), base.getDate(), base.getHours(), base.getMinutes(), 0, 0);
+      var dd = dayDiff(occ, now);
+      var years = occ.getFullYear() - base.getFullYear();
+      res.days = dd; res.target = occ; res.ms = occ.getTime() - now.getTime();
+      res.label = dd === 0 ? 'D-DAY' : 'D-' + dd;
+      res.pre = dd === 0 ? '' : 'D-'; res.num = dd === 0 ? 'D-DAY' : String(dd); res.unit = dd === 0 ? '' : '일';
+      res.line = dateWithWeek(occ) + (item.time ? ' ' + item.time : '');
+      res.sub = '매년 돌아오는 ' + (base.getMonth() + 1) + '월 ' + base.getDate() + '일';
+      res.years = years;
+      return res;
+    }
+
+    /* countdown + live */
+    var dd2 = dayDiff(base, now);
+    res.days = dd2; res.target = base; res.ms = base.getTime() - now.getTime();
+    if (dd2 > 0) { res.pre = 'D-'; res.num = String(dd2); res.unit = '일 남음'; res.label = 'D-' + dd2; }
+    else if (dd2 === 0) { res.pre = ''; res.num = 'D-DAY'; res.unit = ''; res.label = 'D-DAY'; }
+    else { res.pre = 'D+'; res.num = String(-dd2); res.unit = '일 지남'; res.label = 'D+' + (-dd2); }
+    res.line = dateWithWeek(base) + (item.time ? ' ' + item.time : '');
+    res.sub = '';
+    return res;
+  }
+
+  function nextMilestone(base, elapsedDays) {
+    for (var i = 0; i < MILESTONES.length; i++) {
+      var n = MILESTONES[i][0];
+      if (n > elapsedDays) {
+        var d = addDays(base, n);
+        return { n: n, name: MILESTONES[i][1], date: d, left: n - elapsedDays };
+      }
+    }
+    return null;
+  }
+
+  function milestonesFor(item, count) {
+    if (item.type !== 'elapsed') return [];
+    var base = parseItemDate(item.date, item.time, '00:00');
+    if (!base) return [];
+    var n = dayDiff(new Date(), base);
+    var out = [];
+    for (var i = 0; i < MILESTONES.length && out.length < (count || 6); i++) {
+      if (MILESTONES[i][0] <= n) continue;
+      out.push({ n: MILESTONES[i][0], name: MILESTONES[i][1], date: addDays(base, MILESTONES[i][0]), left: MILESTONES[i][0] - n });
+    }
+    return out;
+  }
+
+  function liveParts(ms) {
+    var neg = ms < 0;
+    var s = Math.floor(Math.abs(ms) / 1000);
+    var d = Math.floor(s / 86400); s -= d * 86400;
+    var h = Math.floor(s / 3600); s -= h * 3600;
+    var m = Math.floor(s / 60); s -= m * 60;
+    return { d: d, h: h, m: m, s: s, neg: neg };
+  }
+
+  /* ================= 5. IndexedDB ================= */
+  var DB_NAME = 'lemon_dday_v1';
+  var dbPromise = null;
+  var storageMode = 'idb';
+
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('no-idb')); return; }
+      var rq;
+      try { rq = indexedDB.open(DB_NAME, 1); } catch (e) { rej(e); return; }
+      rq.onupgradeneeded = function () {
+        var d = rq.result;
+        if (!d.objectStoreNames.contains('items')) d.createObjectStore('items', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'k' });
+      };
+      rq.onsuccess = function () { res(rq.result); };
+      rq.onerror = function () { rej(rq.error || new Error('idb-open')); };
+    });
+    return dbPromise;
+  }
+  function idbAll() {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var rq = d.transaction('items', 'readonly').objectStore('items').getAll();
+        rq.onsuccess = function () { res(rq.result || []); };
+        rq.onerror = function () { rej(rq.error); };
+      });
+    });
+  }
+  function idbPut(item) {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var tx = d.transaction('items', 'readwrite');
+        tx.objectStore('items').put(item);
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+  function idbDel(id) {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var tx = d.transaction('items', 'readwrite');
+        tx.objectStore('items').delete(id);
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+  function idbClear() {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var tx = d.transaction('items', 'readwrite');
+        tx.objectStore('items').clear();
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+  function metaSet(k, v) {
+    return openDB().then(function (d) {
+      return new Promise(function (res) {
+        var tx = d.transaction('meta', 'readwrite');
+        tx.objectStore('meta').put({ k: k, v: v, ts: Date.now() });
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { res(false); };
+      });
+    });
+  }
+  function metaGet(k) {
+    return openDB().then(function (d) {
+      return new Promise(function (res) {
+        var rq = d.transaction('meta', 'readonly').objectStore('meta').get(k);
+        rq.onsuccess = function () { res(rq.result ? rq.result.v : null); };
+        rq.onerror = function () { res(null); };
+      });
+    });
+  }
+
+  /* localStorage fallback when IndexedDB is unavailable (private mode, etc.) */
+  var LS_KEY = 'lemon_dday_backup_v1';
+  function lsAll() { try { var v = localStorage.getItem(LS_KEY); return v ? JSON.parse(v) : []; } catch (e) { return []; } }
+  function lsSave(list) { try { localStorage.setItem(LS_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
+
+  /* ================= 6. state ================= */
+  var ITEMS = [];
+  var state = {
+    view: 'home',
+    filter: 'all',
+    search: '',
+    sort: 'near',
+    editingId: null,
+    detailId: null,
+    shared: null,
+    stageId: null,
+    draft: null
+  };
+
+  function byId(id) {
+    if (id === 'demo') return demoItem();
+    if (id === 'draft' || (id && id === state.editingId && state.view === 'studio')) return draftToItem();
+    for (var i = 0; i < ITEMS.length; i++) if (ITEMS[i].id === id) return ITEMS[i];
+    if (state.shared && state.shared.id === id) return state.shared;
+    return null;
+  }
+  function newId() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  function normalize(item) {
+    var o = {
+      id: item.id || newId(),
+      title: item.title || '이름 없는 디데이',
+      type: TYPES.indexOf(item.type) > -1 ? item.type : 'countdown',
+      date: item.date || todayStr(),
+      time: item.time || '',
+      note: item.note || '',
+      icon: ICONS[item.icon] ? item.icon : 'heart',
+      theme: themeOf(item.theme).id,
+      font: fontOf(item.font).id,
+      layout: LAYOUTS.indexOf(item.layout) > -1 ? item.layout : 'center',
+      photo: item.photo || '',
+      veil: typeof item.veil === 'number' ? clamp(item.veil, 0, 80) : 45,
+      showSec: item.showSec !== false,
+      pinned: !!item.pinned,
+      created: item.created || Date.now(),
+      updated: item.updated || Date.now()
+    };
+    return o;
+  }
+
+  function blankDraft() {
+    return {
+      id: null, title: '', type: 'countdown', date: isoOf(addDays(new Date(), 30)), time: '',
+      note: '', icon: 'heart', theme: 'sunset', font: 'sans', layout: 'center',
+      photo: '', veil: 45, showSec: true, pinned: false
+    };
+  }
+
+  /* ================= 7. card rendering ================= */
+  function cardHTML(item, opts) {
+    opts = opts || {};
+    var c = compute(item);
+    var th = themeOf(item.theme);
+    var cls = 'card-face lay-' + item.layout + ' ff-' + item.font;
+    if (item.photo) cls += ' is-photo';
+    if (th.tone === 'dark') cls += ' tone-dark';
+    var style = '--c1:' + th.c1 + ';--c2:' + th.c2 + ';--tint:' + th.ink + ';--veil:' + ((item.veil || 45) / 100);
+    var badge = badgeText(item.type);
+    var numCls = c && String(c.num).length > 3 ? ' sm' : '';
+
+    var h = '<div class="' + cls + '" style="' + style + '" data-card-for="' + esc(item.id || 'draft') + '">';
+    if (item.photo) h += '<div class="cf-ph" style="background-image:url(\'' + item.photo.replace(/'/g, '%27') + '\')"></div><div class="cf-veil"></div>';
+    h += '<div class="cf-glow"></div><div class="cf-grain"></div>';
+    h += '<div class="cf-mark">' + iconSVG(item.icon) + '</div>';
+    h += '<div class="cf-inner">';
+    h += '<div class="cf-top"><span class="cf-icon">' + iconSVG(item.icon) + '</span><span class="cf-badge">' + badge + '</span></div>';
+    h += '<div class="cf-mid">';
+    h += '<div class="cf-title">' + esc(item.title || '제목을 적어 주세요') + '</div>';
+    if (c) {
+      if (c.num === 'D-DAY') h += '<div class="cf-dday"><span class="cf-dnum sm">D-DAY</span></div>';
+      else h += '<div class="cf-dday"><span class="cf-prep">' + esc(c.pre) + '</span><span class="cf-dnum' + numCls + '">' + esc(c.num) + '</span><span class="cf-unit">' + esc(c.unit) + '</span></div>';
+      h += '<div class="cf-date"><span class="dotline"></span>' + esc(c.line || dateText(item)) + '</div>';
+      if (c.sub) h += '<div class="cf-sub">' + esc(c.sub) + '</div>';
+      if (item.showSec) h += '<div class="live-row" data-live-for="' + esc(item.id || 'draft') + '" data-mode="' + esc(item.type) + '">' + liveRowHTML() + '</div>';
+    } else {
+      h += '<div class="cf-dday"><span class="cf-dnum sm">날짜 선택</span></div>';
+    }
+    h += '</div>';
+    h += '<div class="cf-bottom"><span class="cf-note">' + esc(item.note || (item.type === 'elapsed' ? '함께한 날' : '그날까지')) + '</span><span class="cf-brand">LEMON D-DAY</span></div>';
+    h += '</div></div>';
+    return h;
+  }
+
+  function liveRowHTML() {
+    return '<b data-u="d"></b><b data-u="h">00</b><span class="sep">:</span><b data-u="m">00</b><span class="sep">:</span><b data-u="s">00</b>';
+  }
+
+  function badgeText(type) {
+    if (type === 'elapsed') return 'ANNIVERSARY';
+    if (type === 'yearly') return 'EVERY YEAR';
+    if (type === 'live') return 'LIVE';
+    return 'D-DAY';
+  }
+  function dateText(item) {
+    var d = parseItemDate(item.date, item.time, '');
+    if (!d) return '';
+    return dateWithWeek(d) + (item.time ? ' ' + item.time : '');
+  }
+
+  /* ================= 8. live ticker ================= */
+  function tickLive() {
+    var nodes = document.querySelectorAll('[data-live-for]');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var item = byId(el.getAttribute('data-live-for'));
+      if (!item) continue;
+      var c = compute(item);
+      if (!c) continue;
+      var p = liveParts(Math.abs(c.ms));
+      var dEl = el.querySelector('[data-u="d"]'), hEl = el.querySelector('[data-u="h"]'), mEl = el.querySelector('[data-u="m"]'), sEl = el.querySelector('[data-u="s"]');
+      if (dEl) dEl.textContent = (el.getAttribute('data-mode') === 'elapsed') ? '' : (p.d > 0 ? p.d + '일' : '');
+      if (hEl) hEl.textContent = pad(p.h);
+      if (mEl) mEl.textContent = pad(p.m);
+      if (sEl) sEl.textContent = pad(p.s);
+    }
+    var heroItem = heroDisplayItem();
+    if (heroItem) {
+      var hc = compute(heroItem);
+      var hb = $('heroChipBottomText');
+      if (hc && hb) {
+        var hp = liveParts(Math.abs(hc.ms));
+        hb.textContent = (hp.d > 0 ? hp.d + '일 ' : '') + pad(hp.h) + ':' + pad(hp.m) + ':' + pad(hp.s);
+      }
+      var ht = $('heroChipTopText');
+      if (hc && ht) ht.textContent = hc.label;
+    }
+  }
+
+  /* ================= 9. home ================= */
+  function eventKey(item) {
+    var c = compute(item);
+    if (!c) return 1e18;
+    if (item.type === 'elapsed') {
+      return c.nextMs ? c.nextMs.date.getTime() : 1e17 + c.base.getTime();
+    }
+    return c.ms >= 0 ? c.ms : 1e16 + Math.abs(c.ms);
+  }
+  function sortedByEvent(list) {
+    var arr = list.slice();
+    arr.sort(function (a, b) { return eventKey(a) - eventKey(b); });
+    return arr;
+  }
+  function heroDisplayItem() {
+    if (!ITEMS.length) return demoItem();
+    var pinned = ITEMS.filter(function (x) { return x.pinned; });
+    var pool = pinned.length ? pinned : ITEMS;
+    var s = sortedByEvent(pool);
+    return s[0] || demoItem();
+  }
+  function demoItem() {
+    return {
+      id: 'demo', title: '첫 디데이를 만들어 보세요', type: 'countdown',
+      date: isoOf(addDays(new Date(), 100)), time: '', note: '날짜를 정하면 초 단위로 세어 드려요',
+      icon: 'sparkle', theme: 'sunset', font: 'sans', layout: 'center', photo: '', veil: 45, showSec: true, demo: true
+    };
+  }
+
+  function renderHome() {
+    var demo = !ITEMS.length;
+    var hero = heroDisplayItem();
+    $('heroCard').innerHTML = cardHTML(hero);
+    var c = compute(hero);
+    if ($('heroChipTopText') && c) $('heroChipTopText').textContent = c.label;
+    $('statTotal').textContent = String(ITEMS.length);
+    $('statToday').textContent = dateWithWeek(new Date());
+    if ($('tabCount')) $('tabCount').textContent = String(ITEMS.length);
+
+    var next = sortedByEvent(ITEMS)[0];
+    if (next) {
+      var nc = compute(next);
+      $('statNext').textContent = (nc ? nc.label + ' · ' : '') + next.title;
+    } else {
+      $('statNext').textContent = demo ? '아직 없음' : '—';
+    }
+
+    /* timeline */
+    var tl = $('tlList');
+    var list = sortedByEvent(ITEMS).slice(0, 6);
+    if (!list.length) {
+      tl.innerHTML =
+        '<div class="py-6 text-center">' +
+        '<p class="text-[12px] font-bold text-neutral-500 dark:text-neutral-400">아직 일정이 없어요</p>' +
+        '<p class="text-[11px] text-neutral-400 mt-1">아래 템플릿으로 10초 만에 시작해 보세요</p>' +
+        '</div>';
+    } else {
+      var html = '';
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i], cc = compute(it);
+        if (!cc) continue;
+        var d = parseItemDate(it.date, it.time, '');
+        var dText = d ? (d.getMonth() + 1) + '.' + pad(d.getDate()) : '';
+        var isToday = cc.label === 'D-DAY';
+        var cls = 'tl-item' + (isToday ? ' is-today' : (cc.ms < 0 ? ' is-past' : ''));
+        html += '<div class="' + cls + '">' +
+          '<div class="tl-row" data-open="' + esc(it.id) + '">' +
+          '<div class="w-10 shrink-0 text-center">' +
+          '<p class="font-black text-[13px] leading-none mono">' + esc(dText) + '</p>' +
+          '<p class="text-[9px] font-bold text-neutral-400 mt-0.5">' + (d ? WEEK[d.getDay()] : '') + '</p>' +
+          '</div>' +
+          '<div class="min-w-0 flex-1">' +
+          '<p class="text-[12.5px] font-bold truncate">' + esc(it.title) + '</p>' +
+          '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(cc.sub || cc.line) + '</p>' +
+          '</div>' +
+          '<span class="text-[11px] font-black shrink-0" style="color:var(--brand)">' + esc(cc.label) + '</span>' +
+          '</div></div>';
+      }
+      tl.innerHTML = html;
+    }
+
+    /* milestones */
+    var ms = [];
+    for (var m = 0; m < ITEMS.length; m++) {
+      if (ITEMS[m].type !== 'elapsed') continue;
+      var list2 = milestonesFor(ITEMS[m], 1);
+      if (list2.length) ms.push({ item: ITEMS[m], ms: list2[0] });
+    }
+    ms.sort(function (a, b) { return a.ms.date - b.ms.date; });
+    var msBox = $('msList');
+    if (!ms.length) {
+      msBox.innerHTML = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed py-2">기념일(D+N) 디데이를 만들면 100일·200일·1주년이 언제인지 여기에 미리 적어 둡니다.</p>';
+    } else {
+      var mh = '';
+      for (var k = 0; k < Math.min(4, ms.length); k++) {
+        var r = ms[k], rd = r.ms.date;
+        mh += '<div class="ms-chip" data-open="' + esc(r.item.id) + '">' +
+          '<span class="ms-dot"></span>' +
+          '<div class="min-w-0 flex-1">' +
+          '<p class="text-[11.5px] font-bold truncate">' + esc(r.item.title) + ' · ' + esc(r.ms.name) + '</p>' +
+          '<p class="text-[10px] text-neutral-500 dark:text-neutral-400">' + dotDate(rd) + ' · ' + (r.ms.left <= 0 ? '오늘' : r.ms.left + '일 남음') + '</p>' +
+          '</div>' +
+          '<span class="text-[11px] font-black shrink-0" style="color:var(--brand)">' + (r.ms.left <= 0 ? 'D-DAY' : 'D-' + r.ms.left) + '</span>' +
+          '</div>';
+      }
+      msBox.innerHTML = mh;
+    }
+
+    /* mini gallery */
+    var demoList = [
+      { title: '수능', theme: 'ember', type: 'countdown', days: 27, icon: 'book' },
+      { title: '우리 100일', theme: 'bloom', type: 'elapsed', days: 100, icon: 'heart' },
+      { title: '생일', theme: 'dawn', type: 'yearly', days: 12, icon: 'cake' }
+    ];
+    var gh = '';
+    for (var g = 0; g < demoList.length; g++) {
+      var dd = demoList[g], t = themeOf(dd.theme);
+      gh += '<button class="rounded-xl overflow-hidden text-left relative" data-tpl-mini="' + g + '" style="aspect-ratio:3/4;background-image:linear-gradient(150deg,' + t.c1 + ',' + t.c2 + ');color:' + t.ink + '">' +
+        '<div class="absolute inset-0 p-2 flex flex-col justify-between">' +
+        '<span class="inline-flex w-5 h-5 rounded-md items-center justify-center" style="background:rgba(255,255,255,.24)">' + iconSVG(dd.icon, 'w-3 h-3') + '</span>' +
+        '<div><p class="text-[8.5px] font-bold opacity-80 truncate">' + esc(dd.title) + '</p>' +
+        '<p class="font-black leading-none mt-0.5" style="font-size:15px">' + (dd.type === 'elapsed' ? 'D+' : 'D-') + dd.days + '</p></div>' +
+        '</div></button>';
+    }
+    $('miniGallery').innerHTML = gh;
+
+    /* templates */
+    renderTemplates();
+    tickLive();
+  }
+
+  var TEMPLATES = [
+    { key: 'exam', title: '수능·시험', desc: '목표일 D-100 카운트', icon: 'book', theme: 'ember', type: 'countdown', offset: 100, note: '매일 조금씩, 끝까지' },
+    { key: 'couple', title: '커플 100일', desc: '만난 날부터 D+N', icon: 'heart', theme: 'bloom', type: 'elapsed', offset: -100, note: '우리 함께한 날' },
+    { key: 'anniv', title: '1주년', desc: '기념일 자동 계산', icon: 'ring', theme: 'wine', type: 'elapsed', offset: -365, note: '오늘도 고마워' },
+    { key: 'birthday', title: '생일', desc: '매년 돌아오는 날', icon: 'cake', theme: 'dawn', type: 'yearly', offset: 21, note: '축하하는 날' },
+    { key: 'trip', title: '여행 출발', desc: 'D-30 여행 카운트', icon: 'plane', theme: 'sunset', type: 'countdown', offset: 30, note: '가방 미리 싸 두기' },
+    { key: 'deadline', title: '프로젝트 마감', desc: 'D-14 실시간', icon: 'flag', theme: 'midnight', type: 'live', offset: 14, note: '마지막 한 걸음' }
+  ];
+
+  function renderTemplates() {
+    var h = '';
+    for (var i = 0; i < TEMPLATES.length; i++) {
+      var t = TEMPLATES[i], th = themeOf(t.theme);
+      h += '<button class="tpl" data-tpl="' + t.key + '">' +
+        '<span class="inline-flex items-center gap-2">' +
+        '<span class="tpl-ic" style="background-image:linear-gradient(135deg,' + th.c1 + ',' + th.c2 + ')">' + iconSVG(t.icon, 'w-3.5 h-3.5') + '</span>' +
+        '<span class="min-w-0"><span class="block text-[12px] font-black truncate">' + esc(t.title) + '</span>' +
+        '<span class="block text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(t.desc) + '</span></span>' +
+        '</span></button>';
+    }
+    $('tplGrid').innerHTML = h;
+  }
+
+  /* ================= 10. studio ================= */
+  function currentDraft() {
+    if (!state.draft) state.draft = blankDraft();
+    return state.draft;
+  }
+
+  function renderStudio() {
+    var d = currentDraft();
+    $('inTitle').value = d.title || '';
+    $('inDate').value = d.date || '';
+    $('inTime').value = d.time || '';
+    $('inNote').value = d.note || '';
+    $('inVeil').value = d.veil;
+    if (window.Lemon && Lemon.refreshRange) Lemon.refreshRange($('inVeil'));
+    $('swSec').classList.toggle('on', !!d.showSec);
+    $('swSec').setAttribute('aria-checked', d.showSec ? 'true' : 'false');
+    $('photoLabel').textContent = d.photo ? '사진 바꾸기' : '사진 선택';
+    $('btnPhotoClear').classList.toggle('hidden', !d.photo);
+    $('saveLabel').textContent = state.editingId ? '변경 저장' : '보관함에 저장';
+    $('btnDelete').classList.toggle('hidden', !state.editingId);
+
+    var btns = document.querySelectorAll('.type-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].getAttribute('data-type') === d.type);
+    var fb = document.querySelectorAll('#fontSeg button');
+    for (var f = 0; f < fb.length; f++) fb[f].classList.toggle('on', fb[f].getAttribute('data-font') === d.font);
+    var lb = document.querySelectorAll('#layoutSeg button');
+    for (var l = 0; l < lb.length; l++) lb[l].classList.toggle('on', lb[l].getAttribute('data-layout') === d.layout);
+
+    var ih = '';
+    for (var k = 0; k < ICON_KEYS.length; k++) {
+      ih += '<button type="button" class="ic-pick' + (ICON_KEYS[k] === d.icon ? ' on' : '') + '" data-icon="' + ICON_KEYS[k] + '" aria-label="' + ICON_KEYS[k] + '">' + iconSVG(ICON_KEYS[k]) + '</button>';
+    }
+    $('iconGrid').innerHTML = ih;
+
+    var th2 = '';
+    for (var m = 0; m < THEMES.length; m++) {
+      var t = THEMES[m];
+      th2 += '<button type="button" class="swatch' + (t.id === d.theme ? ' on' : '') + '" data-theme="' + t.id + '" style="background-image:linear-gradient(150deg,' + t.c1 + ',' + t.c2 + ')" aria-label="' + t.name + '">' +
+        '<span class="sw-name">' + t.name + '</span></button>';
+    }
+    $('themeGrid').innerHTML = th2;
+
+    updateTypeHint();
+    renderPreview();
+    renderMsCalc();
+    var badge = $('asBadge');
+    if (badge && badge.getAttribute('data-state') !== 'saving' && state.editingId) {
+      var cur = Math.floor(Date.now() / 60000);
+      if (badge.getAttribute('data-min') !== String(cur)) {
+        badge.textContent = '수정 중';
+        badge.setAttribute('data-state', 'saved');
+        badge.setAttribute('data-min', String(cur));
+      }
+    }
+  }
+
+  function updateTypeHint() {
+    var d = currentDraft();
+    var hints = {
+      countdown: '목표일까지 남은 날을 셉니다. 그날이 지나면 자동으로 D+로 넘어갑니다.',
+      elapsed: '만난 날·시작한 날부터 지난 날을 셉니다. 100일·200일·1주년을 자동으로 계산합니다.',
+      yearly: '생일·결혼기념일처럼 해마다 돌아오는 날. 가장 가까운 다음 날짜로 셉니다.',
+      live: '시간까지 지정해 초 단위로 세는 카운트다운입니다. 발표·시험 시작 시각에 맞춰 보세요.'
+    };
+    $('typeHint').textContent = hints[d.type] || '';
+    $('lblDate').textContent = d.type === 'elapsed' ? '시작한 날' : (d.type === 'yearly' ? '기준일 (매년 반복)' : (d.type === 'live' ? '목표 날짜' : '목표 날짜'));
+    $('lblTime').textContent = d.type === 'elapsed' ? '시작 시간 (선택)' : '시간 (선택)';
+    var dh = '';
+    if (d.type === 'live') dh = '실시간 카운트는 시:분까지 지정하면 정확합니다.';
+    if (d.type === 'elapsed' && d.date) {
+      var base = parseItemDate(d.date, d.time, '00:00');
+      if (base) dh = dotDate(base) + '부터 오늘까지 ' + dayDiff(new Date(), base) + '일째';
+    }
+    if (d.type === 'yearly' && d.date) {
+      var c = compute(d);
+      if (c) dh = '다음 ' + dotDate(c.target) + ' · ' + c.label;
+    }
+    $('dateHint').textContent = dh;
+  }
+
+  function renderPreview() {
+    var d = currentDraft();
+    var item = draftToItem();
+    $('pvCard').innerHTML = cardHTML(item, { preview: true });
+    if ($('pvMini')) $('pvMini').innerHTML = cardHTML(item, { preview: true });
+    var c = compute(item);
+    if ($('pvMiniLabel') && c) $('pvMiniLabel').textContent = c.label + (c.sub ? ' · ' + c.sub : '');
+    renderCalcInfo(item);
+    tickLive();
+  }
+
+  function draftToItem() {
+    var d = currentDraft();
+    return normalize({
+      id: state.editingId || 'draft',
+      title: d.title || '제목을 적어 주세요',
+      type: d.type, date: d.date, time: d.time, note: d.note,
+      icon: d.icon, theme: d.theme, font: d.font, layout: d.layout,
+      photo: d.photo, veil: d.veil, showSec: d.showSec, pinned: d.pinned,
+      created: d.created, updated: d.updated
+    });
+  }
+
+  function renderCalcInfo(item) {
+    var c = compute(item);
+    var rows = '';
+    function row(label, value, strong) {
+      return '<div class="flex items-center justify-between gap-3"><span class="text-neutral-500 dark:text-neutral-400">' + label + '</span><span class="font-bold ' + (strong ? 'text-[12.5px]' : '') + ' text-right">' + value + '</span></div>';
+    }
+    if (!c) {
+      rows = '<p class="text-[11px] text-neutral-500 dark:text-neutral-400">날짜를 선택하면 계산됩니다.</p>';
+    } else {
+      rows += row('유형', typeName(item.type) + (item.showSec ? ' · 초 표시' : ''));
+      rows += row('기준일', dateText(item) || '-');
+      if (item.type === 'elapsed') {
+        rows += row('지난 날', Math.max(0, c.days) + '일', true);
+        if (c.nextMs) rows += row('다음 기념일', c.nextMs.name + ' · ' + dotDate(c.nextMs.date) + ' (D-' + c.nextMs.left + ')', true);
+      } else if (item.type === 'yearly') {
+        rows += row('다음 날짜', dotDate(c.target), true);
+        rows += row('남은 날', c.days === 0 ? 'D-DAY' : c.days + '일', true);
+      } else {
+        rows += row(c.ms >= 0 ? '남은 날' : '지난 날', Math.abs(c.days) + '일', true);
+        rows += row('표시', c.label, true);
+      }
+    }
+    $('calcInfo').innerHTML = rows;
+  }
+
+  function typeName(t) {
+    return t === 'elapsed' ? '기념일 D+N' : (t === 'yearly' ? '매년 반복' : (t === 'live' ? '실시간 카운트' : '카운트다운 D-N'));
+  }
+
+  function renderMsCalc() {
+    var d = currentDraft();
+    var box = $('msBox');
+    if (d.type !== 'elapsed' || !d.date) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    var item = draftToItem();
+    var list = milestonesFor(item, 8);
+    var h = '';
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
+      h += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ' +
+        (i === 0 ? 'border-brand-300 dark:border-brand-700 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-200' : 'soft-line text-neutral-600 dark:text-neutral-300') + '">' +
+        esc(m.name) + '<span class="font-mono opacity-70">' + dotDate(m.date).slice(5) + '</span></span>';
+    }
+    $('msCalc').innerHTML = h || '<span class="text-[10.5px] text-neutral-400">날짜를 먼저 선택하세요</span>';
+  }
+
+  function touchDraft() {
+    var badge = $('asBadge');
+    if (badge) { badge.textContent = '저장 중…'; badge.setAttribute('data-state', 'saving'); }
+    clearTimeout(touchDraft.t);
+    touchDraft.t = setTimeout(function () {
+      var payload = JSON.parse(JSON.stringify(currentDraft()));
+      payload.id = state.editingId;
+      var p = metaSet('draft', payload);
+      if (p && p.then) p.then(function () {
+        if (badge) {
+          var d = new Date();
+          badge.textContent = '임시 저장됨 ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+          badge.setAttribute('data-state', 'saved');
+        }
+      });
+    }, 650);
+  }
+
+  function openStudio(item) {
+    if (item) {
+      state.editingId = item.id;
+      state.draft = normalize(item);
+    } else {
+      state.editingId = null;
+      state.draft = blankDraft();
+    }
+    go('studio');
+    renderStudio();
+  }
+
+  /* ================= 11. save / delete ================= */
+  function saveCurrent() {
+    var d = currentDraft();
+    if (!d.date) { toast('날짜를 먼저 선택해 주세요', 'err'); $('inDate').focus(); return; }
+    if (!String(d.title).trim()) { toast('제목을 적어 주세요', 'err'); $('inTitle').focus(); return; }
+    var item = normalize({
+      id: state.editingId || newId(),
+      title: String(d.title).trim(),
+      type: d.type, date: d.date, time: d.time, note: String(d.note || '').trim(),
+      icon: d.icon, theme: d.theme, font: d.font, layout: d.layout,
+      photo: d.photo, veil: d.veil, showSec: d.showSec, pinned: d.pinned,
+      created: d.created || Date.now(), updated: Date.now()
+    });
+    var isEdit = !!state.editingId;
+    function applyLocal() {
+      var found = false;
+      for (var i = 0; i < ITEMS.length; i++) if (ITEMS[i].id === item.id) { ITEMS[i] = item; found = true; }
+      if (!found) ITEMS.unshift(item);
+      renderAll();
+    }
+    if (storageMode === 'ls') {
+      var list = ITEMS.filter(function (x) { return x.id !== item.id; });
+      list.unshift(item);
+      ITEMS = list;
+      lsSave(ITEMS);
+      finishSave(item, isEdit);
+      return;
+    }
+    idbPut(item).then(function () {
+      applyLocal();
+      finishSave(item, isEdit);
+    }).catch(function () {
+      storageMode = 'ls';
+      applyLocal();
+      lsSave(ITEMS);
+      toast('IndexedDB를 쓸 수 없어 브라우저 저장소에 보관했어요', 'info');
+      finishSave(item, isEdit);
+    });
+  }
+
+  function finishSave(item, isEdit) {
+    state.editingId = item.id;
+    state.draft = normalize(item);
+    renderStudio();
+    toast(isEdit ? '디데이를 업데이트했어요' : '보관함에 담았어요', 'ok');
+    try { Lemon.confetti(22); } catch (e) { }
+    hap(14);
+    metaSet('draft', null);
+  }
+
+  function deleteItem(id) {
+    if (!id) return;
+    if (storageMode === 'ls') {
+      ITEMS = ITEMS.filter(function (x) { return x.id !== id; });
+      lsSave(ITEMS);
+      afterDelete(id);
+      return;
+    }
+    idbDel(id).then(function () { afterDelete(id); }).catch(function () { afterDelete(id); });
+  }
+  function afterDelete(id) {
+    ITEMS = ITEMS.filter(function (x) { return x.id !== id; });
+    if (state.editingId === id) { state.editingId = null; state.draft = blankDraft(); }
+    closeModal('mConfirm');
+    closeModal('mDetail');
+    renderAll();
+    if (state.view === 'studio') renderStudio();
+    toast('삭제했어요', 'info');
+    hap(10);
+  }
+
+  /* ================= 12. PNG export ================= */
+  function roundRect(x, left, top, w, h, r) {
+    x.beginPath();
+    x.moveTo(left + r, top);
+    x.lineTo(left + w - r, top);
+    x.quadraticCurveTo(left + w, top, left + w, top + r);
+    x.lineTo(left + w, top + h - r);
+    x.quadraticCurveTo(left + w, top + h, left + w - r, top + h);
+    x.lineTo(left + r, top + h);
+    x.quadraticCurveTo(left, top + h, left, top + h - r);
+    x.lineTo(left, top + r);
+    x.quadraticCurveTo(left, top, left + r, top);
+    x.closePath();
+  }
+
+  function wrapText(ctx, text, maxWidth, maxLines) {
+    var out = [];
+    var line = '';
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (ch === '\n') { out.push(line); line = ''; if (out.length >= maxLines) break; continue; }
+      var test = line + ch;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        out.push(line); line = ch;
+        if (out.length >= maxLines) break;
+      } else line = test;
+    }
+    if (out.length < maxLines && line) out.push(line);
+    if (out.length === maxLines) {
+      var last = out[maxLines - 1];
+      while (ctx.measureText(last + '…').width > maxWidth && last.length > 1) last = last.slice(0, -1);
+      if (text.length > out.join('').length) out[maxLines - 1] = last + '…';
+    }
+    return out;
+  }
+
+  function drawCardToCanvas(item, W, H) {
+    return new Promise(function (resolve) {
+      var cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      var x = cv.getContext('2d');
+      var th = themeOf(item.theme);
+      var c = compute(item) || { pre: '', num: '', unit: '', line: '', sub: '', ms: 0, label: '' };
+      var unitPx = Math.min(W, H) / 1080;
+      var ink = th.ink;
+
+      var g = x.createLinearGradient(0, 0, W * 0.45, H);
+      g.addColorStop(0, th.c1); g.addColorStop(1, th.c2);
+      x.fillStyle = g; x.fillRect(0, 0, W, H);
+
+      var glow = x.createRadialGradient(W * 0.88, -H * 0.05, 0, W * 0.88, -H * 0.05, Math.max(W, H) * 0.72);
+      glow.addColorStop(0, 'rgba(255,255,255,0.34)');
+      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = glow; x.fillRect(0, 0, W, H);
+
+      function paint() {
+        if (item.photo) {
+          var v = (item.veil || 45) / 100;
+          var gg = x.createLinearGradient(0, 0, 0, H);
+          gg.addColorStop(0, 'rgba(16,6,12,' + v.toFixed(2) + ')');
+          gg.addColorStop(0.55, 'rgba(16,6,12,' + Math.min(0.94, v + 0.22).toFixed(2) + ')');
+          gg.addColorStop(1, 'rgba(16,6,12,' + Math.min(0.96, v + 0.42).toFixed(2) + ')');
+          x.fillStyle = gg; x.fillRect(0, 0, W, H);
+          ink = '#fffaf9';
+          x.shadowColor = 'rgba(10,2,8,0.38)';
+          x.shadowBlur = Math.max(3, base * 0.010);
+        }
+
+        var font = fontOf(item.font);
+        var center = item.layout === 'center';
+        var rail = item.layout === 'rail';
+        var base = Math.min(W, H);
+        var isWide = W > H * 1.2;
+        var ws = isWide ? 1.24 : 1;
+        var padX = W * (center ? 0.085 : 0.09);
+        var padY = H * (isWide ? 0.09 : 0.07);
+        var icSize = base * 0.088 * ws;
+        var titleSize = base * (item.layout === 'split' ? 0.047 : 0.042) * ws;
+        var bigSize = base * (item.layout === 'split' ? 0.20 : 0.168) * ws;
+        var ddayText = c.num === 'D-DAY';
+        if (ddayText || String(c.num).length > 3) bigSize *= 0.50;
+        var unitSize = bigSize * 0.20;
+        var preSize = bigSize * 0.42;
+        var dateSize = base * 0.0245 * ws;
+        var subSize = dateSize * 0.9;
+        var noteSize = base * 0.0225 * (isWide ? 1.12 : 1);
+        var contentX = center ? W / 2 : padX + (rail ? icSize * 0.55 : 0);
+
+        /* title measure */
+        x.font = '800 ' + Math.round(titleSize) + 'px ' + font.stack;
+        var maxW = W - padX * 2 - (rail ? icSize * 0.55 : 0);
+        var lines = wrapText(x, item.title || '제목', maxW, 2);
+        var titleH = lines.length * titleSize * 1.32;
+
+        var liveStr = '';
+        if (item.showSec) {
+          var lp = liveParts(Math.abs(c.ms));
+          liveStr = (item.type === 'elapsed' ? '' : (lp.d > 0 ? lp.d + '일 ' : '')) + pad(lp.h) + ':' + pad(lp.m) + ':' + pad(lp.s);
+        }
+
+        var blockH = titleH + titleSize * 0.55 + bigSize * 1.0 + dateSize * 2.3 +
+          (c.sub ? subSize * 1.9 : 0) + (item.showSec ? dateSize * 2.0 : 0);
+        var topLimit = padY + icSize + base * 0.045;
+        var bottomLimit = H - padY - (item.note ? noteSize * 3.0 : noteSize * 1.2);
+        var y = topLimit + Math.max(0, (bottomLimit - topLimit - blockH) / 2);
+
+        /* icon */
+        var bx = center ? W / 2 - icSize / 2 : padX;
+        x.save();
+        roundRect(x, bx, padY, icSize, icSize, icSize * 0.30);
+        x.fillStyle = 'rgba(255,255,255,0.20)';
+        x.fill();
+        x.lineWidth = Math.max(1.4, base * 0.0022);
+        x.strokeStyle = 'rgba(255,255,255,0.36)';
+        x.stroke();
+        x.translate(bx + icSize * 0.23, padY + icSize * 0.23);
+        var sIco = (icSize * 0.54) / 24;
+        x.scale(sIco, sIco);
+        x.lineWidth = Math.max(1.2, base * 0.0032) / sIco;
+        x.strokeStyle = ink;
+        x.lineCap = 'round';
+        x.lineJoin = 'round';
+        var paths = ICONS[item.icon] || ICONS.heart;
+        for (var pi = 0; pi < paths.length; pi++) {
+          try { x.stroke(new Path2D(paths[pi])); } catch (e) { }
+        }
+        x.restore();
+
+        /* badge */
+        var btxt = badgeText(item.type);
+        var bFont = Math.round(base * 0.0185);
+        x.font = '800 ' + bFont + 'px ' + font.stack;
+        var bw = x.measureText(btxt).width + base * 0.042;
+        var bh = base * 0.046;
+        var bTop = padY + icSize * 0.5 - bh / 2;
+        roundRect(x, W - padX - bw, bTop, bw, bh, bh / 2);
+        x.fillStyle = 'rgba(255,255,255,0.16)';
+        x.fill();
+        x.strokeStyle = 'rgba(255,255,255,0.30)';
+        x.lineWidth = Math.max(1, base * 0.0013);
+        x.stroke();
+        x.fillStyle = ink;
+        x.globalAlpha = 0.92;
+        x.textAlign = 'center';
+        x.fillText(btxt, W - padX - bw / 2, bTop + bh * 0.5 + bFont * 0.36);
+        x.globalAlpha = 1;
+
+        /* title */
+        x.textAlign = center ? 'center' : 'left';
+        x.fillStyle = ink;
+        x.font = '800 ' + Math.round(titleSize) + 'px ' + font.stack;
+        for (var li = 0; li < lines.length; li++) {
+          x.fillText(lines[li], contentX, y + titleSize * 0.86 + li * titleSize * 1.32);
+        }
+        y += titleH + titleSize * 0.55;
+
+        /* day number */
+        var numBase = y + bigSize * 0.80;
+        if (ddayText) {
+          x.font = '900 ' + Math.round(bigSize) + 'px ' + font.stack;
+          x.fillText('D-DAY', contentX, numBase);
+        } else {
+          x.font = '900 ' + Math.round(preSize) + 'px ' + font.stack;
+          var preW = x.measureText(c.pre).width;
+          x.font = '900 ' + Math.round(bigSize) + 'px ' + font.stack;
+          var numW = x.measureText(String(c.num)).width;
+          x.font = '800 ' + Math.round(unitSize) + 'px ' + font.stack;
+          var unitW = x.measureText(c.unit).width;
+          var gap1 = base * 0.008 + (c.unit ? base * 0.012 : 0);
+          var totalW = preW + numW + gap1 + unitW;
+          var sx = center ? W / 2 - totalW / 2 : contentX;
+          x.textAlign = 'left';
+          x.fillStyle = ink;
+          x.font = '900 ' + Math.round(preSize) + 'px ' + font.stack;
+          x.globalAlpha = 0.9;
+          x.fillText(c.pre, sx, numBase - bigSize * 0.38);
+          x.globalAlpha = 1;
+          x.font = '900 ' + Math.round(bigSize) + 'px ' + font.stack;
+          x.fillText(String(c.num), sx + preW + base * 0.004, numBase);
+          x.font = '800 ' + Math.round(unitSize) + 'px ' + font.stack;
+          x.globalAlpha = 0.86;
+          x.fillText(c.unit, sx + preW + numW + gap1, numBase - bigSize * 0.03);
+          x.globalAlpha = 1;
+          x.textAlign = center ? 'center' : 'left';
+        }
+        y += bigSize * 1.0;
+
+        /* date line */
+        var dateY = y + dateSize * 1.15;
+        x.fillStyle = ink;
+        x.font = '700 ' + Math.round(dateSize) + 'px ' + font.stack;
+        x.globalAlpha = 0.9;
+        x.fillText(c.line || '', contentX, dateY);
+        x.globalAlpha = 1;
+        var cursor = dateY + dateSize * 1.0;
+
+        if (c.sub) {
+          x.font = '650 ' + Math.round(subSize) + 'px ' + font.stack;
+          x.globalAlpha = 0.76;
+          x.fillText(c.sub, contentX, cursor + subSize * 0.85);
+          x.globalAlpha = 1;
+          cursor += subSize * 1.75;
+        }
+        if (item.showSec) {
+          x.font = '800 ' + Math.round(dateSize * 1.02) + 'px ' + font.stack;
+          x.globalAlpha = 0.85;
+          x.fillText((c.ms >= 0 ? '남은 시간  ' : '지난 시간  ') + liveStr, contentX, cursor + dateSize * 0.9);
+          x.globalAlpha = 1;
+        }
+
+        /* rail decoration */
+        if (rail) {
+          x.strokeStyle = ink;
+          x.globalAlpha = 0.30;
+          x.lineWidth = Math.max(1.5, base * 0.0022);
+          x.beginPath();
+          x.moveTo(padX + icSize * 0.12, padY + icSize * 0.65);
+          x.lineTo(padX + icSize * 0.12, H - padY);
+          x.stroke();
+          x.globalAlpha = 1;
+          var dots = [y, dateY];
+          for (var di = 0; di < dots.length; di++) {
+            x.beginPath();
+            x.arc(padX + icSize * 0.12, dots[di] - base * 0.008, base * 0.0075, 0, Math.PI * 2);
+            x.fillStyle = ink;
+            x.fill();
+          }
+        }
+
+        x.shadowBlur = 0;
+        x.shadowColor = 'transparent';
+
+        /* inner frame */
+        x.save();
+        roundRect(x, base * 0.019, base * 0.019, W - base * 0.038, H - base * 0.038, base * 0.024);
+        x.lineWidth = Math.max(1, base * 0.0014);
+        x.strokeStyle = item.photo ? 'rgba(255,255,255,0.22)' : (th.tone === 'dark' ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.19)');
+        x.stroke();
+        x.restore();
+
+        /* note */
+        if (item.note) {
+          x.font = '600 ' + Math.round(noteSize) + 'px ' + font.stack;
+          x.globalAlpha = 0.74;
+          x.fillStyle = ink;
+          x.textAlign = center ? 'center' : 'left';
+          var noteLines = wrapText(x, item.note, maxW * 0.86, 2);
+          for (var ni = 0; ni < noteLines.length; ni++) {
+            x.fillText(noteLines[ni], contentX, H - padY * 1.18 - (noteLines.length - 1 - ni) * noteSize * 1.34);
+          }
+          x.globalAlpha = 1;
+        }
+
+        /* brand */
+        x.font = '900 ' + Math.round(base * 0.016) + 'px ' + font.stack;
+        x.globalAlpha = 0.55;
+        x.fillStyle = ink;
+        x.textAlign = 'right';
+        x.fillText('LEMON D-DAY', W - padX, H - padY * 0.42);
+        x.globalAlpha = 1;
+        x.textAlign = 'left';
+
+        resolve(cv);
+      }
+
+      if (item.photo) {
+        var img = new Image();
+        img.onload = function () {
+          var scale = Math.max(W / img.width, H / img.height);
+          var dw = img.width * scale, dh = img.height * scale;
+          x.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+          paint();
+        };
+        img.onerror = function () { paint(); };
+        img.src = item.photo;
+      } else {
+        paint();
+      }
+    });
+  }
+
+  var PNG_SIZES = {
+    story: { w: 1080, h: 1920 },
+    square: { w: 1080, h: 1080 },
+    wide: { w: 1920, h: 1080 }
+  };
+  var pngTarget = null;
+
+  function exportPNG(item, sizeKey) {
+    if (!item) return;
+    var s = PNG_SIZES[sizeKey] || PNG_SIZES.story;
+    toast('카드를 그리는 중이에요', 'info');
+    drawCardToCanvas(item, s.w, s.h).then(function (cv) {
+      cv.toBlob(function (blob) {
+        if (!blob) { toast('이미지를 만들지 못했어요', 'err'); return; }
+        var safe = String(item.title || 'dday').replace(/[^\w가-힣-]+/g, '-').slice(0, 24);
+        Lemon.downloadBlob('lemon-dday-' + safe + '-' + s.w + 'x' + s.h + '.png', blob);
+        toast('PNG 카드를 저장했어요', 'ok');
+        hap(12);
+        closeModal('mPng');
+      }, 'image/png');
+    }).catch(function () { toast('이미지를 만들지 못했어요', 'err'); });
+  }
+
+  /* ================= 13. archive ================= */
+  function renderArchive() {
+    var list = ITEMS.slice();
+    if (state.search) {
+      var q = state.search.toLowerCase();
+      list = list.filter(function (it) { return (it.title + ' ' + it.note).toLowerCase().indexOf(q) > -1; });
+    }
+    if (state.filter !== 'all') {
+      list = list.filter(function (it) {
+        if (state.filter === 'upcoming') return it.type === 'countdown' || it.type === 'live';
+        if (state.filter === 'elapsed') return it.type === 'elapsed';
+        if (state.filter === 'yearly') return it.type === 'yearly';
+        return true;
+      });
+    }
+    if (state.sort === 'near') list = sortedByEvent(list);
+    else if (state.sort === 'recent') list.sort(function (a, b) { return (b.created || 0) - (a.created || 0); });
+    else list.sort(function (a, b) { return a.title.localeCompare(b.title, 'ko'); });
+
+    $('archCount').textContent = String(ITEMS.length);
+    if ($('tabCount')) $('tabCount').textContent = String(ITEMS.length);
+
+    var grid = $('archGrid');
+    if (!list.length) {
+      grid.innerHTML = '';
+      $('archEmpty').classList.remove('hidden');
+      return;
+    }
+    $('archEmpty').classList.add('hidden');
+
+    var h = '';
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i], c = compute(it), th = themeOf(it.theme);
+      if (!c) continue;
+      var photoBg = it.photo ? '<div class="at-ph" style="background-image:url(\'' + it.photo.replace(/'/g, '%27') + '\')"></div>' : '';
+      var veilBg = it.photo ? '' : '<div class="at-veil" style="background:linear-gradient(150deg,' + th.c1 + ',' + th.c2 + ')"></div>';
+      h += '<div class="arch-card pop-in">' +
+        '<div class="arch-thumb" style="background-image:' + (it.photo ? 'none' : 'linear-gradient(150deg,' + th.c1 + ',' + th.c2 + ')') + ';color:' + (it.photo ? '#fff' : th.ink) + '">' +
+        photoBg + '<div class="at-body">' +
+        '<div class="flex items-start justify-between">' +
+        '<span class="inline-flex w-7 h-7 rounded-lg items-center justify-center" style="background:rgba(255,255,255,.22)">' + iconSVG(it.icon, 'w-3.5 h-3.5') + '</span>' +
+        '<span class="text-[8.5px] font-black tracking-[.14em] opacity-80">' + badgeText(it.type) + '</span>' +
+        '</div>' +
+        '<div class="flex items-end justify-between gap-2">' +
+        '<div class="min-w-0"><p class="text-[10px] font-bold opacity-85 truncate">' + esc(it.title) + '</p>' +
+        '<p class="at-num mt-0.5">' + esc(c.label) + '</p></div>' +
+        '<span class="text-[9px] font-bold opacity-75 shrink-0">' + esc(shortDate(it)) + '</span>' +
+        '</div></div></div>' +
+        '<div class="p-3 space-y-2">' +
+        '<div class="flex items-start justify-between gap-2">' +
+        '<div class="min-w-0">' +
+        '<p class="text-[12px] font-bold truncate">' + esc(it.title) + '</p>' +
+        '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(dateText(it)) + (it.note ? ' · ' + esc(it.note) : '') + '</p>' +
+        '</div>' +
+        (it.pinned ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded brand-grad-soft shrink-0" style="color:var(--brand-deep)">고정</span>' : '') +
+        '</div>' +
+        '<div class="flex items-center gap-1">' +
+        '<button class="pill-btn !py-1.5 !px-2 !text-[10px] flex-1" data-act="open" data-id="' + esc(it.id) + '">보기</button>' +
+        '<button class="pill-btn !py-1.5 !px-2 !text-[10px]" data-act="pin" data-id="' + esc(it.id) + '" aria-label="고정">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6.5-6.1 6.5-10.4A6.5 6.5 0 0 0 5.5 10.6C5.5 14.9 12 21 12 21z"></path><circle cx="12" cy="10.4" r="2.2"></circle></svg>' +
+        '</button>' +
+        '<button class="pill-btn !py-1.5 !px-2 !text-[10px]" data-act="edit" data-id="' + esc(it.id) + '" aria-label="꾸미기">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path></svg>' +
+        '</button>' +
+        '<button class="pill-btn !py-1.5 !px-2 !text-[10px]" data-act="share" data-id="' + esc(it.id) + '" aria-label="공유">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5"></path><path d="M14 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5"></path></svg>' +
+        '</button>' +
+        '<button class="pill-btn !py-1.5 !px-2 !text-[10px] !text-rose-500" data-act="del" data-id="' + esc(it.id) + '" aria-label="삭제">' +
+        '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15"></path><path d="M9 7V4.5h6V7"></path><path d="M6 7l1 13h10l1-13"></path></svg>' +
+        '</button>' +
+        '</div></div></div>';
+    }
+    grid.innerHTML = h;
+  }
+
+  /* ================= 14. detail ================= */
+  function openDetail(id) {
+    var it = byId(id);
+    if (!it) return;
+    state.detailId = id;
+    $('detailCard').innerHTML = cardHTML(it);
+    var c = compute(it);
+    $('detailLive').innerHTML = c ? '<p class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400">' + esc(c.label) + (c.sub ? ' · ' + esc(c.sub) : '') + '</p>' : '';
+    var ms = milestonesFor(it, 4);
+    if (ms.length) {
+      var h = '<p class="text-[10px] font-black text-neutral-400 mb-1">다가오는 기념일</p>';
+      for (var i = 0; i < ms.length; i++) {
+        h += '<div class="flex items-center justify-between gap-2 text-[11px] py-1 border-b soft-line last:border-0">' +
+          '<span class="font-bold">' + esc(ms[i].name) + '</span>' +
+          '<span class="text-neutral-500 dark:text-neutral-400">' + dotDate(ms[i].date) + '</span>' +
+          '<span class="font-black" style="color:var(--brand)">D-' + ms[i].left + '</span>' +
+          '</div>';
+      }
+      $('detailMs').innerHTML = h;
+    } else {
+      $('detailMs').innerHTML = '';
+    }
+    openModal('mDetail');
+    tickLive();
+  }
+
+  /* ================= 14b. stage (실시간 크게 보기) ================= */
+  function openStage(id) {
+    var it = byId(id);
+    if (!it) return;
+    var c = compute(it);
+    if (!c) return;
+    state.stageId = id;
+    $('stageLabel').textContent = c.label;
+    $('stageTitle').textContent = it.title;
+    $('stageDate').textContent = c.line + (c.sub ? ' · ' + c.sub : '');
+    $('stageBig').innerHTML = '<span class="inline-flex items-baseline" data-live-for="' + esc(it.id) + '" data-mode="stage">' +
+      '<b data-u="d" style="font-size:.34em;margin-right:.25em"></b>' +
+      '<b data-u="h"></b><span class="sep" style="opacity:.35">:</span>' +
+      '<b data-u="m"></b><span class="sep" style="opacity:.35">:</span>' +
+      '<b data-u="s"></b></span>';
+    var pct = 0, caption = '';
+    var bd = parseItemDate(it.date, it.time, '');
+    if (it.type === 'elapsed') {
+      var n = Math.max(0, c.days);
+      var nm = c.nextMs;
+      pct = nm ? Math.min(100, Math.round(n / nm.n * 100)) : 100;
+      caption = nm ? ('다음 ' + nm.name + '까지 ' + nm.left + '일') : '기념일을 모두 지났어요';
+    } else if (it.type === 'yearly') {
+      pct = Math.round((365 - Math.min(365, c.days)) / 365 * 100);
+      caption = bd ? ((bd.getMonth() + 1) + '월 ' + bd.getDate() + '일까지') : '';
+    } else {
+      var total = Math.max(1, Math.round((c.target.getTime() - (it.created || c.target.getTime() - 30 * DAY)) / DAY));
+      var passed = Math.max(0, Math.min(total, total - Math.max(0, c.days)));
+      pct = Math.round(passed / total * 100);
+      caption = '목표일까지 ' + Math.max(0, c.days) + '일';
+    }
+    $('stageProg').innerHTML = '<div class="flex items-center justify-between text-[10px] font-bold text-white/50 mb-1.5"><span>' +
+      esc(caption) + '</span><span>' + pct + '%</span></div>' +
+      '<div class="h-1 rounded-full bg-white/15 overflow-hidden"><div class="h-full rounded-full" style="width:' + pct + '%;background-image:linear-gradient(90deg,#ff9a6c,#ff5f7a)"></div></div>';
+    $('stageView').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    tickLive();
+  }
+  function closeStage() {
+    $('stageView').classList.add('hidden');
+    document.body.style.overflow = '';
+    state.stageId = null;
+  }
+
+  /* ================= 15. share ================= */
+  function sharePayload(item) {
+    var p = {
+      v: 1, t: item.title, y: item.type, d: item.date, m: item.time || '',
+      n: item.note || '', i: item.icon, th: item.theme, f: item.font, l: item.layout,
+      s: item.showSec ? 1 : 0, ve: item.veil
+    };
+    if (item.photo && item.photo.length < 120000) p.p = item.photo;
+    return p;
+  }
+  function shareURL(item) {
+    var enc = '';
+    try { enc = LZString.compressToEncodedURIComponent(JSON.stringify(sharePayload(item))); } catch (e) { }
+    var base = location.origin + location.pathname;
+    return base + '#view=' + enc;
+  }
+  function decodeShare(str) {
+    try {
+      var raw = LZString.decompressFromEncodedURIComponent(str);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || !o.d) return null;
+      return normalize({
+        id: 's' + Date.now().toString(36), title: o.t || '공유된 디데이', type: o.y, date: o.d,
+        time: o.m, note: o.n, icon: o.i, theme: o.th, font: o.f, layout: o.l,
+        photo: o.p || '', veil: typeof o.ve === 'number' ? o.ve : 45, showSec: !!o.s
+      });
+    } catch (e) { return null; }
+  }
+  function openShare(item) {
+    if (!item) return;
+    var url = shareURL(item);
+    $('shareUrl').value = url;
+    var note = '받는 사람은 링크만 열면 바로 카운트다운을 볼 수 있어요.';
+    if (item.photo && url.length > 60000) note = '사진이 커서 링크에는 사진을 담지 않았어요.';
+    if (url.length > 12000) note = '링크가 길어 일부 메신저에서는 잘릴 수 있어요.';
+    $('shareNote').textContent = note;
+    openModal('mShare');
+  }
+
+  /* ================= 16. modals ================= */
+  function openModal(id) { var m = $(id); if (m) m.classList.add('open'); }
+  function closeModal(id) { var m = $(id); if (m) m.classList.remove('open'); }
+
+  /* ================= 17. backup ================= */
+  function exportBackup() {
+    var data = { app: 'lemon-dday', version: 1, exportedAt: new Date().toISOString(), count: ITEMS.length, items: ITEMS };
+    var name = 'lemon-dday-backup-' + isoOf(new Date()) + '.json';
+    Lemon.download(name, JSON.stringify(data, null, 2), 'application/json');
+    toast(ITEMS.length + '개를 JSON으로 내려받았어요', 'ok');
+  }
+  function importBackup(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var data = null;
+      try { data = JSON.parse(String(reader.result)); } catch (e) { toast('JSON을 읽지 못했어요', 'err'); return; }
+      var list = data && Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []);
+      if (!list.length) { toast('복원할 디데이가 없어요', 'err'); return; }
+      var added = 0;
+      var chain = Promise.resolve();
+      list.forEach(function (raw) {
+        if (!raw || typeof raw !== 'object') return;
+        var it = normalize(raw);
+        it.id = newId();
+        it.created = raw.created || Date.now();
+        chain = chain.then(function () {
+          ITEMS.unshift(it);
+          added++;
+          if (storageMode === 'ls') return null;
+          return idbPut(it).catch(function () { });
+        });
+      });
+      chain.then(function () {
+        if (storageMode === 'ls') lsSave(ITEMS);
+        renderAll();
+        toast(added + '개를 보관함에 담았어요', 'ok');
+        try { Lemon.confetti(20); } catch (e) { }
+      });
+    };
+    reader.readAsText(file);
+  }
+
+  /* ================= 18. shared view ================= */
+  function showShared(item) {
+    state.shared = item;
+    $('sharedCard').innerHTML = cardHTML(item);
+    $('sharedLive').innerHTML = '';
+    $('sharedView').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    tickLive();
+  }
+  function hideShared() {
+    $('sharedView').classList.add('hidden');
+    document.body.style.overflow = '';
+    state.shared = null;
+    if (location.hash.indexOf('#view=') === 0) {
+      try { history.replaceState(null, '', location.pathname + location.search + '#home'); } catch (e) { }
+    }
+  }
+
+  /* ================= 19. view switching ================= */
+  var go = null;
+  function renderAll() {
+    renderHome();
+    renderArchive();
+  }
+
+  /* ================= 20. events ================= */
+  function bindStudio() {
+    var d = currentDraft;
+
+    $('inTitle').addEventListener('input', function () { d().title = this.value; renderPreview(); touchDraft(); });
+    $('inDate').addEventListener('input', function () { d().date = this.value; renderPreview(); renderMsCalc(); updateTypeHint(); touchDraft(); });
+    $('inTime').addEventListener('input', function () { d().time = this.value; renderPreview(); touchDraft(); });
+    $('inNote').addEventListener('input', function () { d().note = this.value; renderPreview(); touchDraft(); });
+    $('inVeil').addEventListener('input', function () { d().veil = +this.value; renderPreview(); touchDraft(); });
+
+    $('inPhoto').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      if (f.size > 6 * 1024 * 1024) { toast('6MB 이하 사진을 골라 주세요', 'err'); return; }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var max = 1400;
+          var sc = Math.min(1, max / Math.max(img.width, img.height));
+          var cv = document.createElement('canvas');
+          cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          var data = cv.toDataURL('image/jpeg', 0.86);
+          d().photo = data;
+          renderPreview();
+          renderStudio();
+          touchDraft();
+          toast('사진을 넣었어요', 'ok');
+        };
+        img.onerror = function () { toast('사진을 읽지 못했어요', 'err'); };
+        img.src = String(fr.result);
+      };
+      fr.readAsDataURL(f);
+    });
+
+    $('btnPhotoClear').addEventListener('click', function () {
+      d().photo = '';
+      renderPreview(); renderStudio(); touchDraft();
+    });
+
+    $('swSec').addEventListener('click', function () {
+      d().showSec = !d().showSec;
+      this.classList.toggle('on', d().showSec);
+      this.setAttribute('aria-checked', d().showSec ? 'true' : 'false');
+      renderPreview(); touchDraft();
+    });
+
+    $('typeGrid').addEventListener('click', function (e) {
+      var b = e.target.closest('.type-btn');
+      if (!b) return;
+      d().type = b.getAttribute('data-type');
+      if (d().type === 'live') d().showSec = true;
+      renderStudio(); touchDraft();
+    });
+
+    $('iconGrid').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-icon]');
+      if (!b) return;
+      d().icon = b.getAttribute('data-icon');
+      renderStudio(); touchDraft();
+    });
+
+    $('themeGrid').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-theme]');
+      if (!b) return;
+      d().theme = b.getAttribute('data-theme');
+      renderStudio(); touchDraft();
+    });
+
+    $('fontSeg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-font]');
+      if (!b) return;
+      d().font = b.getAttribute('data-font');
+      renderStudio(); touchDraft();
+    });
+
+    $('layoutSeg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-layout]');
+      if (!b) return;
+      d().layout = b.getAttribute('data-layout');
+      renderStudio(); touchDraft();
+    });
+
+    $('btnSave').addEventListener('click', saveCurrent);
+    $('btnMiniJump').addEventListener('click', function () {
+      var el = $('pvCard');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    $('pvMini').addEventListener('click', function () {
+      var el = $('pvCard');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    $('btnReset').addEventListener('click', function () {
+      state.editingId = null;
+      state.draft = blankDraft();
+      renderStudio();
+      toast('새 디데이를 시작해요', 'info');
+    });
+    $('btnDelete').addEventListener('click', function () {
+      if (!state.editingId) return;
+      state.confirmTarget = state.editingId;
+      $('confirmTitle').textContent = '디데이를 삭제할까요?';
+      $('confirmText').textContent = '보관함에서 이 카드가 사라집니다.';
+      openModal('mConfirm');
+    });
+    $('btnPng').addEventListener('click', function () {
+      if (!String(d().title).trim()) { toast('제목을 먼저 적어 주세요', 'err'); return; }
+      pngTarget = draftToItem();
+      openModal('mPng');
+    });
+    $('btnShare').addEventListener('click', function () {
+      if (!String(d().title).trim()) { toast('제목을 먼저 적어 주세요', 'err'); return; }
+      openShare(draftToItem());
+    });
+  }
+
+  function bindHome() {
+    $('heroCard').addEventListener('click', function () {
+      var item = heroDisplayItem();
+      if (item.demo || !ITEMS.length) { openStudio(null); return; }
+      openDetail(item.id);
+    });
+    $('tplGrid').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-tpl]');
+      if (!b) return;
+      var key = b.getAttribute('data-tpl');
+      var t = null;
+      for (var i = 0; i < TEMPLATES.length; i++) if (TEMPLATES[i].key === key) t = TEMPLATES[i];
+      if (!t) return;
+      var target = addDays(new Date(), t.offset);
+      var draft = blankDraft();
+      draft.title = t.title;
+      draft.type = t.type;
+      draft.theme = t.theme;
+      draft.icon = t.icon;
+      draft.note = t.note;
+      draft.date = isoOf(target);
+      if (t.type === 'live') draft.time = '18:00';
+      if (t.type === 'elapsed') draft.date = isoOf(target);
+      state.editingId = null;
+      state.draft = draft;
+      go('studio');
+      renderStudio();
+      toast('날짜만 확인하고 저장하세요', 'info');
+    });
+    $('miniGallery').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-tpl-mini]');
+      if (!b) return;
+      var idx = +b.getAttribute('data-tpl-mini');
+      var key = ['exam', 'couple', 'birthday'][idx] || 'exam';
+      var t = null;
+      for (var i = 0; i < TEMPLATES.length; i++) if (TEMPLATES[i].key === key) t = TEMPLATES[i];
+      if (!t) return;
+      var draft = blankDraft();
+      draft.title = t.title; draft.type = t.type; draft.theme = t.theme; draft.icon = t.icon; draft.note = t.note;
+      draft.date = isoOf(addDays(new Date(), t.offset));
+      state.editingId = null; state.draft = draft;
+      go('studio'); renderStudio();
+    });
+    $('tlList').addEventListener('click', function (e) {
+      var row = e.target.closest('[data-open]');
+      if (row) openDetail(row.getAttribute('data-open'));
+    });
+    $('msList').addEventListener('click', function (e) {
+      var row = e.target.closest('[data-open]');
+      if (row) openDetail(row.getAttribute('data-open'));
+    });
+  }
+
+  function bindArchive() {
+    $('inSearch').addEventListener('input', function () { state.search = this.value.trim(); renderArchive(); });
+    $('filterSeg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-filter]');
+      if (!b) return;
+      state.filter = b.getAttribute('data-filter');
+      var all = this.querySelectorAll('button');
+      for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === b);
+      renderArchive();
+    });
+    $('selSort').addEventListener('change', function () { state.sort = this.value; renderArchive(); });
+    $('archGrid').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      if (!b) return;
+      var id = b.getAttribute('data-id');
+      var act = b.getAttribute('data-act');
+      var it = byId(id);
+      if (!it) return;
+      if (act === 'open') openDetail(id);
+      else if (act === 'edit') openStudio(it);
+      else if (act === 'share') openShare(it);
+      else if (act === 'pin') {
+        it.pinned = !it.pinned;
+        it.updated = Date.now();
+        if (storageMode === 'ls') lsSave(ITEMS); else idbPut(it).catch(function () { });
+        renderArchive(); renderHome();
+        toast(it.pinned ? '홈 상단에 고정했어요' : '고정을 해제했어요', 'info');
+      } else if (act === 'del') {
+        state.confirmTarget = id;
+        $('confirmTitle').textContent = '디데이를 삭제할까요?';
+        $('confirmText').textContent = (it.title || '') + ' 카드를 보관함에서 지웁니다.';
+        openModal('mConfirm');
+      }
+    });
+    $('btnBackup').addEventListener('click', exportBackup);
+    $('btnRestore').addEventListener('click', function () { $('inRestore').click(); });
+    $('inRestore').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      importBackup(f);
+      this.value = '';
+    });
+  }
+
+  function bindModals() {
+    document.addEventListener('click', function (e) {
+      var c = e.target.closest('[data-close]');
+      if (c) closeModal(c.getAttribute('data-close'));
+      var g = e.target.closest('[data-goto]');
+      if (g) go(g.getAttribute('data-goto'));
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      if (!$('stageView').classList.contains('hidden')) { closeStage(); return; }
+      if (!$('sharedView').classList.contains('hidden')) { hideShared(); return; }
+      ['mConfirm', 'mShare', 'mPng', 'mDetail'].forEach(function (id) {
+        if ($(id).classList.contains('open')) closeModal(id);
+      });
+    });
+    $('btnConfirmYes').addEventListener('click', function () {
+      var id = state.confirmTarget;
+      state.confirmTarget = null;
+      deleteItem(id);
+    });
+    $('mDetail').addEventListener('click', function (e) { if (e.target === this) closeModal('mDetail'); });
+
+    $('btnDetailEdit').addEventListener('click', function () {
+      var it = byId(state.detailId);
+      if (it) { closeModal('mDetail'); openStudio(it); }
+    });
+    $('btnDetailPng').addEventListener('click', function () {
+      var it = byId(state.detailId);
+      if (it) { pngTarget = it; openModal('mPng'); }
+    });
+    $('btnDetailShare').addEventListener('click', function () {
+      var it = byId(state.detailId);
+      if (it) { closeModal('mDetail'); openShare(it); }
+    });
+    $('btnDetailLive').addEventListener('click', function () {
+      var it = byId(state.detailId);
+      if (it) { closeModal('mDetail'); openStage(it.id); }
+    });
+    $('btnStageClose').addEventListener('click', closeStage);
+    $('stageView').addEventListener('click', function (e) {
+      if (e.target === this || e.target === this.firstElementChild) closeStage();
+    });
+    $('btnDetailDelete').addEventListener('click', function () {
+      var it = byId(state.detailId);
+      if (!it) return;
+      state.confirmTarget = it.id;
+      $('confirmTitle').textContent = '디데이를 삭제할까요?';
+      $('confirmText').textContent = (it.title || '') + ' 카드를 보관함에서 지웁니다.';
+      openModal('mConfirm');
+    });
+
+    document.querySelectorAll('.png-opt').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var size = b.getAttribute('data-size');
+        var it = pngTarget || draftToItem();
+        exportPNG(it, size);
+      });
+    });
+    $('btnCopyLink').addEventListener('click', function () {
+      Lemon.copy($('shareUrl').value, '공유 링크를 복사했어요');
+    });
+    $('btnOpenLink').addEventListener('click', function () {
+      window.open($('shareUrl').value, '_blank');
+    });
+
+    $('btnSharedClose').addEventListener('click', hideShared);
+    $('btnSharedSave').addEventListener('click', function () {
+      var it = state.shared;
+      if (!it) return;
+      var copy = normalize(it);
+      copy.id = newId();
+      copy.created = Date.now();
+      copy.updated = Date.now();
+      ITEMS.unshift(copy);
+      if (storageMode === 'ls') lsSave(ITEMS); else idbPut(copy).catch(function () { });
+      renderAll();
+      hideShared();
+      go('archive');
+      toast('보관함에 담았어요', 'ok');
+      try { Lemon.confetti(24); } catch (e) { }
+    });
+    $('btnSharedPng').addEventListener('click', function () {
+      if (!state.shared) return;
+      pngTarget = state.shared;
+      openModal('mPng');
+    });
+    $('mPng').addEventListener('click', function (e) { if (e.target === this) closeModal('mPng'); });
+    $('mShare').addEventListener('click', function (e) { if (e.target === this) closeModal('mShare'); });
+    $('mConfirm').addEventListener('click', function (e) { if (e.target === this) closeModal('mConfirm'); });
+  }
+
+  function bindNav() {
+    $('btnNewTop').addEventListener('click', function () { openStudio(null); });
+    $('btnFooterTop').addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    $('mobDock').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-tab]');
+      if (!b) return;
+      go(b.getAttribute('data-tab'));
+    });
+    document.addEventListener('lemon:view', function (e) {
+      var v = e.detail && e.detail.view;
+      state.view = v;
+      var btns = $('mobDock').querySelectorAll('[data-tab]');
+      for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].getAttribute('data-tab') === v);
+      if (v === 'home') renderHome();
+      if (v === 'archive') renderArchive();
+      if (v === 'studio') { renderStudio(); }
+    });
+  }
+
+  /* ================= 21. boot ================= */
+  function load() {
+    var p = idbAll().then(function (list) {
+      storageMode = 'idb';
+      return list || [];
+    }).catch(function () {
+      storageMode = 'ls';
+      return lsAll();
+    });
+    return p.then(function (list) {
+      ITEMS = list.map(normalize);
+      ITEMS.sort(function (a, b) { return (b.created || 0) - (a.created || 0); });
+      var hash = location.hash || '';
+      var sharedItem = null;
+      if (hash.indexOf('#view=') === 0) sharedItem = decodeShare(hash.slice(6));
+      return metaGet('draft').then(function (draft) {
+        if (draft && draft.id === null && draft.date) state.draft = draft;
+        return sharedItem;
+      }).catch(function () { return sharedItem; });
+    });
+  }
+
+  function boot() {
+    go = Lemon.initTabs('home');
+    renderTemplates();
+    bindStudio();
+    bindHome();
+    bindArchive();
+    bindModals();
+    bindNav();
+    if (window.Lemon && Lemon.bindRanges) { }
+    load().then(function (sharedItem) {
+      if (sharedItem) showShared(sharedItem);
+      renderAll();
+      if (state.view === 'studio' || state.draft) { /* keep blank draft until opened */ }
+      setInterval(tickLive, 500);
+      tickLive();
+    }).catch(function () {
+      renderAll();
+      setInterval(tickLive, 500);
+    });
+    /* reveal on scroll */
+    try { Lemon.reveal(); } catch (e) { }
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
+
+  window.DDay = {
+    items: function () { return ITEMS.slice(); },
+    compute: compute,
+    milestones: milestonesFor,
+    save: saveCurrent,
+    openStudio: openStudio,
+    openDetail: openDetail,
+    exportPNG: exportPNG,
+    draw: drawCardToCanvas,
+    shareURL: shareURL,
+    decodeShare: decodeShare,
+    state: state,
+    storageMode: function () { return storageMode; },
+    addTest: function (obj) {
+      var it = normalize(obj);
+      ITEMS.unshift(it);
+      if (storageMode !== 'ls') return idbPut(it).then(function () { renderAll(); return it; });
+      lsSave(ITEMS); renderAll(); return Promise.resolve(it);
+    }
+  };
+})();
+</script>
+</body>
+</html>
