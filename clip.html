@@ -1,0 +1,2806 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Clip — 올인원 개인 스크랩북</title>
+<meta name="description" content="링크와 스크린샷, 인상 깊은 문장을 한 곳에 모으는 개인 스크랩북. 사진은 브라우저 IndexedDB에 원본 그대로 저장하고, 태그·컬렉션·검색·메이슨리 보기로 다시 꺼내 봅니다. JSON 백업과 읽기 전용 공유 링크까지.">
+<meta name="theme-color" content="#ef5b3c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23ef5b3c'/%3E%3Cpath d='M20.6 11.2l-7 7a2.4 2.4 0 0 0 3.4 3.4l7.4-7.4a4.4 4.4 0 0 0-6.2-6.2l-7.6 7.6a6.4 6.4 0 0 0 9 9l6.4-6.4' fill='none' stroke='white' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        neutral: { 950: '#0a090d', 900: '#121016', 850: '#17151c', 800: '#26232b', 700: '#3d3944', 200: '#e6e1dc', 100: '#f4f0eb' },
+        brand: { 50: '#fff3ee', 100: '#ffe2d6', 200: '#ffc6b2', 300: '#ffa184', 400: '#fb7a56', 500: '#ef5b3c', 600: '#dc4323', 700: '#b63418', 800: '#902b16', 900: '#752716', 950: '#3f110a' },
+        ink: { DEFAULT: '#191519', soft: '#6b6560' }
+      }
+    }
+  }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root {
+    --brand: #ef5b3c;
+    --brand-2: #6f5bd6;
+    --brand-deep: #bf3a1f;
+    --paper: #fbf6f1;
+    --paper-2: #f3ece4;
+    --line: rgba(28, 22, 18, .10);
+    --ink: #191519;
+    --ink-soft: #6b6560;
+    --card: #ffffff;
+    --thumb-bg: #efe7e0;
+  }
+  .dark {
+    --paper: #0b0a0e;
+    --paper-2: #131118;
+    --line: rgba(255, 255, 255, .09);
+    --ink: #f4f1ee;
+    --ink-soft: #a29c97;
+    --card: #141219;
+    --thumb-bg: #1d1a23;
+  }
+
+  html { scroll-behavior: smooth; }
+  body { background: var(--paper); color: var(--ink); }
+  .serif { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
+
+  /* 애니메이션이 끝난 뒤 transform 을 잠그지 않게 */
+  .pop-in, .slide-in-y, .pop-scale, .fade-up { animation-fill-mode: backwards; }
+
+  /* ---------- header ---------- */
+  .lemon-header { -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); }
+  .logo-tile { position: relative; overflow: hidden; }
+  .logo-tile::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.55) 46%, transparent 62%);
+    transform: translateX(-120%);
+    animation: logoSweep 6.5s ease-in-out infinite;
+  }
+  @keyframes logoSweep { 0%, 62% { transform: translateX(-120%); } 84%, 100% { transform: translateX(130%); } }
+
+  /* ---------- hero / quick capture ---------- */
+  .hero-shell {
+    position: relative; overflow: hidden; border-radius: 1.6rem;
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(120% 150% at 100% 0%, color-mix(in srgb, var(--brand-2) 16%, transparent) 0%, transparent 55%),
+      radial-gradient(110% 140% at 0% 0%, color-mix(in srgb, var(--brand) 20%, transparent) 0%, transparent 58%),
+      var(--card);
+    box-shadow: 0 2px 3px rgba(40, 26, 18, .03), 0 30px 60px -50px rgba(120, 60, 30, .5);
+  }
+  .hero-shell::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--ink) 5%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--ink) 5%, transparent) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(120% 120% at 80% 0%, #000 0%, transparent 70%);
+    -webkit-mask-image: radial-gradient(120% 120% at 80% 0%, #000 0%, transparent 70%);
+  }
+  .tape {
+    position: absolute; top: -9px; left: 50%; transform: translateX(-50%) rotate(-1.4deg);
+    width: 92px; height: 20px; border-radius: 3px;
+    background: color-mix(in srgb, var(--brand) 26%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand) 34%, transparent);
+    backdrop-filter: blur(2px);
+  }
+  .quick-wrap { position: relative; display: flex; gap: .5rem; align-items: center; }
+  .quick-input {
+    flex: 1 1 auto; min-width: 0; height: 3rem; padding: 0 2.6rem 0 2.7rem;
+    border-radius: 1rem; border: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 70%, var(--card));
+    color: var(--ink); font-size: .84rem; outline: none;
+    transition: border-color .2s, box-shadow .2s, background-color .2s;
+  }
+  .quick-input:focus {
+    border-color: color-mix(in srgb, var(--brand) 60%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 13%, transparent);
+    background: var(--card);
+  }
+  .quick-btn {
+    flex: 0 0 auto; height: 3rem; padding: 0 1.1rem; border-radius: 1rem;
+    font-size: .8rem; font-weight: 800; color: #fff;
+    background-image: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand-2) 65%, var(--brand)));
+    box-shadow: 0 14px 26px -16px color-mix(in srgb, var(--brand) 85%, transparent);
+    transition: transform .16s cubic-bezier(.34,1.4,.64,1), box-shadow .2s;
+    display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap;
+  }
+  .quick-btn:hover { transform: translateY(-1.5px) scale(1.015); box-shadow: 0 20px 34px -18px color-mix(in srgb, var(--brand) 90%, transparent); }
+  .quick-btn:active { transform: translateY(0) scale(.99); }
+
+  /* ---------- stats ---------- */
+  .stat-tile {
+    border: 1px solid var(--line); border-radius: 1.1rem; background: var(--card);
+    padding: .8rem .9rem; display: flex; flex-direction: column; gap: .15rem;
+    transition: transform .25s cubic-bezier(.22,1.3,.36,1), border-color .25s, box-shadow .25s;
+  }
+  .stat-tile:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--brand) 38%, transparent); box-shadow: 0 18px 34px -26px rgba(180, 80, 40, .55); }
+  .stat-num { font-size: 1.45rem; font-weight: 900; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat-lab { font-size: .62rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+
+  /* ---------- filter bar ---------- */
+  .filterbar {
+    position: sticky; top: 56px; z-index: 30;
+    background: color-mix(in srgb, var(--paper) 86%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%);
+    border-bottom: 1px solid var(--line);
+    padding: .6rem 0 .55rem; margin: 0 -1rem 1.1rem; padding-left: 1rem; padding-right: 1rem;
+  }
+  @media (min-width: 640px) { .filterbar { margin-left: -1.5rem; margin-right: -1.5rem; padding-left: 1.5rem; padding-right: 1.5rem; } }
+  .fb-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .fb-row + .fb-row { margin-top: .5rem; }
+  .fb-scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 2px; }
+  .fb-scroll::-webkit-scrollbar { display: none; }
+  .search-wrap { position: relative; flex: 1 1 200px; min-width: 0; }
+  .search-input {
+    width: 100%; height: 2.4rem; border-radius: .85rem; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); font-size: .78rem; padding: 0 2.2rem 0 2.1rem; outline: none;
+    transition: border-color .18s, box-shadow .18s;
+  }
+  .search-input::-webkit-search-cancel-button { display: none; }
+  .search-input:focus { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 11%, transparent); }
+  .search-ico { position: absolute; left: .7rem; top: 50%; transform: translateY(-50%); width: .95rem; height: .95rem; color: var(--ink-soft); pointer-events: none; }
+  .search-clear { position: absolute; right: .45rem; top: 50%; transform: translateY(-50%); width: 1.5rem; height: 1.5rem; border-radius: .5rem; display: grid; place-items: center; color: var(--ink-soft); }
+  .search-clear:hover { background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); }
+
+  .seg {
+    position: relative; display: inline-flex; padding: .2rem; gap: .1rem;
+    border-radius: .8rem; border: 1px solid var(--line); background: var(--card);
+  }
+  .seg-btn {
+    position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+    width: 2.1rem; height: 1.75rem; border-radius: .62rem; color: var(--ink-soft);
+    transition: color .22s ease, transform .22s ease;
+  }
+  .seg-btn svg { width: .95rem; height: .95rem; }
+  .seg-btn:hover { color: var(--brand); }
+  .seg-btn.on { color: #fff; }
+  .seg-glider {
+    position: absolute; top: .2rem; left: .2rem; height: 1.75rem; width: 2.1rem; border-radius: .62rem;
+    background-image: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand-2) 55%, var(--brand)));
+    box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--brand) 90%, transparent);
+    transition: transform .34s cubic-bezier(.22,1.3,.36,1), width .34s cubic-bezier(.22,1.3,.36,1);
+  }
+
+  .sort-wrap { position: relative; display: inline-flex; align-items: center; }
+  .sort-wrap svg { position: absolute; left: .55rem; width: .8rem; height: .8rem; color: var(--ink-soft); pointer-events: none; }
+  .sort-sel {
+    height: 2.4rem; border-radius: .8rem; border: 1px solid var(--line); background: var(--card);
+    color: var(--ink); font-size: .72rem; font-weight: 700; padding: 0 1.6rem 0 1.7rem;
+    outline: none; appearance: none; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239a928c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right .5rem center; background-size: .7rem;
+  }
+  .sort-sel:focus { border-color: color-mix(in srgb, var(--brand) 55%, transparent); }
+
+  .pills { display: flex; align-items: center; gap: .35rem; flex: 0 0 auto; }
+  .filter-pill {
+    display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap;
+    height: 1.9rem; padding: 0 .62rem; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink-soft);
+    font-size: .72rem; font-weight: 700; transition: all .2s cubic-bezier(.22,1.2,.36,1);
+  }
+  .filter-pill b { font-size: .62rem; font-weight: 800; font-variant-numeric: tabular-nums; opacity: .62; }
+  .filter-pill:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, transparent); transform: translateY(-1px); }
+  .filter-pill.on {
+    color: #fff; border-color: transparent;
+    background-image: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand-2) 60%, var(--brand)));
+    box-shadow: 0 10px 20px -14px color-mix(in srgb, var(--brand) 100%, transparent);
+  }
+  .filter-pill.on b { opacity: .88; }
+  .filter-pill svg { width: .8rem; height: .8rem; }
+  .pill-sep { width: 1px; height: 1.1rem; background: var(--line); margin: 0 .2rem; flex: 0 0 auto; }
+
+  .tagchip {
+    display: inline-flex; align-items: center; gap: .25rem; height: 1.7rem; padding: 0 .55rem;
+    border-radius: .6rem; border: 1px dashed var(--line); background: transparent;
+    font-size: .68rem; font-weight: 700; color: var(--ink-soft);
+    transition: all .18s ease; white-space: nowrap;
+  }
+  .tagchip:hover { border-color: color-mix(in srgb, var(--brand) 50%, transparent); color: var(--brand); }
+  .tagchip.on { border-style: solid; border-color: transparent; background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand); }
+  .tagchip span.n { opacity: .55; font-variant-numeric: tabular-nums; }
+
+  /* ---------- masonry + cards ---------- */
+  .masonry { column-count: 1; column-gap: 1rem; }
+  @media (min-width: 640px) { .masonry { column-count: 2; } }
+  @media (min-width: 1024px) { .masonry { column-count: 3; } }
+  @media (min-width: 1280px) { .masonry { column-count: 4; } }
+
+  .clip-card {
+    position: relative; display: block; width: 100%; margin: 0 0 1rem;
+    break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid;
+    border-radius: 1.15rem; background: var(--card); border: 1px solid var(--line);
+    box-shadow: 0 1px 2px rgba(40, 26, 18, .04);
+    cursor: pointer; overflow: hidden; text-align: left;
+    transition: transform .28s cubic-bezier(.22,1.2,.36,1), box-shadow .28s, border-color .28s;
+    animation: cardIn .52s cubic-bezier(.22,1.05,.36,1) both;
+  }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }
+  .clip-card:hover, .clip-card:focus-visible {
+    transform: translateY(-4px);
+    border-color: color-mix(in srgb, var(--brand) 42%, transparent);
+    box-shadow: 0 24px 44px -30px rgba(170, 70, 40, .55);
+    outline: none;
+  }
+  .clip-card:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 30%, transparent); }
+
+  .cc-cover { position: relative; overflow: hidden; background: var(--thumb-bg); }
+  .cc-cover img { display: block; width: 100%; height: auto; transition: transform .6s cubic-bezier(.22,1,.36,1); }
+  .clip-card:hover .cc-cover img { transform: scale(1.045); }
+  .cc-cover.fill { position: relative; }
+  .cc-cover.fill img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    background: linear-gradient(120deg, var(--thumb-bg), color-mix(in srgb, var(--brand) 10%, var(--thumb-bg)));
+  }
+  .cc-cover .veil {
+    position: absolute; inset: 0; opacity: 0; transition: opacity .3s ease;
+    background: linear-gradient(to top, rgba(14, 10, 16, .72), rgba(14, 10, 16, .12) 55%, transparent);
+  }
+  .clip-card:hover .cc-cover .veil { opacity: 1; }
+  .cover-actions { position: absolute; right: .5rem; bottom: .5rem; display: flex; gap: .3rem; opacity: 0; transform: translateY(6px); transition: all .3s ease; }
+  .clip-card:hover .cover-actions { opacity: 1; transform: none; }
+  .mini-act {
+    width: 1.7rem; height: 1.7rem; border-radius: .55rem; display: grid; place-items: center;
+    background: rgba(255, 255, 255, .92); color: #1c1820; box-shadow: 0 6px 14px -8px rgba(0,0,0,.7);
+    transition: transform .16s ease, background-color .16s;
+  }
+  .mini-act:hover { transform: scale(1.08); background: #fff; }
+  .mini-act svg { width: .82rem; height: .82rem; }
+  .count-badge {
+    position: absolute; right: .5rem; top: .5rem; z-index: 2;
+    display: inline-flex; align-items: center; gap: .2rem;
+    height: 1.35rem; padding: 0 .4rem; border-radius: .5rem;
+    background: rgba(16, 12, 18, .66); color: #fff; font-size: .62rem; font-weight: 800;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .count-badge svg { width: .68rem; height: .68rem; }
+
+  .cc-body { padding: .72rem .8rem .8rem; display: flex; flex-direction: column; gap: .4rem; }
+  .cc-head { display: flex; align-items: center; gap: .35rem; }
+  .type-badge {
+    display: inline-flex; align-items: center; gap: .22rem; height: 1.25rem; padding: 0 .42rem;
+    border-radius: .4rem; font-size: .58rem; font-weight: 900; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .type-badge svg { width: .62rem; height: .62rem; }
+  .type-badge.link { color: var(--brand); background: color-mix(in srgb, var(--brand) 13%, transparent); }
+  .type-badge.image { color: var(--brand-2); background: color-mix(in srgb, var(--brand-2) 14%, transparent); }
+  .type-badge.text { color: #a8691c; background: rgba(212, 150, 40, .15); }
+  .dark .type-badge.text { color: #e6b25e; background: rgba(212, 150, 40, .16); }
+  .cc-time { margin-left: auto; font-size: .6rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+  .cc-title {
+    font-size: .86rem; font-weight: 800; line-height: 1.35; letter-spacing: -.01em;
+    color: var(--ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    transition: color .22s;
+  }
+  .clip-card:hover .cc-title { color: color-mix(in srgb, var(--brand) 88%, var(--ink)); }
+  .cc-src { font-size: .62rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cc-note {
+    font-size: .72rem; line-height: 1.62; color: color-mix(in srgb, var(--ink) 74%, transparent);
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .cc-quote {
+    position: relative; padding: .1rem 0 .1rem .85rem; border-left: 2px solid color-mix(in srgb, var(--brand) 40%, transparent);
+    font-size: .76rem; line-height: 1.72; color: color-mix(in srgb, var(--ink) 82%, transparent);
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .cc-tags { display: flex; flex-wrap: wrap; gap: .22rem; overflow: hidden; max-height: 1.45rem; }
+  .cc-tag {
+    font-size: .58rem; font-weight: 800; color: var(--ink-soft);
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    padding: .1rem .32rem; border-radius: .35rem; white-space: nowrap;
+  }
+  .cc-foot { display: flex; align-items: center; gap: .4rem; padding-top: .1rem; }
+  .status-dot { width: .38rem; height: .38rem; border-radius: 999px; background: var(--brand); flex: 0 0 auto; }
+  .status-dot.later { background: #e0a12c; }
+  .status-dot.read { background: #3f9e70; }
+  .status-txt { font-size: .6rem; font-weight: 800; color: var(--ink-soft); }
+  .fav-btn {
+    margin-left: auto; width: 1.5rem; height: 1.5rem; border-radius: .45rem; display: grid; place-items: center;
+    color: var(--ink-soft); transition: color .2s, background-color .2s, transform .2s;
+  }
+  .fav-btn svg { width: .85rem; height: .85rem; transition: transform .25s cubic-bezier(.3,1.5,.5,1); }
+  .fav-btn:hover { background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); }
+  .fav-btn.on { color: var(--brand); }
+  .fav-btn.on svg { fill: color-mix(in srgb, var(--brand) 88%, transparent); animation: heartPop .42s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes heartPop { 0% { transform: scale(.7); } 55% { transform: scale(1.22); } 100% { transform: scale(1); } }
+
+  .link-stamp {
+    display: flex; align-items: center; gap: .5rem; min-width: 0;
+    padding: .35rem .45rem; border-radius: .7rem;
+    border: 1px solid color-mix(in srgb, var(--brand) 16%, var(--line));
+    background: linear-gradient(120deg, color-mix(in srgb, var(--brand) 9%, transparent), transparent 70%);
+    transition: border-color .25s, background-color .25s;
+  }
+  .clip-card:hover .link-stamp { border-color: color-mix(in srgb, var(--brand) 38%, var(--line)); }
+  .stamp-mark {
+    width: 1.85rem; height: 1.85rem; border-radius: .55rem; flex: 0 0 auto;
+    display: grid; place-items: center;
+    font-family: "Iowan Old Style", Georgia, serif; font-weight: 700; font-size: .95rem; line-height: 1;
+    color: #fff; text-transform: uppercase;
+    background-image: linear-gradient(140deg, color-mix(in srgb, var(--brand) 92%, #fff), color-mix(in srgb, var(--brand-2) 62%, var(--brand)));
+    box-shadow: 0 8px 16px -12px color-mix(in srgb, var(--brand) 95%, transparent);
+    transition: transform .35s cubic-bezier(.22,1.4,.36,1);
+  }
+  .clip-card:hover .stamp-mark { transform: scale(1.08) rotate(-3deg); }
+  .stamp-host {
+    flex: 1 1 auto; min-width: 0; font-size: .65rem; font-weight: 800; color: var(--ink-soft);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .stamp-arrow { flex: 0 0 auto; width: .85rem; height: .85rem; color: var(--ink-soft); opacity: .55; }
+  .stamp-arrow svg { width: .85rem; height: .85rem; }
+  .clip-card:hover .stamp-arrow { color: var(--brand); opacity: 1; }
+
+  /* ---------- list view ---------- */
+  .clip-list { display: flex; flex-direction: column; gap: .55rem; }
+  .clip-row {
+    display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: .8rem; align-items: center;
+    padding: .55rem .7rem; border-radius: 1rem; background: var(--card); border: 1px solid var(--line);
+    cursor: pointer; text-align: left; width: 100%;
+    transition: transform .22s cubic-bezier(.22,1.2,.36,1), border-color .22s, box-shadow .22s, background-color .22s;
+    animation: rowIn .4s cubic-bezier(.22,1.05,.36,1) both;
+  }
+  @keyframes rowIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+  .clip-row:hover { transform: translateX(3px); border-color: color-mix(in srgb, var(--brand) 40%, transparent); box-shadow: 0 14px 28px -24px rgba(170, 70, 40, .6); }
+  .row-thumb {
+    width: 56px; height: 56px; border-radius: .75rem; overflow: hidden; flex: 0 0 auto;
+    display: grid; place-items: center; background: var(--thumb-bg);
+    border: 1px solid var(--line);
+  }
+  .row-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .row-thumb svg { width: 1.05rem; height: 1.05rem; color: var(--brand); }
+  .row-thumb.text-ico { background: color-mix(in srgb, #d49628 12%, transparent); }
+  .row-thumb.text-ico svg { color: #a8691c; }
+  .row-main { min-width: 0; display: flex; flex-direction: column; gap: .12rem; }
+  .row-title { font-size: .82rem; font-weight: 800; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clip-row:hover .row-title { color: var(--brand); }
+  .row-sub { font-size: .66rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-side { display: flex; align-items: center; gap: .35rem; flex: 0 0 auto; }
+  .row-tag { font-size: .58rem; font-weight: 800; color: var(--ink-soft); background: color-mix(in srgb, var(--ink) 6%, transparent); padding: .1rem .3rem; border-radius: .3rem; white-space: nowrap; }
+  @media (max-width: 520px) { .row-tag { display: none; } }
+
+  /* ---------- empty ---------- */
+  .empty-card { border: 1px dashed color-mix(in srgb, var(--brand) 32%, var(--line)); border-radius: 1.5rem; background: color-mix(in srgb, var(--card) 70%, transparent); padding: 2.4rem 1.2rem; text-align: center; }
+  .empty-art { width: 92px; height: 92px; margin: 0 auto .9rem; display: grid; place-items: center; border-radius: 1.4rem;
+    background: linear-gradient(140deg, color-mix(in srgb, var(--brand) 16%, transparent), color-mix(in srgb, var(--brand-2) 16%, transparent));
+    border: 1px solid color-mix(in srgb, var(--brand) 20%, transparent);
+    animation: floatY 5.5s ease-in-out infinite;
+  }
+  @keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+  .empty-art svg { width: 42px; height: 42px; color: var(--brand); }
+
+  /* ---------- modal ---------- */
+  .lm-card.wide { max-width: min(96vw, 60rem); width: min(96vw, 60rem); padding: 0; overflow: hidden; }
+  .lm-card.mid { max-width: min(94vw, 32rem); width: min(94vw, 32rem); }
+  /* 모바일: 상세 모달은 화면 시트처럼 — 헤더/푸터 고정, 가운데만 스크롤 */
+  @media (max-width: 899px) {
+    #detailModal .lm-card.wide { max-height: 92vh; display: flex; flex-direction: column; }
+    #detailModal #detailContent { display: flex; flex-direction: column; min-height: 0; max-height: 92vh; }
+    #detailModal .detail-grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    #detailModal .detail-body { max-height: none; overflow: visible; }
+    #detailModal .detail-media .main-img { max-height: 34vh; min-height: 120px; }
+    #detailModal .detail-media .main-img img { max-height: 34vh; }
+    #detailModal .modal-head, #detailModal .modal-foot { flex: 0 0 auto; }
+    #detailModal .modal-foot { position: sticky; bottom: 0; background: var(--card); }
+  }
+  .modal-head {
+    display: flex; align-items: center; gap: .6rem; padding: .85rem 1rem;
+    border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3;
+    background: var(--card);
+  }
+  .modal-body { padding: 1rem; }
+  .modal-foot { display: flex; align-items: center; gap: .45rem; padding: .8rem 1rem; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 55%, var(--card)); }
+  .modal-close { width: 2rem; height: 2rem; border-radius: .6rem; display: grid; place-items: center; color: var(--ink-soft); transition: all .18s; }
+  .modal-close:hover { background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); }
+  .modal-close svg { width: 1rem; height: 1rem; }
+
+  .add-tabs { display: flex; gap: .3rem; padding: .5rem .6rem 0; }
+  .add-tab {
+    display: inline-flex; align-items: center; gap: .35rem; height: 2.3rem; padding: 0 .8rem;
+    border-radius: .7rem .7rem 0 0; font-size: .76rem; font-weight: 800; color: var(--ink-soft);
+    border: 1px solid transparent; border-bottom: none; transition: all .2s;
+  }
+  .add-tab svg { width: .9rem; height: .9rem; }
+  .add-tab:hover { color: var(--brand); }
+  .add-tab.on { color: var(--brand); background: color-mix(in srgb, var(--brand) 9%, transparent); border-color: color-mix(in srgb, var(--brand) 22%, transparent); }
+
+  .field { display: flex; flex-direction: column; gap: .3rem; }
+  .field + .field { margin-top: .7rem; }
+  .field-hint { font-size: .64rem; color: var(--ink-soft); }
+  .tag-editor {
+    display: flex; flex-wrap: wrap; gap: .3rem; align-items: center;
+    border: 1px solid var(--line); border-radius: .9rem; padding: .35rem .4rem; background: color-mix(in srgb, var(--paper) 60%, var(--card));
+    transition: border-color .18s, box-shadow .18s;
+  }
+  .tag-editor:focus-within { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 11%, transparent); }
+  .tag-editor input { flex: 1 1 5rem; min-width: 4rem; border: none; outline: none; background: transparent; color: var(--ink); font-size: .76rem; padding: .2rem; }
+  .tag-pill {
+    display: inline-flex; align-items: center; gap: .22rem; height: 1.5rem; padding: 0 .25rem 0 .5rem;
+    border-radius: .45rem; background: color-mix(in srgb, var(--brand) 13%, transparent); color: var(--brand);
+    font-size: .68rem; font-weight: 800;
+  }
+  .tag-pill button { width: 1rem; height: 1rem; border-radius: .25rem; display: grid; place-items: center; opacity: .7; }
+  .tag-pill button:hover { opacity: 1; background: color-mix(in srgb, var(--brand) 22%, transparent); }
+  .tag-pill svg { width: .55rem; height: .55rem; }
+
+  .dropzone {
+    position: relative; border: 1.5px dashed color-mix(in srgb, var(--brand) 34%, var(--line)); border-radius: 1.05rem;
+    background: color-mix(in srgb, var(--brand) 4%, transparent);
+    padding: 1.4rem .8rem; text-align: center; transition: all .22s ease; cursor: pointer;
+  }
+  .dropzone:hover, .dropzone.over {
+    border-color: var(--brand); background: color-mix(in srgb, var(--brand) 9%, transparent);
+    transform: translateY(-1px);
+  }
+  .dz-ico { width: 2.6rem; height: 2.6rem; margin: 0 auto .5rem; border-radius: .8rem; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand); }
+  .dz-ico svg { width: 1.25rem; height: 1.25rem; }
+  .pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: .45rem; margin-top: .6rem; }
+  .pending-tile { position: relative; border-radius: .65rem; overflow: hidden; aspect-ratio: 1; border: 1px solid var(--line); background: var(--thumb-bg); animation: popScale .3s cubic-bezier(.3,1.4,.5,1) both; }
+  @keyframes popScale { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+  .pending-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pending-tile button {
+    position: absolute; top: .18rem; right: .18rem; width: 1.1rem; height: 1.1rem; border-radius: .35rem;
+    background: rgba(10, 8, 12, .72); color: #fff; display: grid; place-items: center;
+  }
+  .pending-tile button svg { width: .55rem; height: .55rem; }
+
+  /* ---------- detail ---------- */
+  .detail-grid { display: grid; grid-template-columns: 1fr; }
+  .detail-grid.single { grid-template-columns: minmax(0, 1fr) !important; }
+  .lm-card.wide.narrow { max-width: min(94vw, 34rem); width: min(94vw, 34rem); }
+  .detail-grid.single .detail-body { max-height: 78vh; }
+  @media (min-width: 900px) { .detail-grid { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr); } }
+  .detail-media { position: relative; background: #0d0b10; display: flex; flex-direction: column; min-height: 180px; }
+  .detail-media .main-img { position: relative; flex: 1 1 auto; display: grid; place-items: center; overflow: hidden; min-height: 180px; max-height: 58vh; }
+  .detail-media .main-img img { max-width: 100%; max-height: 58vh; object-fit: contain; display: block; cursor: zoom-in; animation: fadeIn .35s ease both; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .media-nav {
+    position: absolute; top: 50%; transform: translateY(-50%); width: 2rem; height: 2rem; border-radius: 999px;
+    background: rgba(255,255,255,.88); color: #1a1620; display: grid; place-items: center;
+    box-shadow: 0 8px 20px -10px rgba(0,0,0,.8); transition: transform .18s, background-color .18s;
+  }
+  .media-nav:hover { transform: translateY(-50%) scale(1.1); background: #fff; }
+  .media-nav svg { width: .9rem; height: .9rem; }
+  .media-nav.prev { left: .5rem; }
+  .media-nav.next { right: .5rem; }
+  .detail-thumbs { display: flex; gap: .35rem; padding: .5rem; overflow-x: auto; scrollbar-width: none; background: rgba(255,255,255,.04); }
+  .detail-thumbs::-webkit-scrollbar { display: none; }
+  .detail-thumbs button { flex: 0 0 auto; width: 44px; height: 44px; border-radius: .5rem; overflow: hidden; border: 1px solid rgba(255,255,255,.22); opacity: .6; transition: all .2s; }
+  .detail-thumbs button.on { opacity: 1; border-color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 55%, transparent); }
+  .detail-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .detail-blank { flex: 1 1 auto; display: grid; place-items: center; padding: 2rem 1rem; text-align: center; background:
+    radial-gradient(90% 120% at 50% 0%, color-mix(in srgb, var(--brand) 26%, transparent), transparent 70%), #0e0c12; }
+  .detail-blank .ico { width: 3rem; height: 3rem; border-radius: .95rem; display: grid; place-items: center; margin: 0 auto .6rem;
+    background: rgba(255,255,255,.1); color: #fff; }
+  .detail-blank .ico svg { width: 1.4rem; height: 1.4rem; }
+  .detail-blank p { color: rgba(255,255,255,.72); font-size: .72rem; line-height: 1.6; }
+  .detail-body { padding: 1rem 1.05rem 1.1rem; overflow: auto; max-height: 74vh; }
+  .detail-body .d-title { font-size: 1.02rem; font-weight: 900; letter-spacing: -.015em; line-height: 1.4; word-break: break-word; }
+  .detail-body .d-url { font-size: .66rem; color: var(--ink-soft); word-break: break-all; }
+  .detail-body .d-text {
+    font-size: .8rem; line-height: 1.8; white-space: pre-wrap; word-break: break-word;
+    border-left: 2px solid color-mix(in srgb, var(--brand) 40%, transparent); padding-left: .7rem;
+  }
+  .status-seg { display: inline-flex; padding: .16rem; gap: .1rem; border-radius: .7rem; border: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 60%, var(--card)); }
+  .status-seg button { height: 1.6rem; padding: 0 .55rem; border-radius: .55rem; font-size: .66rem; font-weight: 800; color: var(--ink-soft); transition: all .2s; }
+  .status-seg button:hover { color: var(--brand); }
+  .status-seg button.on { background: var(--card); color: var(--brand); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+
+  .danger-btn { color: #dc4323; }
+  .danger-btn:hover { background: color-mix(in srgb, #dc4323 12%, transparent); }
+
+  /* ---------- lightbox ---------- */
+  #lightbox { position: fixed; inset: 0; z-index: 120; display: none; background: rgba(6, 5, 9, .96); }
+  #lightbox.open { display: block; animation: fadeIn .2s ease both; }
+  #lightbox .lb-img { position: absolute; inset: 0; display: grid; place-items: center; padding: 3rem 1rem; overflow: hidden; }
+  #lightbox .lb-img img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform .22s ease; transform-origin: center center; }
+  .lb-bar { position: absolute; left: 0; right: 0; top: 0; padding: .7rem .8rem; display: flex; align-items: center; gap: .5rem; z-index: 2;
+    background: linear-gradient(to bottom, rgba(6,5,9,.85), transparent); }
+  .lb-btn { width: 2.1rem; height: 2.1rem; border-radius: .6rem; display: grid; place-items: center; color: #f4f1ee; background: rgba(255,255,255,.1); transition: background-color .18s, transform .18s; }
+  .lb-btn:hover { background: rgba(255,255,255,.2); transform: scale(1.05); }
+  .lb-btn svg { width: 1rem; height: 1rem; }
+  .lb-count { font-size: .7rem; font-weight: 800; color: rgba(255,255,255,.75); font-variant-numeric: tabular-nums; }
+  .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 2.6rem; height: 2.6rem; border-radius: 999px; z-index: 2;
+    display: grid; place-items: center; background: rgba(255,255,255,.12); color: #fff; transition: all .18s; }
+  .lb-nav:hover { background: rgba(255,255,255,.24); }
+  .lb-nav svg { width: 1.1rem; height: 1.1rem; }
+  .lb-nav.prev { left: .8rem; } .lb-nav.next { right: .8rem; }
+
+  /* ---------- drop overlay ---------- */
+  #dropOverlay {
+    position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; pointer-events: none;
+    opacity: 0; transition: opacity .18s ease; background: color-mix(in srgb, var(--brand-deep) 55%, rgba(8, 6, 10, .8));
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  #dropOverlay.on { opacity: 1; }
+  .drop-box { border: 2.5px dashed rgba(255,255,255,.65); border-radius: 1.8rem; padding: 2.2rem 2.6rem; text-align: center; color: #fff; transform: scale(.96); transition: transform .22s cubic-bezier(.3,1.3,.5,1); }
+  #dropOverlay.on .drop-box { transform: scale(1); }
+  .drop-box svg { width: 2.6rem; height: 2.6rem; margin: 0 auto .6rem; }
+
+  /* ---------- misc ---------- */
+  .share-banner {
+    border: 1px solid color-mix(in srgb, var(--brand-2) 34%, var(--line));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--brand-2) 12%, var(--card)), color-mix(in srgb, var(--brand) 10%, var(--card)));
+    border-radius: 1.15rem; padding: .85rem 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: .7rem;
+    animation: slideDown .4s cubic-bezier(.22,1.2,.36,1) both;
+  }
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+  .read-only .clip-card { cursor: default; }
+  .read-only .clip-card:hover { transform: none; box-shadow: 0 1px 2px rgba(40,26,18,.04); border-color: var(--line); }
+  .read-only .cc-cover img, .read-only:hover .cc-cover img { transform: none; }
+  .read-only .fav-btn, .read-only .cover-actions { display: none; }
+
+  .fab {
+    position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 45;
+    width: 3.4rem; height: 3.4rem; border-radius: 1.15rem; display: none; place-items: center; color: #fff;
+    background-image: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand-2) 60%, var(--brand)));
+    box-shadow: 0 18px 34px -14px color-mix(in srgb, var(--brand) 90%, transparent);
+    transition: transform .18s cubic-bezier(.34,1.5,.64,1);
+  }
+  .fab:hover { transform: translateY(-2px) scale(1.04); }
+  .fab svg { width: 1.5rem; height: 1.5rem; }
+  @media (max-width: 767px) { .fab { display: grid; } }
+
+  .kv-row { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; font-size: .68rem; padding: .3rem 0; border-bottom: 1px dashed var(--line); }
+  .kv-row:last-child { border-bottom: none; }
+  .kv-row span:first-child { color: var(--ink-soft); font-weight: 700; flex: 0 0 auto; }
+  .kv-row span:last-child { text-align: right; word-break: break-word; }
+  .kv { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .72rem; padding: .42rem .1rem; border-bottom: 1px dashed var(--line); }
+  .kv:last-child { border-bottom: none; }
+  .kv b { font-variant-numeric: tabular-nums; }
+  .collection-item { display: flex; align-items: center; gap: .55rem; padding: .55rem .6rem; border-radius: .8rem; border: 1px solid var(--line); transition: all .2s; }
+  .collection-item:hover { border-color: color-mix(in srgb, var(--brand) 40%, transparent); background: color-mix(in srgb, var(--brand) 5%, transparent); }
+  .collection-dot { width: .55rem; height: .55rem; border-radius: 999px; flex: 0 0 auto; }
+
+  .stat-bar { height: .3rem; border-radius: 999px; background: color-mix(in srgb, var(--ink) 8%, transparent); overflow: hidden; }
+  .stat-bar i { display: block; height: 100%; border-radius: 999px; background-image: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .8s cubic-bezier(.22,1,.36,1); }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ink) 18%, transparent); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen antialiased flex flex-col text-neutral-900 dark:text-neutral-100">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-28 -left-24 opacity-25"></div>
+<div class="ambient-orb o2 brand-grad w-80 h-80 top-1/4 -right-32 opacity-20"></div>
+
+<!-- ============ HEADER ============ -->
+<header class="lemon-header sticky top-0 z-40 bg-white/70 dark:bg-neutral-950/70 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2.5">
+    <div class="flex items-center gap-2 min-w-0">
+      <a href="index.html" class="icon-btn shrink-0" aria-label="Lemon soft 허브로 돌아가기" title="허브로">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+      </a>
+      <div class="logo-tile w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center" style="color:var(--brand)">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 11.2l-7 7a2.4 2.4 0 0 0 3.4 3.4l7.4-7.4a4.4 4.4 0 0 0-6.2-6.2l-7.6 7.6a6.4 6.4 0 0 0 9 9l6.4-6.4" transform="translate(-3.6 -3.6)"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Clip</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 font-bold">SCRAPBOOK</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">링크·이미지·문장을 한 곳에</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <span id="saveBadge" class="hidden sm:inline-flex as-badge">자동 저장</span>
+      <button id="btnShare" class="icon-btn" aria-label="스크랩북 공유 링크" title="공유 링크">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"></circle><circle cx="6" cy="12" r="2.6"></circle><circle cx="18" cy="19" r="2.6"></circle><path d="M8.3 10.7 15.7 6.3M8.3 13.3l7.4 4.4"></path></svg>
+      </button>
+      <button id="btnExport" class="icon-btn hidden sm:grid" aria-label="JSON 백업 내려받기" title="JSON 백업">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      </button>
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경" title="테마">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6 pb-20">
+
+  <!-- ============ SHARED BANNER ============ -->
+  <section id="shareBanner" class="share-banner hidden mb-4">
+    <div class="w-9 h-9 rounded-xl brand-grad grid place-items-center text-white shrink-0">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="2.6"></circle></svg>
+    </div>
+    <div class="min-w-0 flex-1">
+      <p class="text-[12px] font-black" id="shareBannerTitle">공유된 스크랩북</p>
+      <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400" id="shareBannerSub">읽기 전용으로 보고 있습니다</p>
+    </div>
+    <div class="flex items-center gap-1.5 ml-auto">
+      <button id="btnSharedImport" class="primary-btn !text-[11px] !py-2 !px-3">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+        내 스크랩북으로 담기
+      </button>
+      <button id="btnSharedClose" class="ghost-btn !text-[11px] !py-2 !px-3">닫기</button>
+    </div>
+  </section>
+
+  <!-- ============ HERO / QUICK CAPTURE ============ -->
+  <section class="hero-shell p-5 sm:p-8 mb-4 relative">
+    <div class="relative grid lg:grid-cols-[1.15fr_.85fr] gap-6 items-center">
+      <div class="space-y-3.5">
+        <span class="chip">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 11.2l-7 7a2.4 2.4 0 0 0 3.4 3.4l7.4-7.4a4.4 4.4 0 0 0-6.2-6.2l-7.6 7.6a6.4 6.4 0 0 0 9 9l6.4-6.4" transform="translate(-3.6 -3.6)"></path></svg>
+          개인 스크랩북 · 이 브라우저에만
+        </span>
+        <h1 class="text-[26px] sm:text-[34px] font-black leading-[1.18] tracking-tight">
+          흘려보내기 아까운 것들을<br>
+          <span class="brand-text serif italic">한 권에</span> 붙여 둡니다.
+        </h1>
+        <p class="text-[12.5px] sm:text-[13.5px] text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+          링크, 스크린샷, 마음에 걸린 문장. 붙여넣으면 바로 담기고 사진은 원본 그대로 저장됩니다. 태그와 컬렉션으로 다시 찾고, 필요하면 읽기 전용 링크로 건네세요.
+        </p>
+      </div>
+      <div class="space-y-2.5">
+        <div class="quick-wrap">
+          <div class="relative flex-1 min-w-0">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <input id="quickUrl" class="quick-input" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="링크를 붙여넣고 Enter">
+            <span class="absolute right-2.5 top-1/2 -translate-y-1/2 kbd hidden sm:inline-flex">Enter</span>
+          </div>
+          <button id="quickSave" class="quick-btn" aria-label="링크 담기">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+            <span>담기</span>
+          </button>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <button class="ghost-btn !justify-center !text-[11px] !py-2.5" data-add="link">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            링크
+          </button>
+          <button class="ghost-btn !justify-center !text-[11px] !py-2.5" data-add="image">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+            이미지
+          </button>
+          <button class="ghost-btn !justify-center !text-[11px] !py-2.5" data-add="text">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 11h10M4 16h13M4 21h7"></path></svg>
+            글
+          </button>
+        </div>
+        <p class="text-[10px] text-neutral-400 leading-relaxed">
+          스크린샷은 <span class="kbd">Ctrl</span> <span class="kbd">V</span> 나 파일을 화면에 끌어다 놓으면 바로 담깁니다.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATS ============ -->
+  <section id="statsStrip" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4"></section>
+
+  <!-- ============ FILTER BAR ============ -->
+  <div class="filterbar" id="filterBar">
+    <div class="fb-row">
+      <div class="search-wrap">
+        <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.6-3.6"></path></svg>
+        <input id="search" class="search-input" type="search" placeholder="제목·메모·태그·본문 검색" autocomplete="off">
+        <button id="searchClear" class="search-clear hidden" aria-label="검색어 지우기">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <div class="seg" id="viewSeg" role="group" aria-label="보기 방식">
+        <span class="seg-glider" id="viewGlider"></span>
+        <button class="seg-btn on" data-view="grid" aria-label="메이슨리 그리드" title="메이슨리 그리드">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>
+        </button>
+        <button class="seg-btn" data-view="list" aria-label="리스트" title="리스트">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+        </button>
+      </div>
+      <div class="sort-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"></path></svg>
+        <select id="sortSel" class="sort-sel" aria-label="정렬">
+          <option value="new">최근 담은 순</option>
+          <option value="old">오래된 순</option>
+          <option value="title">제목 순</option>
+        </select>
+      </div>
+      <div class="sort-wrap">
+        <select id="statusSel" class="sort-sel !pl-2.5" aria-label="읽기 상태">
+          <option value="all">모든 상태</option>
+          <option value="unread">안 읽음</option>
+          <option value="later">나중에 보기</option>
+          <option value="read">읽음</option>
+        </select>
+      </div>
+    </div>
+    <div class="fb-row fb-scroll">
+      <div class="pills" id="typePills">
+        <button class="filter-pill on" data-type="all">전체 <b data-count="all">0</b></button>
+        <button class="filter-pill" data-type="link">링크 <b data-count="link">0</b></button>
+        <button class="filter-pill" data-type="image">이미지 <b data-count="image">0</b></button>
+        <button class="filter-pill" data-type="text">글 <b data-count="text">0</b></button>
+        <button class="filter-pill" data-type="fav">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 21l8.8-8.3a5 5 0 0 0 0-7.1z"></path></svg>
+          <b data-count="fav">0</b>
+        </button>
+      </div>
+      <span class="pill-sep"></span>
+      <div class="pills" id="colPills"></div>
+    </div>
+    <div class="fb-row" id="tagRow" style="display:none"></div>
+  </div>
+
+  <!-- ============ RESULT META ============ -->
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <p id="resultMeta" class="text-[11px] text-neutral-500 dark:text-neutral-400 font-bold">스크랩을 모으는 중</p>
+    <div class="flex items-center gap-1.5">
+      <button id="btnCollections" class="ghost-btn !text-[11px] !py-1.5 !px-2.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        컬렉션
+      </button>
+      <button id="btnImport" class="ghost-btn !text-[11px] !py-1.5 !px-2.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        가져오기
+      </button>
+      <button id="btnExport2" class="primary-btn !text-[11px] !py-1.5 !px-3">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        JSON 백업
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ CLIPS ============ -->
+  <section id="clipArea" class="masonry" aria-live="polite"></section>
+
+  <section id="emptyState" class="empty-card hidden">
+    <div class="empty-art">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 11.2l-7 7a2.4 2.4 0 0 0 3.4 3.4l7.4-7.4a4.4 4.4 0 0 0-6.2-6.2l-7.6 7.6a6.4 6.4 0 0 0 9 9l6.4-6.4" transform="translate(-3.6 -3.6)"></path></svg>
+    </div>
+    <h2 class="text-[15px] font-black mb-1">아직 붙여 둔 것이 없어요</h2>
+    <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed max-w-sm mx-auto mb-3.5">
+      첫 스크랩을 담아보세요. 링크 한 줄, 스크린샷 한 장, 마음에 걸린 문장 하나면 충분합니다.
+    </p>
+    <div class="flex flex-wrap items-center justify-center gap-1.5">
+      <button class="primary-btn !text-[11.5px]" data-add="link">링크 담기</button>
+      <button class="ghost-btn !text-[11.5px]" data-add="image">이미지 담기</button>
+      <button class="ghost-btn !text-[11.5px]" data-add="text">글 담기</button>
+    </div>
+  </section>
+
+  <section id="noResult" class="hidden text-center py-12">
+    <div class="w-14 h-14 rounded-2xl mx-auto mb-3 grid place-items-center bg-neutral-100 dark:bg-neutral-800 text-neutral-400">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.6-3.6"></path></svg>
+    </div>
+    <p class="text-[13px] font-black mb-1">조건에 맞는 스크랩이 없어요</p>
+    <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mb-3">검색어나 필터를 조금 풀어보세요.</p>
+    <button id="btnResetFilter" class="ghost-btn !text-[11.5px]">필터 초기화</button>
+  </section>
+
+</main>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 mt-6">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+    <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 text-center sm:text-left leading-relaxed">
+      모든 스크랩은 이 브라우저의 IndexedDB(<span class="font-mono">lemon_clip_v1</span>)에만 저장됩니다. 서버로 전송되지 않습니다.
+    </p>
+    <div class="flex items-center gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+      <span id="storageNote" class="font-mono text-[10px]">저장 공간 확인 중</span>
+      <a href="manager.html" class="hover:underline">저장공간 관리</a>
+      <a href="index.html" class="hover:underline font-bold">Lemon soft 허브</a>
+    </div>
+  </div>
+</footer>
+
+<button id="fabAdd" class="fab" aria-label="스크랩 추가">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+</button>
+
+<!-- ============ ADD MODAL ============ -->
+<div id="addModal" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="addHeadTitle">
+  <div class="lm-backdrop" data-close="add"></div>
+  <div class="lm-card mid">
+    <div class="modal-head">
+      <div class="w-8 h-8 rounded-xl brand-grad-soft grid place-items-center shrink-0" style="color:var(--brand)">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h2 id="addHeadTitle" class="text-[13.5px] font-black leading-tight">새 스크랩</h2>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400">링크·이미지·글 중 하나를 골라 담습니다</p>
+      </div>
+      <button class="modal-close" data-close="add" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+      </button>
+    </div>
+    <div class="add-tabs" role="tablist">
+      <button class="add-tab on" data-atab="link" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+        링크
+      </button>
+      <button class="add-tab" data-atab="image" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+        이미지
+      </button>
+      <button class="add-tab" data-atab="text" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 11h10M4 16h13M4 21h7"></path></svg>
+        글
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- link pane -->
+      <div data-apane="link">
+        <div class="field">
+          <label class="lemon-label" for="addUrl">URL</label>
+          <div class="flex gap-1.5">
+            <input id="addUrl" class="lemon-input flex-1 min-w-0" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://example.com/article">
+            <button id="pasteUrl" class="ghost-btn !px-2.5" title="클립보드에서 붙여넣기" aria-label="클립보드에서 붙여넣기">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1.2"></rect><path d="M16 5h1.5A2.5 2.5 0 0 1 20 7.5v11A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-11A2.5 2.5 0 0 1 6.5 5H8"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="lemon-label" for="addTitle">제목</label>
+          <input id="addTitle" class="lemon-input" type="text" placeholder="비워 두면 사이트 이름으로 담아요" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="lemon-label" for="addSource">출처</label>
+          <input id="addSource" class="lemon-input" type="text" placeholder="매체 · 글쓴이 · 채널" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="lemon-label" for="addNote">메모</label>
+          <textarea id="addNote" class="lemon-textarea" rows="3" placeholder="왜 담았는지, 나중에 어떻게 쓸지"></textarea>
+        </div>
+      </div>
+      <!-- image pane -->
+      <div data-apane="image" class="hidden">
+        <div class="dropzone" id="addDropzone" tabindex="0" role="button" aria-label="이미지 선택 또는 끌어다 놓기">
+          <div class="dz-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          </div>
+          <p class="text-[12px] font-black mb-0.5">사진·스크린샷을 끌어다 놓으세요</p>
+          <p class="text-[10.5px] text-neutral-500 dark:text-neutral-400">클릭해서 고르거나 <span class="kbd">Ctrl</span> <span class="kbd">V</span> 로 붙여넣기 · 여러 장 가능</p>
+        </div>
+        <div id="pendingGrid" class="pending-grid"></div>
+        <div class="field mt-3">
+          <label class="lemon-label" for="addImgTitle">제목</label>
+          <input id="addImgTitle" class="lemon-input" type="text" placeholder="이미지 묶음의 이름" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="lemon-label" for="addImgNote">메모</label>
+          <textarea id="addImgNote" class="lemon-textarea" rows="2" placeholder="무엇을 참고하려고 담았나요"></textarea>
+        </div>
+      </div>
+      <!-- text pane -->
+      <div data-apane="text" class="hidden">
+        <div class="field">
+          <label class="lemon-label" for="addText">본문</label>
+          <textarea id="addText" class="lemon-textarea" rows="6" placeholder="인상 깊은 문장, 코드, 아이디어를 그대로 옮겨 적으세요"></textarea>
+        </div>
+        <div class="field">
+          <label class="lemon-label" for="addTextTitle">제목</label>
+          <input id="addTextTitle" class="lemon-input" type="text" placeholder="비워 두면 첫 줄을 제목으로 써요" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="lemon-label" for="addTextSource">출처</label>
+          <input id="addTextSource" class="lemon-input" type="text" placeholder="책 · 대화 · 강의" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="field mt-3">
+        <label class="lemon-label">태그</label>
+        <div class="tag-editor" id="addTagEditor">
+          <input id="addTagInput" type="text" placeholder="입력 후 Enter (쉼표로 여러 개)" autocomplete="off">
+        </div>
+      </div>
+      <div class="field">
+        <label class="lemon-label" for="addCollection">컬렉션</label>
+        <select id="addCollection" class="lemon-input"></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="addFav" class="pill-btn !text-[11px]" aria-pressed="false">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 21l8.8-8.3a5 5 0 0 0 0-7.1z"></path></svg>
+        즐겨찾기
+      </button>
+      <div class="flex-1"></div>
+      <button class="ghost-btn !text-[11.5px]" data-close="add">취소</button>
+      <button id="addSubmit" class="primary-btn !text-[11.5px]">담기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DETAIL MODAL ============ -->
+<div id="detailModal" class="lemon-modal" role="dialog" aria-modal="true" aria-label="스크랩 상세">
+  <div class="lm-backdrop" data-close="detail"></div>
+  <div class="lm-card wide">
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- ============ COLLECTIONS MODAL ============ -->
+<div id="colModal" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="colTitle">
+  <div class="lm-backdrop" data-close="col"></div>
+  <div class="lm-card mid">
+    <div class="modal-head">
+      <div class="w-8 h-8 rounded-xl brand-grad-soft grid place-items-center shrink-0" style="color:var(--brand)">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h2 id="colTitle" class="text-[13.5px] font-black">컬렉션</h2>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400">스크랩을 주제별 폴더로 나눕니다</p>
+      </div>
+      <button class="modal-close" data-close="col" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="flex gap-1.5 mb-3">
+        <input id="newColName" class="lemon-input flex-1 min-w-0" type="text" placeholder="새 컬렉션 이름" autocomplete="off">
+        <button id="newColAdd" class="primary-btn !text-[11.5px] !px-3">추가</button>
+      </div>
+      <div id="colList" class="space-y-1.5"></div>
+      <p id="colEmpty" class="text-[11px] text-neutral-500 dark:text-neutral-400 text-center py-4">아직 컬렉션이 없습니다. 레퍼런스, 읽을거리, 아이디어처럼 나눠보세요.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SHARE MODAL ============ -->
+<div id="shareModal" class="lemon-modal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+  <div class="lm-backdrop" data-close="share"></div>
+  <div class="lm-card mid">
+    <div class="modal-head">
+      <div class="w-8 h-8 rounded-xl brand-grad grid place-items-center text-white shrink-0">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"></circle><circle cx="6" cy="12" r="2.6"></circle><circle cx="18" cy="19" r="2.6"></circle><path d="M8.3 10.7 15.7 6.3M8.3 13.3l7.4 4.4"></path></svg>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h2 id="shareTitle" class="text-[13.5px] font-black">읽기 전용 공유 링크</h2>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400">링크와 글만 담깁니다 (이미지 제외)</p>
+      </div>
+      <button class="modal-close" data-close="share" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p id="shareSummary" class="text-[11.5px] text-neutral-600 dark:text-neutral-300 leading-relaxed mb-2.5"></p>
+      <div class="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/60 p-2.5">
+        <p id="shareLink" class="text-[10px] font-mono break-all leading-relaxed text-neutral-600 dark:text-neutral-300 max-h-24 overflow-y-auto"></p>
+        <div id="shareMeta" class="text-[9.5px] text-neutral-400 mt-1.5"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="shareCopy" class="primary-btn flex-1 !text-[11.5px]">링크 복사</button>
+      <button id="shareNative" class="ghost-btn !text-[11.5px]">공유하기</button>
+      <button id="shareOpen" class="ghost-btn !text-[11.5px]">미리보기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LIGHTBOX ============ -->
+<div id="lightbox" aria-hidden="true" role="dialog" aria-label="이미지 크게 보기">
+  <div class="lb-img"><img id="lbImg" alt=""></div>
+  <div class="lb-bar">
+    <button class="lb-btn" id="lbClose" aria-label="닫기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    </button>
+    <span class="lb-count" id="lbCount">1 / 1</span>
+    <div class="flex-1"></div>
+    <button class="lb-btn" id="lbZoomOut" aria-label="축소">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+    </button>
+    <button class="lb-btn" id="lbZoomIn" aria-label="확대">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+    </button>
+    <button class="lb-btn" id="lbDownload" aria-label="이미지 저장">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    </button>
+  </div>
+  <button class="lb-nav prev" id="lbPrev" aria-label="이전 이미지">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+  </button>
+  <button class="lb-nav next" id="lbNext" aria-label="다음 이미지">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+  </button>
+</div>
+
+<!-- ============ DROP OVERLAY ============ -->
+<div id="dropOverlay" aria-hidden="true">
+  <div class="drop-box">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+    <p class="text-[14px] font-black">여기에 놓으면 바로 담깁니다</p>
+    <p class="text-[11px] opacity-80 mt-1">이미지·스크린샷 여러 장을 한 번에</p>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+<input type="file" id="importFile" accept="application/json,.json" class="hidden">
+
+<script src="vendor/lz-string.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var D = document;
+  function $(s, r) { return (r || D).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || D).querySelectorAll(s)); }
+  function esc(s) { return Lemon.esc(s); }
+  function msg(e) { return (e && e.message) ? e.message : String(e || '알 수 없는 오류'); }
+
+  /* ================= icons ================= */
+  var I = {
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>',
+    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+    image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"></rect><circle cx="8.5" cy="8.5" r="1.6"></circle><path d="M21 15l-5-5L5 21"></path></svg>',
+    text: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 11h10M4 16h13M4 21h7"></path></svg>',
+    heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 1 0-7.1 7.1L12 21l8.8-8.3a5 5 0 0 0 0-7.1z"></path></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+    open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>',
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>',
+    expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>',
+    left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>',
+    right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>',
+    bookmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z"></path></svg>',
+    tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a1.4 1.4 0 0 1 0 2z"></path><circle cx="7.5" cy="7.5" r="1.4"></circle></svg>',
+    folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>'
+  };
+  var TYPE_LABEL = { link: '링크', image: '이미지', text: '글' };
+  var STATUS_LABEL = { unread: '안 읽음', later: '나중에', read: '읽음' };
+  var COLORS = ['#ef5b3c', '#6f5bd6', '#2f9e78', '#c98a1e', '#3b82c4', '#b0559c'];
+
+  /* ================= state ================= */
+  var state = {
+    clips: [], collections: [], sharedClips: [], shared: null, readOnly: false,
+    q: '', type: 'all', tag: '', collection: 'all', status: 'all', sort: 'new', view: 'grid'
+  };
+  var detailId = null, detailImgIdx = 0, detailUrl = null;
+  var add = { tab: 'link', tags: [], pending: [], fav: false };
+  var lbState = { clipId: null, idx: 0, zoom: 1, url: null };
+  var thumbCache = new Map();
+  var saveTimer = null, searchTimer = null, statRaf = 0;
+
+  /* ================= IndexedDB (lemon_clip_v1) ================= */
+  var DB_NAME = 'lemon_clip_v1', DB_VER = 1, db = null, dbP = null;
+
+  function openDB() {
+    if (db) return Promise.resolve(db);
+    if (dbP) return dbP;
+    dbP = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('이 브라우저는 IndexedDB를 지원하지 않습니다')); return; }
+      var rq = indexedDB.open(DB_NAME, DB_VER);
+      rq.onupgradeneeded = function () {
+        var d = rq.result;
+        if (!d.objectStoreNames.contains('clips')) {
+          var s = d.createObjectStore('clips', { keyPath: 'id' });
+          s.createIndex('createdAt', 'createdAt');
+          s.createIndex('type', 'type');
+        }
+        if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('collections')) d.createObjectStore('collections', { keyPath: 'id' });
+      };
+      rq.onsuccess = function () { db = rq.result; res(db); };
+      rq.onerror = function () { rej(rq.error || new Error('IndexedDB 열기 실패')); };
+      rq.onblocked = function () { rej(new Error('IndexedDB가 다른 탭에서 사용 중입니다')); };
+    });
+    return dbP;
+  }
+
+  function dbPut(storeName, value) {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var t = d.transaction(storeName, 'readwrite');
+        t.oncomplete = function () { res(value); };
+        t.onerror = function () { rej(t.error || new Error('저장 실패')); };
+        t.onabort = function () { rej(t.error || new Error('저장 취소')); };
+        t.objectStore(storeName).put(value);
+      });
+    });
+  }
+  function dbDelete(storeName, id) {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var t = d.transaction(storeName, 'readwrite');
+        t.oncomplete = function () { res(true); };
+        t.onerror = function () { rej(t.error || new Error('삭제 실패')); };
+        t.objectStore(storeName).delete(id);
+      });
+    });
+  }
+  function dbAll(storeName) {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var t = d.transaction(storeName, 'readonly');
+        var rq = t.objectStore(storeName).getAll();
+        rq.onsuccess = function () { res(rq.result || []); };
+        rq.onerror = function () { rej(rq.error || new Error('읽기 실패')); };
+      });
+    });
+  }
+  function dbGet(storeName, id) {
+    return openDB().then(function (d) {
+      return new Promise(function (res, rej) {
+        var rq = d.transaction(storeName, 'readonly').objectStore(storeName).get(id);
+        rq.onsuccess = function () { res(rq.result || null); };
+        rq.onerror = function () { rej(rq.error || new Error('읽기 실패')); };
+      });
+    });
+  }
+
+  /* ================= helpers ================= */
+  function uid() { return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function hostOf(u) {
+    try { var h = new URL(u).hostname.replace(/^www\./, ''); return h; } catch (e) { return ''; }
+  }
+  function normUrl(v) {
+    v = String(v || '').trim();
+    if (!v) return '';
+    if (!/^https?:\/\//i.test(v)) {
+      if (/^[\w-]+(\.[\w-]+)+/.test(v)) v = 'https://' + v;
+      else return '';
+    }
+    try { var u = new URL(v); if (!u.hostname || u.hostname.indexOf('.') < 0) return ''; return u.href; } catch (e2) { return ''; }
+  }
+  function letterOf(c) {
+    var h = c.source || hostOf(c.url || '');
+    var ch = (h || c.title || 'L').replace(/^www\./, '').charAt(0);
+    return ch || 'L';
+  }
+  function statusLabel(s) { return STATUS_LABEL[s] || STATUS_LABEL.unread; }
+  function typeIcon(t) { return I[t] || I.link; }
+  function kvRow(k, v) {
+    return '<div class="kv-row"><span>' + esc(k) + '</span><span>' + esc(v) + '</span></div>';
+  }
+  function thumbURL(blob) {
+    if (!blob) return '';
+    var u = thumbCache.get(blob);
+    if (!u) {
+      try { u = URL.createObjectURL(blob); thumbCache.set(blob, u); } catch (e) { return ''; }
+    }
+    return u;
+  }
+  function revokeThumb(blob) {
+    if (!blob) return;
+    var u = thumbCache.get(blob);
+    if (u) { try { URL.revokeObjectURL(u); } catch (e) { } thumbCache.delete(blob); }
+  }
+  function flashSaved() {
+    var b = $('#saveBadge');
+    if (!b) return;
+    b.textContent = '저장됨';
+    b.classList.add('flash-ok');
+    clearTimeout(flashSaved.t);
+    flashSaved.t = setTimeout(function () {
+      b.textContent = '자동 저장';
+      b.classList.remove('flash-ok');
+    }, 1400);
+  }
+  function toast(m, t) { Lemon.toast(m, t || 'ok'); }
+  function hap() { try { if (Lemon.hap) Lemon.hap(8); } catch (e) { } }
+
+  /* ================= image pipeline ================= */
+  function readImage(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { res({ img: img, url: url, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height }); };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('이미지를 읽지 못했습니다')); };
+      img.src = url;
+    });
+  }
+  function makeThumb(img, maxDim) {
+    return new Promise(function (res) {
+      try {
+        var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        var s = Math.min(1, (maxDim || 520) / Math.max(w, h));
+        var c = D.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * s));
+        c.height = Math.max(1, Math.round(h * s));
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        if (!c.toBlob) { res(null); return; }
+        c.toBlob(function (b) { res(b); }, 'image/jpeg', 0.82);
+      } catch (e) { res(null); }
+    });
+  }
+  function storeImage(file, clipId) {
+    return readImage(file).then(function (r) {
+      return makeThumb(r.img, 520).then(function (tb) {
+        try { URL.revokeObjectURL(r.url); } catch (e) { }
+        var id = 'a_' + uid().slice(2);
+        return dbPut('assets', {
+          id: id, clipId: clipId, name: file.name || 'clipboard-image',
+          size: file.size || 0, w: r.w, h: r.h, blob: file
+        }).then(function () {
+          return { id: id, name: file.name || 'clipboard-image', w: r.w, h: r.h, size: file.size || 0, thumb: tb || file };
+        });
+      });
+    });
+  }
+  function getAsset(id) { return dbGet('assets', id).catch(function () { return null; }); }
+  function imageFiles(list) {
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      if (f && f.type && f.type.indexOf('image/') === 0) out.push(f);
+    }
+    return out;
+  }
+  function blobToDataURL(blob) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { res(String(fr.result || '')); };
+      fr.onerror = function () { rej(fr.error || new Error('변환 실패')); };
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  /* ================= boot ================= */
+  function init() {
+    loadUIState();
+    bindStatic();
+    openDB().then(function () {
+      return dbAll('clips');
+    }).then(function (clips) {
+      state.clips = clips.map(normalizeClip).sort(byNewest);
+      return dbAll('collections');
+    }).then(function (cols) {
+      state.collections = cols.sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+      buildTagPills();
+      renderAll();
+      handleHash();
+      updateStorageNote();
+    }).catch(function (e) {
+      toast('저장소를 열지 못했습니다: ' + msg(e), 'err');
+      renderAll();
+    });
+  }
+
+  function normalizeClip(c) {
+    c.tags = Array.isArray(c.tags) ? c.tags : [];
+    c.images = Array.isArray(c.images) ? c.images : [];
+    c.status = c.status || 'unread';
+    c.collectionId = c.collectionId || '';
+    c.createdAt = c.createdAt || Date.now();
+    c.updatedAt = c.updatedAt || c.createdAt;
+    c.note = c.note || '';
+    c.title = c.title || '';
+    return c;
+  }
+  function byNewest(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }
+
+  /* ================= UI state ================= */
+  var LS_UI = 'lemon_clip_ui', LS_INDEX = 'lemon_clip_index';
+  function loadUIState() {
+    try {
+      var raw = localStorage.getItem(LS_UI);
+      if (raw) {
+        var o = JSON.parse(raw);
+        state.view = o.view === 'list' ? 'list' : 'grid';
+        state.sort = o.sort || 'new';
+      }
+    } catch (e) { }
+  }
+  function saveUIState() {
+    try { localStorage.setItem(LS_UI, JSON.stringify({ view: state.view, sort: state.sort })); } catch (e) { }
+  }
+  function persistIndex() {
+    try {
+      var s = stats();
+      localStorage.setItem(LS_INDEX, JSON.stringify({
+        app: 'lemon-clip', total: s.total, images: s.images, tags: s.tags, collections: s.cols, updatedAt: Date.now()
+      }));
+    } catch (e) { }
+  }
+
+  /* ================= filters ================= */
+  function activeClips() { return state.readOnly ? state.sharedClips : state.clips; }
+  function findClip(id) {
+    var a = state.clips, b = state.sharedClips, i;
+    for (i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    for (i = 0; i < b.length; i++) if (b[i].id === id) return b[i];
+    return null;
+  }
+  function collectionName(id) {
+    if (!id) return '';
+    for (var i = 0; i < state.collections.length; i++) if (state.collections[i].id === id) return state.collections[i].name;
+    return '';
+  }
+  function matches(c) {
+    if (state.type === 'fav') { if (!c.fav) return false; }
+    else if (state.type !== 'all' && c.type !== state.type) return false;
+    if (state.status !== 'all' && (c.status || 'unread') !== state.status) return false;
+    if (state.collection !== 'all' && (c.collectionId || '') !== state.collection) return false;
+    if (state.tag && c.tags.indexOf(state.tag) < 0) return false;
+    if (state.q) {
+      var hay = [c.title, c.note, c.text, c.url, c.source, c.tags.join(' ')].join(' ').toLowerCase();
+      if (hay.indexOf(state.q) < 0) return false;
+    }
+    return true;
+  }
+  function currentList() {
+    var list = activeClips().filter(matches);
+    var s = state.sort;
+    list.sort(function (a, b) {
+      if (s === 'old') return (a.createdAt || 0) - (b.createdAt || 0);
+      if (s === 'title') return String(a.title || '').localeCompare(String(b.title || ''), 'ko');
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+    return list;
+  }
+  function stats() {
+    var clips = activeClips();
+    var imgs = 0, fav = 0, tagSet = {};
+    clips.forEach(function (c) {
+      imgs += c.images.length;
+      if (c.fav) fav++;
+      c.tags.forEach(function (t) { tagSet[t] = 1; });
+    });
+    return { total: clips.length, images: imgs, tags: Object.keys(tagSet).length, cols: state.collections.length, fav: fav };
+  }
+
+  /* ================= render: stats ================= */
+  var STAT_TILES = [
+    { k: 'total', lab: '스크랩', ico: I.bookmark },
+    { k: 'images', lab: '이미지', ico: I.image },
+    { k: 'tags', lab: '태그', ico: I.tag },
+    { k: 'cols', lab: '컬렉션', ico: I.folder }
+  ];
+  function renderStats() {
+    var strip = $('#statsStrip');
+    if (!strip.dataset.ready) {
+      strip.innerHTML = STAT_TILES.map(function (t) {
+        return '<div class="stat-tile"><div class="flex items-center justify-between">' +
+          '<span class="stat-lab">' + t.lab + '</span>' +
+          '<span class="block w-3.5 h-3.5" style="color:var(--brand)">' + t.ico.replace('<svg', '<svg width="14" height="14"') + '</span></div>' +
+          '<span class="stat-num" data-stat="' + t.k + '">0</span></div>';
+      }).join('');
+      strip.dataset.ready = '1';
+    }
+    var s = stats();
+    STAT_TILES.forEach(function (t) { countTo($('[data-stat="' + t.k + '"]', strip), s[t.k]); });
+  }
+  function countTo(el, val) {
+    if (!el) return;
+    var from = parseInt(el.dataset.v || '0', 10);
+    if (from === val) { el.textContent = val; return; }
+    el.dataset.v = val;
+    if (from === undefined || isNaN(from)) { el.textContent = val; return; }
+    var t0 = 0, dur = 460;
+    function step(ts) {
+      if (!t0) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(from + (val - from) * e);
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = val;
+    }
+    requestAnimationFrame(step);
+  }
+
+  /* ================= render: filters ================= */
+  function renderPills() {
+    var clips = activeClips();
+    var counts = { all: clips.length, link: 0, image: 0, text: 0, fav: 0 };
+    clips.forEach(function (c) {
+      if (c.type === 'link') counts.link++;
+      else if (c.type === 'image') counts.image++;
+      else if (c.type === 'text') counts.text++;
+      if (c.fav) counts.fav++;
+    });
+    $$('[data-type]').forEach(function (b) {
+      var k = b.dataset.type;
+      var el = $('[data-count="' + k + '"]', b);
+      if (el) el.textContent = counts[k];
+      b.classList.toggle('on', state.type === k);
+    });
+
+    var cw = $('#colPills');
+    var sep = cw.previousElementSibling;
+    if (state.readOnly) {
+      cw.innerHTML = '';
+      cw.style.display = 'none';
+      if (sep) sep.style.display = 'none';
+    } else {
+      cw.style.display = '';
+      if (sep) sep.style.display = '';
+    }
+    var html = '<button class="filter-pill ' + (state.collection === 'all' ? 'on' : '') + '" data-col="all">' +
+      I.folder.replace('<svg', '<svg width="12" height="12"') + '모든 컬렉션 <b>' + clips.length + '</b></button>';
+    state.collections.forEach(function (col) {
+      var n = clips.filter(function (c) { return c.collectionId === col.id; }).length;
+      html += '<button class="filter-pill ' + (state.collection === col.id ? 'on' : '') + '" data-col="' + col.id + '">' +
+        '<span class="w-1.5 h-1.5 rounded-full inline-block" style="background:' + col.color + '"></span>' +
+        esc(col.name) + ' <b>' + n + '</b></button>';
+    });
+    if (!state.readOnly) cw.innerHTML = html;
+
+    var tags = tagIndex(clips);
+    var row = $('#tagRow');
+    if (!tags.length) { row.style.display = 'none'; row.innerHTML = ''; return; }
+    row.style.display = state.tag || tags.length ? 'flex' : 'none';
+    row.className = 'fb-row fb-scroll';
+    row.innerHTML = '<span class="text-[10px] font-mono uppercase tracking-wider text-neutral-400 mr-1 shrink-0">TAGS</span>' +
+      (state.tag ? '<button class="tagchip on" data-tag="">' + esc(state.tag) + ' ' + I.x.replace('<svg', '<svg width="9" height="9"') + '</button>' : '') +
+      tags.slice(0, 26).filter(function (t) { return t.tag !== state.tag; }).map(function (t) {
+        return '<button class="tagchip" data-tag="' + esc(t.tag) + '">#' + esc(t.tag) + ' <span class="n">' + t.n + '</span></button>';
+      }).join('');
+  }
+  function tagIndex(clips) {
+    var map = {}, out = [];
+    clips.forEach(function (c) { c.tags.forEach(function (t) { map[t] = (map[t] || 0) + 1; }); });
+    Object.keys(map).forEach(function (t) { out.push({ tag: t, n: map[t] }); });
+    out.sort(function (a, b) { return b.n - a.n || a.tag.localeCompare(b.tag, 'ko'); });
+    return out;
+  }
+  function buildTagPills() { renderPills(); }
+
+  /* ================= render: clips ================= */
+  function renderClips() {
+    var area = $('#clipArea');
+    var list = currentList();
+    area.className = state.view === 'grid' ? 'masonry' : 'clip-list';
+
+    var empty = activeClips().length === 0;
+    if (empty) {
+      area.innerHTML = '';
+      $('#emptyState').classList.remove('hidden');
+      $('#noResult').classList.add('hidden');
+    } else if (!list.length) {
+      area.innerHTML = '';
+      $('#emptyState').classList.add('hidden');
+      $('#noResult').classList.remove('hidden');
+    } else {
+      $('#emptyState').classList.add('hidden');
+      $('#noResult').classList.add('hidden');
+      area.innerHTML = list.map(function (c, i) {
+        return state.view === 'grid' ? cardHTML(c, i) : rowHTML(c, i);
+      }).join('');
+    }
+    renderMeta(list.length);
+  }
+
+  function renderMeta(n) {
+    var bits = [];
+    if (state.type !== 'all') bits.push(state.type === 'fav' ? '즐겨찾기' : TYPE_LABEL[state.type]);
+    if (state.collection !== 'all') bits.push(collectionName(state.collection) || '컬렉션');
+    if (state.tag) bits.push('#' + state.tag);
+    if (state.status !== 'all') bits.push(statusLabel(state.status));
+    if (state.q) bits.push('"' + state.q + '"');
+    var t = '스크랩 ' + n + '개';
+    if (bits.length) t += ' · ' + bits.join(' · ');
+    $('#resultMeta').textContent = state.readOnly ? '공유된 스크랩 ' + n + '개 (읽기 전용)' : t;
+  }
+
+  function cardHTML(c, i) {
+    var title = esc(c.title || '제목 없는 스크랩');
+    var h = '<article class="clip-card" data-id="' + c.id + '" tabindex="0" role="button" aria-label="' + title + ' 상세 보기" style="animation-delay:' + Math.min(i, 14) * 26 + 'ms">';
+    if (c.type === 'image' && c.images.length) {
+      var im = c.images[0];
+      var ar = (im.w && im.h) ? (im.w + ' / ' + im.h) : '4 / 3';
+      h += '<div class="cc-cover fill" style="aspect-ratio:' + ar + '">' +
+        '<img src="' + thumbURL(im.thumb) + '" alt="' + esc(im.name || c.title) + '" loading="lazy">';
+      if (c.images.length > 1) {
+        h += '<span class="count-badge">' + I.image.replace('<svg', '<svg width="9" height="9"') + c.images.length + '</span>';
+      }
+      h += '<div class="veil"></div><div class="cover-actions">' +
+        '<button class="mini-act" data-act="zoom" data-id="' + c.id + '" title="크게 보기" aria-label="크게 보기">' + I.expand + '</button>' +
+        '<button class="mini-act" data-act="download" data-id="' + c.id + '" title="이미지 저장" aria-label="이미지 저장">' + I.download + '</button>' +
+        '</div></div>';
+    }
+    h += '<div class="cc-body">';
+    h += '<div class="cc-head">' + typeBadge(c) + '<span class="cc-time">' + esc(Lemon.timeAgo(c.createdAt)) + '</span></div>';
+    if (c.type === 'link') {
+      h += '<div class="link-stamp"><span class="stamp-mark">' + esc(letterOf(c)) + '</span>' +
+        '<span class="stamp-host">' + esc(hostOf(c.url) || c.source || 'link') + '</span>' +
+        '<span class="stamp-arrow">' + I.open + '</span></div>';
+    }
+    h += '<h3 class="cc-title">' + title + '</h3>';
+    if (c.type === 'link') h += '<p class="cc-src">' + esc(c.source || hostOf(c.url) || '링크') + '</p>';
+    if (c.type === 'text' && c.text) h += '<div class="cc-quote">' + esc(c.text.slice(0, 340)) + (c.text.length > 340 ? '…' : '') + '</div>';
+    else if (c.note) h += '<p class="cc-note">' + esc(c.note) + '</p>';
+    if (c.tags.length) {
+      h += '<div class="cc-tags">' + c.tags.slice(0, 4).map(function (t) { return '<span class="cc-tag">#' + esc(t) + '</span>'; }).join('') +
+        (c.tags.length > 4 ? '<span class="cc-tag">+' + (c.tags.length - 4) + '</span>' : '') + '</div>';
+    }
+    h += '<div class="cc-foot"><span class="status-dot ' + esc(c.status) + '"></span><span class="status-txt">' + statusLabel(c.status) + '</span>' +
+      '<button class="fav-btn ' + (c.fav ? 'on' : '') + '" data-act="fav" data-id="' + c.id + '" aria-label="즐겨찾기" aria-pressed="' + (c.fav ? 'true' : 'false') + '">' + I.heart + '</button></div>';
+    h += '</div></article>';
+    return h;
+  }
+
+  function rowHTML(c, i) {
+    var title = esc(c.title || '제목 없는 스크랩');
+    var thumb;
+    if (c.type === 'image' && c.images.length) {
+      thumb = '<span class="row-thumb"><img src="' + thumbURL(c.images[0].thumb) + '" alt="" loading="lazy"></span>';
+    } else if (c.type === 'text') {
+      thumb = '<span class="row-thumb text-ico">' + I.text + '</span>';
+    } else {
+      thumb = '<span class="row-thumb">' + I.link + '</span>';
+    }
+    var sub = c.type === 'link' ? (c.url || '') : (c.type === 'text' ? (c.text || '').slice(0, 90) : (c.images.length + '장 · ' + (c.note || '').slice(0, 60)));
+    return '<article class="clip-row" data-id="' + c.id + '" tabindex="0" role="button" aria-label="' + title + ' 상세 보기" style="animation-delay:' + Math.min(i, 16) * 22 + 'ms">' +
+      thumb +
+      '<span class="row-main"><span class="row-title">' + title + '</span>' +
+      '<span class="row-sub">' + esc(sub) + ' · ' + esc(Lemon.timeAgo(c.createdAt)) + '</span></span>' +
+      '<span class="row-side">' + c.tags.slice(0, 2).map(function (t) { return '<span class="row-tag">#' + esc(t) + '</span>'; }).join('') +
+      '<button class="fav-btn ' + (c.fav ? 'on' : '') + '" data-act="fav" data-id="' + c.id + '" aria-label="즐겨찾기" aria-pressed="' + (c.fav ? 'true' : 'false') + '">' + I.heart + '</button></span>' +
+      '</article>';
+  }
+
+  function typeBadge(c) {
+    return '<span class="type-badge ' + c.type + '">' + typeIcon(c.type) + TYPE_LABEL[c.type] + '</span>';
+  }
+
+  function renderAll() {
+    renderStats();
+    renderPills();
+    renderClips();
+    renderCollectionsModal();
+    renderCollectionSelect();
+    persistIndex();
+  }
+
+  /* ================= detail ================= */
+  function openDetail(id) {
+    var c = findClip(id);
+    if (!c) return;
+    detailId = id; detailImgIdx = 0;
+    renderDetail();
+    $('#detailModal').classList.add('open');
+    D.body.style.overflow = 'hidden';
+  }
+
+  function renderDetail() {
+    var c = findClip(detailId);
+    if (!c) { closeModal('detail'); return; }
+    var ro = state.readOnly;
+    var h = '';
+
+    h += '<div class="modal-head"><span class="type-badge ' + c.type + '">' + typeIcon(c.type) + TYPE_LABEL[c.type] + '</span>' +
+      '<div class="min-w-0 flex-1"><p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' +
+      esc(Lemon.fmtDateTime(c.createdAt)) + (collectionName(c.collectionId) ? ' · ' + esc(collectionName(c.collectionId)) : '') +
+      (ro ? ' · 공유됨' : '') + '</p></div>' +
+      '<button class="modal-close" data-close="detail" aria-label="닫기">' + I.x + '</button></div>';
+
+    var hasMedia = (c.type === 'image' && c.images.length > 0);
+    h += '<div class="detail-grid' + (hasMedia ? '' : ' single') + '">';
+
+    /* media */
+    if (hasMedia) {
+      h += '<div class="detail-media">';
+    }
+    if (hasMedia) {
+      var im = c.images[Math.min(detailImgIdx, c.images.length - 1)];
+      h += '<div class="main-img">' +
+        '<img id="detailImg" alt="' + esc(im.name || '이미지') + '" src="' + thumbURL(im.thumb) + '" data-act="dzoom">';
+      if (c.images.length > 1) {
+        h += '<button class="media-nav prev" data-dimg="-1" aria-label="이전 이미지">' + I.left + '</button>' +
+          '<button class="media-nav next" data-dimg="1" aria-label="다음 이미지">' + I.right + '</button>';
+      }
+      h += '<button class="lb-btn" data-act="dzoom" aria-label="크게 보기" title="크게 보기" style="position:absolute;right:.6rem;bottom:.6rem;background:rgba(255,255,255,.88);color:#1a1620">' + I.expand + '</button>';
+      h += '</div>';
+      if (c.images.length > 1) {
+        h += '<div class="detail-thumbs">' + c.images.map(function (im2, idx) {
+          return '<button data-dsel="' + idx + '" class="' + (idx === detailImgIdx ? 'on' : '') + '" aria-label="' + (idx + 1) + '번째 이미지">' +
+            '<img src="' + thumbURL(im2.thumb) + '" alt=""></button>';
+        }).join('') + '</div>';
+      }
+      h += '<div class="px-3 py-2 flex items-center justify-between gap-2 text-[10px] text-white/70">' +
+        '<span class="truncate">' + esc(im.name || 'image') + ' · ' + esc(im.w + '×' + im.h) + ' · ' + esc(Lemon.fmtBytes(im.size)) + '</span>' +
+        '<button class="text-white/95 hover:text-white font-bold shrink-0 px-1" data-act="dsave">원본 저장</button></div>';
+    }
+    if (hasMedia) h += '</div>';
+
+    /* body */
+    h += '<div class="detail-body">';
+    if (ro) {
+      h += '<h2 class="d-title mb-1.5">' + esc(c.title || '(제목 없음)') + '</h2>';
+    } else {
+      h += '<input id="dTitle" class="lemon-input !text-[13px] !font-black !py-2 mb-1.5" value="' + esc(c.title || '') + '" placeholder="제목 없는 스크랩" aria-label="제목">';
+    }
+    if (c.type === 'link' && c.url) {
+      h += '<div class="flex items-center gap-1 min-w-0 mb-2">' +
+        '<a href="' + esc(c.url) + '" target="_blank" rel="noopener" class="d-url hover:underline truncate flex-1 min-w-0">' + esc(c.url) + '</a>' +
+        '<button class="icon-btn !w-7 !h-7 shrink-0" data-act="dcopy" aria-label="링크 복사" title="링크 복사">' + I.copy + '</button>' +
+        '<a href="' + esc(c.url) + '" target="_blank" rel="noopener" class="icon-btn !w-7 !h-7 shrink-0" aria-label="원문 열기" title="원문 열기">' + I.open + '</a></div>';
+    }
+    if (c.type === 'text') {
+      if (ro) h += '<div class="d-text mb-2">' + esc(c.text || '') + '</div>';
+      else h += '<textarea id="dText" class="lemon-textarea !text-[12.5px] !leading-[1.8] mb-2" rows="5" style="border-left:2px solid color-mix(in srgb, var(--brand) 45%, transparent);border-radius:.2rem .8rem .8rem .2rem" placeholder="본문">' + esc(c.text || '') + '</textarea>';
+    }
+    if (c.source) h += '<p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 mb-2">출처 · ' + esc(c.source) + '</p>';
+
+    h += '<div class="field mb-2"><label class="lemon-label" for="dNote">메모</label>' +
+      (ro ? '<p class="text-[12px] leading-relaxed text-neutral-600 dark:text-neutral-300 whitespace-pre-wrap">' + (c.note ? esc(c.note) : '메모 없음') + '</p>'
+        : '<textarea id="dNote" class="lemon-textarea !text-[12px]" rows="2" placeholder="왜 담았는지, 어디에 쓸지">' + esc(c.note || '') + '</textarea>') +
+      '</div>';
+
+    h += '<div class="field mb-2"><label class="lemon-label">태그</label><div class="tag-editor" id="dTagEditor">' +
+      c.tags.map(function (t, i) {
+        return '<span class="tag-pill">' + esc(t) + (ro ? '' : '<button data-dtagdel="' + i + '" aria-label="태그 빼기">' + I.x + '</button>') + '</span>';
+      }).join('') +
+      (ro ? '' : '<input id="dTagInput" type="text" placeholder="태그 추가" aria-label="태그 추가">') +
+      '</div></div>';
+
+    h += '<div class="grid grid-cols-2 gap-2">';
+    h += '<div class="field"><label class="lemon-label">컬렉션</label>' +
+      (ro ? '<p class="text-[12px] font-bold">' + (collectionName(c.collectionId) || '-') + '</p>'
+        : '<select id="dCollection" class="lemon-input !py-1.5 !text-[11.5px]">' + collectionOptions(c.collectionId) + '</select>') + '</div>';
+    h += '<div class="field"><label class="lemon-label">읽기 상태</label><div class="status-seg">' +
+      ['unread', 'later', 'read'].map(function (s) {
+        return '<button data-dstatus="' + s + '" class="' + ((c.status || 'unread') === s ? 'on' : '') + '"' + (ro ? ' disabled' : '') + '>' + STATUS_LABEL[s] + '</button>';
+      }).join('') + '</div></div>';
+    h += '</div>';
+
+    h += '<div class="mt-3 pt-1">';
+    h += kvRow('담은 날', Lemon.fmtDateTime(c.createdAt));
+    if (c.updatedAt && (c.updatedAt - c.createdAt) > 60000) h += kvRow('고친 날', Lemon.fmtDateTime(c.updatedAt));
+    if (c.type === 'image' && c.images.length) {
+      var totalSize = 0;
+      c.images.forEach(function (im) { totalSize += (im.size || 0); });
+      h += kvRow('이미지', c.images.length + '장 · ' + Lemon.fmtBytes(totalSize));
+      h += kvRow('해상도', c.images[0].w + ' × ' + c.images[0].h);
+    }
+    if (c.type === 'text') h += kvRow('글자 수', (c.text || '').length.toLocaleString() + '자');
+    if (c.type === 'image' && c.source) h += kvRow('출처', c.source);
+    h += '</div>';
+    h += '</div></div>';
+
+    /* foot */
+    h += '<div class="modal-foot">';
+    if (!ro) {
+      h += '<button class="pill-btn !text-[11px] ' + (c.fav ? 'on' : '') + '" data-act="dfav" aria-pressed="' + (c.fav ? 'true' : 'false') + '">' + I.heart + '<span>' + (c.fav ? '즐겨찾기됨' : '즐겨찾기') + '</span></button>';
+    }
+    if (c.type === 'text') h += '<button class="ghost-btn !text-[11px]" data-act="dcopy">본문 복사</button>';
+    h += '<div class="flex-1"></div>';
+    if (ro) {
+      h += '<button class="primary-btn !text-[11px]" data-act="dimport">내 스크랩북으로 담기</button>';
+    } else {
+      h += '<button class="ghost-btn !text-[11px] danger-btn" data-act="ddel">삭제</button>' +
+        '<button class="primary-btn !text-[11px]" data-close="detail">닫기</button>';
+    }
+    h += '</div>';
+
+    $('#detailContent').innerHTML = h;
+    var cardEl = $('#detailModal .lm-card');
+    if (cardEl) cardEl.classList.toggle('narrow', !hasMedia);
+    loadDetailFull();
+  }
+
+  function loadDetailFull() {
+    var c = findClip(detailId);
+    if (!c || c.type !== 'image' || !c.images.length) return;
+    var idx = Math.min(detailImgIdx, c.images.length - 1);
+    var im = c.images[idx];
+    var cid = detailId;
+    getAsset(im.id).then(function (rec) {
+      if (!rec || detailId !== cid || detailImgIdx !== idx) return;
+      var el = $('#detailImg');
+      if (!el) return;
+      if (detailUrl) { try { URL.revokeObjectURL(detailUrl); } catch (e) { } detailUrl = null; }
+      detailUrl = URL.createObjectURL(rec.blob);
+      el.src = detailUrl;
+    });
+  }
+
+  function patchDetail(patch, silent) {
+    var c = findClip(detailId);
+    if (!c) return;
+    Object.keys(patch).forEach(function (k) { c[k] = patch[k]; });
+    c.updatedAt = Date.now();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      dbPut('clips', c).then(function () { flashSaved(); updateStorageNote(); }).catch(function (e) {
+        toast('저장에 실패했습니다: ' + msg(e), 'err');
+      });
+    }, 300);
+  }
+
+  /* ================= add modal ================= */
+  function switchAddTab(tab) {
+    add.tab = tab;
+    $$('.add-tab').forEach(function (b) {
+      var on = b.dataset.atab === tab;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    $$('[data-apane]').forEach(function (p) { p.classList.toggle('hidden', p.dataset.apane !== tab); });
+    var sub = $('#addSubmit');
+    if (sub) sub.textContent = tab === 'image' ? '이미지 담기' : (tab === 'text' ? '글 담기' : '링크 담기');
+  }
+
+  function openAdd(tab, prefill) {
+    add.tab = tab || 'link';
+    add.tags = [];
+    add.fav = false;
+    clearPending(true);
+    clearAddForm();
+    $('#addFav').classList.remove('on');
+    $('#addFav').setAttribute('aria-pressed', 'false');
+    renderCollectionSelect();
+    $('#addCollection').value = '';
+    switchAddTab(add.tab);
+    if (prefill) {
+      if (add.tab === 'link') {
+        $('#addUrl').value = prefill;
+        $('#addTitle').value = hostOf(prefill) || '';
+        $('#addTitle').dataset.auto = '1';
+      } else {
+        $('#addText').value = prefill;
+        $('#addTextTitle').value = '';
+      }
+    }
+    renderAddTags();
+    renderPending();
+    $('#addModal').classList.add('open');
+    D.body.style.overflow = 'hidden';
+    setTimeout(function () {
+      var f = add.tab === 'link' ? $('#addUrl') : (add.tab === 'text' ? $('#addText') : $('#addDropzone'));
+      if (f && f.focus) f.focus();
+      if (add.tab === 'link' && prefill) $('#addTitle').focus();
+    }, 140);
+  }
+
+  function clearAddForm() {
+    ['addUrl', 'addTitle', 'addSource', 'addNote', 'addImgTitle', 'addImgNote', 'addText', 'addTextTitle', 'addTextSource'].forEach(function (id) {
+      var el = $('#' + id);
+      if (el) el.value = '';
+    });
+    var ti = $('#addTagInput');
+    if (ti) ti.value = '';
+    var titleEl = $('#addTitle');
+    if (titleEl) titleEl.dataset.auto = '0';
+  }
+
+  function clearPending(revoke) {
+    if (revoke) add.pending.forEach(function (p) { try { URL.revokeObjectURL(p.url); } catch (e) { } });
+    add.pending = [];
+    renderPending();
+  }
+
+  function renderPending() {
+    var g = $('#pendingGrid');
+    if (!g) return;
+    g.innerHTML = add.pending.map(function (p, i) {
+      return '<div class="pending-tile"><img src="' + p.url + '" alt="' + esc(p.file.name || '이미지') + '">' +
+        '<button data-pdel="' + i + '" aria-label="이 이미지 빼기">' + I.x + '</button></div>';
+    }).join('');
+  }
+
+  function addFiles(list) {
+    var imgs = imageFiles(list);
+    if (!imgs.length) { toast('이미지 파일만 담을 수 있습니다', 'err'); return; }
+    imgs.forEach(function (f) { add.pending.push({ file: f, url: URL.createObjectURL(f) }); });
+    switchAddTab('image');
+    renderPending();
+    toast(imgs.length + '장을 준비했습니다. 담기를 눌러 저장하세요', 'info');
+  }
+
+  function renderAddTags() {
+    var ed = $('#addTagEditor');
+    if (!ed) return;
+    $$('.tag-pill', ed).forEach(function (el) { el.remove(); });
+    var input = $('#addTagInput');
+    add.tags.forEach(function (t, i) {
+      var span = D.createElement('span');
+      span.className = 'tag-pill';
+      span.innerHTML = esc(t) + '<button data-atagdel="' + i + '" aria-label="태그 빼기">' + I.x + '</button>';
+      ed.insertBefore(span, input);
+    });
+  }
+
+  function commitAdd() {
+    var tags = add.tags.slice();
+    var coll = $('#addCollection').value || '';
+    var fav = add.fav;
+    var now = Date.now();
+    var clip;
+
+    if (add.tab === 'link') {
+      var url = normUrl($('#addUrl').value);
+      if (!url) { toast('링크 주소를 확인해 주세요', 'err'); $('#addUrl').focus(); return; }
+      clip = {
+        id: uid(), type: 'link', url: url,
+        title: ($('#addTitle').value || '').trim() || hostOf(url),
+        source: ($('#addSource').value || '').trim(),
+        note: ($('#addNote').value || '').trim(),
+        tags: tags, fav: fav, status: 'unread', collectionId: coll,
+        images: [], text: '', createdAt: now, updatedAt: now
+      };
+      finishAdd(clip, '링크를 담았습니다');
+      return;
+    }
+
+    if (add.tab === 'text') {
+      var text = ($('#addText').value || '').trim();
+      if (!text) { toast('본문을 입력해 주세요', 'err'); $('#addText').focus(); return; }
+      clip = {
+        id: uid(), type: 'text', text: text,
+        title: ($('#addTextTitle').value || '').trim() || text.split('\n')[0].slice(0, 64),
+        source: ($('#addTextSource').value || '').trim(),
+        note: '',
+        tags: tags, fav: fav, status: 'read', collectionId: coll,
+        images: [], url: '', createdAt: now, updatedAt: now
+      };
+      finishAdd(clip, '문장을 담았습니다');
+      return;
+    }
+
+    if (!add.pending.length) { toast('이미지를 먼저 골라 주세요', 'err'); return; }
+    var id = uid();
+    var imgs = [];
+    var chain = Promise.resolve();
+    setAddBusy(true);
+    add.pending.forEach(function (p) {
+      chain = chain.then(function () { return storeImage(p.file, id); }).then(function (meta) { imgs.push(meta); });
+    });
+    chain.then(function () {
+      clip = {
+        id: id, type: 'image', images: imgs,
+        title: ($('#addImgTitle').value || '').trim() || (imgs.length > 1 ? imgs.length + '장의 이미지' : (imgs[0].name || '이미지')),
+        note: ($('#addImgNote').value || '').trim(),
+        tags: tags, fav: fav, status: 'read', collectionId: coll,
+        url: '', source: '', text: '', createdAt: now, updatedAt: now
+      };
+      finishAdd(clip, '이미지 ' + imgs.length + '장을 담았습니다');
+    }).catch(function (e) {
+      setAddBusy(false);
+      toast('이미지 저장에 실패했습니다: ' + msg(e), 'err');
+    });
+  }
+
+  function setAddBusy(b) {
+    var btn = $('#addSubmit');
+    if (!btn) return;
+    btn.disabled = !!b;
+    btn.style.opacity = b ? '.6' : '';
+    if (b) btn.dataset.label = btn.textContent;
+    btn.textContent = b ? '저장 중…' : (btn.dataset.label || '담기');
+  }
+
+  function finishAdd(clip, note) {
+    return dbPut('clips', clip).then(function () {
+      state.clips.unshift(clip);
+      clearPending(true);
+      add.tags = [];
+      setAddBusy(false);
+      closeModal('add');
+      renderAll();
+      flashSaved();
+      updateStorageNote();
+      toast(note || '담았습니다', 'ok');
+      hap();
+    }).catch(function (e) {
+      setAddBusy(false);
+      toast('저장에 실패했습니다: ' + msg(e), 'err');
+    });
+  }
+
+  function quickAddUrl(raw) {
+    var url = normUrl(raw);
+    if (!url) { toast('https:// 로 시작하는 링크를 넣어 주세요', 'err'); return; }
+    var now = Date.now();
+    var clip = {
+      id: uid(), type: 'link', url: url, title: hostOf(url), source: hostOf(url), note: '',
+      tags: [], fav: false, status: 'unread', collectionId: '', images: [], text: '',
+      createdAt: now, updatedAt: now
+    };
+    dbPut('clips', clip).then(function () {
+      state.clips.unshift(clip);
+      $('#quickUrl').value = '';
+      renderAll();
+      flashSaved();
+      toast('링크를 담았습니다. 눌러서 제목과 메모를 채워보세요', 'ok');
+      hap();
+    }).catch(function (e) { toast('저장에 실패했습니다: ' + msg(e), 'err'); });
+  }
+
+  function quickImages(files) {
+    var imgs = imageFiles(files);
+    if (!imgs.length) { toast('이미지 파일만 담을 수 있습니다', 'err'); return; }
+    var id = uid();
+    var made = [];
+    var chain = Promise.resolve();
+    toast('이미지 ' + imgs.length + '장을 저장하는 중…', 'info');
+    imgs.forEach(function (f) {
+      chain = chain.then(function () { return storeImage(f, id); }).then(function (m) { made.push(m); });
+    });
+    chain.then(function () {
+      var now = Date.now();
+      var clip = {
+        id: id, type: 'image', images: made,
+        title: made.length > 1 ? made.length + '장의 이미지' : (made[0].name || '이미지'),
+        note: '', tags: [], fav: false, status: 'read', collectionId: '',
+        url: '', source: '', text: '', createdAt: now, updatedAt: now
+      };
+      return dbPut('clips', clip).then(function () {
+        state.clips.unshift(clip);
+        renderAll();
+        flashSaved();
+        updateStorageNote();
+        toast('이미지 ' + made.length + '장을 담았습니다', 'ok');
+        hap();
+      });
+    }).catch(function (e) { toast('이미지 저장에 실패했습니다: ' + msg(e), 'err'); });
+  }
+
+  /* ================= collections ================= */
+  function collectionOptions(selected) {
+    var h = '<option value="">컬렉션 없음</option>';
+    state.collections.forEach(function (c) {
+      h += '<option value="' + c.id + '"' + (c.id === selected ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+    });
+    return h;
+  }
+  function renderCollectionSelect() {
+    var sel = $('#addCollection');
+    if (!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = collectionOptions(cur);
+  }
+  function renderCollectionsModal() {
+    var list = state.collections;
+    var el = $('#colEmpty');
+    if (el) el.style.display = list.length ? 'none' : 'block';
+    var cl = $('#colList');
+    if (!cl) return;
+    cl.innerHTML = list.map(function (col) {
+      var n = state.clips.filter(function (c) { return c.collectionId === col.id; }).length;
+      return '<div class="collection-item" data-col="' + col.id + '">' +
+        '<span class="collection-dot" style="background:' + col.color + '"></span>' +
+        '<input class="flex-1 min-w-0 bg-transparent border-0 outline-none text-[12px] font-bold" style="color:inherit" value="' + esc(col.name) + '" data-rename="' + col.id + '" aria-label="컬렉션 이름">' +
+        '<span class="text-[10px] text-neutral-400 font-bold shrink-0">' + n + '</span>' +
+        '<button class="icon-btn !w-7 !h-7 danger-btn shrink-0" data-coldel="' + col.id + '" title="컬렉션 삭제" aria-label="컬렉션 삭제">' + I.trash + '</button>' +
+        '</div>';
+    }).join('');
+  }
+  function addCollection(name) {
+    name = String(name || '').trim();
+    if (!name) { toast('컬렉션 이름을 입력해 주세요', 'err'); return; }
+    var col = { id: 'col_' + uid().slice(2), name: name, color: COLORS[state.collections.length % COLORS.length], createdAt: Date.now() };
+    dbPut('collections', col).then(function () {
+      state.collections.push(col);
+      $('#newColName').value = '';
+      renderCollectionsModal();
+      renderCollectionSelect();
+      renderAll();
+      toast('컬렉션 "' + name + '"을 만들었습니다', 'ok');
+    }).catch(function (e) { toast('컬렉션 저장 실패: ' + msg(e), 'err'); });
+  }
+  function renameCollection(id, name) {
+    name = String(name || '').trim();
+    var col = state.collections.filter(function (c) { return c.id === id; })[0];
+    if (!col) return;
+    if (!name) { renderCollectionsModal(); return; }
+    col.name = name;
+    dbPut('collections', col).then(function () { renderAll(); flashSaved(); }).catch(function (e) { toast('이름 변경 실패: ' + msg(e), 'err'); });
+  }
+  function deleteCollection(id) {
+    var col = state.collections.filter(function (c) { return c.id === id; })[0];
+    if (!col) return;
+    state.collections = state.collections.filter(function (c) { return c.id !== id; });
+    state.clips.forEach(function (c) { if (c.collectionId === id) { c.collectionId = ''; dbPut('clips', c); } });
+    if (state.collection === id) state.collection = 'all';
+    dbDelete('collections', id).then(function () {
+      renderAll();
+      toast('컬렉션을 지웠습니다. 안에 있던 스크랩은 그대로 남아 있어요', 'info');
+    }).catch(function (e) { toast('삭제 실패: ' + msg(e), 'err'); });
+  }
+
+  /* ================= delete clip ================= */
+  function deleteClip(id, btn) {
+    var c = findClip(id);
+    if (!c) return;
+    if (btn && btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.textContent = '정말 삭제?';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(function () {
+        if (!btn) return;
+        btn.dataset.armed = '';
+        btn.textContent = '삭제';
+      }, 3200);
+      return;
+    }
+    clearTimeout(saveTimer);
+    var assetIds = c.images.map(function (im) { return im.id; });
+    c.images.forEach(function (im) { revokeThumb(im.thumb); });
+    state.clips = state.clips.filter(function (x) { return x.id !== id; });
+    closeModal('detail');
+    renderAll();
+    dbDelete('clips', id).then(function () {
+      assetIds.forEach(function (aid) { dbDelete('assets', aid).catch(function () { }); });
+      updateStorageNote();
+      toast('스크랩을 삭제했습니다', 'info');
+    }).catch(function (e) { toast('삭제에 실패했습니다: ' + msg(e), 'err'); });
+  }
+
+  /* ================= copy / download ================= */
+  function copyClip(c) {
+    if (!c) return;
+    var text = c.type === 'link' ? (c.url || c.title) : (c.type === 'text' ? c.text : (c.title || ''));
+    Lemon.copy(text || '', '복사했습니다');
+  }
+  function downloadImage(clip, idx) {
+    var c = clip || findClip(detailId);
+    if (!c || !c.images.length) return;
+    var im = c.images[Math.min(idx || 0, c.images.length - 1)];
+    getAsset(im.id).then(function (rec) {
+      if (!rec) { toast('원본을 찾지 못했습니다', 'err'); return; }
+      Lemon.downloadBlob(im.name || 'lemon-clip-image', rec.blob);
+      toast('이미지를 저장했습니다', 'ok');
+    });
+  }
+
+  /* ================= lightbox ================= */
+  function openLightbox(clipId, idx) {
+    var c = findClip(clipId);
+    if (!c || !c.images.length) return;
+    lbState.clipId = clipId;
+    lbState.idx = Math.max(0, Math.min(idx || 0, c.images.length - 1));
+    showLbImage();
+    $('#lightbox').classList.add('open');
+    $('#lightbox').setAttribute('aria-hidden', 'false');
+    D.body.style.overflow = 'hidden';
+  }
+  function showLbImage() {
+    var c = findClip(lbState.clipId);
+    if (!c) return;
+    var im = c.images[lbState.idx];
+    var img = $('#lbImg');
+    lbState.zoom = 1;
+    img.style.transform = 'scale(1)';
+    img.src = thumbURL(im.thumb);
+    $('#lbCount').textContent = (lbState.idx + 1) + ' / ' + c.images.length;
+    var many = c.images.length > 1;
+    $('#lbPrev').style.display = many ? 'grid' : 'none';
+    $('#lbNext').style.display = many ? 'grid' : 'none';
+    var cid = lbState.clipId, ix = lbState.idx;
+    getAsset(im.id).then(function (rec) {
+      if (!rec || lbState.clipId !== cid || lbState.idx !== ix) return;
+      if (lbState.url) { try { URL.revokeObjectURL(lbState.url); } catch (e) { } lbState.url = null; }
+      lbState.url = URL.createObjectURL(rec.blob);
+      img.src = lbState.url;
+    });
+  }
+  function lbGo(delta) {
+    var c = findClip(lbState.clipId);
+    if (!c || c.images.length < 2) return;
+    lbState.idx = (lbState.idx + delta + c.images.length) % c.images.length;
+    showLbImage();
+  }
+  function closeLightbox() {
+    $('#lightbox').classList.remove('open');
+    $('#lightbox').setAttribute('aria-hidden', 'true');
+    if (lbState.url) { try { URL.revokeObjectURL(lbState.url); } catch (e) { } lbState.url = null; }
+    $('#lbImg').src = '';
+    if (!anyModalOpen()) D.body.style.overflow = '';
+  }
+  function lbZoom(f) {
+    lbState.zoom = Math.max(0.5, Math.min(4, lbState.zoom * f));
+    $('#lbImg').style.transform = 'scale(' + lbState.zoom + ')';
+  }
+
+  /* ================= export / import ================= */
+  function stamp() {
+    var d = new Date();
+    return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0');
+  }
+  function exportBackup() {
+    if (!state.clips.length) { toast('백업할 스크랩이 없습니다', 'info'); return; }
+    toast('백업 파일을 준비하고 있습니다…', 'info');
+    var jobs = state.clips.map(function (c) {
+      var o = {
+        id: c.id, type: c.type, title: c.title, url: c.url, source: c.source, note: c.note,
+        tags: c.tags.slice(), fav: !!c.fav, status: c.status, collectionId: c.collectionId,
+        text: c.text || '', createdAt: c.createdAt
+      };
+      if (c.type === 'image') {
+        o.images = [];
+        return Promise.all(c.images.map(function (im) {
+          return getAsset(im.id).then(function (rec) {
+            if (!rec) return null;
+            return blobToDataURL(rec.blob).then(function (data) {
+              return { name: im.name, w: im.w, h: im.h, size: im.size, data: data };
+            });
+          });
+        })).then(function (arr) {
+          o.images = arr.filter(Boolean);
+          return o;
+        });
+      }
+      return Promise.resolve(o);
+    });
+    Promise.all(jobs).then(function (clips) {
+      var data = { app: 'lemon-clip', v: 1, exportedAt: Date.now(), collections: state.collections, clips: clips };
+      var json = JSON.stringify(data);
+      Lemon.download('lemon-clip-backup-' + stamp() + '.json', json, 'application/json');
+      toast('백업을 내려받았습니다 (' + Lemon.fmtBytes(json.length) + ')', 'ok');
+    }).catch(function (e) { toast('백업에 실패했습니다: ' + msg(e), 'err'); });
+  }
+
+  function importBackup(file) {
+    var fr = new FileReader();
+    fr.onload = function () {
+      var data;
+      try { data = JSON.parse(String(fr.result || '')); } catch (e) { toast('JSON 파일을 읽지 못했습니다', 'err'); return; }
+      if (!data || data.app !== 'lemon-clip' || !Array.isArray(data.clips)) {
+        toast('Lemon Clip 백업 파일이 아닙니다', 'err');
+        return;
+      }
+      var colMap = {};
+      (data.collections || []).forEach(function (col) {
+        var found = state.collections.filter(function (c) { return c.name === col.name; })[0];
+        if (found) { colMap[col.id] = found.id; return; }
+        var nc = { id: 'col_' + uid().slice(2), name: col.name || '가져온 컬렉션', color: col.color || COLORS[0], createdAt: Date.now() };
+        state.collections.push(nc);
+        colMap[col.id] = nc.id;
+        dbPut('collections', nc).catch(function () { });
+      });
+      var added = 0;
+      var jobs = data.clips.map(function (src) {
+        var now = Date.now();
+        var clip = {
+          id: uid(), type: src.type || 'link', title: src.title || '', url: src.url || '', source: src.source || '',
+          note: src.note || '', text: src.text || '', tags: Array.isArray(src.tags) ? src.tags : [],
+          fav: !!src.fav, status: src.status || 'unread',
+          collectionId: colMap[src.collectionId] || '', images: [],
+          createdAt: src.createdAt || now, updatedAt: now
+        };
+        if (clip.type !== 'image') return dbPut('clips', clip).then(function () { state.clips.unshift(clip); added++; });
+        var chain = Promise.resolve();
+        (src.images || []).forEach(function (im) {
+          chain = chain.then(function () {
+            return fetch(im.data).then(function (r) { return r.blob(); }).then(function (blob) {
+              var f = new File([blob], im.name || 'imported-image', { type: blob.type || 'image/png' });
+              return storeImage(f, clip.id).then(function (meta) {
+                meta.w = im.w || meta.w; meta.h = im.h || meta.h; meta.size = im.size || meta.size;
+                clip.images.push(meta);
+              });
+            });
+          });
+        });
+        return chain.then(function () { return dbPut('clips', clip); }).then(function () { state.clips.unshift(clip); added++; });
+      });
+      Promise.all(jobs).then(function () {
+        renderAll();
+        updateStorageNote();
+        flashSaved();
+        toast(added + '개의 스크랩을 가져왔습니다', 'ok');
+      }).catch(function (e) { toast('가져오기에 실패했습니다: ' + msg(e), 'err'); renderAll(); });
+    };
+    fr.onerror = function () { toast('파일을 읽지 못했습니다', 'err'); };
+    fr.readAsText(file);
+  }
+
+  /* ================= share ================= */
+  function pack(str) {
+    if (window.LZString) return LZString.compressToEncodedURIComponent(str);
+    return 'b64.' + btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function unpack(code) {
+    if (code.indexOf('b64.') === 0) {
+      var b = code.slice(4).replace(/-/g, '+').replace(/_/g, '/');
+      while (b.length % 4) b += '=';
+      return decodeURIComponent(escape(atob(b)));
+    }
+    return LZString.decompressFromEncodedURIComponent(code);
+  }
+  function buildShare() {
+    var clips = state.clips.filter(function (c) { return c.type !== 'image'; });
+    var rows = clips.map(function (c) {
+      return [c.type, c.title || '', c.url || '', c.source || '', c.note || '', c.tags.join(','), c.status || 'unread',
+        c.text || '', c.createdAt, c.fav ? 1 : 0, collectionName(c.collectionId) || ''];
+    });
+    var data = { v: 1, t: '나의 Lemon Clip 스크랩북', c: rows, ic: state.clips.filter(function (c) { return c.type === 'image'; }).length, ts: Date.now() };
+    var code = pack(JSON.stringify(data));
+    return { code: code, url: location.origin + location.pathname + '#view=' + code, count: rows.length, images: data.ic };
+  }
+  function openShare() {
+    var s = buildShare();
+    if (!s.count) { toast('공유할 링크/글이 없습니다. 이미지는 링크에 담기지 않습니다', 'info'); return; }
+    $('#shareLink').textContent = s.url;
+    $('#shareSummary').textContent = '링크와 글 ' + s.count + '개를 링크 하나에 담았습니다. 받은 사람은 읽기 전용으로 열람하고 자기 스크랩북으로 그대로 담을 수 있습니다.' +
+      (s.images ? ' 이미지 ' + s.images + '장은 용량 때문에 링크에 담기지 않습니다.' : '');
+    $('#shareMeta').textContent = '링크 ' + s.url.length.toLocaleString() + '자 · 담긴 스크랩 ' + s.count + '개';
+    $('#shareModal').classList.add('open');
+    D.body.style.overflow = 'hidden';
+  }
+  function sharedClip(row, idx) {
+    return {
+      id: 's_' + idx, type: row[0] || 'link', title: row[1] || '', url: row[2] || '', source: row[3] || '',
+      note: row[4] || '', tags: row[5] ? String(row[5]).split(',').filter(Boolean) : [], status: row[6] || 'unread',
+      text: row[7] || '', createdAt: row[8] || Date.now(), fav: !!row[9], collectionId: '',
+      colName: row[10] || '', images: [], updatedAt: row[8] || Date.now()
+    };
+  }
+  function handleHash() {
+    var h = location.hash || '';
+    if (h.indexOf('#view=') !== 0) return;
+    var code = h.slice(6);
+    var json = null;
+    try { json = unpack(code); } catch (e) { json = null; }
+    if (!json) { toast('공유 링크를 읽지 못했습니다', 'err'); return; }
+    var data;
+    try { data = JSON.parse(json); } catch (e2) { data = null; }
+    if (!data || !Array.isArray(data.c) || !data.c.length) { toast('공유된 스크랩이 비어 있습니다', 'err'); return; }
+    state.shared = data;
+    state.readOnly = true;
+    state.sharedClips = data.c.map(sharedClip);
+    D.body.classList.add('read-only');
+    $('#shareBanner').classList.remove('hidden');
+    $('#shareBannerTitle').textContent = data.t || '공유된 스크랩북';
+    $('#shareBannerSub').textContent = data.c.length + '개의 스크랩 · 읽기 전용' + (data.ic ? ' (이미지 ' + data.ic + '장은 링크에 담기지 않았습니다)' : '');
+    renderAll();
+  }
+  function exitShared() {
+    state.readOnly = false;
+    state.shared = null;
+    state.sharedClips = [];
+    D.body.classList.remove('read-only');
+    $('#shareBanner').classList.add('hidden');
+    if (location.hash.indexOf('#view=') === 0) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
+    }
+    renderAll();
+  }
+  function importShared() {
+    if (!state.sharedClips.length) return;
+    var added = 0;
+    var jobs = state.sharedClips.map(function (src) {
+      var colId = '';
+      if (src.colName) {
+        var found = state.collections.filter(function (c) { return c.name === src.colName; })[0];
+        if (!found) {
+          found = { id: 'col_' + uid().slice(2), name: src.colName, color: COLORS[state.collections.length % COLORS.length], createdAt: Date.now() };
+          state.collections.push(found);
+          dbPut('collections', found).catch(function () { });
+        }
+        colId = found.id;
+      }
+      var now = Date.now();
+      var clip = {
+        id: uid(), type: src.type, title: src.title, url: src.url, source: src.source, note: src.note,
+        text: src.text, tags: src.tags.slice(), fav: src.fav, status: src.status,
+        collectionId: colId, images: [], createdAt: now, updatedAt: now
+      };
+      return dbPut('clips', clip).then(function () { state.clips.unshift(clip); added++; });
+    });
+    Promise.all(jobs).then(function () {
+      toast(added + '개의 스크랩을 내 스크랩북에 담았습니다', 'ok');
+      exitShared();
+    }).catch(function (e) { toast('가져오기에 실패했습니다: ' + msg(e), 'err'); });
+  }
+
+  /* ================= storage note ================= */
+  var storageTimer = null;
+  function updateStorageNote() {
+    clearTimeout(storageTimer);
+    storageTimer = setTimeout(function () {
+      var el = $('#storageNote');
+      if (!el) return;
+      if (navigator.storage && navigator.storage.estimate) {
+        navigator.storage.estimate().then(function (est) {
+          el.textContent = '저장소 ' + Lemon.fmtBytes(est.usage || 0) + (est.quota ? ' / ' + Lemon.fmtBytes(est.quota) : '');
+        }).catch(function () { el.textContent = ''; });
+      } else { el.textContent = ''; }
+    }, 260);
+  }
+
+  /* ================= modal helpers ================= */
+  var MODALS = { add: '#addModal', detail: '#detailModal', col: '#colModal', share: '#shareModal' };
+  function anyModalOpen() {
+    return Object.keys(MODALS).some(function (k) { return $(MODALS[k]).classList.contains('open'); });
+  }
+  function closeModal(name) {
+    var el = $(MODALS[name]);
+    if (!el) return;
+    el.classList.remove('open');
+    if (name === 'detail') {
+      detailId = null;
+      if (detailUrl) { try { URL.revokeObjectURL(detailUrl); } catch (e) { } detailUrl = null; }
+      renderClips();
+      renderPills();
+    }
+    if (name === 'add') {
+      clearPending(true);
+      add.tags = [];
+      setAddBusy(false);
+    }
+    if (!anyModalOpen() && !$('#lightbox').classList.contains('open')) D.body.style.overflow = '';
+  }
+
+  /* ================= bindings ================= */
+  function bindStatic() {
+    /* theme */
+    D.addEventListener('lemon:theme', function () { /* CSS 변수는 .dark 로 전환됨 */ });
+
+    /* quick capture */
+    $('#quickSave').addEventListener('click', function () { quickAddUrl($('#quickUrl').value); });
+    $('#quickUrl').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      quickAddUrl($('#quickUrl').value);
+    });
+
+    /* add buttons */
+    $$('[data-add]').forEach(function (b) {
+      b.addEventListener('click', function () { openAdd(b.dataset.add); });
+    });
+    $('#fabAdd').addEventListener('click', function () { openAdd('link'); });
+
+    /* header buttons */
+    $('#btnExport').addEventListener('click', exportBackup);
+    $('#btnExport2').addEventListener('click', exportBackup);
+    $('#btnImport').addEventListener('click', function () { $('#importFile').click(); });
+    $('#importFile').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) importBackup(f);
+      e.target.value = '';
+    });
+    $('#btnShare').addEventListener('click', openShare);
+    $('#btnCollections').addEventListener('click', function () {
+      renderCollectionsModal();
+      $('#colModal').classList.add('open');
+      D.body.style.overflow = 'hidden';
+      setTimeout(function () { $('#newColName').focus(); }, 120);
+    });
+
+    /* search */
+    var si = $('#search');
+    si.addEventListener('input', function () {
+      clearTimeout(searchTimer);
+      var v = si.value;
+      $('#searchClear').classList.toggle('hidden', !v);
+      searchTimer = setTimeout(function () { state.q = v.trim().toLowerCase(); renderClips(); renderPills(); }, 130);
+    });
+    $('#searchClear').addEventListener('click', function () {
+      si.value = ''; state.q = '';
+      $('#searchClear').classList.add('hidden');
+      renderClips(); renderPills(); si.focus();
+    });
+
+    /* view toggle */
+    $$('#viewSeg [data-view]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.view = b.dataset.view;
+        $$('#viewSeg [data-view]').forEach(function (x) { x.classList.toggle('on', x === b); });
+        moveGlider();
+        saveUIState();
+        renderClips();
+      });
+    });
+    function moveGlider() {
+      var on = $('#viewSeg .seg-btn.on');
+      var g = $('#viewGlider');
+      if (!on || !g) return;
+      g.style.width = on.offsetWidth + 'px';
+      g.style.transform = 'translateX(' + (on.offsetLeft - 4) + 'px)';
+    }
+    setTimeout(function () {
+      $$('#viewSeg [data-view]').forEach(function (x) { x.classList.toggle('on', x.dataset.view === state.view); });
+      moveGlider();
+    }, 60);
+    window.addEventListener('resize', moveGlider);
+
+    /* sort & status */
+    $('#sortSel').value = state.sort;
+    $('#sortSel').addEventListener('change', function () {
+      state.sort = this.value; saveUIState(); renderClips();
+    });
+    $('#statusSel').addEventListener('change', function () {
+      state.status = this.value; renderClips(); renderPills();
+    });
+
+    /* type pills */
+    $('#typePills').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-type]');
+      if (!b) return;
+      state.type = b.dataset.type;
+      renderPills(); renderClips();
+    });
+    /* collection pills */
+    $('#colPills').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-col]');
+      if (!b) return;
+      state.collection = b.dataset.col;
+      renderPills(); renderClips();
+    });
+    /* tag row */
+    $('#tagRow').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-tag]');
+      if (!b) return;
+      state.tag = b.dataset.tag || '';
+      renderPills(); renderClips();
+    });
+    $('#btnResetFilter').addEventListener('click', function () {
+      state.q = ''; state.type = 'all'; state.tag = ''; state.collection = 'all'; state.status = 'all';
+      $('#search').value = ''; $('#searchClear').classList.add('hidden'); $('#statusSel').value = 'all';
+      renderPills(); renderClips();
+    });
+
+    /* clip area */
+    var area = $('#clipArea');
+    area.addEventListener('click', function (e) {
+      var t = e.target;
+      var fav = t.closest('[data-act="fav"]');
+      if (fav) { e.stopPropagation(); e.preventDefault(); toggleFav(fav.dataset.id, fav); return; }
+      var zoom = t.closest('[data-act="zoom"]');
+      if (zoom) { e.stopPropagation(); e.preventDefault(); openLightbox(zoom.dataset.id, 0); return; }
+      var dl = t.closest('[data-act="download"]');
+      if (dl) { e.stopPropagation(); e.preventDefault(); downloadImage(findClip(dl.dataset.id), 0); return; }
+      var card = t.closest('.clip-card, .clip-row');
+      if (card) openDetail(card.dataset.id);
+    });
+    area.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var card = e.target.closest ? e.target.closest('.clip-card, .clip-row') : null;
+      if (!card) return;
+      e.preventDefault();
+      openDetail(card.dataset.id);
+    });
+
+    /* add modal */
+    $$('.add-tab').forEach(function (b) {
+      b.addEventListener('click', function () { switchAddTab(b.dataset.atab); });
+    });
+    $('#addFav').addEventListener('click', function () {
+      add.fav = !add.fav;
+      this.classList.toggle('on', add.fav);
+      this.setAttribute('aria-pressed', add.fav ? 'true' : 'false');
+    });
+    $('#addSubmit').addEventListener('click', commitAdd);
+    $('#addUrl').addEventListener('input', function () {
+      var host = hostOf(normUrl(this.value));
+      var ti = $('#addTitle');
+      if (!ti.value || ti.dataset.auto === '1') {
+        ti.value = host;
+        ti.dataset.auto = '1';
+      }
+    });
+    $('#addTitle').addEventListener('input', function () { this.dataset.auto = '0'; });
+    $('#pasteUrl').addEventListener('click', function () {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(function (t) { $('#addUrl').value = String(t || '').trim(); }).catch(function () {
+          toast('붙여넣기 권한이 없습니다. 직접 붙여넣어 주세요', 'err');
+        });
+      } else { toast('이 브라우저는 자동 붙여넣기를 지원하지 않습니다', 'info'); }
+    });
+    $('#addDropzone').addEventListener('click', function () { $('#fileInput').click(); });
+    $('#addDropzone').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#fileInput').click(); }
+    });
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      $('#addDropzone').addEventListener(ev, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        this.classList.add('over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      $('#addDropzone').addEventListener(ev, function (e) {
+        e.preventDefault(); e.stopPropagation();
+        this.classList.remove('over');
+      });
+    });
+    $('#addDropzone').addEventListener('drop', function (e) {
+      if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+    });
+    $('#fileInput').addEventListener('change', function (e) {
+      if (e.target.files && e.target.files.length) addFiles(e.target.files);
+      e.target.value = '';
+    });
+    $('#pendingGrid').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pdel]');
+      if (!b) return;
+      var i = parseInt(b.dataset.pdel, 10);
+      var p = add.pending[i];
+      if (p) { try { URL.revokeObjectURL(p.url); } catch (er) { } add.pending.splice(i, 1); }
+      renderPending();
+    });
+    $('#addTagEditor').addEventListener('click', function (e) {
+      var del = e.target.closest('[data-atagdel]');
+      if (del) { add.tags.splice(parseInt(del.dataset.atagdel, 10), 1); renderAddTags(); return; }
+      var inp = $('#addTagInput');
+      if (inp && e.target !== inp) inp.focus();
+    });
+    $('#addTagInput').addEventListener('keydown', function (e) {
+      if (e.isComposing || e.keyCode === 229) return;
+      var v = this.value;
+      if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+        e.preventDefault();
+        pushTag(v);
+        this.value = '';
+      } else if (e.key === 'Backspace' && !v && add.tags.length) {
+        add.tags.pop(); renderAddTags();
+      }
+    });
+    $('#addTagInput').addEventListener('blur', function () {
+      if (this.value.trim()) { pushTag(this.value); this.value = ''; }
+    });
+    function pushTag(v) {
+      String(v || '').split(/[,\uFF0C]/).forEach(function (t) {
+        t = t.trim().replace(/^#/, '');
+        if (t && add.tags.indexOf(t) < 0) add.tags.push(t);
+      });
+      renderAddTags();
+    }
+
+    /* detail delegation */
+    var dc = $('#detailContent');
+    dc.addEventListener('click', function (e) {
+      var t = e.target;
+      var act = t.closest('[data-act]');
+      if (act) {
+        var a = act.dataset.act;
+        var c = findClip(detailId);
+        if (a === 'dfav' && c) {
+          c.fav = !c.fav; c.updatedAt = Date.now();
+          dbPut('clips', c);
+          act.classList.toggle('on', c.fav);
+          act.setAttribute('aria-pressed', c.fav ? 'true' : 'false');
+          var lbl = act.querySelector('span');
+          if (lbl) lbl.textContent = c.fav ? '즐겨찾기됨' : '즐겨찾기';
+          flashSaved(); renderPills();
+          return;
+        }
+        if (a === 'dcopy') { copyClip(c); return; }
+        if (a === 'dzoom') { openLightbox(detailId, detailImgIdx); return; }
+        if (a === 'dsave') { downloadImage(c, detailImgIdx); return; }
+        if (a === 'ddel') { deleteClip(detailId, act); return; }
+        if (a === 'dimport') { importShared(); return; }
+      }
+      var dsel = t.closest('[data-dsel]');
+      if (dsel) {
+        detailImgIdx = parseInt(dsel.dataset.dsel, 10) || 0;
+        renderDetail();
+        return;
+      }
+      var dimg = t.closest('[data-dimg]');
+      if (dimg) {
+        var cc = findClip(detailId);
+        if (!cc || !cc.images.length) return;
+        detailImgIdx = (detailImgIdx + parseInt(dimg.dataset.dimg, 10) + cc.images.length) % cc.images.length;
+        renderDetail();
+        return;
+      }
+      var st = t.closest('[data-dstatus]');
+      if (st) {
+        var c2 = findClip(detailId);
+        if (!c2) return;
+        c2.status = st.dataset.dstatus;
+        patchDetail({ status: c2.status }, true);
+        $$('[data-dstatus]', dc).forEach(function (x) { x.classList.toggle('on', x === st); });
+        return;
+      }
+      var tagdel = t.closest('[data-dtagdel]');
+      if (tagdel) {
+        var c3 = findClip(detailId);
+        if (!c3) return;
+        c3.tags.splice(parseInt(tagdel.dataset.dtagdel, 10), 1);
+        patchDetail({ tags: c3.tags });
+        renderDetail();
+        return;
+      }
+      var ed = t.closest('#dTagEditor');
+      if (ed) { var ti = $('#dTagInput'); if (ti && t !== ti) ti.focus(); }
+    });
+    dc.addEventListener('input', function (e) {
+      var t = e.target;
+      if (t.id === 'dTitle') patchDetail({ title: t.value });
+      else if (t.id === 'dNote') patchDetail({ note: t.value });
+      else if (t.id === 'dText') patchDetail({ text: t.value });
+    });
+    dc.addEventListener('change', function (e) {
+      if (e.target.id === 'dCollection') patchDetail({ collectionId: e.target.value });
+    });
+    dc.addEventListener('keydown', function (e) {
+      if (e.target.id !== 'dTagInput' || e.key !== 'Enter') return;
+      if (e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      var c = findClip(detailId);
+      if (!c) return;
+      var v = String(e.target.value || '').trim().replace(/^#/, '');
+      if (v) {
+        v.split(/[,\uFF0C]/).forEach(function (x) { x = x.trim(); if (x && c.tags.indexOf(x) < 0) c.tags.push(x); });
+        patchDetail({ tags: c.tags });
+        renderDetail();
+        var ni = $('#dTagInput');
+        if (ni) ni.focus();
+      }
+    });
+
+    /* collections modal */
+    $('#newColAdd').addEventListener('click', function () { addCollection($('#newColName').value); });
+    $('#newColName').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); addCollection(this.value); }
+    });
+    $('#colList').addEventListener('change', function (e) {
+      var inp = e.target.closest('[data-rename]');
+      if (inp) renameCollection(inp.dataset.rename, inp.value);
+    });
+    $('#colList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-coldel]');
+      if (!b) return;
+      if (b.dataset.armed !== '1') {
+        b.dataset.armed = '1';
+        b.style.color = '#dc4323';
+        b.title = '한 번 더 누르면 삭제됩니다';
+        clearTimeout(b._t);
+        b._t = setTimeout(function () { b.dataset.armed = ''; b.title = '컬렉션 삭제'; }, 3000);
+        return;
+      }
+      deleteCollection(b.dataset.coldel);
+    });
+
+    /* share modal */
+    $('#shareCopy').addEventListener('click', function () {
+      Lemon.copy($('#shareLink').textContent, '공유 링크를 복사했습니다');
+    });
+    $('#shareNative').addEventListener('click', function () {
+      var url = $('#shareLink').textContent;
+      if (navigator.share) {
+        navigator.share({ title: 'Lemon Clip 스크랩북', url: url }).catch(function () { });
+      } else { Lemon.copy(url, '공유 링크를 복사했습니다'); }
+    });
+    $('#shareOpen').addEventListener('click', function () {
+      window.open($('#shareLink').textContent, '_blank', 'noopener');
+    });
+
+    /* shared banner */
+    $('#btnSharedClose').addEventListener('click', exitShared);
+    $('#btnSharedImport').addEventListener('click', importShared);
+
+    /* close buttons */
+    D.addEventListener('click', function (e) {
+      var t = e.target.closest ? e.target.closest('[data-close]') : null;
+      if (t) { closeModal(t.dataset.close); return; }
+    });
+
+    /* lightbox */
+    $('#lbClose').addEventListener('click', closeLightbox);
+    $('#lbPrev').addEventListener('click', function () { lbGo(-1); });
+    $('#lbNext').addEventListener('click', function () { lbGo(1); });
+    $('#lbZoomIn').addEventListener('click', function () { lbZoom(1.35); });
+    $('#lbZoomOut').addEventListener('click', function () { lbZoom(1 / 1.35); });
+    $('#lbDownload').addEventListener('click', function () { downloadImage(findClip(lbState.clipId), lbState.idx); });
+    $('#lightbox').addEventListener('click', function (e) {
+      if (e.target.id === 'lightbox' || e.target.classList.contains('lb-img')) closeLightbox();
+    });
+
+    /* paste */
+    D.addEventListener('paste', function (e) {
+      var cd = e.clipboardData;
+      if (!cd) return;
+      var files = [];
+      if (cd.items) {
+        for (var i = 0; i < cd.items.length; i++) {
+          var it = cd.items[i];
+          if (it.kind === 'file' && it.type.indexOf('image/') === 0) {
+            var f = it.getAsFile();
+            if (f) files.push(f);
+          }
+        }
+      }
+      if (files.length) {
+        e.preventDefault();
+        if ($('#addModal').classList.contains('open')) addFiles(files);
+        else quickImages(files);
+        return;
+      }
+      var txt = cd.getData ? String(cd.getData('text/plain') || '').trim() : '';
+      if (!txt) return;
+      var el = D.activeElement;
+      var typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (typing || anyModalOpen()) return;
+      if (txt.length > 4000) return;
+      if (/^https?:\/\/\S+$/i.test(txt) || normUrl(txt)) {
+        e.preventDefault();
+        openAdd('link', normUrl(txt) || txt);
+      } else {
+        e.preventDefault();
+        openAdd('text', txt);
+      }
+    });
+
+    /* drag & drop (page) */
+    var depth = 0;
+    function hasFiles(e) {
+      if (!e.dataTransfer) return false;
+      var t = e.dataTransfer.types;
+      if (!t) return false;
+      for (var i = 0; i < t.length; i++) if (t[i] === 'Files') return true;
+      return false;
+    }
+    window.addEventListener('dragenter', function (e) {
+      if (!hasFiles(e)) return;
+      depth++;
+      $('#dropOverlay').classList.add('on');
+    });
+    window.addEventListener('dragover', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+    });
+    window.addEventListener('dragleave', function (e) {
+      if (!hasFiles(e)) return;
+      depth--;
+      if (depth <= 0) { depth = 0; $('#dropOverlay').classList.remove('on'); }
+    });
+    window.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      $('#dropOverlay').classList.remove('on');
+      var fs = e.dataTransfer && e.dataTransfer.files;
+      if (!fs || !fs.length) return;
+      if ($('#addModal').classList.contains('open')) addFiles(fs);
+      else quickImages(fs);
+    });
+
+    /* keyboard */
+    D.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if ($('#lightbox').classList.contains('open')) { closeLightbox(); return; }
+        var order = ['detail', 'add', 'col', 'share'];
+        for (var i = 0; i < order.length; i++) {
+          if ($(MODALS[order[i]]).classList.contains('open')) { closeModal(order[i]); return; }
+        }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        $('#search').focus();
+        $('#search').select();
+        return;
+      }
+      if ($('#lightbox').classList.contains('open')) {
+        if (e.key === 'ArrowLeft') lbGo(-1);
+        if (e.key === 'ArrowRight') lbGo(1);
+      }
+    });
+
+    /* hash change (share link opened while page is live) */
+    window.addEventListener('hashchange', function () { handleHash(); });
+  }
+
+  /* ================= fav toggle ================= */
+  function toggleFav(id, btn) {
+    var c = findClip(id);
+    if (!c || state.readOnly) return;
+    c.fav = !c.fav;
+    c.updatedAt = Date.now();
+    dbPut('clips', c).catch(function (e) { toast('저장 실패: ' + msg(e), 'err'); });
+    if (btn) {
+      btn.classList.toggle('on', c.fav);
+      btn.setAttribute('aria-pressed', c.fav ? 'true' : 'false');
+    }
+    flashSaved();
+    renderPills();
+    if (state.type === 'fav') renderClips();
+  }
+
+  /* ================= start ================= */
+  if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
