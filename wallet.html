@@ -1,0 +1,2672 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Wallet — 쿠폰·멤버십·티켓 지갑</title>
+<meta name="description" content="기프티콘·쿠폰·멤버십·도서관 대출증·항공·버스·기차 티켓을 한 지갑에. 바코드와 QR을 브라우저에서 직접 생성해 계산대와 개찰구에 바로 제시하고, 원본 사진까지 IndexedDB에 무제한으로 보관합니다.">
+<meta name="theme-color" content="#0b735e">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: { extend: { colors: {
+    neutral: { 950: '#09090b', 900: '#121215', 850: '#18181b', 800: '#27272a', 700: '#3f3f46', 200: '#e4e4e7', 100: '#f4f4f5' },
+    brand: { 50: '#e9f6f1', 100: '#c9ebe1', 200: '#96dbc9', 300: '#5fc4ac', 400: '#2fa98e', 500: '#129077', 600: '#0b735e', 700: '#0a5c4c', 800: '#0a4a3e', 900: '#083a31', 950: '#042720' },
+    gold: { 50: '#fbf6e6', 100: '#f5e8bf', 200: '#ecd48c', 300: '#ddb951', 400: '#cfa52f', 500: '#c9a227', 600: '#a8831d', 700: '#826417', 800: '#5f4912', 900: '#42330d' }
+  } } }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  :root { --brand: #0b735e; --brand-2: #12a37f; --brand-deep: #075647; --gold: #c9a227; }
+
+  /* ---------- pass card ---------- */
+  .pass {
+    position: relative;
+    border-radius: 1.15rem;
+    padding: .82rem .9rem .86rem;
+    color: #fff;
+    overflow: hidden;
+    isolation: isolate;
+    background-image: linear-gradient(142deg, var(--c1, #0b735e) 0%, var(--c2, #12a37f) 100%);
+    box-shadow: 0 18px 36px -24px rgba(4, 20, 16, .75);
+    transition: transform .24s cubic-bezier(.2, .8, .2, 1), box-shadow .26s ease, filter .3s ease;
+    cursor: pointer;
+  }
+  .pass::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 92% -12%, rgba(255, 255, 255, .34), transparent 62%);
+  }
+  .pass::after {
+    content: ''; position: absolute; top: -10%; bottom: -10%; left: -55%; width: 34%;
+    background: linear-gradient(to right, transparent, rgba(255, 255, 255, .22), transparent);
+    transform: rotate(16deg); transition: left .62s cubic-bezier(.2, .8, .2, 1); pointer-events: none;
+  }
+  @media (hover: hover) {
+    .pass:hover { transform: translateY(-4px) scale(1.008); box-shadow: 0 28px 52px -26px rgba(4, 20, 16, .8); }
+    .pass:hover::after { left: 130%; }
+  }
+  .pass:active { transform: scale(.985); }
+  .pass.is-used { filter: saturate(.28) brightness(.9); }
+  .pass.is-used .pass-body { opacity: .6; }
+  .pass.notch { position: relative; }
+  .pass-notch {
+    position: absolute; top: 50%; width: 18px; height: 18px; margin-top: -9px; border-radius: 9999px;
+    background: #fbfbfd; z-index: 2;
+  }
+  .dark .pass-notch { background: #09090b; }
+  .pass-notch.l { left: -9px; }
+  .pass-notch.r { right: -9px; }
+  .perf {
+    position: relative; height: 1px; margin: .7rem 0;
+    background-image: repeating-linear-gradient(to right, rgba(255, 255, 255, .55) 0 5px, transparent 5px 11px);
+  }
+  .dday {
+    display: inline-flex; align-items: center; gap: .22rem;
+    font-size: 9.5px; font-weight: 900; letter-spacing: .02em;
+    padding: .2rem .45rem; border-radius: .5rem;
+    background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .34);
+    color: #fff; white-space: nowrap;
+  }
+  .dday.hot { background: #fff; color: #be123c; border-color: #fff; animation: ddayPulse 1.8s ease-in-out infinite; }
+  .dday.warn { background: #fff7e0; color: #b45309; border-color: #fde68a; }
+  .dday.dead { background: rgba(0, 0, 0, .28); color: rgba(255, 255, 255, .8); border-color: transparent; }
+  @keyframes ddayPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .7); } 50% { box-shadow: 0 0 0 5px rgba(255, 255, 255, 0); } }
+  .stamp {
+    position: absolute; left: 50%; top: 50%; z-index: 3;
+    transform: translate(-50%, -50%) rotate(-11deg);
+    border: 2px solid rgba(255, 255, 255, .75); color: #fff;
+    font-size: 11px; font-weight: 900; letter-spacing: .14em;
+    padding: .2rem .6rem; border-radius: .45rem;
+    background: rgba(0, 0, 0, .18);
+    pointer-events: none; white-space: nowrap;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .monogram {
+    width: 30px; height: 30px; border-radius: .60rem; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 13px; color: #fff; flex-shrink: 0;
+    background: rgba(255, 255, 255, .22); border: 1px solid rgba(255, 255, 255, .3);
+  }
+
+  /* ---------- hero fan ---------- */
+  .fan { position: relative; height: 300px; }
+  .fan-card {
+    position: absolute; left: 50%; top: 40px; width: 236px; height: 146px;
+    border-radius: 18px; padding: .85rem .95rem; color: #fff;
+    transform-origin: 50% 120%;
+    box-shadow: 0 30px 52px -28px rgba(0, 0, 0, .75);
+    border: 1px solid rgba(255, 255, 255, .16);
+    transition: transform .55s cubic-bezier(.2, .8, .2, 1);
+    opacity: .97;
+  }
+  .fan-card:nth-child(1) { transform: translate(-92%, 30px) rotate(-16deg) scale(.88); animation: fanFloat 6.5s ease-in-out infinite; }
+  .fan-card:nth-child(2) { transform: translate(-50%, 0) rotate(-1.5deg) scale(1); animation: fanFloat 6.5s ease-in-out .6s infinite; z-index: 3; }
+  .fan-card:nth-child(3) { transform: translate(-8%, 36px) rotate(13deg) scale(.88); animation: fanFloat 6.5s ease-in-out 1.2s infinite; z-index: 2; }
+  @keyframes fanFloat { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+  @media (hover: hover) {
+    .fan:hover .fan-card:nth-child(1) { transform: translate(-104%, 30px) rotate(-20deg) scale(.9); }
+    .fan:hover .fan-card:nth-child(2) { transform: translate(-50%, -8px) rotate(0deg) scale(1.03); }
+    .fan:hover .fan-card:nth-child(3) { transform: translate(4%, 30px) rotate(17deg) scale(.9); }
+  }
+  .shine-dot { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(120deg, rgba(255,255,255,.4), transparent 42%); opacity: .5; }
+
+  /* ---------- category tiles ---------- */
+  .cat-tile {
+    position: relative; border-radius: 1.05rem; padding: .85rem .8rem; text-align: left;
+    border: 1px solid rgb(232 232 238); background: #fff;
+    transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .22s, border-color .2s;
+    overflow: hidden;
+  }
+  .dark .cat-tile { background: #121215; border-color: #27272a; }
+  .cat-tile:hover { transform: translateY(-3px); box-shadow: 0 18px 34px -26px rgba(0, 0, 0, .55); border-color: color-mix(in srgb, var(--tc) 50%, transparent); }
+  .cat-tile:active { transform: scale(.975); }
+  .cat-ico {
+    width: 30px; height: 30px; border-radius: .7rem; display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; background-image: linear-gradient(140deg, var(--tc), var(--tc2));
+    box-shadow: 0 8px 18px -12px var(--tc);
+  }
+  .cat-ico svg { width: 15px; height: 15px; }
+  .cat-tile.on { border-color: var(--tc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tc) 18%, transparent); }
+
+  /* ---------- studio ---------- */
+  .seg-opt {
+    flex: 1; padding: .42rem .3rem; border-radius: .66rem; font-size: 11px; font-weight: 800;
+    color: rgb(82 82 91); transition: all .16s ease; white-space: nowrap;
+  }
+  .dark .seg-opt { color: rgb(161 161 170); }
+  .seg-opt.on { background: #fff; color: var(--brand-deep); box-shadow: 0 2px 8px -3px rgba(0, 0, 0, .18); }
+  .dark .seg-opt.on { background: #1f1f23; color: #b8f0e0; }
+  .dropzone {
+    border: 1.5px dashed rgb(203 213 211); border-radius: 1rem; padding: 1rem;
+    display: flex; align-items: center; justify-content: center; gap: .6rem;
+    color: rgb(113 113 122); font-size: 12px; font-weight: 700;
+    background: rgba(250, 250, 252, .7); transition: border-color .2s, background-color .2s, transform .16s;
+    cursor: pointer; text-align: center;
+  }
+  .dark .dropzone { border-color: #3f3f46; background: rgba(24, 24, 27, .6); color: rgb(161 161 170); }
+  .dropzone:hover { border-color: var(--brand); color: var(--brand); }
+  .dark .dropzone:hover { color: #5fc4ac; }
+  .dropzone.drag { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, #fff); transform: scale(1.005); }
+  .preview-stage { perspective: 1500px; }
+  .preview-card { position: relative; height: 286px; border-radius: 1.15rem; }
+  .flip-face { border-radius: 1.15rem; }
+  .pv-label { font-size: 8.5px; letter-spacing: .16em; font-weight: 800; opacity: .72; text-transform: uppercase; }
+
+  /* ---------- wallet ---------- */
+  .chip-btn {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .42rem .7rem; border-radius: 9999px;
+    font-size: 11px; font-weight: 800; white-space: nowrap;
+    border: 1px solid rgb(228 228 231); background: #fff; color: rgb(63 63 70);
+    transition: all .16s ease;
+  }
+  .dark .chip-btn { border-color: #2f2f35; background: #141417; color: rgb(190 190 200); }
+  .chip-btn:hover { border-color: color-mix(in srgb, var(--brand) 55%, transparent); color: var(--brand); }
+  .chip-btn.on { color: #fff !important; border-color: transparent; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 8px 20px -14px var(--brand); }
+  .chip-btn .num { font-size: 9.5px; opacity: .7; font-variant-numeric: tabular-nums; }
+  .meter { height: 6px; border-radius: 9999px; background: rgb(238 238 243); overflow: hidden; }
+  .dark .meter { background: #27272a; }
+  .meter > i { display: block; height: 100%; border-radius: 9999px; background-image: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .5s cubic-bezier(.22, 1, .36, 1); }
+  .stat-tile { border-radius: 1rem; padding: .7rem .8rem; border: 1px solid rgb(232 232 238); background: #fff; }
+  .dark .stat-tile { border-color: #27272a; background: #121215; }
+  .stat-num { font-size: 20px; font-weight: 900; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+
+  /* ---------- pass view ---------- */
+  .pass-view {
+    position: fixed; inset: 0; z-index: 90; display: flex; align-items: flex-start; justify-content: center;
+    padding: 10px; padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    background: rgba(5, 9, 8, .88);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    opacity: 0; pointer-events: none; transition: opacity .24s ease, background-color .3s ease;
+    overflow-y: auto;
+  }
+  .pass-view.open { opacity: 1; pointer-events: auto; }
+  .pass-view.boost { background: #fff; }
+  .pv-card {
+    width: min(460px, 100%); background: #fff; color: #0b0b0d; border-radius: 1.35rem;
+    padding: 1rem 1.05rem 1.15rem; box-shadow: 0 40px 90px -30px rgba(0, 0, 0, .85);
+    transform: translateY(22px) scale(.97); transition: transform .34s cubic-bezier(.2, .9, .2, 1);
+    position: relative; overflow: hidden;
+  }
+  .pass-view.open .pv-card { transform: none; }
+  .pass-view.boost .pv-card { box-shadow: none; border-radius: .9rem; }
+  .pv-code-area { background: #fff; border: 1px solid #e8e8ec; border-radius: .9rem; padding: .7rem .55rem .5rem; position: relative; overflow: hidden; }
+  .pv-code-area svg { display: block; width: 100%; height: auto; }
+  .barcode-svg rect { shape-rendering: crispEdges; }
+  .scanline {
+    position: absolute; left: 0; right: 0; height: 1px; top: 8%;
+    background: linear-gradient(90deg, transparent, rgba(190, 18, 60, .38), transparent);
+    animation: scanY 2.8s ease-in-out infinite; pointer-events: none;
+  }
+  @keyframes scanY { 0%, 100% { top: 10%; opacity: .1; } 50% { top: 88%; opacity: .55; } }
+  .pv-detail { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; padding: .34rem 0; border-bottom: 1px dashed #ececf1; }
+  .pv-detail:last-child { border-bottom: 0; }
+  .pv-detail dt { font-size: 10.5px; color: #71717a; font-weight: 700; flex-shrink: 0; }
+  .pv-detail dd { font-size: 12px; font-weight: 800; text-align: right; word-break: break-all; }
+  .route-code { font-size: 22px; font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
+  .pv-act { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; font-size: 11px; font-weight: 800; padding: .55rem .6rem; border-radius: .8rem; transition: all .16s; }
+  .pv-act:hover { transform: translateY(-1px); }
+  .brightness-flash { position: fixed; inset: 0; background: #fff; z-index: 120; pointer-events: none; opacity: 0; }
+  .brightness-flash.go { animation: flashWhite .5s ease-out; }
+  @keyframes flashWhite { 0% { opacity: 0; } 16% { opacity: .55; } 100% { opacity: 0; } }
+
+  /* ---------- zoom ---------- */
+  .zoom-view { position: fixed; inset: 0; z-index: 95; background: rgba(0, 0, 0, .96); display: none; overflow: hidden; }
+  .zoom-view.open { display: flex; align-items: center; justify-content: center; }
+  .zoom-img { max-width: none; max-height: none; transform-origin: center center; will-change: transform; touch-action: none; user-select: none; }
+  .zoom-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2; }
+  .zoom-btn { width: 40px; height: 40px; border-radius: 9999px; background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .28); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+  .zoom-btn:hover { background: rgba(255, 255, 255, .28); }
+
+  #codePreview svg { max-height: 104px; width: auto; max-width: 100%; margin: 0 auto; }
+  .preview-card .flip-face { overflow: hidden; }
+  .preview-card .pass { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
+  .preview-card .pass .pass-body { margin-top: 0; }
+  .pass-star { transition: transform .14s cubic-bezier(.34, 1.56, .64, 1), background-color .2s; }
+  .pass-star:active { transform: scale(.88); }
+  .pv-card .route-code { letter-spacing: -.02em; }
+  .pass-view.boost .pv-card { max-height: calc(100vh - 24px); overflow: auto; }
+  .empty { border: 1.5px dashed rgb(228 228 231); border-radius: 1.1rem; padding: 1.6rem 1rem; text-align: center; }
+  .dark .empty { border-color: #2f2f35; }
+  .banner-gold {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--gold) 18%, #fff), #fff 70%);
+    border: 1px solid color-mix(in srgb, var(--gold) 38%, #fff);
+  }
+  .dark .banner-gold { background: linear-gradient(135deg, rgba(201, 162, 39, .16), #101013 70%); border-color: rgba(201, 162, 39, .3); }
+  .tilt-wrap { transform-style: preserve-3d; }
+  .mini-bar { display: flex; align-items: flex-end; gap: 1px; height: 22px; opacity: .9; }
+  .mini-bar i { display: block; background: currentColor; border-radius: .5px; }
+  @media (prefers-reduced-motion: reduce) {
+    .fan-card, .dday.hot, .scanline { animation: none !important; }
+  }
+</style>
+</head>
+<body class="bg-[#fbfbfd] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen antialiased flex flex-col">
+
+<div class="brand-wash"></div>
+<div class="ambient-orb brand-grad w-72 h-72 -top-24 -left-20 opacity-20"></div>
+<div class="ambient-orb w-80 h-80 top-1/2 -right-24 opacity-[.14]" style="background:#c9a227"></div>
+
+<header class="lemon-header sticky top-0 z-40 bg-white/75 dark:bg-neutral-950/75 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+    <a href="index.html" class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-2xl brand-grad p-[1.5px] shadow-md shrink-0">
+        <div class="w-full h-full rounded-[14px] bg-white dark:bg-neutral-900 flex items-center justify-center">
+          <svg class="w-4 h-4" style="color:var(--brand)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"></path><path d="M3 10h18"></path><path d="M16 14.5h2"></path></svg>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-black text-[15px] tracking-tight truncate">Lemon Wallet</span>
+          <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.5 rounded-md border border-gold-200 dark:border-gold-800 text-gold-700 dark:text-gold-300 bg-gold-50 dark:bg-gold-900/30 font-bold">PASS</span>
+        </div>
+        <p class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate -mt-0.5">쿠폰·멤버십·티켓 지갑</p>
+      </div>
+    </a>
+    <div class="flex items-center gap-2">
+      <button data-theme-toggle class="icon-btn" aria-label="테마 변경">
+        <svg class="w-4 h-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="w-4 h-4 hidden dark:block text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="1.5" x2="12" y2="3.5"></line><line x1="12" y1="20.5" x2="12" y2="22.5"></line><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"></line><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"></line><line x1="1.5" y1="12" x2="3.5" y2="12"></line><line x1="20.5" y1="12" x2="22.5" y2="12"></line><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"></line><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"></line></svg>
+      </button>
+      <button id="btnQuickPass" class="primary-btn !px-3 !py-2 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 8v8M10 8v8M14 8v8M17 8v8"></path></svg>
+        <span class="hidden sm:inline">빠른 패스</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="sticky top-16 z-30 lemon-header bg-white/85 dark:bg-neutral-950/85 border-b border-neutral-200/70 dark:border-neutral-800/70">
+  <div class="max-w-6xl mx-auto px-3 sm:px-6">
+    <div class="nav-tabs">
+      <button class="nav-tab" data-tab="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+        <span>홈</span>
+      </button>
+      <button class="nav-tab" data-tab="studio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path><path d="M4 21h16"></path></svg>
+        <span>스튜디오</span>
+      </button>
+      <button class="nav-tab" data-tab="wallet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"></path><path d="M3 10h18"></path><path d="M16 14.5h2"></path></svg>
+        <span>내 지갑</span>
+        <span id="tabCount" class="text-[10px] font-mono px-1.5 rounded-full bg-white/25 dark:bg-white/15">0</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+
+  <!-- ================= HOME ================= -->
+  <section data-view="home" class="hidden space-y-6">
+    <div class="hero-shell p-6 sm:p-10">
+      <div class="hero-grid"></div>
+      <div class="relative grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+        <div class="space-y-5">
+          <span class="chip">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3M3 12h18"></path></svg>
+            탭 한 번이면 계산대 패스
+          </span>
+          <h1 class="text-[28px] sm:text-[38px] font-black leading-[1.14] tracking-tight">
+            쿠폰부터 탑승권까지,<br><span class="brand-text">한 지갑에.</span>
+          </h1>
+          <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-md">
+            기프티콘 사진을 찍어 넣고, 계산대에서는 바코드만 크게 띄우세요. 유효기간 D-Day와 탑승 정보까지 알아서 정리해 둡니다.
+          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button data-goto="studio" class="primary-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              카드 추가하기
+            </button>
+            <button data-goto="wallet" class="ghost-btn">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"></path><path d="M3 10h18"></path><path d="M16 14.5h2"></path></svg>
+              내 지갑 열기
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-1.5 pt-1">
+            <span class="chip">오프라인 인식</span>
+            <span class="chip">원본 사진 보관</span>
+            <span class="chip">IndexedDB 무제한</span>
+          </div>
+        </div>
+
+        <div class="fan hidden sm:block" aria-hidden="true">
+          <div class="fan-card" style="background-image:linear-gradient(140deg,#0a5c4c,#12a37f)">
+            <div class="shine-dot"></div>
+            <div class="flex items-center justify-between">
+              <span class="pv-label" style="letter-spacing:.18em">COUPON</span>
+              <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-white/25">D-3</span>
+            </div>
+            <div class="mt-2 text-[15px] font-black">따뜻한 아메리카노</div>
+            <div class="text-[10px] opacity-80 mt-0.5">전 지점 · 1잔</div>
+            <div class="mini-bar mt-3 text-white"><i style="width:2px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:3px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:2px;height:14px"></i><i style="width:4px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:2px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:3px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:2px;height:14px"></i><i style="width:4px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:2px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:3px;height:14px"></i><i style="width:2px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:4px;height:14px"></i><i style="width:1px;height:14px"></i><i style="width:2px;height:14px"></i></div>
+          </div>
+          <div class="fan-card" style="background-image:linear-gradient(140deg,#0f5f7d,#38bdf8)">
+            <div class="shine-dot"></div>
+            <div class="flex items-center justify-between">
+              <span class="pv-label" style="letter-spacing:.18em">BOARDING PASS</span>
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12l20-7-4.5 7L22 19z"></path></svg>
+            </div>
+            <div class="flex items-end gap-2 mt-1.5">
+              <span class="text-[19px] font-black">GMP</span>
+              <svg class="w-4 h-4 mb-1 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+              <span class="text-[19px] font-black">CJU</span>
+            </div>
+            <div class="flex items-center justify-between text-[9px] opacity-85 mt-1">
+              <span>OZ8912 · 14:20</span><span>12A</span>
+            </div>
+            <div class="mini-bar mt-2.5 text-white"><i style="width:2px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:3px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:2px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:4px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:2px;height:12px"></i><i style="width:3px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:2px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:4px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:2px;height:12px"></i><i style="width:3px;height:12px"></i><i style="width:1px;height:12px"></i><i style="width:2px;height:12px"></i><i style="width:1px;height:12px"></i></div>
+          </div>
+          <div class="fan-card" style="background-image:linear-gradient(140deg,#3b3486,#8b80f9)">
+            <div class="shine-dot"></div>
+            <div class="flex items-center justify-between">
+              <span class="pv-label" style="letter-spacing:.18em">MEMBERSHIP</span>
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"></path></svg>
+            </div>
+            <div class="mt-2 text-[15px] font-black">시립도서관 대출증</div>
+            <div class="text-[10px] opacity-80 mono mt-0.5">2024-018394</div>
+            <div class="flex items-center gap-1 mt-2.5">
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-white/22 font-bold">5권 대출 중</span>
+              <span class="text-[9px] px-1.5 py-0.5 rounded bg-white/22 font-bold">D-12 반납</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div class="stat-tile">
+        <div class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">보관 중인 카드</div>
+        <div class="stat-num brand-text" id="heroCards">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">7일 내 만료·탑승</div>
+        <div class="stat-num text-rose-500" id="heroSoon">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">즐겨찾기</div>
+        <div class="stat-num text-gold-600 dark:text-gold-300" id="heroFav">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">사용 완료</div>
+        <div class="stat-num text-neutral-500 dark:text-neutral-400" id="heroUsed">0</div>
+      </div>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="panel p-4">
+        <div class="w-8 h-8 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6v12M8 6v12M12 6v12M16 6v12M20 6v12"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black">실물 인식 바코드</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">번호만 넣으면 Code128·QR을 브라우저에서 직접 그립니다. 인터넷이 없어도 매장 스캐너가 읽습니다.</p>
+      </div>
+      <div class="panel p-4">
+        <div class="w-8 h-8 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M8 9h8M8 13h5"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black">계산대 풀스크린 패스</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">탭 한 번으로 흰 배경 고대비 화면. 화면 꺼짐 방지(Wake Lock)와 밝기 부스트까지 챙깁니다.</p>
+      </div>
+      <div class="panel p-4">
+        <div class="w-8 h-8 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"></ellipse><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"></path><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black">원본까지 무제한</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">IndexedDB에 고해상도 사진을 그대로 담습니다. localStorage 5MB 한도에 걸리지 않습니다.</p>
+      </div>
+      <div class="panel p-4">
+        <div class="w-8 h-8 rounded-xl brand-grad text-white flex items-center justify-center mb-2.5">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"></rect><path d="M8 3v3M16 3v3M3 10h18"></path><path d="M9 15l2 2 4-4"></path></svg>
+        </div>
+        <h3 class="text-[13px] font-black">D-Day 자동 계산</h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1">유효기간과 탑승일을 세어 임박한 것부터 위로. 만료·사용 완료는 흐리게 접어 둡니다.</p>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-black tracking-tight">7가지 카테고리</h2>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">탭하면 그 종류만 모아 봅니다.</p>
+        </div>
+        <button data-goto="wallet" class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 hover:text-brand-600">전체 보기</button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5" id="catGrid"></div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-[13px] font-black flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3 2"></path></svg>
+            만료·탑승 임박
+          </h2>
+          <span class="text-[10px] font-bold text-neutral-400">7일 이내</span>
+        </div>
+        <div id="homeSoon" class="space-y-2"></div>
+      </div>
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-[13px] font-black flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-gold-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.6 6.7 19.4l1.1-5.9L3.5 9.4l5.9-.8z"></path></svg>
+            즐겨찾기 카드
+          </h2>
+          <span class="text-[10px] font-bold text-neutral-400">자주 쓰는 순서</span>
+        </div>
+        <div id="homeFav" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </div>
+    </div>
+
+    <div class="banner-gold rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gold-500/15 text-gold-600 dark:text-gold-300 flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.4-3 8.1-7 9.5-4-1.4-7-5.1-7-9.5V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+        </div>
+        <div>
+          <h3 class="text-[13px] font-black">카드는 이 브라우저에만 저장됩니다</h3>
+          <p class="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed mt-0.5">서버로 보내지 않고 IndexedDB에만 담습니다. 기기를 바꾸기 전에는 JSON으로 백업해 두세요.</p>
+        </div>
+      </div>
+      <button data-goto="wallet" class="ghost-btn !py-2 !text-[11px] shrink-0">백업·복원 열기</button>
+    </div>
+  </section>
+
+  <!-- ================= STUDIO ================= -->
+  <section data-view="studio" class="hidden space-y-4">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">지갑 스튜디오</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">종류를 고르면 필요한 칸만 열립니다. 오른쪽 미리보기로 실제 카드 모양을 확인하세요.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="studioMode" class="chip">새 카드</span>
+        <button id="btnNewCard" class="ghost-btn !py-2 !text-[11px]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          새로 만들기
+        </button>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[minmax(0,1.12fr)_minmax(0,.88fr)] gap-4 items-start">
+      <div class="space-y-3.5">
+        <div class="panel p-4 sm:p-5">
+          <div class="flex items-center justify-between">
+            <label class="lemon-label">1 · 카드 종류</label>
+            <span class="text-[10px] font-bold text-neutral-400" id="catHint">기프티콘</span>
+          </div>
+          <div id="catPicker" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5 space-y-3">
+          <label class="lemon-label">2 · 기본 정보</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="lemon-label !text-[10px]" for="fBrand">브랜드 · 발급처</label>
+              <input id="fBrand" data-k="brand" class="lemon-input mt-1" placeholder="예: 스타벅스" maxlength="28" autocomplete="off">
+            </div>
+            <div>
+              <label class="lemon-label !text-[10px]" for="fTitle">카드 이름</label>
+              <input id="fTitle" data-k="title" class="lemon-input mt-1" placeholder="예: 아메리카노 1잔" maxlength="40" autocomplete="off">
+            </div>
+          </div>
+          <div id="formFields" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="lemon-label">3 · 코드</label>
+            <span class="text-[10px] font-bold text-neutral-400">계산대에서 스캔</span>
+          </div>
+          <div class="seg" id="codeTypeSeg" role="tablist" aria-label="코드 종류">
+            <button type="button" class="seg-opt" data-ct="code128" role="tab">바코드</button>
+            <button type="button" class="seg-opt" data-ct="qr" role="tab">QR</button>
+            <button type="button" class="seg-opt" data-ct="none" role="tab">코드 없음</button>
+          </div>
+          <div id="codeInputWrap">
+            <label class="lemon-label !text-[10px]" for="fCode">바코드 번호 · QR 내용</label>
+            <input id="fCode" data-k="code" class="lemon-input mt-1 mono" placeholder="예: 8801234567890" maxlength="120" autocomplete="off" inputmode="numeric">
+            <p class="text-[10px] text-neutral-400 mt-1.5">숫자·영문 모두 인식됩니다. 여백 확보를 위해 8자 이상을 권장합니다.</p>
+          </div>
+          <div id="codePreview" class="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white p-2 min-h-[64px] flex items-center justify-center"></div>
+        </div>
+
+        <div class="panel p-4 sm:p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="lemon-label">4 · 원본 사진</label>
+            <span class="text-[10px] font-bold text-neutral-400">선택 · 고해상도 그대로</span>
+          </div>
+          <input id="photoInput" type="file" accept="image/*" class="hidden">
+          <div id="dropZone" class="dropzone" tabindex="0" role="button" aria-label="기프티콘 사진 첨부">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><circle cx="8.5" cy="9.5" r="1.6"></circle><path d="M21 16l-5-5-6 6-3-3-4 4"></path></svg>
+            <span id="dropText">사진을 끌어다 놓거나 눌러서 선택 (기프티콘·탑승권 원본)</span>
+          </div>
+          <div id="photoThumbWrap" class="hidden items-center gap-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 p-2">
+            <img id="photoThumb" alt="첨부한 원본 사진 미리보기" class="w-14 h-14 rounded-lg object-cover bg-neutral-100 dark:bg-neutral-800">
+            <div class="min-w-0 flex-1">
+              <div class="text-[11px] font-bold truncate" id="photoName">-</div>
+              <div class="text-[10px] text-neutral-400" id="photoMeta">-</div>
+            </div>
+            <button id="btnRemovePhoto" class="icon-btn !w-8 !h-8" aria-label="사진 삭제">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="panel p-4 sm:p-5 space-y-3">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="text-[12px] font-black">즐겨찾기로 고정</div>
+              <div class="text-[10.5px] text-neutral-500 dark:text-neutral-400">홈과 지갑 맨 위에 크게 걸어 둡니다.</div>
+            </div>
+            <button id="swFav" class="switch" role="switch" aria-checked="false" aria-label="즐겨찾기"></button>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2 pt-1">
+            <button id="btnSaveCard" class="primary-btn flex-1">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg>
+              <span id="saveLabel">지갑에 저장</span>
+            </button>
+            <button id="btnDeleteCard" class="ghost-btn !text-rose-500 hidden">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"></path></svg>
+              삭제
+            </button>
+          </div>
+          <p class="text-[10px] text-neutral-400 leading-relaxed">저장하면 이 브라우저의 IndexedDB에 즉시 보관되고, 홈과 지갑에 바로 나타납니다.</p>
+        </div>
+      </div>
+
+      <div class="lg:sticky lg:top-32 space-y-3">
+        <div class="panel p-4">
+          <div class="flex items-center justify-between mb-2.5">
+            <h3 class="text-[12px] font-black">실시간 미리보기</h3>
+            <button id="btnFlip" class="pill-btn !py-1.5 !px-2.5 !text-[10px]">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"></path></svg>
+              뒤집기
+            </button>
+          </div>
+          <div class="preview-stage">
+            <div class="flip-scene preview-card">
+              <div class="flip-inner" id="previewInner">
+                <div class="flip-face" id="previewFront"></div>
+                <div class="flip-face" id="previewBack" style="transform:rotateY(180deg)"></div>
+              </div>
+            </div>
+          </div>
+          <p class="text-[10px] text-neutral-400 mt-2.5 leading-relaxed">카드를 탭하면 계산대용 풀스크린 패스가 열립니다. 실제 저장 전에도 미리보기에서 확인할 수 있어요.</p>
+        </div>
+        <div class="panel p-4">
+          <h3 class="text-[12px] font-black mb-2">입력 요약</h3>
+          <dl id="formSummary" class="space-y-1 text-[11px]"></dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= WALLET ================= -->
+  <section data-view="wallet" class="hidden space-y-4">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-black tracking-tight">내 지갑</h2>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5" id="walletSub">카드를 탭하면 계산대 패스가 열립니다.</p>
+      </div>
+      <button data-goto="studio" class="primary-btn !py-2 !px-3.5 !text-[11px]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        카드 추가
+      </button>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5" id="statRow"></div>
+
+    <div class="panel p-3 sm:p-4 space-y-3">
+      <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <div class="relative flex-1 min-w-0">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>
+          <input id="searchInput" class="lemon-input !pl-9 !pr-9" placeholder="브랜드 · 번호 · 구간으로 검색" autocomplete="off">
+          <button id="btnClearSearch" class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 hidden" aria-label="검색어 지우기">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+          </button>
+        </div>
+        <select id="sortSelect" class="lemon-select sm:!w-auto" aria-label="정렬">
+          <option value="expiry">만료 임박순</option>
+          <option value="recent">최근 등록순</option>
+          <option value="name">이름순</option>
+          <option value="cat">종류순</option>
+        </select>
+      </div>
+      <div id="filterChips" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5 -mx-1 px-1"></div>
+    </div>
+
+    <div id="favStripWrap" class="hidden">
+      <div class="flex items-center gap-1.5 mb-2">
+        <svg class="w-3.5 h-3.5 text-gold-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.6 6.7 19.4l1.1-5.9L3.5 9.4l5.9-.8z"></path></svg>
+        <span class="text-[11px] font-black">즐겨찾기</span>
+      </div>
+      <div id="favStrip" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5"></div>
+    </div>
+
+    <div id="walletGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+
+    <div id="walletEmpty" class="empty hidden">
+      <div class="w-11 h-11 rounded-2xl brand-grad-soft text-brand-600 dark:text-brand-300 flex items-center justify-center mx-auto mb-2.5">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z"></path><path d="M3 10h18"></path><path d="M16 14.5h2"></path></svg>
+      </div>
+      <p class="text-[12px] font-black" id="emptyTitle">아직 카드가 없어요</p>
+      <p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1" id="emptyDesc">기프티콘 사진부터 넣어 보세요. 바코드는 번호만 있으면 자동으로 그려집니다.</p>
+      <div class="flex flex-wrap items-center justify-center gap-2 mt-3">
+        <button data-goto="studio" class="primary-btn !py-2 !px-3.5 !text-[11px]">첫 카드 만들기</button>
+        <button id="btnSeed" class="ghost-btn !py-2 !text-[11px] hidden">예시 카드 3장 담아보기</button>
+      </div>
+    </div>
+
+    <div class="panel p-3.5 sm:p-4" id="usedPanel">
+      <button id="btnToggleUsed" class="w-full flex items-center justify-between gap-2" aria-expanded="false">
+        <span class="flex items-center gap-1.5 text-[12px] font-black">
+          <svg class="w-3.5 h-3.5 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg>
+          사용 완료 <span class="text-neutral-400 font-bold" id="usedCount">0</span>
+        </span>
+        <svg id="usedChevron" class="w-4 h-4 text-neutral-400 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg>
+      </button>
+      <div id="usedGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 hidden"></div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="panel p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-[13px] font-black flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-brand-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>
+            보관 통계
+          </h3>
+          <span class="text-[10px] font-bold text-neutral-400" id="statsUpdated">-</span>
+        </div>
+        <div id="statsBody" class="space-y-3"></div>
+      </div>
+      <div class="panel p-4 sm:p-5 flex flex-col">
+        <h3 class="text-[13px] font-black flex items-center gap-1.5 mb-1.5">
+          <svg class="w-4 h-4 text-gold-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"></ellipse><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"></path><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"></path></svg>
+          백업 · 복원
+        </h3>
+        <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">사진까지 포함한 JSON 한 파일로 내려받습니다. 다른 기기에서 가져오면 같은 카드로 복원되고, 같은 번호의 카드는 갱신됩니다.</p>
+        <div class="flex flex-wrap gap-2 mt-3">
+          <button id="btnExport" class="ghost-btn !py-2 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"></path></svg>
+            JSON 내보내기
+          </button>
+          <button id="btnImportOpen" class="ghost-btn !py-2 !text-[11px]">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9M7 14l5-5 5 5M4 4h16"></path></svg>
+            가져오기
+          </button>
+          <button id="btnClearAll" class="ghost-btn !py-2 !text-[11px] !text-rose-500">전체 삭제</button>
+          <input id="importInput" type="file" accept="application/json,.json" class="hidden">
+        </div>
+        <div id="storageInfo" class="mt-auto pt-3 text-[10.5px] text-neutral-500 dark:text-neutral-400 leading-relaxed"></div>
+      </div>
+    </div>
+
+    <div class="empty">
+      <p class="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+        기프티콘·쿠폰은 유효기간이 지나면 환불이 어렵습니다. D-Day 배지를 보고 미리 쓰세요.<br>
+        카드 정보는 서버에 저장되지 않으며, 이 브라우저를 비우면 함께 사라집니다.
+      </p>
+    </div>
+  </section>
+</main>
+
+<!-- Fullscreen pass view -->
+<div id="passView" class="pass-view" role="dialog" aria-modal="true" aria-label="풀스크린 패스">
+  <div class="w-full max-w-[500px] my-auto">
+    <div class="flex items-center justify-between mb-2.5 px-0.5">
+      <button id="btnClosePass" class="icon-btn !border-white/25 !bg-white/10 !text-white" aria-label="닫기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </button>
+      <div class="text-center">
+        <div class="text-[8.5px] tracking-[.22em] font-bold text-white/55">LEMON WALLET PASS</div>
+        <div class="text-[11px] font-bold text-white/90" id="pvTopLabel">카드</div>
+      </div>
+      <button id="btnFavPass" class="icon-btn !border-white/25 !bg-white/10 !text-white" aria-label="즐겨찾기">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"></path></svg>
+      </button>
+    </div>
+    <div class="pv-card" id="pvCard"></div>
+    <div class="grid grid-cols-3 gap-2 mt-2.5">
+      <button id="btnPassUsed" class="pv-act bg-white/12 text-white border border-white/20">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg>
+        <span id="pvUsedLabel">사용 완료</span>
+      </button>
+      <button id="btnPassImage" class="pv-act bg-white/12 text-white border border-white/20 disabled:opacity-40">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><circle cx="8.5" cy="9.5" r="1.6"></circle><path d="M21 16l-5-5-6 6-3-3-4 4"></path></svg>
+        원본 사진
+      </button>
+      <button id="btnPassEdit" class="pv-act bg-white/12 text-white border border-white/20">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5a2.1 2.1 0 0 1 3 3L7 17l-4 1 1-4z"></path></svg>
+        수정
+      </button>
+    </div>
+    <div class="flex flex-wrap items-center justify-between gap-2 mt-2.5 px-0.5 text-[10.5px] text-white/65">
+      <span id="pvWake">화면 켜짐 유지 · 대기</span>
+      <span class="flex items-center gap-2">
+        <button id="btnBoost" class="underline decoration-white/40 underline-offset-2 hover:text-white">밝기 부스트</button>
+        <span class="opacity-40">|</span>
+        <span>폰 밝기를 최대로</span>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Original photo zoom -->
+<div id="zoomView" class="zoom-view" role="dialog" aria-modal="true" aria-label="원본 사진 확대">
+  <img id="zoomImg" class="zoom-img" alt="원본 사진">
+  <button id="btnZoomClose" class="absolute top-4 right-4 zoom-btn" aria-label="닫기">
+    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+  </button>
+  <div class="zoom-bar">
+    <button id="btnZoomOut" class="zoom-btn" aria-label="축소">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </button>
+    <button id="btnZoomReset" class="zoom-btn !w-auto !px-3 text-[10px] font-bold" aria-label="원래 크기">100%</button>
+    <button id="btnZoomIn" class="zoom-btn" aria-label="확대">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+    </button>
+  </div>
+</div>
+
+<div id="brightFlash" class="brightness-flash"></div>
+
+<footer class="border-t border-neutral-200/70 dark:border-neutral-800/70 py-7 mt-6">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+    <div class="flex items-center gap-2"><span class="font-bold text-neutral-800 dark:text-neutral-200">Lemon Wallet</span><span class="opacity-40">·</span><span>Lemon soft 독립 웹 프로덕트</span></div>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+      <a href="index.html" class="hover:text-brand-600 dark:hover:text-brand-400">허브</a>
+      <a href="money.html" class="hover:text-brand-600 dark:hover:text-brand-400">Money</a>
+      <a href="qr.html" class="hover:text-brand-600 dark:hover:text-brand-400">QR</a>
+      <a href="trip.html" class="hover:text-brand-600 dark:hover:text-brand-400">Trip</a>
+      <a href="shelf.html" class="hover:text-brand-600 dark:hover:text-brand-400">Shelf</a>
+      <a href="manager.html" class="hover:text-brand-600 dark:hover:text-brand-400">Manager</a>
+    </div>
+    <span class="opacity-60">2026 Lemon soft</span>
+  </div>
+</footer>
+
+<script src="lemon-ui.js"></script>
+<script>
+/* =========================================================================
+   Lemon Wallet — 100% client side
+   1) QR encoder (byte mode, EC level M, versions 1-10)
+   2) Code128-B encoder + SVG renderer
+   3) IndexedDB storage (cards + original photos)
+   4) UI
+   ========================================================================= */
+
+/* ---------------- 1. QR encoder ---------------- */
+var QR = (function () {
+  'use strict';
+  var RS = {
+    1: [[1, 26, 16]],
+    2: [[1, 44, 28]],
+    3: [[1, 70, 44]],
+    4: [[2, 50, 32]],
+    5: [[2, 67, 43]],
+    6: [[4, 43, 27]],
+    7: [[4, 49, 31]],
+    8: [[2, 60, 38], [2, 61, 39]],
+    9: [[3, 58, 36], [2, 59, 37]],
+    10: [[4, 69, 43], [1, 70, 44]]
+  };
+  var ALIGN = {
+    1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30],
+    6: [6, 34], 7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46], 10: [6, 28, 50]
+  };
+  var EXP = new Array(512), LOG = new Array(256);
+  (function () {
+    var i;
+    for (i = 0; i < 8; i++) EXP[i] = 1 << i;
+    for (i = 8; i < 512; i++) EXP[i] = EXP[i - 4] ^ EXP[i - 5] ^ EXP[i - 6] ^ EXP[i - 8];
+    for (i = 0; i < 255; i++) LOG[EXP[i]] = i;
+  })();
+
+  function gexp(n) { while (n < 0) n += 255; while (n >= 255) n -= 255; return EXP[n]; }
+  function glog(n) { return LOG[n]; }
+  function polyMul(a, b) {
+    var r = new Array(a.length + b.length - 1), i, j;
+    for (i = 0; i < r.length; i++) r[i] = 0;
+    for (i = 0; i < a.length; i++) for (j = 0; j < b.length; j++) r[i + j] ^= gexp(glog(a[i]) + glog(b[j]));
+    return r;
+  }
+  function genPoly(n) {
+    var p = [1];
+    for (var i = 0; i < n; i++) p = polyMul(p, [1, gexp(i)]);
+    return p;
+  }
+  function rsEc(data, ecLen) {
+    var gen = genPoly(ecLen);
+    var res = data.concat(new Array(ecLen).fill(0));
+    for (var i = 0; i < data.length; i++) {
+      var f = res[i];
+      if (f !== 0) {
+        var lf = glog(f);
+        for (var j = 0; j < gen.length; j++) res[i + j] ^= gexp(lf + glog(gen[j]));
+      }
+    }
+    return res.slice(data.length);
+  }
+  function bchDigit(n) { var d = 0; while (n) { d++; n >>>= 1; } return d; }
+  function bchTypeInfo(data) {
+    var d = data << 10;
+    while (bchDigit(d) - bchDigit(0x537) >= 0) d ^= 0x537 << (bchDigit(d) - bchDigit(0x537));
+    return ((data << 10) | d) ^ 0x5412;
+  }
+  function bchTypeNumber(data) {
+    var d = data << 12;
+    while (bchDigit(d) - bchDigit(0x1f25) >= 0) d ^= 0x1f25 << (bchDigit(d) - bchDigit(0x1f25));
+    return (data << 12) | d;
+  }
+
+  function dataCountOf(v) { var n = 0; RS[v].forEach(function (g) { n += g[0] * g[2]; }); return n; }
+
+  function encodeData(bytes, version, dataCount) {
+    var countBits = version < 10 ? 8 : 16;
+    var bits = [];
+    function put(val, len) { for (var i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); }
+    put(4, 4);
+    put(bytes.length, countBits);
+    for (var i = 0; i < bytes.length; i++) put(bytes[i], 8);
+    var total = dataCount * 8;
+    var term = Math.min(4, total - bits.length);
+    for (i = 0; i < term; i++) bits.push(0);
+    while (bits.length % 8 !== 0) bits.push(0);
+    var pads = [0xEC, 0x11], pi = 0;
+    while (bits.length < total) { put(pads[pi % 2], 8); pi++; }
+    var out = [];
+    for (i = 0; i < bits.length; i += 8) {
+      var b = 0;
+      for (var j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+      out.push(b);
+    }
+    return out;
+  }
+
+  function interleave(version, dataBytes) {
+    var spec = RS[version], blocks = [], offset = 0;
+    spec.forEach(function (g) {
+      for (var b = 0; b < g[0]; b++) { blocks.push(dataBytes.slice(offset, offset + g[2])); offset += g[2]; }
+    });
+    var ecLen = spec[0][1] - spec[0][2];
+    var maxD = 0;
+    blocks.forEach(function (b) { if (b.length > maxD) maxD = b.length; });
+    var out = [], i;
+    for (i = 0; i < maxD; i++) blocks.forEach(function (b) { if (i < b.length) out.push(b[i]); });
+    var ecs = blocks.map(function (b) { return rsEc(b, ecLen); });
+    for (i = 0; i < ecLen; i++) ecs.forEach(function (e) { out.push(e[i]); });
+    return out;
+  }
+
+  function maskBit(mask, i, j) {
+    switch (mask) {
+      case 0: return (i + j) % 2 === 0;
+      case 1: return i % 2 === 0;
+      case 2: return j % 3 === 0;
+      case 3: return (i + j) % 3 === 0;
+      case 4: return (Math.floor(i / 2) + Math.floor(j / 3)) % 2 === 0;
+      case 5: return ((i * j) % 2 + (i * j) % 3) === 0;
+      case 6: return (((i * j) % 2 + (i * j) % 3) % 2) === 0;
+      case 7: return (((i * j) % 3 + (i + j) % 2) % 2) === 0;
+    }
+    return false;
+  }
+
+  function baseMatrix(version) {
+    var size = version * 4 + 17, m = [], r, c, i, j;
+    for (r = 0; r < size; r++) { m.push(new Array(size).fill(null)); }
+    function probe(row, col) {
+      for (r = -1; r <= 7; r++) {
+        if (row + r < 0 || row + r >= size) continue;
+        for (c = -1; c <= 7; c++) {
+          if (col + c < 0 || col + c >= size) continue;
+          m[row + r][col + c] = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+            (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+            (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+        }
+      }
+    }
+    probe(0, 0); probe(size - 7, 0); probe(0, size - 7);
+    /* 정렬 패턴은 타이밍 패턴보다 먼저 놓는다 (7버전 이상에서 타이밍 줄과 겹치는 위치가 있다). */
+    var pos = ALIGN[version] || [];
+    for (i = 0; i < pos.length; i++) for (j = 0; j < pos.length; j++) {
+      var ar = pos[i], ac = pos[j];
+      if (m[ar][ac] !== null) continue;
+      for (r = -2; r <= 2; r++) for (c = -2; c <= 2; c++)
+        m[ar + r][ac + c] = (r === -2 || r === 2 || c === -2 || c === 2 || (r === 0 && c === 0));
+    }
+    for (r = 8; r < size - 8; r++) if (m[r][6] === null) m[r][6] = (r % 2 === 0);
+    for (c = 8; c < size - 8; c++) if (m[6][c] === null) m[6][c] = (c % 2 === 0);
+    return m;
+  }
+
+  function putTypeInfo(m, mask) {
+    var size = m.length, d = bchTypeInfo(mask), i, bit;
+    for (i = 0; i < 15; i++) {
+      bit = ((d >> i) & 1) === 1;
+      if (i < 6) m[i][8] = bit;
+      else if (i < 8) m[i + 1][8] = bit;
+      else m[size - 15 + i][8] = bit;
+    }
+    for (i = 0; i < 15; i++) {
+      bit = ((d >> i) & 1) === 1;
+      if (i < 8) m[8][size - i - 1] = bit;
+      else if (i < 9) m[8][15 - i - 1 + 1] = bit;
+      else m[8][15 - i - 1] = bit;
+    }
+    m[size - 8][8] = true;
+  }
+  function putTypeNumber(m, version) {
+    var size = m.length, d = bchTypeNumber(version), i, bit;
+    for (i = 0; i < 18; i++) {
+      bit = ((d >> i) & 1) === 1;
+      m[Math.floor(i / 3)][i % 3 + size - 8 - 3] = bit;
+      m[i % 3 + size - 8 - 3][Math.floor(i / 3)] = bit;
+    }
+  }
+  function mapData(m, bytes, mask) {
+    var size = m.length, inc = -1, row = size - 1, bitIndex = 7, byteIndex = 0;
+    for (var col = size - 1; col > 0; col -= 2) {
+      if (col === 6) col--;
+      while (true) {
+        for (var c = 0; c < 2; c++) {
+          var cc = col - c;
+          if (m[row][cc] === null) {
+            var dark = false;
+            if (byteIndex < bytes.length) dark = ((bytes[byteIndex] >>> bitIndex) & 1) === 1;
+            if (maskBit(mask, row, cc)) dark = !dark;
+            m[row][cc] = dark;
+            bitIndex--;
+            if (bitIndex === -1) { byteIndex++; bitIndex = 7; }
+          }
+        }
+        row += inc;
+        if (row < 0 || row >= size) { row -= inc; inc = -inc; break; }
+      }
+    }
+  }
+  function penalty(m) {
+    var size = m.length, p = 0, r, c, i;
+    function line(get) {
+      for (var a = 0; a < size; a++) {
+        var run = 1, prev = get(a, 0);
+        for (var b = 1; b < size; b++) {
+          var v = get(a, b);
+          if (v === prev) run++;
+          else { if (run >= 5) p += 3 + (run - 5); prev = v; run = 1; }
+        }
+        if (run >= 5) p += 3 + (run - 5);
+      }
+    }
+    line(function (a, b) { return m[a][b]; });
+    line(function (a, b) { return m[b][a]; });
+    for (r = 0; r < size - 1; r++) for (c = 0; c < size - 1; c++) {
+      var v = m[r][c];
+      if (v === m[r][c + 1] && v === m[r + 1][c] && v === m[r + 1][c + 1]) p += 3;
+    }
+    var darkCount = 0;
+    for (r = 0; r < size; r++) for (c = 0; c < size; c++) if (m[r][c]) darkCount++;
+    p += Math.floor(Math.abs(darkCount * 100 / (size * size) - 50) / 5) * 10;
+    return p;
+  }
+
+  function build(text) {
+    var str = String(text || '');
+    if (!str) return null;
+    var bytes;
+    try { bytes = new TextEncoder().encode(str); } catch (e) { return null; }
+    if (!bytes.length) return null;
+    var version = 0, i;
+    for (var v = 1; v <= 10; v++) {
+      var cnt = dataCountOf(v);
+      var cap = Math.floor((cnt * 8 - 4 - (v < 10 ? 8 : 16)) / 8);
+      if (bytes.length <= cap) { version = v; break; }
+    }
+    if (!version) return null;
+    var dataBytes = encodeData(bytes, version, dataCountOf(version));
+    var finalBytes = interleave(version, dataBytes);
+    var base = baseMatrix(version), best = null, bestScore = Infinity;
+    for (var mask = 0; mask < 8; mask++) {
+      var m = base.map(function (row) { return row.slice(); });
+      putTypeInfo(m, mask);
+      if (version >= 7) putTypeNumber(m, version);
+      mapData(m, finalBytes, mask);
+      var score = penalty(m);
+      if (score < bestScore) { bestScore = score; best = m; }
+    }
+    return best;
+  }
+
+  function svg(text, opts) {
+    var m = build(text);
+    if (!m) return '';
+    opts = opts || {};
+    var size = m.length, quiet = opts.quiet === undefined ? 4 : opts.quiet, n = size + quiet * 2;
+    var path = '', r, c;
+    for (r = 0; r < size; r++) {
+      c = 0;
+      while (c < size) {
+        if (m[r][c]) {
+          var start = c;
+          while (c < size && m[r][c]) c++;
+          path += 'M' + (start + quiet) + ' ' + (r + quiet) + 'h' + (c - start) + 'v1h-' + (c - start) + 'z';
+        } else c++;
+      }
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + n + ' ' + n + '" class="barcode-svg" shape-rendering="crispEdges" role="img" aria-label="QR 코드">' +
+      '<rect width="' + n + '" height="' + n + '" fill="#ffffff"/>' +
+      '<path d="' + path + '" fill="#0b0b0d"/></svg>';
+  }
+
+  return { build: build, svg: svg };
+})();
+
+/* ---------------- 2. Code128-B ---------------- */
+var Code128 = (function () {
+  'use strict';
+  var BARS = [
+    11011001100, 11001101100, 11001100110, 10010011000, 10010001100,
+    10001001100, 10011001000, 10011000100, 10001100100, 11001001000,
+    11001000100, 11000100100, 10110011100, 10011011100, 10011001110,
+    10111001100, 10011101100, 10011100110, 11001110010, 11001011100,
+    11001001110, 11011100100, 11001110100, 11101101110, 11101001100,
+    11100101100, 11100100110, 11101100100, 11100110100, 11100110010,
+    11011011000, 11011000110, 11000110110, 10100011000, 10001011000,
+    10001000110, 10110001000, 10001101000, 10001100010, 11010001000,
+    11000101000, 11000100010, 10110111000, 10110001110, 10001101110,
+    10111011000, 10111000110, 10001110110, 11101110110, 11010001110,
+    11000101110, 11011101000, 11011100010, 11011101110, 11101011000,
+    11101000110, 11100010110, 11101101000, 11101100010, 11100011010,
+    11101111010, 11001000010, 11110001010, 10100110000, 10100001100,
+    10010110000, 10010000110, 10000101100, 10000100110, 10110010000,
+    10110000100, 10011010000, 10011000010, 10000110100, 10000110010,
+    11000010010, 11001010000, 11110111010, 11000010100, 10001111010,
+    10100111100, 10010111100, 10010011110, 10111100100, 10011110100,
+    10011110010, 11110100100, 11110010100, 11110010010, 11011011110,
+    11011110110, 11110110110, 10101111000, 10100011110, 10001011110,
+    10111101000, 10111100010, 11110101000, 11110100010, 10111011110,
+    10111101110, 11101011110, 11110101110, 11010000100, 11010010000,
+    11010011100, 1100011101011
+  ];
+
+  function sanitize(text) {
+    return String(text || '').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, '');
+  }
+
+  function bits(text) {
+    var s = sanitize(text);
+    if (!s) return '';
+    var vals = [], sum = 104, i;
+    for (i = 0; i < s.length; i++) {
+      var v = s.charCodeAt(i) - 32;
+      if (v < 0 || v > 94) continue;
+      vals.push(v);
+      sum += v * (vals.length);
+    }
+    if (!vals.length) return '';
+    var check = sum % 103;
+    var codes = [104].concat(vals, [check, 106]);
+    var out = '';
+    for (i = 0; i < codes.length; i++) out += String(BARS[codes[i]]);
+    return out;
+  }
+
+  function svg(text, opts) {
+    var b = bits(text);
+    if (!b) return '';
+    opts = opts || {};
+    var h = opts.height || 88, quiet = opts.quiet === undefined ? 12 : opts.quiet;
+    var path = '', i = 0;
+    while (i < b.length) {
+      if (b.charAt(i) === '1') {
+        var start = i;
+        while (i < b.length && b.charAt(i) === '1') i++;
+        path += 'M' + (start + quiet) + ' 0h' + (i - start) + 'v' + h + 'h-' + (i - start) + 'z';
+      } else i++;
+    }
+    var total = b.length + quiet * 2;
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + total + ' ' + h + '" class="barcode-svg" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Code128 바코드">' +
+      '<rect width="' + total + '" height="' + h + '" fill="#ffffff"/>' +
+      '<path d="' + path + '" fill="#0b0b0d"/></svg>';
+  }
+
+  return { bits: bits, svg: svg };
+})();
+
+/* ---------------- 3. small helpers ---------------- */
+function $(id) { return document.getElementById(id); }
+function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+function esc(s) {
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+function today0() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+function parseDate(str) {
+  if (str === undefined || str === null || str === '') return null;
+  if (typeof str === 'number') {
+    var dn = new Date(str);
+    return isNaN(dn.getTime()) ? null : dn;
+  }
+  var s = String(str);
+  if (s.length <= 10) s = s + 'T00:00:00';
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+function fmtDate(str) {
+  var d = parseDate(str);
+  if (!d) return '';
+  var wk = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+  return (d.getFullYear()) + '.' + pad2(d.getMonth() + 1) + '.' + pad2(d.getDate()) + ' (' + wk + ')';
+}
+function fmtDateTime(str) {
+  var d = parseDate(str);
+  if (!d) return '';
+  var hasTime = String(str).length > 10 && !/T00:00$/.test(String(str));
+  return fmtDate(str) + (hasTime ? ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) : '');
+}
+function fmtMoney(n) {
+  var v = Number(n);
+  if (!isFinite(v) || v === 0) return '';
+  return v.toLocaleString('ko-KR') + '원';
+}
+function fmtBytes(b) {
+  if (!b && b !== 0) return '-';
+  var u = ['B', 'KB', 'MB', 'GB'], i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return (i === 0 ? Math.round(b) : b.toFixed(1)) + u[i];
+}
+function groupCode(s) {
+  var t = String(s || '').replace(/\s+/g, '');
+  if (!/^[0-9]+$/.test(t) || t.length < 8) return String(s || '');
+  return t.replace(/(.{4})(?=.)/g, '$1 ');
+}
+function nowISO() { var d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+
+/* ---------------- 4. IndexedDB ---------------- */
+var DB_NAME = 'lemon_wallet_v1';
+var ST_CARDS = 'cards';
+var ST_PHOTOS = 'photos';
+var dbPromise = null;
+var dbReady = false;
+
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise(function (resolve, reject) {
+    var rq;
+    try { rq = indexedDB.open(DB_NAME, 1); } catch (e) { reject(e); return; }
+    rq.onupgradeneeded = function (ev) {
+      var db = ev.target.result;
+      if (!db.objectStoreNames.contains(ST_CARDS)) db.createObjectStore(ST_CARDS, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(ST_PHOTOS)) db.createObjectStore(ST_PHOTOS, { keyPath: 'id' });
+    };
+    rq.onsuccess = function () { dbReady = true; resolve(rq.result); };
+    rq.onerror = function () { reject(rq.error); };
+    rq.onblocked = function () { reject(new Error('blocked')); };
+  });
+  return dbPromise;
+}
+
+function dbReq(store, mode, fn) {
+  return openDB().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(store, mode);
+      var st = tx.objectStore(store);
+      var rq = fn(st);
+      rq.onsuccess = function () { resolve(rq.result); };
+      rq.onerror = function () { reject(rq.error); };
+      tx.onabort = function () { reject(tx.error || new Error('aborted')); };
+    });
+  });
+}
+function dbAllCards() { return dbReq(ST_CARDS, 'readonly', function (st) { return st.getAll(); }); }
+function dbPutCard(rec) { return dbReq(ST_CARDS, 'readwrite', function (st) { return st.put(rec); }); }
+function dbDelCard(id) { return dbReq(ST_CARDS, 'readwrite', function (st) { return st.delete(id); }); }
+function dbPutPhoto(rec) { return dbReq(ST_PHOTOS, 'readwrite', function (st) { return st.put(rec); }); }
+function dbGetPhoto(id) { return dbReq(ST_PHOTOS, 'readonly', function (st) { return st.get(id); }); }
+function dbDelPhoto(id) { return dbReq(ST_PHOTOS, 'readwrite', function (st) { return st.delete(id); }); }
+function dbAllPhotos() { return dbReq(ST_PHOTOS, 'readonly', function (st) { return st.getAll(); }); }
+function dbClearAll() {
+  return openDB().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction([ST_CARDS, ST_PHOTOS], 'readwrite');
+      tx.objectStore(ST_CARDS).clear();
+      tx.objectStore(ST_PHOTOS).clear();
+      tx.oncomplete = function () { resolve(true); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  });
+}
+
+/* ---------------- 5. catalog ---------------- */
+var ICONS = {
+  tag: '<path d="M20.6 12.6l-8 8a2 2 0 0 1-2.8 0l-6.4-6.4a2 2 0 0 1-.6-1.4V5a2 2 0 0 1 2-2h7.8a2 2 0 0 1 1.4.6l6.6 6.6a2 2 0 0 1 0 2.4z"></path><circle cx="7.8" cy="7.8" r="1.4"></circle>',
+  gift: '<rect x="3" y="8" width="18" height="12" rx="2"></rect><path d="M3 12h18M12 8v12"></path><path d="M12 8S10.6 3.9 8.2 4.8 8.2 8 12 8zM12 8s1.4-4.1 3.8-3.2S15.8 8 12 8z"></path>',
+  card: '<rect x="2.5" y="5" width="19" height="14" rx="2.4"></rect><path d="M2.5 10h19"></path><path d="M6.5 14.5h4"></path>',
+  book: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"></path><path d="M4 5.5v15"></path>',
+  plane: '<path d="M2.5 13l19-8-5 8 5 8z"></path>',
+  bus: '<rect x="3" y="4" width="18" height="13" rx="2.4"></rect><path d="M3 11h18"></path><circle cx="7.5" cy="19.5" r="1.6"></circle><circle cx="16.5" cy="19.5" r="1.6"></circle>',
+  train: '<rect x="5" y="3" width="14" height="14" rx="3"></rect><path d="M5 10h14M9 3v7M15 3v7"></path><circle cx="9" cy="14" r="1.1"></circle><circle cx="15" cy="14" r="1.1"></circle><path d="M8 20l-1 1.5M16 20l1 1.5"></path>'
+};
+function icon(name, cls) {
+  return '<svg class="' + (cls || 'w-4 h-4') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>';
+}
+
+var CATS = {
+  coupon: { label: '쿠폰', group: 'coupon', c1: '#a16207', c2: '#eab308', icon: 'tag', sub: '할인 · 교환권', dept: 'D-DAY' },
+  gifticon: { label: '기프티콘', group: 'coupon', c1: '#9f1239', c2: '#fb7185', icon: 'gift', sub: '모바일 상품권', dept: 'D-DAY' },
+  membership: { label: '멤버십', group: 'member', c1: '#3730a3', c2: '#818cf8', icon: 'card', sub: '회원 카드', dept: 'MEMBER' },
+  library: { label: '도서관 대출증', group: 'member', c1: '#0f5f56', c2: '#2dd4bf', icon: 'book', sub: '대출 · 반납', dept: 'LIBRARY' },
+  flight: { label: '비행기 티켓', group: 'ticket', c1: '#075985', c2: '#38bdf8', icon: 'plane', sub: '탑승권', dept: 'BOARDING' },
+  bus: { label: '버스 티켓', group: 'ticket', c1: '#5b21b6', c2: '#a78bfa', icon: 'bus', sub: '시외 · 고속', dept: 'BUS' },
+  train: { label: '기차 티켓', group: 'ticket', c1: '#1e293b', c2: '#64748b', icon: 'train', sub: 'KTX · 무궁화', dept: 'TRAIN' }
+};
+var CAT_ORDER = ['coupon', 'gifticon', 'membership', 'library', 'flight', 'bus', 'train'];
+var TICKETS = { flight: 1, bus: 1, train: 1 };
+
+var FILTERS = [
+  { k: 'all', label: '전체' },
+  { k: 'coupon', label: '쿠폰 · 기프티콘' },
+  { k: 'member', label: '멤버십 · 대출증' },
+  { k: 'ticket', label: '티켓' },
+  { k: 'soon', label: '만료 임박' },
+  { k: 'fav', label: '즐겨찾기' }
+];
+
+var SPEC = {
+  coupon: [
+    { k: 'where', label: '사용처', ph: '전 지점 · 매장' },
+    { k: 'amount', label: '금액(원)', ph: '4500', type: 'number' },
+    { k: 'expire', label: '유효기간', type: 'date' },
+    { k: 'pin', label: '교환 · 인증번호', ph: '선택 사항' },
+    { k: 'memo', label: '메모 · 유의사항', ph: '예: 주말 제외, 1인 1매', type: 'textarea' }
+  ],
+  gifticon: [
+    { k: 'where', label: '사용처 · 교환처', ph: '전 지점' },
+    { k: 'amount', label: '금액(원)', ph: '4500', type: 'number' },
+    { k: 'expire', label: '유효기간', type: 'date' },
+    { k: 'pin', label: '교환 · 인증번호', ph: '선택 사항' },
+    { k: 'memo', label: '메모 · 유의사항', ph: '예: 주말 제외, 1인 1매', type: 'textarea' }
+  ],
+  membership: [
+    { k: 'member', label: '회원번호', ph: '1234-5678' },
+    { k: 'tier', label: '등급', ph: 'VIP · 골드' },
+    { k: 'points', label: '포인트', ph: '12000', type: 'number' },
+    { k: 'where', label: '사용처', ph: '전 지점' },
+    { k: 'expire', label: '유효기간', type: 'date' },
+    { k: 'memo', label: '메모', ph: '예: 생일 쿠폰 2매 보유', type: 'textarea' }
+  ],
+  library: [
+    { k: 'member', label: '대출증 번호', ph: '2024-018394' },
+    { k: 'where', label: '도서관', ph: '시립도서관 본관' },
+    { k: 'expire', label: '대출증 만료일', type: 'date' },
+    { k: 'tier', label: '대출 한도', ph: '5권 · 14일' },
+    { k: 'memo', label: '메모 · 반납 예정', ph: '예: 11/20까지 3권 반납', type: 'textarea' }
+  ],
+  flight: [
+    { k: 'carrier', label: '항공사', ph: '대한항공' },
+    { k: 'service', label: '편명', ph: 'KE1234' },
+    { k: 'fromCode', label: '출발 공항코드', ph: 'GMP' },
+    { k: 'toCode', label: '도착 공항코드', ph: 'CJU' },
+    { k: 'from', label: '출발지', ph: '김포' },
+    { k: 'to', label: '도착지', ph: '제주' },
+    { k: 'depart', label: '탑승 일시', type: 'datetime-local' },
+    { k: 'arrive', label: '도착 일시', type: 'datetime-local' },
+    { k: 'seat', label: '좌석', ph: '12A' },
+    { k: 'gate', label: '게이트 · 터미널', ph: '11 · T2' },
+    { k: 'booking', label: '예약번호 (PNR)', ph: 'ABC123' },
+    { k: 'passenger', label: '탑승자', ph: '김민중' },
+    { k: 'memo', label: '메모', ph: '예: 위탁 수하물 15kg', type: 'textarea' }
+  ],
+  bus: [
+    { k: 'carrier', label: '버스 회사', ph: '금호고속' },
+    { k: 'service', label: '노선 · 차번', ph: '서울남부 → 부산' },
+    { k: 'from', label: '출발 터미널', ph: '서울남부' },
+    { k: 'to', label: '도착 터미널', ph: '부산' },
+    { k: 'depart', label: '출발 일시', type: 'datetime-local' },
+    { k: 'seat', label: '좌석', ph: '7' },
+    { k: 'platform', label: '승강장', ph: '17' },
+    { k: 'booking', label: '예매번호', ph: '20261115001' },
+    { k: 'memo', label: '메모', ph: '예: 우등 · 15분 전 도착', type: 'textarea' }
+  ],
+  train: [
+    { k: 'carrier', label: '열차 종류', ph: 'KTX · ITX' },
+    { k: 'service', label: '열차번호', ph: '101' },
+    { k: 'from', label: '출발역', ph: '서울' },
+    { k: 'to', label: '도착역', ph: '부산' },
+    { k: 'depart', label: '출발 일시', type: 'datetime-local' },
+    { k: 'arrive', label: '도착 일시', type: 'datetime-local' },
+    { k: 'car', label: '호차', ph: '3' },
+    { k: 'seat', label: '좌석', ph: '12A' },
+    { k: 'platform', label: '타는 곳', ph: '5' },
+    { k: 'booking', label: '예약번호', ph: '1234-5678' },
+    { k: 'memo', label: '메모', ph: '예: 정차역 대전 · 동대구', type: 'textarea' }
+  ]
+};
+
+/* ---------------- 6. state ---------------- */
+var CARDS = [];
+var PHOTO_URLS = {};
+var state = { filter: 'all', q: '', sort: 'expiry', showUsed: false, cat: 'gifticon', codeType: 'code128', editing: null, fav: false };
+var draftPhoto = null;
+var photoRemove = false;
+var passId = null;
+var wakeLock = null;
+var go = function () { };
+
+/* ---------------- 7. derived helpers ---------------- */
+function dateFieldOf(card) {
+  if (card.expire) return { v: card.expire, kind: 'expire' };
+  if (TICKETS[card.cat] && card.depart) return { v: card.depart, kind: 'depart' };
+  return null;
+}
+function ddayOf(card) {
+  var f = dateFieldOf(card);
+  if (!f) return null;
+  var d = parseDate(f.v);
+  if (!d) return null;
+  var t = today0();
+  var dd = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((dd - t) / 86400000);
+}
+function ddayBadge(card) {
+  if (card.used) return { text: '사용 완료', cls: 'dead' };
+  var f = dateFieldOf(card);
+  if (!f) return { text: '상시', cls: '' };
+  var d = ddayOf(card);
+  if (d === null) return null;
+  var pre = f.kind === 'depart' ? '탑승 ' : '';
+  if (d < 0) return { text: f.kind === 'depart' ? '탑승 지남' : '만료', cls: 'dead' };
+  if (d === 0) return { text: f.kind === 'depart' ? '오늘 탑승' : '오늘까지', cls: 'hot' };
+  if (d <= 3) return { text: pre + 'D-' + d, cls: 'hot' };
+  if (d <= 7) return { text: pre + 'D-' + d, cls: 'warn' };
+  return { text: pre + 'D-' + d, cls: '' };
+}
+function isSoon(c) {
+  if (c.used) return false;
+  var d = ddayOf(c);
+  return d !== null && d >= 0 && d <= 7;
+}
+function cardName(c) { return c.title || c.brand || (CATS[c.cat] ? CATS[c.cat].label : '카드'); }
+function headline(c) {
+  var cat = CATS[c.cat] || CATS.coupon;
+  if (TICKETS[c.cat]) {
+    var carrier = c.carrier || c.brand || cat.label;
+    var sub = [c.brand && c.brand !== carrier ? c.brand : '', c.service].filter(Boolean).join(' · ');
+    return { title: carrier, sub: sub || cat.label };
+  }
+  return { title: cardName(c), sub: c.brand || cat.label };
+}
+function codeOf(c) { return c.code || c.member || c.booking || ''; }
+function timeText(c) {
+  var d = parseDate(c.depart);
+  if (!d) return '';
+  return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+function searchText(c) {
+  return [c.brand, c.title, c.where, c.code, c.member, c.booking, c.from, c.to, c.fromCode, c.toCode, c.carrier, c.service, c.tier, c.passenger]
+    .filter(Boolean).join(' ').toLowerCase();
+}
+function matchFilter(c, k) {
+  if (k === 'all') return true;
+  if (k === 'coupon') return c.cat === 'coupon' || c.cat === 'gifticon';
+  if (k === 'member') return c.cat === 'membership' || c.cat === 'library';
+  if (k === 'ticket') return !!TICKETS[c.cat];
+  if (k === 'soon') return isSoon(c);
+  if (k === 'fav') return !!c.fav;
+  return true;
+}
+function sortCards(list) {
+  var out = list.slice();
+  if (state.sort === 'recent') return out.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+  if (state.sort === 'name') return out.sort(function (a, b) { return String(cardName(a)).localeCompare(String(cardName(b)), 'ko'); });
+  if (state.sort === 'cat') return out.sort(function (a, b) { return CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat) || (b.createdAt || 0) - (a.createdAt || 0); });
+  return out.sort(function (a, b) {
+    var da = ddayOf(a), db = ddayOf(b);
+    if (da === null && db === null) return (b.createdAt || 0) - (a.createdAt || 0);
+    if (da === null) return 1;
+    if (db === null) return -1;
+    if (da < 0 && db >= 0) return 1;
+    if (db < 0 && da >= 0) return -1;
+    if (da < 0 && db < 0) return db - da;
+    return da - db;
+  });
+}
+
+/* ---------------- 8. card markup ---------------- */
+function photoSlot(card, small) {
+  var cat = CATS[card.cat] || CATS.coupon;
+  var initial = (card.brand || cardName(card) || '?').trim().charAt(0).toUpperCase();
+  if (card.hasPhoto) {
+    return '<span class="monogram overflow-hidden" data-photo-slot="' + esc(card.id) + '">' + esc(initial) + '</span>';
+  }
+  return '<span class="monogram">' + esc(initial) + '</span>';
+}
+
+function cardHTML(card) {
+  var cat = CATS[card.cat] || CATS.coupon;
+  var dd = ddayBadge(card);
+  var isTicket = !!TICKETS[card.cat];
+  var head = headline(card);
+  var body = '';
+  if (isTicket) {
+    body = '<div class="flex items-end gap-2 mt-2.5">' +
+      '<span class="text-[20px] font-black leading-none tracking-tight">' + esc(card.fromCode || card.from || '-') + '</span>' +
+      '<svg class="w-3.5 h-3.5 mb-1 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h16M14 6l6 6-6 6"></path></svg>' +
+      '<span class="text-[20px] font-black leading-none tracking-tight">' + esc(card.toCode || card.to || '-') + '</span>' +
+      '<span class="ml-auto text-[10px] font-bold opacity-90 whitespace-nowrap">' + esc(timeText(card)) + '</span>' +
+      '</div>' +
+      '<div class="text-[10px] opacity-85 mt-1 truncate">' + esc([card.carrier, card.service, card.seat ? '좌석 ' + card.seat : '', card.gate ? '게이트 ' + card.gate : '', card.platform ? '승강장 ' + card.platform : ''].filter(Boolean).join(' · ')) + '</div>';
+  } else if (card.cat === 'membership' || card.cat === 'library') {
+    body = '<div class="mt-2.5 mono text-[15px] font-black tracking-wide truncate">' + esc(groupCode(card.member || card.code) || '번호 없음') + '</div>' +
+      '<div class="text-[10px] opacity-85 mt-0.5 truncate">' + esc([card.tier, card.where, card.points ? Number(card.points).toLocaleString('ko-KR') + 'P' : ''].filter(Boolean).join(' · ')) + '</div>';
+  } else {
+    body = '<div class="mt-2.5 text-[12px] font-bold truncate">' + esc(card.where || '사용처 미기록') + '</div>' +
+      '<div class="text-[10px] opacity-85 mt-0.5 truncate">' + esc([card.expire ? fmtDate(card.expire) + '까지' : '유효기간 없음', card.amount ? fmtMoney(card.amount) : ''].filter(Boolean).join(' · ')) + '</div>';
+  }
+  return '<article class="pass ' + (card.used ? 'is-used' : '') + '" data-id="' + esc(card.id) + '" style="--c1:' + cat.c1 + ';--c2:' + cat.c2 + '" tabindex="0" role="button" aria-label="' + esc(cardName(card)) + ' 패스 열기">' +
+    '<div class="relative z-10 flex items-start justify-between gap-2">' +
+      '<div class="flex items-center gap-2 min-w-0">' + photoSlot(card) +
+        '<div class="min-w-0">' +
+          '<div class="text-[8.5px] font-black tracking-[.16em] opacity-70">' + esc(cat.dept) + '</div>' +
+          '<div class="text-[13.5px] font-black truncate leading-tight">' + esc(head.title) + '</div>' +
+          '<div class="text-[9.5px] opacity-75 truncate">' + esc(head.sub) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="flex flex-col items-end gap-1.5 shrink-0">' +
+        (dd && !card.used ? '<span class="dday ' + dd.cls + '">' + esc(dd.text) + '</span>' : '') +
+        '<button type="button" class="pass-star w-6 h-6 rounded-full flex items-center justify-center ' + (card.fav ? 'bg-white/30' : 'bg-white/10 hover:bg-white/25') + '" data-fav-id="' + esc(card.id) + '" aria-label="줄겨찾기" aria-pressed="' + (card.fav ? 'true' : 'false') + '">' +
+          '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="' + (card.fav ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"></path></svg>' +
+        '</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="pass-body relative z-10">' + body +
+      '<div class="perf"></div>' +
+      '<div class="flex items-end justify-between gap-2">' +
+        '<div class="min-w-0 text-[9.5px] mono opacity-90 truncate">' + esc(groupCode(codeOf(card)) || '코드 없음') + '</div>' +
+        '<span class="text-[9px] font-black opacity-80 shrink-0 whitespace-nowrap flex items-center gap-1">패스 보기' +
+          '<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 12h12M13 7l5 5-5 5"></path></svg></span>' +
+      '</div>' +
+    '</div>' +
+    (card.used ? '<div class="stamp">사용 완료</div>' : '') +
+    '</article>';
+}
+
+function emptyHTML(title, desc) {
+  return '<div class="empty">' +
+    '<p class="text-[12px] font-black">' + esc(title) + '</p>' +
+    '<p class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">' + esc(desc) + '</p>' +
+    '</div>';
+}
+
+/* ---------------- 9. photos ---------------- */
+async function photoURL(id) {
+  if (PHOTO_URLS[id]) return PHOTO_URLS[id];
+  try {
+    var rec = await dbGetPhoto(id);
+    if (!rec || !rec.blob) return null;
+    var u = URL.createObjectURL(rec.blob);
+    PHOTO_URLS[id] = u;
+    return u;
+  } catch (e) { return null; }
+}
+function hydratePhotos(root) {
+  $$('[data-photo-slot]', root || document).forEach(function (el) {
+    var id = el.getAttribute('data-photo-slot');
+    if (el.getAttribute('data-filled') === '1') return;
+    photoURL(id).then(function (u) {
+      if (!u) return;
+      el.setAttribute('data-filled', '1');
+      el.innerHTML = '<img src="' + u + '" alt="" class="w-full h-full object-cover">';
+    });
+  });
+}
+
+/* ---------------- 10. home ---------------- */
+function renderCatGrid() {
+  $('catGrid').innerHTML = CAT_ORDER.map(function (k) {
+    var c = CATS[k];
+    var n = CARDS.filter(function (x) { return x.cat === k; }).length;
+    return '<button type="button" class="cat-tile" data-cat-filter="' + k + '" style="--tc:' + c.c1 + ';--tc2:' + c.c2 + '">' +
+      '<div class="flex items-center gap-2">' +
+        '<span class="cat-ico">' + icon(c.icon) + '</span>' +
+        '<span class="text-[10.5px] font-black leading-tight">' + esc(c.label) + '</span>' +
+      '</div>' +
+      '<div class="flex items-center justify-between mt-1.5">' +
+        '<span class="text-[9.5px] text-neutral-400">' + esc(c.sub) + '</span>' +
+        '<span class="text-[9.5px] font-black text-neutral-500 dark:text-neutral-400">' + n + '</span>' +
+      '</div></button>';
+  }).join('');
+}
+
+function renderHome() {
+  var soon = sortCards(CARDS.filter(isSoon)).slice(0, 4);
+  var favs = CARDS.filter(function (c) { return c.fav && !c.used; }).slice(0, 4);
+  $('heroCards').textContent = CARDS.length;
+  $('heroSoon').textContent = CARDS.filter(isSoon).length;
+  $('heroFav').textContent = CARDS.filter(function (c) { return c.fav; }).length;
+  $('heroUsed').textContent = CARDS.filter(function (c) { return c.used; }).length;
+
+  $('homeSoon').innerHTML = soon.length ? soon.map(function (c) {
+    var cat = CATS[c.cat] || CATS.coupon;
+    var dd = ddayBadge(c);
+    var head = headline(c);
+    var sub = TICKETS[c.cat] ? [c.from, c.to].filter(Boolean).join(' → ') + (c.depart ? ' · ' + fmtDateTime(c.depart) : '')
+      : (c.cat === 'membership' || c.cat === 'library' ? (c.member || '') : (c.where || ''));
+    return '<button type="button" data-open="' + esc(c.id) + '" class="w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 p-2 text-left hover:border-brand-300 dark:hover:border-brand-800 transition">' +
+      '<span class="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style="background-image:linear-gradient(140deg,' + cat.c1 + ',' + cat.c2 + ')">' + icon(cat.icon, 'w-4 h-4') + '</span>' +
+      '<span class="min-w-0 flex-1">' +
+        '<span class="block text-[11.5px] font-black truncate">' + esc(head.title) + '</span>' +
+        '<span class="block text-[10px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(sub || cat.label) + '</span>' +
+      '</span>' +
+      '<span class="text-[10px] font-black shrink-0 ' + (dd && dd.cls === 'hot' ? 'text-rose-500' : dd && dd.cls === 'warn' ? 'text-amber-500' : 'text-neutral-400') + '">' + esc(dd ? dd.text : '') + '</span>' +
+    '</button>';
+  }).join('') : '<p class="text-[11px] text-neutral-400 py-3 text-center">7일 안에 만료되거나 탑승할 카드가 없어요.</p>';
+
+  $('homeFav').innerHTML = favs.length ? favs.map(function (c) {
+    return cardHTML(c);
+  }).join('') : '<p class="text-[11px] text-neutral-400 col-span-2 py-3 text-center">카드의 별을 누르면 여기 고정됩니다.</p>';
+  hydratePhotos($('homeFav'));
+}
+
+/* ---------------- 11. wallet ---------------- */
+function renderChips() {
+  $('filterChips').innerHTML = FILTERS.map(function (f) {
+    var n = CARDS.filter(function (c) { return matchFilter(c, f.k); }).length;
+    return '<button type="button" class="chip-btn ' + (state.filter === f.k ? 'on' : '') + '" data-filter="' + f.k + '">' + esc(f.label) + '<span class="num">' + n + '</span></button>';
+  }).join('');
+}
+
+function statRowHTML() {
+  var soon = CARDS.filter(isSoon).length;
+  var used = CARDS.filter(function (c) { return c.used; }).length;
+  var value = CARDS.filter(function (c) { return !c.used; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+  var items = [
+    { label: '보관 중', value: CARDS.length, unit: '장', cls: 'brand-text' },
+    { label: '7일 내 임박', value: soon, unit: '장', cls: soon ? 'text-rose-500' : 'text-neutral-400' },
+    { label: '사용 가능 금액', value: value ? value.toLocaleString('ko-KR') : '0', unit: '원', cls: 'text-gold-600 dark:text-gold-300' },
+    { label: '사용 완료', value: used, unit: '장', cls: 'text-neutral-500 dark:text-neutral-400' }
+  ];
+  return items.map(function (it) {
+    return '<div class="stat-tile">' +
+      '<div class="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">' + it.label + '</div>' +
+      '<div class="flex items-baseline gap-1"><span class="stat-num ' + it.cls + '">' + it.value + '</span><span class="text-[10px] font-bold text-neutral-400">' + it.unit + '</span></div>' +
+      '</div>';
+  }).join('');
+}
+
+function renderStats() {
+  var total = CARDS.length;
+  var bars = CAT_ORDER.map(function (k) {
+    var c = CATS[k];
+    var n = CARDS.filter(function (x) { return x.cat === k; }).length;
+    var pct = total ? Math.round(n * 100 / total) : 0;
+    return '<div>' +
+      '<div class="flex items-center gap-2">' +
+        '<span class="w-5 h-5 rounded-md flex items-center justify-center text-white shrink-0" style="background-image:linear-gradient(140deg,' + c.c1 + ',' + c.c2 + ')">' + icon(c.icon, 'w-3 h-3') + '</span>' +
+        '<span class="text-[11px] font-bold flex-1">' + esc(c.label) + '</span>' +
+        '<span class="text-[10.5px] font-black tabular">' + n + '</span>' +
+      '</div>' +
+      '<div class="meter mt-1"><i style="width:' + pct + '%;background-image:linear-gradient(90deg,' + c.c1 + ',' + c.c2 + ')"></i></div>' +
+    '</div>';
+  }).join('');
+
+  var buckets = [
+    { label: '오늘', n: CARDS.filter(function (c) { return !c.used && ddayOf(c) === 0; }).length },
+    { label: '3일 이내', n: CARDS.filter(function (c) { var d = ddayOf(c); return !c.used && d !== null && d > 0 && d <= 3; }).length },
+    { label: '7일 이내', n: CARDS.filter(function (c) { var d = ddayOf(c); return !c.used && d !== null && d > 3 && d <= 7; }).length },
+    { label: '30일 이후', n: CARDS.filter(function (c) { var d = ddayOf(c); return !c.used && d !== null && d > 30; }).length },
+    { label: '기간 없음', n: CARDS.filter(function (c) { return !c.used && ddayOf(c) === null; }).length },
+    { label: '만료됨', n: CARDS.filter(function (c) { var d = ddayOf(c); return d !== null && d < 0; }).length }
+  ];
+  var usedValue = CARDS.filter(function (c) { return c.used; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+  var liveValue = CARDS.filter(function (c) { return !c.used; }).reduce(function (s, c) { return s + (Number(c.amount) || 0); }, 0);
+
+  $('statsBody').innerHTML = bars +
+    '<div class="hr"></div>' +
+    '<div class="grid grid-cols-3 gap-1.5">' + buckets.map(function (b) {
+      return '<div class="rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 px-2 py-1.5 text-center">' +
+        '<div class="text-[9px] text-neutral-500 dark:text-neutral-400 font-bold">' + b.label + '</div>' +
+        '<div class="text-[13px] font-black tabular">' + b.n + '</div></div>';
+    }).join('') + '</div>' +
+    '<div class="flex items-center justify-between text-[11px] pt-0.5">' +
+      '<span class="text-neutral-500 dark:text-neutral-400">보유 금액 / 사용 금액</span>' +
+      '<span class="font-black">' + (liveValue ? liveValue.toLocaleString('ko-KR') + '원' : '0원') + ' <span class="text-neutral-400 font-bold">/ ' + (usedValue ? usedValue.toLocaleString('ko-KR') + '원' : '0원') + '</span></span>' +
+    '</div>';
+  $('statsUpdated').textContent = total ? total + '장 기준' : '-';
+}
+
+function updateStorageInfo() {
+  var el = $('storageInfo');
+  if (!el) return;
+  el.innerHTML = 'IndexedDB · 카드 ' + CARDS.length + '장 · 사진 ' + CARDS.filter(function (c) { return c.hasPhoto; }).length + '장';
+  if (navigator.storage && navigator.storage.estimate) {
+    navigator.storage.estimate().then(function (est) {
+      if (est && est.usage) el.innerHTML = 'IndexedDB · 카드 ' + CARDS.length + '장 · 사진 ' + CARDS.filter(function (c) { return c.hasPhoto; }).length + '장 · 약 ' + fmtBytes(est.usage) + ' 사용 중';
+    }).catch(function () { });
+  }
+}
+
+function renderWallet() {
+  var q = state.q.trim().toLowerCase();
+  var filtered = CARDS.filter(function (c) {
+    if (!matchFilter(c, state.filter)) return false;
+    if (!q) return true;
+    return searchText(c).indexOf(q) > -1;
+  });
+  var live = sortCards(filtered.filter(function (c) { return !c.used; }));
+  var used = sortCards(filtered.filter(function (c) { return c.used; }));
+  var favs = sortCards(CARDS.filter(function (c) { return c.fav && !c.used; })).slice(0, 4);
+
+  $('statRow').innerHTML = statRowHTML();
+  renderChips();
+
+  var showFav = favs.length && !q && state.filter === 'all';
+  $('favStripWrap').classList.toggle('hidden', !showFav);
+  if (showFav) { $('favStrip').innerHTML = favs.map(cardHTML).join(''); hydratePhotos($('favStrip')); }
+
+  $('walletGrid').innerHTML = live.map(cardHTML).join('');
+  hydratePhotos($('walletGrid'));
+
+  var noneAtAll = CARDS.length === 0;
+  var noResults = live.length === 0 && used.length === 0;
+  $('walletEmpty').classList.toggle('hidden', !noResults);
+  if (noResults) {
+    $('emptyTitle').textContent = noneAtAll ? '아직 카드가 없어요' : '조건에 맞는 카드가 없어요';
+    $('emptyDesc').textContent = noneAtAll
+      ? '기프티콘 사진부터 넣어 보세요. 바코드는 번호만 있으면 자동으로 그려집니다.'
+      : '검색어나 필터를 바꾸면 다시 찾을 수 있어요.';
+    $('btnSeed').classList.toggle('hidden', !noneAtAll);
+  }
+
+  $('usedCount').textContent = used.length;
+  $('usedGrid').innerHTML = used.map(cardHTML).join('');
+  hydratePhotos($('usedGrid'));
+  $('usedGrid').classList.toggle('hidden', !state.showUsed);
+  $('btnToggleUsed').setAttribute('aria-expanded', state.showUsed ? 'true' : 'false');
+  $('usedChevron').style.transform = state.showUsed ? 'rotate(180deg)' : 'none';
+
+  var sub = CARDS.length ? '카드 ' + CARDS.length + '장 · 사용 가능 ' + CARDS.filter(function (c) { return !c.used; }).length + '장' : '카드를 탭하면 계산대 패스가 열립니다.';
+  if (CARDS.length) {
+    var soon = CARDS.filter(isSoon).length;
+    if (soon) sub += ' · 임박 ' + soon + '장';
+  }
+  $('walletSub').textContent = sub;
+  $('tabCount').textContent = CARDS.length;
+
+  renderStats();
+  updateStorageInfo();
+}
+
+function renderAll() {
+  renderHome();
+  renderCatGrid();
+  renderWallet();
+}
+
+/* ---------------- 12. studio ---------------- */
+var FORM = {};
+var FIELD_KEYS = ['where', 'amount', 'expire', 'pin', 'memo', 'member', 'tier', 'points', 'carrier', 'service', 'from', 'fromCode', 'to', 'toCode', 'depart', 'arrive', 'seat', 'car', 'gate', 'platform', 'booking', 'passenger'];
+
+function renderPicker() {
+  $('catPicker').innerHTML = CAT_ORDER.map(function (k) {
+    var c = CATS[k];
+    return '<button type="button" class="cat-tile ' + (state.cat === k ? 'on' : '') + '" data-cat="' + k + '" style="--tc:' + c.c1 + ';--tc2:' + c.c2 + '" aria-pressed="' + (state.cat === k ? 'true' : 'false') + '">' +
+      '<div class="flex items-center gap-2 min-w-0">' +
+        '<span class="cat-ico shrink-0">' + icon(c.icon) + '</span>' +
+        '<span class="text-[10.5px] font-black leading-tight truncate">' + esc(c.label) + '</span>' +
+      '</div>' +
+      '<div class="text-[9px] text-neutral-400 mt-1 truncate">' + esc(c.sub) + '</div></button>';
+  }).join('');
+}
+
+function renderFields() {
+  var spec = SPEC[state.cat] || [];
+  $('formFields').innerHTML = spec.map(function (f) {
+    var full = f.type === 'textarea';
+    var val = FORM[f.k] === undefined || FORM[f.k] === null ? '' : String(FORM[f.k]);
+    var input;
+    if (full) {
+      input = '<textarea data-k="' + f.k + '" class="lemon-textarea mt-1" rows="2" maxlength="160" placeholder="' + esc(f.ph || '') + '">' + esc(val) + '</textarea>';
+    } else {
+      input = '<input data-k="' + f.k + '" type="' + (f.type || 'text') + '" class="lemon-input mt-1 ' + (f.type === 'number' ? 'tabular' : '') + '" value="' + esc(val) + '" placeholder="' + esc(f.ph || '') + '"' + (f.type === 'number' ? ' inputmode="numeric"' : '') + '>';
+    }
+    return '<div class="' + (full ? 'sm:col-span-2' : '') + '"><label class="lemon-label !text-[10px]">' + esc(f.label) + '</label>' + input + '</div>';
+  }).join('');
+  $('catHint').textContent = CATS[state.cat].label;
+}
+
+function setFormValue(k, v) {
+  FORM[k] = v;
+  var el = document.querySelector('[data-k="' + k + '"]');
+  if (el && el.value !== v) el.value = v;
+}
+
+function fillForm(card) {
+  FORM = {};
+  if (card) {
+    Object.keys(card).forEach(function (k) { FORM[k] = card[k]; });
+    FIELD_KEYS.forEach(function (k) { if (card[k] !== undefined) FORM[k] = card[k]; });
+  }
+  $('fBrand').value = FORM.brand || '';
+  $('fTitle').value = FORM.title || '';
+  $('fCode').value = FORM.code || '';
+  state.codeType = FORM.codeType || (TICKETS[state.cat] ? 'qr' : 'code128');
+  syncCodeType();
+  setFavSwitch(!!FORM.fav);
+  renderFields();
+  renderPreview();
+}
+
+function readInputs() {
+  $$('[data-k]').forEach(function (el) { FORM[el.getAttribute('data-k')] = el.value; });
+  FORM.brand = $('fBrand').value;
+  FORM.title = $('fTitle').value;
+  FORM.code = $('fCode').value;
+}
+
+function syncCodeType() {
+  $$('#codeTypeSeg .seg-opt').forEach(function (b) {
+    var on = b.getAttribute('data-ct') === state.codeType;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  $('codeInputWrap').style.display = state.codeType === 'none' ? 'none' : '';
+  renderCodePreview();
+}
+
+function renderCodePreview() {
+  var box = $('codePreview');
+  if (!box) return;
+  var code = (FORM.code || '').trim();
+  if (state.codeType === 'none') {
+    box.innerHTML = '<span class="text-[10px] text-neutral-400">코드 없이 사진만 보관합니다.</span>';
+    return;
+  }
+  if (!code) {
+    box.innerHTML = '<span class="text-[10px] text-neutral-500 dark:text-neutral-400 text-center leading-relaxed">번호를 입력하면 실제 스캔용 코드가 여기에 그려집니다.' +
+      (TICKETS[state.cat] ? '<br>비워 두면 예약번호로 QR을 만들어 저장합니다.' : '') + '</span>';
+    return;
+  }
+  var svg = state.codeType === 'qr' ? QR.svg(code, { quiet: 3 }) : Code128.svg(code, { height: 80 });
+  box.innerHTML = svg || '<span class="text-[10px] text-rose-500">이 내용으로는 코드를 만들 수 없어요. 숫자나 영문으로 입력해 주세요.</span>';
+}
+
+function previewDday() {
+  var v = FORM.expire || FORM.depart;
+  if (!v) return null;
+  var d = parseDate(v);
+  if (!d) return null;
+  var days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today0()) / 86400000);
+  if (days < 0) return { text: '만료', cls: 'dead' };
+  if (days === 0) return { text: '오늘', cls: 'hot' };
+  if (days <= 7) return { text: 'D-' + days, cls: 'hot' };
+  return { text: 'D-' + days, cls: '' };
+}
+
+function renderPreview() {
+  var cat = CATS[state.cat] || CATS.coupon;
+  var brand = (FORM.brand || '').trim();
+  var title = (FORM.title || '').trim() || cat.label;
+  var dd = previewDday();
+  var isTicket = !!TICKETS[state.cat];
+  var headTitle = title, headSub = brand || cat.label;
+  if (isTicket) {
+    headTitle = FORM.carrier || FORM.brand || title;
+    headSub = [FORM.brand && FORM.brand !== headTitle ? FORM.brand : '', FORM.service].filter(Boolean).join(' · ') || cat.label;
+  }
+  var initial = (brand || title).charAt(0).toUpperCase();
+  var mid = '';
+  if (isTicket) {
+    mid = '<div class="flex items-end gap-2 mt-3">' +
+      '<span class="text-[22px] font-black leading-none">' + esc(FORM.fromCode || FORM.from || 'GMP') + '</span>' +
+      '<svg class="w-4 h-4 mb-1 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h16M14 6l6 6-6 6"></path></svg>' +
+      '<span class="text-[22px] font-black leading-none">' + esc(FORM.toCode || FORM.to || 'CJU') + '</span>' +
+      '<span class="ml-auto text-[10.5px] font-bold opacity-90">' + esc(FORM.depart ? timeText({ depart: FORM.depart }) : '') + '</span></div>' +
+      '<div class="text-[10px] opacity-85 mt-1.5 truncate">' + esc([FORM.carrier, FORM.service, FORM.seat ? '좌석 ' + FORM.seat : ''].filter(Boolean).join(' · ') || '항공사 · 편명 · 좌석') + '</div>';
+  } else if (state.cat === 'membership' || state.cat === 'library') {
+    mid = '<div class="mono text-[16px] font-black tracking-wide mt-3.5 truncate">' + esc(groupCode(FORM.member || FORM.code) || '0000-0000') + '</div>' +
+      '<div class="text-[10px] opacity-85 mt-1 truncate">' + esc([FORM.tier, FORM.where].filter(Boolean).join(' · ') || '등급 · 사용처') + '</div>';
+  } else {
+    mid = '<div class="text-[12.5px] font-bold mt-3.5 truncate">' + esc(FORM.where || '사용처') + '</div>' +
+      '<div class="text-[10px] opacity-85 mt-1 truncate">' + esc([FORM.expire ? fmtDate(FORM.expire) + '까지' : '', FORM.amount ? fmtMoney(FORM.amount) : ''].filter(Boolean).join(' · ') || '유효기간') + '</div>';
+  }
+  var photoBg = draftPhoto && draftPhoto.url ? 'background-image:linear-gradient(160deg, rgba(0,0,0,.55), rgba(0,0,0,.75)), url(' + draftPhoto.url + ');background-size:cover;background-position:center;' : '';
+  $('previewFront').innerHTML = '<div class="pass w-full h-full !rounded-[1.15rem]" style="--c1:' + cat.c1 + ';--c2:' + cat.c2 + ';' + photoBg + 'cursor:default">' +
+    '<div class="relative z-10 flex items-start justify-between gap-2">' +
+      '<div class="flex items-center gap-2 min-w-0">' +
+        '<span class="monogram">' + esc(initial) + '</span>' +
+        '<div class="min-w-0"><div class="text-[8.5px] font-black tracking-[.16em] opacity-70">' + cat.dept + '</div>' +
+        '<div class="text-[14px] font-black truncate leading-tight">' + esc(headTitle) + '</div>' +
+        '<div class="text-[9.5px] opacity-75 truncate">' + esc(headSub) + '</div></div>' +
+      '</div>' +
+      (dd ? '<span class="dday ' + dd.cls + '">' + esc(dd.text) + '</span>' : '') +
+    '</div>' +
+    '<div class="pass-body relative z-10">' + mid +
+      '<div class="perf"></div>' +
+      '<div class="text-[9.5px] mono opacity-90 truncate">' + esc(groupCode(FORM.code) || '코드 번호') + '</div>' +
+    '</div></div>';
+
+  var rows = [];
+  function row(label, v) { if (v) rows.push([label, v]); }
+  if (isTicket) {
+    row('구간', [FORM.from, FORM.to].filter(Boolean).join(' → '));
+    row('출발', fmtDateTime(FORM.depart));
+    row('도착', fmtDateTime(FORM.arrive));
+    row('좌석', FORM.seat);
+    row('게이트', FORM.gate);
+    row('승강장', FORM.platform);
+    row('호차', FORM.car);
+    row('예약번호', FORM.booking);
+    row('탑승자', FORM.passenger);
+  } else {
+    row('유효기간', fmtDate(FORM.expire));
+    row('사용처', FORM.where);
+    row('회원번호', FORM.member);
+    row('등급', FORM.tier);
+    row('금액', fmtMoney(FORM.amount));
+  }
+  row('메모', FORM.memo);
+  $('previewBack').innerHTML = '<div class="w-full h-full rounded-[1.15rem] bg-neutral-900 text-white p-4 relative overflow-hidden flex flex-col">' +
+    '<div class="absolute inset-0 opacity-[.18] pointer-events-none" style="background-image:radial-gradient(120% 90% at 100% 0%, ' + cat.c2 + ', transparent 60%)"></div>' +
+    '<div class="relative z-10 flex items-center justify-between">' +
+      '<span class="text-[8.5px] font-black tracking-[.2em] opacity-70">PASS DETAILS</span>' +
+      '<span class="text-[9px] opacity-60">' + cat.label + '</span></div>' +
+    '<div class="relative z-10 mt-2 text-[13px] font-black truncate">' + esc(title) + '</div>' +
+    '<div class="relative z-10 mt-2.5 space-y-1.5 overflow-auto no-scrollbar flex-1 pr-0.5">' +
+      (rows.length ? rows.map(function (r) { return '<div class="flex items-start justify-between gap-2 text-[10.5px]"><span class="opacity-60 shrink-0">' + esc(r[0]) + '</span><span class="font-bold text-right break-all">' + esc(r[1]) + '</span></div>'; }).join('') : '<div class="text-[10.5px] opacity-60">오른쪽 면이면 상세 정보가 표시됩니다. 지금은 아무것도 입력되지 않았어요.</div>') +
+    '</div>' +
+    '<div class="relative z-10 mt-2 flex items-center justify-between text-[8.5px] opacity-50"><span>LEMON WALLET</span><span>탭하면 풀스크린 패스</span></div>' +
+  '</div>';
+
+  var sum = [];
+  function srow(k, v) { if (v) sum.push([k, v]); }
+  srow('종류', cat.label);
+  srow('브랜드', brand);
+  srow('이름', FORM.title);
+  srow('코드', FORM.code ? state.codeType.toUpperCase() + ' · ' + FORM.code : '없음');
+  srow('사진', draftPhoto ? draftPhoto.name || '첨부됨' : (photoRemove ? '삭제 예정' : '없음'));
+  $('formSummary').innerHTML = sum.map(function (r) {
+    return '<div class="flex items-start justify-between gap-2"><dt class="text-neutral-400 shrink-0">' + esc(r[0]) + '</dt><dd class="font-bold text-right break-all">' + esc(r[1]) + '</dd></div>';
+  }).join('') || '<div class="text-[11px] text-neutral-400">입력한 내용이 없습니다.</div>';
+}
+
+function setFavSwitch(on) {
+  state.fav = !!on;
+  $('swFav').classList.toggle('on', !!on);
+  $('swFav').setAttribute('aria-checked', on ? 'true' : 'false');
+}
+
+function setStudioMode(card) {
+  state.editing = card ? card.id : null;
+  $('studioMode').textContent = card ? '편집 중' : '새 카드';
+  $('saveLabel').textContent = card ? '수정 저장' : '지갑에 저장';
+  $('btnDeleteCard').classList.toggle('hidden', !card);
+}
+
+function newCardDraft() {
+  FORM = {};
+  draftPhoto = null;
+  photoRemove = false;
+  setStudioMode(null);
+  $('fBrand').value = '';
+  $('fTitle').value = '';
+  $('fCode').value = '';
+  state.codeType = TICKETS[state.cat] ? 'qr' : 'code128';
+  $('photoThumbWrap').classList.add('hidden');
+  $('photoThumbWrap').classList.remove('flex');
+  $('dropText').textContent = '사진을 끌어다 놓거나 눌러서 선택 (기프티콘·탑승권 원본)';
+  setFavSwitch(false);
+  renderPicker();
+  syncCodeType();
+  renderFields();
+  renderPreview();
+}
+
+function openEdit(id) {
+  var card = CARDS.filter(function (c) { return c.id === id; })[0];
+  if (!card) return;
+  closePass();
+  state.cat = card.cat;
+  state.editing = card.id;
+  setStudioMode(card);
+  renderPicker();
+  fillForm(card);
+  draftPhoto = null;
+  photoRemove = false;
+  $('photoThumbWrap').classList.add('hidden');
+  $('photoThumbWrap').classList.remove('flex');
+  renderPreview();
+  go('studio');
+  if (card.hasPhoto) {
+    photoURL(card.id).then(function (u) {
+      if (!u) return;
+      $('photoThumb').src = u;
+      $('photoName').textContent = '저장된 원본 사진';
+      $('photoMeta').textContent = '불러오는 중';
+      $('photoThumbWrap').classList.remove('hidden');
+      $('photoThumbWrap').classList.add('flex');
+      dbGetPhoto(card.id).then(function (p) {
+        if (p && p.size) $('photoMeta').textContent = fmtBytes(p.size) + (p.type ? ' · ' + String(p.type).split('/')[1] : '');
+      }).catch(function () { });
+    });
+  }
+}
+
+function handlePhoto(file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type || '')) { Lemon.toast('이미지 파일만 첨부할 수 있어요', 'err'); return; }
+  if (draftPhoto && draftPhoto.url) URL.revokeObjectURL(draftPhoto.url);
+  var url = URL.createObjectURL(file);
+  draftPhoto = { blob: file, name: file.name || '사진', size: file.size, type: file.type, url: url };
+  photoRemove = false;
+  $('photoThumb').src = url;
+  $('photoName').textContent = file.name || '사진';
+  $('photoMeta').textContent = fmtBytes(file.size) + ' · ' + String(file.type || '').split('/')[1];
+  $('photoThumbWrap').classList.remove('hidden');
+  $('photoThumbWrap').classList.add('flex');
+  $('dropText').textContent = '다른 사진으로 바꾸려면 다시 눌러 주세요';
+  renderPreview();
+  Lemon.hap(8);
+}
+
+async function saveCard() {
+  readInputs();
+  var cat = state.cat;
+  var brand = (FORM.brand || '').trim();
+  var title = (FORM.title || '').trim();
+  if (!brand && !title) {
+    Lemon.toast('브랜드나 카드 이름 중 하나는 적어 주세요', 'err');
+    $('fBrand').focus();
+    return;
+  }
+  if (TICKETS[cat] && (!FORM.from || !FORM.to)) {
+    Lemon.toast('출발지와 도착지를 적어 주세요', 'err');
+    var fromEl = document.querySelector('[data-k="from"]');
+    if (fromEl) fromEl.focus();
+    return;
+  }
+  if (TICKETS[cat] && !FORM.depart) {
+    Lemon.toast('탑승 일시를 넣으면 D-Day가 자동 계산됩니다', 'info');
+  }
+  var id = state.editing || ('w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
+  var prev = CARDS.filter(function (c) { return c.id === id; })[0] || null;
+  var rec = {
+    id: id, cat: cat, brand: brand, title: title,
+    code: (FORM.code || '').trim(), codeType: state.codeType,
+    fav: !!state.fav,
+    used: prev ? !!prev.used : false,
+    usedAt: prev ? prev.usedAt || null : null,
+    createdAt: prev ? prev.createdAt : Date.now(),
+    updatedAt: Date.now(),
+    hasPhoto: draftPhoto ? true : (photoRemove ? false : !!(prev && prev.hasPhoto))
+  };
+  FIELD_KEYS.forEach(function (k) {
+    var v = FORM[k];
+    if (v === undefined || v === null) return;
+    v = typeof v === 'string' ? v.trim() : v;
+    if (v === '') return;
+    if (k === 'amount' || k === 'points') v = Number(v) || 0;
+    rec[k] = v;
+  });
+  /* 탑승권에 코드를 따로 넣지 않았으면 예약번호를 QR 내용으로 쓴다. */
+  if (TICKETS[cat] && !rec.code && rec.booking) {
+    rec.code = rec.booking;
+    rec.codeType = state.codeType === 'none' ? 'qr' : state.codeType;
+  }
+  var btn = $('btnSaveCard');
+  btn.disabled = true;
+  try {
+    if (draftPhoto) {
+      await dbPutPhoto({ id: id, blob: draftPhoto.blob, name: draftPhoto.name, size: draftPhoto.size, type: draftPhoto.type, ts: Date.now() });
+      if (PHOTO_URLS[id]) { URL.revokeObjectURL(PHOTO_URLS[id]); delete PHOTO_URLS[id]; }
+    } else if (photoRemove) {
+      await dbDelPhoto(id);
+      if (PHOTO_URLS[id]) { URL.revokeObjectURL(PHOTO_URLS[id]); delete PHOTO_URLS[id]; }
+    }
+    await dbPutCard(rec);
+    await loadCards();
+    Lemon.toast(prev ? '카드를 수정했어요' : '지갑에 담았어요', 'ok');
+    Lemon.hap(14);
+    Lemon.confetti(16);
+    if (draftPhoto && draftPhoto.url) URL.revokeObjectURL(draftPhoto.url);
+    draftPhoto = null;
+    photoRemove = false;
+    newCardDraft();
+    renderAll();
+    go('wallet');
+  } catch (e) {
+    Lemon.toast('저장에 실패했어요. 저장 공간을 확인해 주세요', 'err');
+    if (window.console) console.warn('[wallet] save failed', e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteCard(id) {
+  if (!id) return;
+  if (!window.confirm('이 카드를 지울까요? 첨부한 사진도 함께 삭제됩니다.')) return;
+  try {
+    await dbDelCard(id);
+    await dbDelPhoto(id);
+    if (PHOTO_URLS[id]) { URL.revokeObjectURL(PHOTO_URLS[id]); delete PHOTO_URLS[id]; }
+    await loadCards();
+    renderAll();
+    closePass();
+    newCardDraft();
+    Lemon.toast('카드를 지웠어요', 'info');
+  } catch (e) {
+    Lemon.toast('삭제에 실패했어요', 'err');
+  }
+}
+
+async function toggleUsed(id, force) {
+  var card = CARDS.filter(function (c) { return c.id === id; })[0];
+  if (!card) return;
+  var next = force === undefined ? !card.used : !!force;
+  var rec = Object.assign({}, card, { used: next, usedAt: next ? new Date().toISOString() : null, updatedAt: Date.now() });
+  try {
+    await dbPutCard(rec);
+    await loadCards();
+    renderAll();
+    if (passId === id) renderPass();
+    Lemon.toast(next ? '사용 완료로 표시했어요' : '다시 사용할 수 있게 되돌렸어요', 'ok');
+    Lemon.hap(10);
+  } catch (e) {
+    Lemon.toast('변경을 저장하지 못했어요', 'err');
+  }
+}
+
+async function toggleFav(id) {
+  var card = CARDS.filter(function (c) { return c.id === id; })[0];
+  if (!card) return;
+  var rec = Object.assign({}, card, { fav: !card.fav, updatedAt: Date.now() });
+  try {
+    await dbPutCard(rec);
+    await loadCards();
+    renderAll();
+    if (passId === id) renderPass();
+    Lemon.hap(6);
+  } catch (e) { Lemon.toast('줄겨찾기를 저장하지 못했어요', 'err'); }
+}
+
+/* ---------------- 13. pass view ---------------- */
+function detailRows(card) {
+  var rows = [];
+  function add(label, v) { if (v) rows.push([label, v]); }
+  if (TICKETS[card.cat]) {
+    add('탑승일시', fmtDateTime(card.depart));
+    add('도착', fmtDateTime(card.arrive));
+    add('좌석', card.seat);
+    add('게이트', card.gate);
+    add('호차', card.car);
+    add('타는 곳', card.platform);
+    add('예약번호', card.booking);
+    add('탑승자', card.passenger);
+    add('항공사 · 편명', [card.carrier, card.service].filter(Boolean).join(' '));
+  } else {
+    add('유효기간', fmtDate(card.expire));
+    add('사용처', card.where);
+    add('회원번호', card.member);
+    add('등급', card.tier);
+    add('포인트', card.points ? Number(card.points).toLocaleString('ko-KR') + 'P' : '');
+    add('교환번호', card.pin);
+    add('금액', fmtMoney(card.amount));
+  }
+  add('메모', card.memo);
+  return rows;
+}
+
+function passHTML(card) {
+  var cat = CATS[card.cat] || CATS.coupon;
+  var dd = ddayBadge(card);
+  var head = headline(card);
+  var code = codeOf(card);
+  var codeSvg = '';
+  if (card.codeType === 'qr' && code) codeSvg = QR.svg(code, { quiet: 3 });
+  else if (card.codeType !== 'none' && code) codeSvg = Code128.svg(code, { height: 104 });
+  var codeArea = '';
+  if (codeSvg) {
+    codeArea = '<div class="pv-code-area relative">' + codeSvg + '<div class="scanline"></div></div>' +
+      '<div class="text-center mono text-[12.5px] font-black tracking-[.12em] mt-2 break-all">' + esc(groupCode(code)) + '</div>';
+  } else if (card.codeType === 'none') {
+    codeArea = card.hasPhoto
+      ? '<div class="rounded-xl overflow-hidden border border-neutral-200"><img data-pass-photo="1" alt="원본" class="w-full max-h-[190px] object-contain bg-neutral-50"></div>'
+      : '<div class="rounded-xl border border-dashed border-neutral-300 py-6 text-center text-[11px] text-neutral-400">코드 없이 보관 중인 카드입니다</div>';
+  } else {
+    codeArea = '<div class="rounded-xl border border-dashed border-neutral-300 py-6 text-center text-[11px] text-neutral-400">코드 번호가 없어 바코드를 만들 수 없습니다</div>';
+  }
+
+  var route = '';
+  if (TICKETS[card.cat]) {
+    var chips = [
+      ['좌석', card.seat],
+      ['게이트', card.gate || card.platform],
+      ['예약', card.booking]
+    ].filter(function (x) { return x[1]; });
+    route = '<div class="mt-3 flex items-end justify-between gap-2">' +
+      '<div class="min-w-0"><div class="route-code truncate">' + esc(card.fromCode || card.from || '-') + '</div><div class="text-[10px] text-neutral-500 truncate">' + esc(card.from || '') + '</div></div>' +
+      '<div class="flex-1 px-1.5 pb-1.5">' +
+        '<div class="flex items-center gap-1 text-neutral-300"><span class="h-px flex-1 bg-neutral-200"></span>' + icon(cat.icon, 'w-3.5 h-3.5') + '<span class="h-px flex-1 bg-neutral-200"></span></div>' +
+        '<div class="text-[9.5px] text-center text-neutral-500 mt-1 font-bold">' + esc(timeText(card)) + '</div>' +
+      '</div>' +
+      '<div class="min-w-0 text-right"><div class="route-code truncate">' + esc(card.toCode || card.to || '-') + '</div><div class="text-[10px] text-neutral-500 truncate">' + esc(card.to || '') + '</div></div>' +
+    '</div>' +
+    (chips.length ? '<div class="grid grid-cols-3 gap-1.5 mt-2.5">' + chips.map(function (c) {
+      return '<div class="rounded-lg bg-neutral-50 border border-neutral-200 py-1.5 text-center"><div class="text-[8.5px] text-neutral-400 font-bold">' + c[0] + '</div><div class="text-[12px] font-black truncate">' + esc(c[1]) + '</div></div>';
+    }).join('') + '</div>' : '');
+  }
+
+  var rows = detailRows(card);
+  var details = rows.length ? '<dl class="mt-3">' + rows.map(function (r) {
+    return '<div class="pv-detail"><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>';
+  }).join('') + '</dl>' : '';
+  var photoRow = card.hasPhoto && codeSvg
+    ? '<button type="button" data-pass-photo-open="1" class="mt-2.5 w-full flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-1.5 text-left hover:border-neutral-300 transition">' +
+      '<img data-pass-photo="1" alt="첨부한 원본 사진" class="w-14 h-10 rounded-lg object-cover bg-neutral-200 shrink-0">' +
+      '<span class="text-[10.5px] font-black text-neutral-700">원본 사진 보기</span>' +
+      '<svg class="w-3.5 h-3.5 ml-auto mr-1 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"></path></svg></button>'
+    : '';
+
+  var ddCls = dd && dd.cls === 'hot' ? 'text-rose-600 bg-rose-50 border-rose-100' : dd && dd.cls === 'warn' ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-neutral-500 bg-neutral-100 border-neutral-200';
+  var usedStamp = card.used ? '<div class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none" style="background:rgba(255,255,255,.62)"><span class="text-[19px] font-black tracking-[.18em] text-neutral-500 border-[3px] border-neutral-400 rounded-xl px-4 py-2 bg-white/70" style="transform:rotate(-8deg)">사용 완료</span></div>' : '';
+
+  return '<div class="flex items-start justify-between gap-2 relative">' +
+    '<div class="flex items-center gap-2 min-w-0">' +
+      '<span class="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0" style="background-image:linear-gradient(140deg,' + cat.c1 + ',' + cat.c2 + ')">' + icon(cat.icon) + '</span>' +
+      '<div class="min-w-0">' +
+        '<div class="text-[8.5px] font-black tracking-[.18em] text-neutral-400">' + cat.dept + '</div>' +
+        '<div class="text-[15px] font-black truncate leading-tight">' + esc(head.title) + '</div>' +
+        '<div class="text-[10.5px] text-neutral-500 truncate">' + esc(head.sub) + '</div>' +
+      '</div>' +
+    '</div>' +
+    (dd ? '<span class="text-[10px] font-black px-2 py-1 rounded-lg border shrink-0 ' + ddCls + '">' + esc(dd.text) + '</span>' : '') +
+  '</div>' + route + '<div class="mt-3">' + codeArea + '</div>' + details +
+  photoRow +
+  '<div class="' + (photoRow ? 'mt-2' : 'mt-2.5') + ' flex items-center justify-between text-[8.5px] text-neutral-400 font-bold"><span>LEMON WALLET</span><span>' + esc(cat.label) + ' · ' + esc(fmtDate(card.updatedAt || card.createdAt)) + '</span></div>' + usedStamp;
+}
+
+function renderPass() {
+  var card = CARDS.filter(function (c) { return c.id === passId; })[0];
+  if (!card) { closePass(); return; }
+  $('pvCard').innerHTML = passHTML(card);
+  $('pvTopLabel').textContent = headline(card).title + (TICKETS[card.cat] ? ' · ' + headline(card).sub : '');
+  $('pvUsedLabel').textContent = card.used ? '되돌리기' : '사용 완료';
+  $('btnPassImage').disabled = !card.hasPhoto;
+  $('btnFavPass').style.opacity = card.fav ? '1' : '.65';
+  $('btnFavPass').style.color = card.fav ? '#f5c542' : '';
+  if (card.hasPhoto) {
+    photoURL(card.id).then(function (u) {
+      $$('[data-pass-photo]', $('pvCard')).forEach(function (img) { if (u) img.src = u; });
+    });
+  }
+}
+
+function openPass(id) {
+  var card = CARDS.filter(function (c) { return c.id === id; })[0];
+  if (!card) return;
+  passId = id;
+  renderPass();
+  $('passView').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  requestWakeLock();
+  var fl = $('brightFlash');
+  fl.classList.remove('go');
+  void fl.offsetWidth;
+  fl.classList.add('go');
+  Lemon.hap(12);
+}
+
+function closePass() {
+  $('passView').classList.remove('open');
+  $('passView').classList.remove('boost');
+  $('btnBoost').textContent = '밝기 부스트';
+  passId = null;
+  document.body.style.overflow = '';
+  releaseWakeLock();
+}
+
+function requestWakeLock() {
+  var el = $('pvWake');
+  if (!('wakeLock' in navigator)) {
+    if (el) el.textContent = '화면 켜짐 유지 · 이 브라우저는 미지원';
+    return;
+  }
+  try {
+    navigator.wakeLock.request('screen').then(function (lock) {
+      wakeLock = lock;
+      if (el) el.textContent = '화면 켜짐 유지 · 켜짐';
+      lock.addEventListener('release', function () { if (el) el.textContent = '화면 켜짐 유지 · 해제됨'; });
+    }).catch(function () { if (el) el.textContent = '화면 켜짐 유지 · 권한 필요'; });
+  } catch (e) {
+    if (el) el.textContent = '화면 켜짐 유지 · 미지원';
+  }
+}
+function releaseWakeLock() {
+  try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) { }
+}
+
+/* ---------------- 14. zoom ---------------- */
+var zoom = { scale: 1, x: 0, y: 0, drag: false, sx: 0, sy: 0, ox: 0, oy: 0 };
+function applyZoom() {
+  var img = $('zoomImg');
+  img.style.transform = 'translate(' + zoom.x + 'px,' + zoom.y + 'px) scale(' + zoom.scale + ')';
+  $('btnZoomReset').textContent = Math.round(zoom.scale * 100) + '%';
+}
+function fitScale() {
+  var img = $('zoomImg');
+  var iw = img.naturalWidth || 1, ih = img.naturalHeight || 1;
+  var s = Math.min(window.innerWidth * 0.94 / iw, window.innerHeight * 0.86 / ih, 1);
+  return Math.max(0.15, s);
+}
+async function openZoom(id) {
+  var u = await photoURL(id);
+  if (!u) { Lemon.toast('저장된 사진이 없어요', 'info'); return; }
+  var img = $('zoomImg');
+  img.src = u;
+  await new Promise(function (res) {
+    if (img.complete && img.naturalWidth) return res();
+    img.onload = res; img.onerror = res;
+  });
+  zoom = { scale: fitScale(), fit: fitScale(), x: 0, y: 0, drag: false, sx: 0, sy: 0, ox: 0, oy: 0 };
+  applyZoom();
+  $('zoomView').classList.add('open');
+}
+function closeZoom() { $('zoomView').classList.remove('open'); }
+
+/* ---------------- 15. backup ---------------- */
+function blobToDataURL(blob) {
+  return new Promise(function (resolve, reject) {
+    var fr = new FileReader();
+    fr.onload = function () { resolve(String(fr.result)); };
+    fr.onerror = function () { reject(fr.error); };
+    fr.readAsDataURL(blob);
+  });
+}
+function dataURLToBlob(dataUrl) {
+  var parts = String(dataUrl).split(',');
+  var mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/jpeg';
+  var bin = atob(parts[1] || '');
+  var arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+async function exportBackup() {
+  if (!CARDS.length) { Lemon.toast('내보낼 카드가 없어요', 'info'); return; }
+  try {
+    Lemon.toast('백업 파일을 만드는 중이에요', 'info');
+    var photos = {};
+    var list = await dbAllPhotos();
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      if (!p || !p.blob) continue;
+      photos[p.id] = { name: p.name || '', type: p.type || p.blob.type || '', data: await blobToDataURL(p.blob) };
+    }
+    var d = new Date();
+    var stamp = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes());
+    var payload = { app: 'lemon-wallet', version: 1, exportedAt: new Date().toISOString(), cards: CARDS, photos: photos };
+    Lemon.download('lemon-wallet-backup-' + stamp + '.json', JSON.stringify(payload), 'application/json');
+    Lemon.toast('백업 파일을 내려받았어요', 'ok');
+  } catch (e) {
+    Lemon.toast('백업에 실패했어요', 'err');
+  }
+}
+async function importBackup(file) {
+  if (!file) return;
+  try {
+    var text = await file.text();
+    var data = JSON.parse(text);
+    if (!data || !Array.isArray(data.cards)) throw new Error('invalid');
+    var added = 0, updated = 0;
+    for (var i = 0; i < data.cards.length; i++) {
+      var raw = data.cards[i];
+      if (!raw || typeof raw !== 'object' || !raw.id) continue;
+      var rec = {};
+      ['id', 'cat', 'brand', 'title', 'code', 'codeType', 'fav', 'used', 'usedAt', 'createdAt', 'updatedAt', 'where', 'amount', 'expire', 'pin', 'memo', 'member', 'tier', 'points', 'carrier', 'service', 'from', 'fromCode', 'to', 'toCode', 'depart', 'arrive', 'seat', 'car', 'gate', 'platform', 'booking', 'passenger'].forEach(function (k) {
+        if (raw[k] !== undefined) rec[k] = raw[k];
+      });
+      if (!CATS[rec.cat]) rec.cat = 'coupon';
+      rec.id = String(rec.id);
+      rec.createdAt = rec.createdAt || Date.now();
+      rec.updatedAt = Date.now();
+      var existing = CARDS.filter(function (c) { return c.id === rec.id; })[0];
+      if (existing) { updated++; rec.used = rec.used === undefined ? existing.used : rec.used; }
+      else added++;
+      var ph = data.photos && data.photos[raw.id];
+      if (ph && ph.data) {
+        var blob = dataURLToBlob(ph.data);
+        await dbPutPhoto({ id: rec.id, blob: blob, name: ph.name || '', size: blob.size, type: ph.type || blob.type, ts: Date.now() });
+        rec.hasPhoto = true;
+      }
+      await dbPutCard(rec);
+    }
+    await loadCards();
+    renderAll();
+    Lemon.toast('가져오기 완료 · 새로 ' + added + '장, 갱신 ' + updated + '장', 'ok');
+    Lemon.confetti(20);
+  } catch (e) {
+    Lemon.toast('백업 파일을 읽을 수 없어요', 'err');
+  }
+}
+async function clearAll() {
+  if (!CARDS.length) { Lemon.toast('비울 카드가 없어요', 'info'); return; }
+  if (!window.confirm('모든 카드와 사진을 이 브라우저에서 지웁니다. 계속할까요?')) return;
+  try {
+    await dbClearAll();
+    Object.keys(PHOTO_URLS).forEach(function (k) { URL.revokeObjectURL(PHOTO_URLS[k]); delete PHOTO_URLS[k]; });
+    await loadCards();
+    renderAll();
+    Lemon.toast('지갑을 비웠어요', 'info');
+  } catch (e) {
+    Lemon.toast('비우지 못했어요', 'err');
+  }
+}
+
+/* ---------------- 16. seed / load ---------------- */
+async function loadCards() {
+  try {
+    var list = await dbAllCards();
+    CARDS = (list || []).filter(function (c) { return c && c.id; });
+  } catch (e) {
+    CARDS = CARDS || [];
+    Lemon.toast('이 브라우저에서는 저장소를 열 수 없어요', 'err');
+  }
+  return CARDS;
+}
+
+async function seedDemo() {
+  var now = Date.now();
+  function iso(offsetDays, h, m) {
+    var d = new Date(); d.setDate(d.getDate() + offsetDays); d.setHours(h || 0, m || 0, 0, 0);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + (h === undefined ? '' : 'T' + pad2(h) + ':' + pad2(m || 0));
+  }
+  var demo = [
+    { id: 'demo-coupon', cat: 'gifticon', brand: '스타벅스', title: '아메리카노 1잔', where: '전 지점', amount: 4500, expire: iso(2), code: '8801234567890', codeType: 'code128', memo: '주말 제외', fav: true, createdAt: now - 3000 },
+    { id: 'demo-flight', cat: 'flight', brand: '대한항공', title: '김포 → 제주', carrier: '대한항공', service: 'KE1201', from: '김포', fromCode: 'GMP', to: '제주', toCode: 'CJU', depart: iso(5, 14, 20), arrive: iso(5, 15, 30), seat: '12A', gate: '11', booking: 'ABC123', passenger: '김민중', code: 'ABC123KE1201', codeType: 'qr', createdAt: now - 2000 },
+    { id: 'demo-library', cat: 'library', brand: '시립도서관', title: '대출증', member: '2024-018394', where: '시립도서관 본관', tier: '5권 · 14일', expire: iso(40), code: '2024018394', codeType: 'code128', memo: '11/20까지 3권 반납', createdAt: now - 1000 }
+  ];
+  try {
+    for (var i = 0; i < demo.length; i++) await dbPutCard(demo[i]);
+    await loadCards();
+    renderAll();
+    Lemon.toast('예시 카드 3장을 담았어요', 'ok');
+  } catch (e) {
+    Lemon.toast('예시 카드를 저장하지 못했어요', 'err');
+  }
+}
+
+/* ---------------- 17. bindings ---------------- */
+function bindStudio() {
+  $('catPicker').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-cat]');
+    if (!b) return;
+    readInputs();
+    state.cat = b.getAttribute('data-cat');
+    if (!FORM.codeType) state.codeType = TICKETS[state.cat] ? 'qr' : 'code128';
+    renderPicker();
+    renderFields();
+    syncCodeType();
+    renderPreview();
+    Lemon.hap(6);
+  });
+  $('codeTypeSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-ct]');
+    if (!b) return;
+    readInputs();
+    state.codeType = b.getAttribute('data-ct');
+    syncCodeType();
+    renderPreview();
+  });
+  var liveInput = function (e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+    if (el.getAttribute('data-k')) FORM[el.getAttribute('data-k')] = el.value;
+    else if (el === $('fBrand')) FORM.brand = el.value;
+    else if (el === $('fTitle')) FORM.title = el.value;
+    else if (el === $('fCode')) FORM.code = el.value;
+    renderCodePreview();
+    renderPreview();
+  };
+  ['fBrand', 'fTitle', 'fCode'].forEach(function (id) {
+    $(id).addEventListener('input', liveInput);
+  });
+  $('formFields').addEventListener('input', liveInput);
+  $('swFav').addEventListener('click', function () { setFavSwitch(!state.fav); });
+  $('btnFlip').addEventListener('click', function () {
+    var inner = $('previewInner');
+    var flipped = inner.getAttribute('data-flipped') === '1';
+    inner.style.transform = flipped ? '' : 'rotateY(180deg)';
+    inner.setAttribute('data-flipped', flipped ? '0' : '1');
+    Lemon.hap(6);
+  });
+  $('btnNewCard').addEventListener('click', function () {
+    newCardDraft();
+    Lemon.toast('새 카드로 시작합니다', 'info');
+  });
+  $('btnSaveCard').addEventListener('click', saveCard);
+  $('btnDeleteCard').addEventListener('click', function () { if (state.editing) deleteCard(state.editing); });
+
+  $('dropZone').addEventListener('click', function () { $('photoInput').click(); });
+  $('dropZone').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('photoInput').click(); } });
+  $('photoInput').addEventListener('change', function (e) { handlePhoto(e.target.files && e.target.files[0]); });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    $('dropZone').addEventListener(ev, function (e) { e.preventDefault(); $('dropZone').classList.add('drag'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    $('dropZone').addEventListener(ev, function (e) { e.preventDefault(); $('dropZone').classList.remove('drag'); });
+  });
+  $('dropZone').addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handlePhoto(f);
+  });
+  $('btnRemovePhoto').addEventListener('click', function () {
+    if (draftPhoto && draftPhoto.url) URL.revokeObjectURL(draftPhoto.url);
+    draftPhoto = null;
+    if (state.editing) photoRemove = true;
+    $('photoThumbWrap').classList.add('hidden');
+    $('photoThumbWrap').classList.remove('flex');
+    $('photoInput').value = '';
+    $('dropText').textContent = '사진을 끌어다 놓거나 눌러서 선택 (기프티콘·탑승권 원본)';
+    renderPreview();
+  });
+  document.addEventListener('paste', function (e) {
+    if (!isVisible('studio')) return;
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) {
+        var f = items[i].getAsFile();
+        if (f) { handlePhoto(f); Lemon.toast('클립보드 사진을 첨부했어요', 'ok'); }
+        break;
+      }
+    }
+  });
+}
+
+function bindWallet() {
+  $('filterChips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-filter]');
+    if (!b) return;
+    state.filter = b.getAttribute('data-filter');
+    renderWallet();
+    Lemon.hap(6);
+  });
+  $('catGrid').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-cat-filter]');
+    if (!b) return;
+    var k = b.getAttribute('data-cat-filter');
+    state.filter = CATS[k].group;
+    state.q = '';
+    $('searchInput').value = '';
+    $('btnClearSearch').classList.add('hidden');
+    go('wallet');
+    renderWallet();
+  });
+  $('searchInput').addEventListener('input', function () {
+    state.q = $('searchInput').value;
+    $('btnClearSearch').classList.toggle('hidden', !state.q);
+    renderWallet();
+  });
+  $('btnClearSearch').addEventListener('click', function () {
+    state.q = '';
+    $('searchInput').value = '';
+    $('btnClearSearch').classList.add('hidden');
+    renderWallet();
+  });
+  $('sortSelect').addEventListener('change', function () {
+    state.sort = $('sortSelect').value;
+    renderWallet();
+  });
+  $('btnToggleUsed').addEventListener('click', function () {
+    state.showUsed = !state.showUsed;
+    renderWallet();
+  });
+  $('btnSeed').addEventListener('click', seedDemo);
+  $('btnExport').addEventListener('click', exportBackup);
+  $('btnImportOpen').addEventListener('click', function () { $('importInput').click(); });
+  $('importInput').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (f) importBackup(f);
+    e.target.value = '';
+  });
+  $('btnClearAll').addEventListener('click', clearAll);
+
+  document.addEventListener('click', function (e) {
+    var star = e.target.closest('[data-fav-id]');
+    if (star) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFav(star.getAttribute('data-fav-id'));
+      return;
+    }
+    var open = e.target.closest('[data-open]');
+    if (open) { openPass(open.getAttribute('data-open')); return; }
+    var card = e.target.closest('.pass[data-id]');
+    if (card && !e.target.closest('a')) { openPass(card.getAttribute('data-id')); return; }
+    var goto = e.target.closest('[data-goto]');
+    if (goto) { go(goto.getAttribute('data-goto')); return; }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var card = e.target.closest && e.target.closest('.pass[data-id]');
+    if (card) { e.preventDefault(); openPass(card.getAttribute('data-id')); }
+  });
+}
+
+function bindPass() {
+  $('btnClosePass').addEventListener('click', closePass);
+  $('passView').addEventListener('click', function (e) {
+    if (e.target === $('passView')) closePass();
+  });
+  $('btnPassUsed').addEventListener('click', function () { if (passId) toggleUsed(passId); });
+  $('btnPassEdit').addEventListener('click', function () { if (passId) openEdit(passId); });
+  $('btnFavPass').addEventListener('click', function () { if (passId) toggleFav(passId); });
+  $('btnPassImage').addEventListener('click', function () { if (passId) openZoom(passId); });
+  $('pvCard').addEventListener('click', function (e) {
+    if (e.target.closest('[data-pass-photo-open]') && passId) openZoom(passId);
+  });
+  $('btnBoost').addEventListener('click', function () {
+    var on = $('passView').classList.toggle('boost');
+    $('btnBoost').textContent = on ? '밝기 원래대로' : '밝기 부스트';
+    var fl = $('brightFlash');
+    fl.classList.remove('go');
+    void fl.offsetWidth;
+    fl.classList.add('go');
+    Lemon.hap(8);
+  });
+  $('btnQuickPass').addEventListener('click', function () {
+    var fav = CARDS.filter(function (c) { return c.fav && !c.used; })[0];
+    var soon = sortCards(CARDS.filter(isSoon))[0];
+    var target = fav || soon || CARDS.filter(function (c) { return !c.used; })[0];
+    if (target) openPass(target.id);
+    else { go('studio'); Lemon.toast('먼저 카드를 하나 담아 주세요', 'info'); }
+  });
+  $('btnZoomClose').addEventListener('click', closeZoom);
+  $('btnZoomIn').addEventListener('click', function () { zoom.scale = Math.min(6, zoom.scale * 1.3); applyZoom(); });
+  $('btnZoomOut').addEventListener('click', function () { zoom.scale = Math.max(0.15, zoom.scale / 1.3); applyZoom(); });
+  $('btnZoomReset').addEventListener('click', function () { zoom.scale = zoom.fit || 1; zoom.x = 0; zoom.y = 0; applyZoom(); });
+  $('zoomView').addEventListener('wheel', function (e) {
+    e.preventDefault();
+    zoom.scale = Math.min(6, Math.max(0.5, zoom.scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+    applyZoom();
+  }, { passive: false });
+  var img = $('zoomImg');
+  img.addEventListener('pointerdown', function (e) {
+    zoom.drag = true; zoom.sx = e.clientX; zoom.sy = e.clientY; zoom.ox = zoom.x; zoom.oy = zoom.y;
+    img.setPointerCapture && img.setPointerCapture(e.pointerId);
+  });
+  img.addEventListener('pointermove', function (e) {
+    if (!zoom.drag) return;
+    zoom.x = zoom.ox + (e.clientX - zoom.sx);
+    zoom.y = zoom.oy + (e.clientY - zoom.sy);
+    applyZoom();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+    img.addEventListener(ev, function () { zoom.drag = false; });
+  });
+  $('zoomView').addEventListener('click', function (e) { if (e.target === $('zoomView')) closeZoom(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if ($('zoomView').classList.contains('open')) { closeZoom(); return; }
+    if ($('passView').classList.contains('open')) closePass();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && passId) requestWakeLock();
+  });
+}
+
+function isVisible(view) {
+  var sec = document.querySelector('[data-view="' + view + '"]');
+  return sec && !sec.classList.contains('hidden');
+}
+
+/* ---------------- 18. boot ---------------- */
+(async function boot() {
+  go = Lemon.initTabs('home');
+  renderPicker();
+  renderFields();
+  syncCodeType();
+  renderPreview();
+  bindStudio();
+  bindWallet();
+  bindPass();
+  document.addEventListener('lemon:view', function () {
+    if (isVisible('wallet')) renderWallet();
+    if (isVisible('home')) renderHome();
+  });
+  await loadCards();
+  renderAll();
+  if (location.hash === '#wallet' || location.hash === '#studio') {
+    renderWallet();
+  }
+  window.Wallet = {
+    cards: function () { return CARDS.slice(); },
+    state: state,
+    openPass: openPass,
+    openEdit: openEdit,
+    save: saveCard,
+    seed: seedDemo,
+    exportBackup: exportBackup,
+    importBackup: importBackup,
+    refresh: async function () { await loadCards(); renderAll(); },
+    renderAll: renderAll,
+    code128: Code128, qr: QR
+  };
+})();
+</script>
+</body>
+</html>
