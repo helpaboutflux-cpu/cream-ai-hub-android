@@ -28,6 +28,8 @@
   var memText = {};       /* key -> 저장된 원본 문자열 (rawGet/rawSet 용) */
   var idbSaved = {};      /* key -> true: IndexedDB 사본이 최신 저장본 */
   var idbSeq = {};        /* key -> 마지막 쓰기 순번 (늦게 끝난 옛 쓰기가 새 값을 덮지 않게) */
+  var pendingWrites = {}; /* key -> { text, seq }: 복원 전에 온 저장 요청 */
+  var pendingOrder = [];
   var idbTail = {};       /* key -> IndexedDB 작업 직렬화 꼬리 */
   var idbDb = null, idbOpenP = null;
   var hydrated = false, hydrateP = null, readyQ = [], idbNoticeShown = false;
@@ -118,8 +120,11 @@
      부르지 않는 페이지도 첫 화면부터 복원된 값을 동기적으로 읽을 수 있다.
      (sessionStorage 한도도 넘으면 조용히 건너뛴다. 원본은 IndexedDB 에 있다.) */
   var SESS_PREFIX = 'lemonkv:';
+  var SESS_RELOAD_KEY = 'lemonkv:boot-reloaded';
+  var bootReloaded = false;
+  var stalePage = false;   /* 복원보다 먼저 그려진 화면: 다시 불러오기 전까지 저장을 받지 않는다 */
   function sessPut(key, text) {
-    try { sessionStorage.setItem(SESS_PREFIX + key, text); } catch (e) { }
+    try { sessionStorage.setItem(SESS_PREFIX + key, text); return true; } catch (e) { return false; }
   }
   function sessDrop(key) {
     try { sessionStorage.removeItem(SESS_PREFIX + key); } catch (e) { }
@@ -167,6 +172,15 @@
   function writeKey(key, text) {
     var seq = (idbSeq[key] || 0) + 1;
     idbSeq[key] = seq;
+    /* 복원이 끝나기 전에 들어온 저장 요청은 바로 쓰지 않고 잠시 모아 둔다.
+       (그 화면은 아직 IndexedDB 값을 못 본 상태라, 빈 상태로 덮어쓰면 데이터가 사라진다) */
+    if (!hydrated) {
+      if (!pendingWrites[key]) pendingOrder.push(key);
+      pendingWrites[key] = { text: text, seq: seq };
+      return true;
+    }
+    /* 복원보다 먼저 그려진 낡은 화면의 저장은 받지 않는다 (IndexedDB 사본을 덮지 않게). */
+    if (stalePage) return true;
     try {
       localStorage.setItem(key, text);
       lastStoreError = null;
@@ -231,34 +245,80 @@
     isQuotaError: isQuotaError
   };
 
+  /* 새 탭처럼 sessionStorage 미러가 빈 상태에서 IndexedDB 값을 뒤늦게 읽으면,
+     이미 그려 놓은 페이지(Lemon.ready 를 부르지 않는 페이지)는 빈 화면을 보여 준다.
+     그대로 두면 그 빈 상태가 저장돼 IndexedDB 사본을 덮을 수 있으므로,
+     탭마다 한 번만 다시 불러와 미러를 동기로 읽게 한다. */
+  function maybeBootReload(late, mirrored) {
+    if (!late || !mirrored || bootReloaded) return;
+    if (doc.readyState === 'loading') return;      /* 아직 그리기 전: 그릴 때부터 값이 보인다 */
+    if (readyQ.length) return;                     /* Lemon.ready 로 기다리는 페이지는 직접 처리 */
+    try {
+      if (sessionStorage.getItem(SESS_RELOAD_KEY) === '1') return;
+      sessionStorage.setItem(SESS_RELOAD_KEY, '1');
+    } catch (e) { return; }                        /* 기록할 수 없으면 반복 새로고침을 피한다 */
+    bootReloaded = true;
+    stalePage = true;                              /* 이 화면의 상태는 낡았다: 저장을 막고 새로 불러온다 */
+    try { location.reload(); } catch (e) { }
+  }
+
+  /* 복원 전에 모아 둔 쓰기를 처리한다: IndexedDB 사본과 같은 내용이면 버리고,
+     다른 내용이면 복원된 값을 살리고 화면을 다시 부른다. */
+  function takePending(key, restoredText) {
+    var item = pendingWrites[key];
+    if (!item) return false;
+    delete pendingWrites[key];
+    return item.text !== restoredText;      /* true = 화면이 낡은 상태에서 쓴 값 */
+  }
+
+  function flushPending() {
+    var keys = pendingOrder;
+    pendingOrder = [];
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i], item = pendingWrites[key];
+      if (!item) continue;
+      delete pendingWrites[key];
+      if (idbSeq[key] !== item.seq) continue;   /* 그 사이 지워진 키 */
+      writeKey(key, item.text);
+    }
+  }
+
   /* 새로고침 시: IndexedDB 에 넘겨 저장했던 키들을 메모리로 복원한다. */
-  function finishHydrate(n) {
+  function finishHydrate(n, mirrored, overrode) {
     if (hydrated) return;
     hydrated = true;
+    flushPending();
     var q = readyQ;
     readyQ = [];
     for (var i = 0; i < q.length; i++) { try { q[i](n); } catch (e) { } }
     emit('lemon:idb-hydrated', { count: n });
+    maybeBootReload(n > 0 || overrode, mirrored);
   }
 
   function hydrate() {
     if (hydrateP) return hydrateP;
     var job = idbUsable() ? idbGetAll() : Promise.reject(new Error('no-indexeddb'));
     hydrateP = job.then(function (list) {
-      var n = 0;
+      var n = 0, mirrored = 0, overrode = false;
       (list || []).forEach(function (rec) {
         if (!rec || rec.key === undefined || rec.key === null) return;
         var key = String(rec.key);
-        if (idbSeq[key] || idbSaved[key]) return;          /* 이번 세션에 이미 쓴 값이 우선 */
-        if (memText.hasOwnProperty(key)) { idbSaved[key] = true; return; }  /* sessionStorage 미러가 있으면 그대로 둔다 */
+        if (idbSaved[key]) return;                         /* 이번 세션에서 이미 IDB 로 저장됨 */
         var text = typeof rec.value === 'string' ? rec.value : safeStringify(rec.value);
         if (!text) return;
+        if (takePending(key, text)) {
+          /* 복원 전 낙은 화면이 쓴 값이다: 버리고 IndexedDB 사본을 살린다 */
+          overrode = true;
+          try { localStorage.removeItem(key); } catch (e) { }
+        }
         memSet(key, text);
+        if (sessPut(key, text)) mirrored += 1;              /* 다음 로드에서는 동기로 읽힌다 */
         idbSaved[key] = true;
         n += 1;
       });
-      return n;
-    }).then(function (n) { finishHydrate(n); return n; }, function () { finishHydrate(0); return 0; });
+      return { n: n, mirrored: mirrored, overrode: overrode };
+    }).then(function (r) { finishHydrate(r.n, r.mirrored, r.overrode); return r.n; },
+            function () { finishHydrate(0, 0, false); return 0; });
     return hydrateP;
   }
 
