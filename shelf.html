@@ -1994,14 +1994,15 @@ tailwind.config = {
       el.textContent = '이 브라우저에서는 사진 저장소를 열 수 없어 사진을 목록에 함께 저장합니다 (용량이 빠르게 줄어듭니다).';
       return;
     }
-    var listBytes = 0;
-    try {
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (k && k.indexOf('lemon_shelf_v1') === 0) listBytes += (localStorage.getItem(k) || '').length * 2;
-      }
-    } catch (e) { }
-    el.textContent = 'IndexedDB · 사진 ' + s.count + '장 · ' + Lemon.fmtBytes(s.bytes) + ' / 서재 목록 ' + Lemon.fmtBytes(listBytes);
+    /* 서재 목록은 localStorage 에, 꽉 찼을 때는 IndexedDB(lemon_kv_idb_v1)에 있다. 둘 다 합산한다. */
+    var listBytes = 0, inIdb = false;
+    ['lemon_shelf_v1', 'lemon_shelf_v1__active'].forEach(function (k) {
+      var v = Lemon.store.raw(k, '') || '';
+      listBytes += (k.length + v.length) * 2;
+      if (v && Lemon.store.source(k) === 'idb') inIdb = true;
+    });
+    el.textContent = 'IndexedDB · 사진 ' + s.count + '장 · ' + Lemon.fmtBytes(s.bytes) + ' / 서재 목록 ' + Lemon.fmtBytes(listBytes) +
+      (inIdb ? ' (저장 공간 부족으로 IndexedDB에 보관 중)' : '');
   }
   function liveMediaRefs() {
     var ids = {};
@@ -2026,7 +2027,7 @@ tailwind.config = {
       });
     }
     var raw = null;
-    try { raw = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { raw = null; }
+    try { raw = JSON.parse(Lemon.store.raw(KEY, '') || 'null'); } catch (e) { raw = null; }
     (Array.isArray(raw) ? raw : []).forEach(function (rec) { (rec.items || []).forEach(scanSaved); });
     var live = liveMediaRefs();
     for (var k in live) { if (live.hasOwnProperty(k)) ids[k] = 1; }
@@ -2780,7 +2781,7 @@ tailwind.config = {
   function migrateToIdb() {
     if (Media.stats().broken) return Promise.resolve(0);
     var raw = null;
-    try { raw = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { raw = null; }
+    try { raw = JSON.parse(Lemon.store.raw(KEY, '') || 'null'); } catch (e) { raw = null; }
     if (!Array.isArray(raw) || !raw.length) return Promise.resolve(0);
     var jobs = [], moved = 0;
     raw.forEach(function (rec) {
@@ -2801,7 +2802,8 @@ tailwind.config = {
     });
     if (!jobs.length) return Promise.resolve(0);
     return Promise.all(jobs).then(function () {
-      try { localStorage.setItem(KEY, JSON.stringify(raw)); } catch (e) { }
+      /* localStorage 가 꽉 찼으면 Lemon.store 가 IndexedDB 로 이어서 저장한다. */
+      try { Lemon.store.rawSet(KEY, JSON.stringify(raw)); } catch (e) { }
       return moved;
     }).catch(function () { return 0; });
   }
@@ -2811,6 +2813,9 @@ tailwind.config = {
     window.__lemonErrs = [];
     window.addEventListener('error', function (e) { window.__lemonErrs.push(String(e.message || e.error)); });
 
+    /* 시작: IndexedDB(lemon_kv_idb_v1)에 넘겨 저장된 서재 목록을 먼저 메모리로 복원한 뒤 그린다.
+       복원 전에 그리면 저장된 서재 대신 샘플이 덮어써질 수 있다. */
+    var begin = function () {
     Media.load().then(function () {
       return migrateToIdb();
     }).then(function (moved) {
@@ -2845,6 +2850,8 @@ tailwind.config = {
       setTimeout(moveGlider, 240);
       if (moved) Lemon.toast('사진 ' + moved + '장을 새 저장소로 옮겨 서재 공간을 비웠어요', 'ok');
     });
+    };
+    if (window.Lemon && Lemon.ready) Lemon.ready(begin); else begin();
   });
 })();
 </script>

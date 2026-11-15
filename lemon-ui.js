@@ -15,42 +15,290 @@
     return e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
       e.code === 22 || e.code === 1014 || /quota/i.test(String(e.message || ''));
   }
+
+  /* ---- IndexedDB fallback ----
+     localStorage(약 5MB)가 꽉 차 QuotaExceededError 가 나면, 같은 키를
+     IndexedDB(lemon_kv_idb_v1 · store 'kv')에 { key, value, ts } 로 이어서 저장한다.
+     새로고침하면 이 값을 먼저 메모리(memStore)로 올리므로 store.get/raw,
+     makeArchive, Lemon.project 같은 호출부는 아무것도 바꾸지 않아도 된다. */
+  var IDB_NAME = 'lemon_kv_idb_v1';
+  var IDB_STORE = 'kv';
+  var MEM_MISS = {};
+  var memStore = {};      /* key -> 파싱된 값 (IndexedDB 사본·이번 세션 저장본) */
+  var memText = {};       /* key -> 저장된 원본 문자열 (rawGet/rawSet 용) */
+  var idbSaved = {};      /* key -> true: IndexedDB 사본이 최신 저장본 */
+  var idbSeq = {};        /* key -> 마지막 쓰기 순번 (늦게 끝난 옛 쓰기가 새 값을 덮지 않게) */
+  var idbTail = {};       /* key -> IndexedDB 작업 직렬화 꼬리 */
+  var idbDb = null, idbOpenP = null;
+  var hydrated = false, hydrateP = null, readyQ = [], idbNoticeShown = false;
+
+  function emit(name, detail) {
+    try { doc.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) { }
+  }
+  function safeParse(text, fallback) {
+    try { return JSON.parse(text); } catch (e) { return fallback; }
+  }
+  function safeStringify(v) {
+    try { var s = JSON.stringify(v); return s === undefined ? '' : s; } catch (e) { return ''; }
+  }
+  function idbUsable() { return !!window.indexedDB; }
+
+  function idbOpen() {
+    if (idbDb) return Promise.resolve(idbDb);
+    if (idbOpenP) return idbOpenP;
+    idbOpenP = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('no-indexeddb')); return; }
+      var rq;
+      try { rq = indexedDB.open(IDB_NAME, 1); } catch (e) { rej(e); return; }
+      rq.onupgradeneeded = function () {
+        var db = rq.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath: 'key' });
+      };
+      rq.onsuccess = function () { idbDb = rq.result; res(idbDb); };
+      rq.onerror = function () { rej(rq.error || new Error('idb-open')); };
+      rq.onblocked = function () { rej(new Error('idb-blocked')); };
+    });
+    /* 실패하면 다음 호출에서 다시 시도할 수 있게 열기 상태를 비운다. */
+    idbOpenP = idbOpenP.then(function (db) { return db; }, function (err) { idbOpenP = null; throw err; });
+    return idbOpenP;
+  }
+
+  /* 같은 키의 IndexedDB 작업은 보낸 순서대로 하나씩 처리한다. */
+  function idbQueue(key, fn) {
+    var prev = idbTail[key] || Promise.resolve();
+    var next = prev.then(fn, fn);
+    idbTail[key] = next.then(function () { }, function () { });
+    return next;
+  }
+
+  function idbWrite(key, fn) {
+    return idbQueue(key, function () {
+      return idbOpen().then(function (db) {
+        return new Promise(function (res, rej) {
+          var tx, st;
+          try {
+            tx = db.transaction(IDB_STORE, 'readwrite');
+            st = tx.objectStore(IDB_STORE);
+            fn(st);
+          } catch (e) { rej(e); return; }
+          tx.oncomplete = function () { res(true); };
+          tx.onerror = function () { rej(tx.error || new Error('idb-tx')); };
+          tx.onabort = function () { rej(tx.error || new Error('idb-abort')); };
+        });
+      });
+    });
+  }
+  function idbPut(key, text) {
+    return idbWrite(key, function (st) { st.put({ key: key, value: text, ts: Date.now() }); });
+  }
+  function idbDrop(key) {
+    return idbWrite(key, function (st) { st.delete(key); });
+  }
+  function idbGetAll() {
+    return idbOpen().then(function (db) {
+      return new Promise(function (res, rej) {
+        var rq;
+        try { rq = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).getAll(); }
+        catch (e) { rej(e); return; }
+        rq.onsuccess = function () { res(rq.result || []); };
+        rq.onerror = function () { rej(rq.error || new Error('idb-read')); };
+      });
+    });
+  }
+
+  function memSet(key, text) {
+    memText[key] = text;
+    delete memStore[key];
+    var v = safeParse(text, MEM_MISS);
+    if (v !== MEM_MISS) memStore[key] = v;
+  }
+
+  /* IndexedDB 는 비동기라 페이지가 먼저 그려지면 옛 화면이 보일 수 있다.
+     같은 탭에서만 쓰는 sessionStorage 에 같은 값을 복사해 두면, Lemon.ready 를
+     부르지 않는 페이지도 첫 화면부터 복원된 값을 동기적으로 읽을 수 있다.
+     (sessionStorage 한도도 넘으면 조용히 건너뛴다. 원본은 IndexedDB 에 있다.) */
+  var SESS_PREFIX = 'lemonkv:';
+  function sessPut(key, text) {
+    try { sessionStorage.setItem(SESS_PREFIX + key, text); } catch (e) { }
+  }
+  function sessDrop(key) {
+    try { sessionStorage.removeItem(SESS_PREFIX + key); } catch (e) { }
+  }
+  function sessSeed() {
+    var n = 0;
+    try {
+      for (var i = 0; i < sessionStorage.length; i++) {
+        var k = sessionStorage.key(i);
+        if (!k || k.indexOf(SESS_PREFIX) !== 0) continue;
+        var text = sessionStorage.getItem(k);
+        if (text === null) continue;
+        memSet(k.slice(SESS_PREFIX.length), text);
+        n += 1;
+      }
+    } catch (e) { }
+    return n;
+  }
+
+  /* localStorage 쓰기가 한도 초과로 막혔을 때: 메모리에 먼저 반영하고 IndexedDB에 저장한다.
+     IndexedDB 저장까지 성공하면 남아 있던 옛 localStorage 사본을 지워 새 값이 가려지지 않게 한다. */
+  function idbFallback(key, text, seq) {
+    if (!idbUsable()) return false;
+    memSet(key, text);
+    sessPut(key, text);
+    var startNotice = !idbNoticeShown;
+    idbSaved[key] = true;
+    idbPut(key, text).then(function () {
+      if (idbSeq[key] !== seq) return;              /* 그 사이 더 새 값이 저장됨 */
+      try { localStorage.removeItem(key); } catch (e) { }
+      if (startNotice) {
+        idbNoticeShown = true;
+        toast('저장 공간이 부족해 IndexedDB에 자동으로 이어서 저장했어요', 'info');
+      }
+      emit('lemon:idb-saved', { key: key });
+    }).catch(function (err) {
+      idbSaved[key] = false;
+      lastStoreError = err;
+      storageWarn({ key: key });
+      emit('lemon:idb-error', { key: key, error: err });
+    });
+    return true;
+  }
+
+  function writeKey(key, text) {
+    var seq = (idbSeq[key] || 0) + 1;
+    idbSeq[key] = seq;
+    try {
+      localStorage.setItem(key, text);
+      lastStoreError = null;
+      /* localStorage 에 들어갔으니 메모리 캐시와 IndexedDB·sessionStorage 사본은 정리한다. */
+      delete memText[key];
+      delete memStore[key];
+      sessDrop(key);
+      if (idbSaved[key]) {
+        idbSaved[key] = false;
+        if (idbUsable()) idbDrop(key).catch(function () { });
+      }
+      return true;
+    } catch (e) {
+      lastStoreError = e;
+      if (isQuotaError(e)) {
+        if (idbFallback(key, text, seq)) return true;
+        storageWarn({ key: key });
+      }
+      return false;
+    }
+  }
+
   var store = {
     get: function (key, fallback) {
+      if (memStore.hasOwnProperty(key)) return memStore[key];
+      if (memText.hasOwnProperty(key)) return safeParse(memText[key], fallback);
       try {
         var raw = localStorage.getItem(key);
         if (raw === null || raw === undefined) return fallback;
         return JSON.parse(raw);
       } catch (e) { return fallback; }
     },
-    /* Never truncates or overwrites on failure: returns false and keeps the old value. */
+    /* 한도 초과 시 IndexedDB로 이어서 저장한다. IndexedDB 저장까지 실패했을 때만 false. */
     set: function (key, value) {
-      try { localStorage.setItem(key, JSON.stringify(value)); lastStoreError = null; return true; }
-      catch (e) {
-        lastStoreError = e;
-        if (isQuotaError(e)) storageWarn({ key: key });
-        return false;
-      }
+      var text;
+      try { text = JSON.stringify(value); } catch (e) { lastStoreError = e; return false; }
+      if (text === undefined) return false;
+      return writeKey(key, text);
     },
     raw: function (key, fallback) {
+      if (memText.hasOwnProperty(key)) return memText[key];
       try { var v = localStorage.getItem(key); return v === null ? fallback : v; } catch (e) { return fallback; }
     },
-    rawSet: function (key, value) {
-      try { localStorage.setItem(key, value); lastStoreError = null; return true; }
-      catch (e) {
-        lastStoreError = e;
-        if (isQuotaError(e)) storageWarn({ key: key });
-        return false;
-      }
+    rawSet: function (key, value) { return writeKey(key, String(value)); },
+    /* 저장된 값을 지운다 (localStorage · 메모리 · IndexedDB 사본 모두). */
+    remove: function (key) {
+      try { localStorage.removeItem(key); } catch (e) { }
+      delete memText[key];
+      delete memStore[key];
+      sessDrop(key);
+      idbSaved[key] = false;
+      idbSeq[key] = (idbSeq[key] || 0) + 1;   /* 진행 중이던 옛 쓰기가 되살리지 않게 */
+      if (idbUsable()) idbDrop(key).catch(function () { });
+      return true;
+    },
+    /* 이 키가 지금 어디에 저장돼 있는지: 'idb' | 'ls' | null */
+    source: function (key) {
+      if (idbSaved[key] || memText.hasOwnProperty(key)) return 'idb';
+      try { return localStorage.getItem(key) === null ? null : 'ls'; } catch (e) { return null; }
     },
     lastError: function () { return lastStoreError; },
     isQuotaError: isQuotaError
   };
 
+  /* 새로고침 시: IndexedDB 에 넘겨 저장했던 키들을 메모리로 복원한다. */
+  function finishHydrate(n) {
+    if (hydrated) return;
+    hydrated = true;
+    var q = readyQ;
+    readyQ = [];
+    for (var i = 0; i < q.length; i++) { try { q[i](n); } catch (e) { } }
+    emit('lemon:idb-hydrated', { count: n });
+  }
+
+  function hydrate() {
+    if (hydrateP) return hydrateP;
+    var job = idbUsable() ? idbGetAll() : Promise.reject(new Error('no-indexeddb'));
+    hydrateP = job.then(function (list) {
+      var n = 0;
+      (list || []).forEach(function (rec) {
+        if (!rec || rec.key === undefined || rec.key === null) return;
+        var key = String(rec.key);
+        if (idbSeq[key] || idbSaved[key]) return;          /* 이번 세션에 이미 쓴 값이 우선 */
+        if (memText.hasOwnProperty(key)) { idbSaved[key] = true; return; }  /* sessionStorage 미러가 있으면 그대로 둔다 */
+        var text = typeof rec.value === 'string' ? rec.value : safeStringify(rec.value);
+        if (!text) return;
+        memSet(key, text);
+        idbSaved[key] = true;
+        n += 1;
+      });
+      return n;
+    }).then(function (n) { finishHydrate(n); return n; }, function () { finishHydrate(0); return 0; });
+    return hydrateP;
+  }
+
+  /* lemon:idb-hydrated 이후(= IndexedDB 복원 완료)에 실행. 이미 끝났으면 즉시. */
+  function ready(fn) {
+    if (typeof fn !== 'function') return;
+    if (hydrated) { try { fn(); } catch (e) { } return; }
+    readyQ.push(fn);
+  }
+
   /* ---------------- storage-full warning ---------------- */
   /* Shown instead of silently deleting data. Cooldown + closeable so it never nags. */
   var WARN_COOLDOWN = 45000;
-  var warnEl = null, warnAt = 0;
+  var WARN_MUTE_KEY = 'lemon_storage_warn_muted';
+  var warnEl = null, warnAt = 0, warnMuted = false;
+
+  /* [다시 보지 않기] 상태: 메모리 → sessionStorage → localStorage → IndexedDB 순으로 확인한다.
+     localStorage 가 꽉 차 못 쓰는 경우가 바로 이 경고의 상황이라 sessionStorage·IDB 에도 남긴다. */
+  function warnMutedNow() {
+    if (warnMuted) return true;
+    try { if (sessionStorage.getItem(WARN_MUTE_KEY) === '1') return (warnMuted = true); } catch (e) { }
+    try { if (localStorage.getItem(WARN_MUTE_KEY) === '1') return (warnMuted = true); } catch (e) { }
+    if (store.raw(WARN_MUTE_KEY, '') === '1') return (warnMuted = true);
+    return false;
+  }
+  function setWarnMuted(on) {
+    warnMuted = !!on;
+    try {
+      if (on) sessionStorage.setItem(WARN_MUTE_KEY, '1');
+      else sessionStorage.removeItem(WARN_MUTE_KEY);
+    } catch (e) { }
+    if (on) store.rawSet(WARN_MUTE_KEY, '1');          /* localStorage 가 꽉 차면 IndexedDB 로 */
+    else store.remove(WARN_MUTE_KEY);
+    try { doc.dispatchEvent(new CustomEvent('lemon:storage-warn-mute', { detail: { muted: warnMuted } })); } catch (e) { }
+  }
+  try {
+    window.addEventListener('storage', function (e) {
+      if (e && e.key === WARN_MUTE_KEY) warnMuted = e.newValue === '1';
+    });
+  } catch (e) { }
 
   function kitStyle() {
     if (doc.getElementById('lemonKitStyle')) return;
@@ -59,6 +307,9 @@
     st.textContent = [
       '.as-badge[data-state="full"]{color:#e11d48;border-color:rgba(225,29,72,.42);background:rgba(225,29,72,.10)}',
       '.dark .as-badge[data-state="full"]{color:#fb7185;border-color:rgba(251,113,133,.42);background:rgba(225,29,72,.16)}',
+      '.as-badge[data-state="idb"]{color:#0f766e;border-color:rgba(13,148,136,.42);background:rgba(13,148,136,.10)}',
+      '.dark .as-badge[data-state="idb"]{color:#2dd4bf;border-color:rgba(45,212,191,.40);background:rgba(13,148,136,.16)}',
+      '.as-badge[data-state="idb"]::before{opacity:1}',
       '.as-badge[data-state="full"]::before{opacity:1;animation:pulseSoft 1.4s ease-in-out infinite}',
       '.lemon-storage-warn{position:fixed;top:.75rem;left:50%;z-index:88;width:min(96vw,34rem);',
       'transform:translate(-50%,-150%);opacity:0;pointer-events:none;',
@@ -79,6 +330,12 @@
       '.lemon-storage-warn .lsw-text{margin:.15rem 0 0;font-size:.7rem;line-height:1.55;color:#52525b}',
       '.dark .lemon-storage-warn .lsw-text{color:#a1a1aa}',
       '.lemon-storage-warn .lsw-act{display:flex;align-items:center;gap:.3rem;flex-shrink:0;padding-top:.05rem}',
+      '.lemon-storage-warn .lsw-mute{display:inline-flex;align-items:center;justify-content:center;padding:.42rem .5rem;',
+      'border-radius:.7rem;font-size:.66rem;font-weight:800;color:#71717a;white-space:nowrap;letter-spacing:-.01em;',
+      'border:1px solid transparent;transition:background .18s,color .18s,border-color .18s}',
+      '.lemon-storage-warn .lsw-mute:hover{background:rgba(0,0,0,.05);color:#18181b;border-color:rgba(0,0,0,.08)}',
+      '.dark .lemon-storage-warn .lsw-mute{color:#a1a1aa}',
+      '.dark .lemon-storage-warn .lsw-mute:hover{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.12)}',
       '.lemon-storage-warn .lsw-open{display:inline-flex;align-items:center;gap:.28rem;padding:.42rem .6rem;border-radius:.7rem;',
       'font-size:.68rem;font-weight:800;color:#fff;white-space:nowrap;',
       'background:linear-gradient(135deg,#e11d48,#be123c);box-shadow:0 8px 18px -12px rgba(225,29,72,.9);',
@@ -92,7 +349,7 @@
       '.dark .lemon-storage-warn .lsw-close:hover{background:rgba(255,255,255,.10);color:#fff}',
       '.lemon-storage-warn .lsw-close svg{width:.8rem;height:.8rem}',
       '@media (max-width:420px){.lemon-storage-warn{width:calc(100vw - 1rem);padding:.7rem;gap:.55rem;',
-      'flex-wrap:wrap}.lemon-storage-warn .lsw-act{width:100%;justify-content:flex-end}}'
+      'flex-wrap:wrap}.lemon-storage-warn .lsw-act{width:100%;justify-content:flex-end;flex-wrap:wrap}}'
     ].join('');
     (doc.head || doc.documentElement).appendChild(st);
   }
@@ -111,6 +368,8 @@
 
   function storageWarn(opts) {
     opts = opts || {};
+    /* 사용자가 '다시 보지 않기'를 눌렀다면 자동 경고는 쉰다. force(미리보기)는 예외. */
+    if (!opts.force && warnMutedNow()) return null;
     kitStyle();
     if (warnEl) { warnEl.classList.add('show'); return warnEl; }
     var now = Date.now();
@@ -127,9 +386,10 @@
       '<line x1="12" y1="9" x2="12" y2="13.6"></line><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"></circle></svg></span>' +
       '<div class="lsw-body">' +
       '<p class="lsw-title">저장 공간이 부족해요</p>' +
-      '<p class="lsw-text">저장 공간(LocalStorage)이 부족해 변경 사항을 저장하지 못했어요. 기존 데이터는 삭제되지 않았습니다. Lemon Manager에서 용량을 확인하고 불필요한 데이터를 정리해 주세요.</p>' +
+      '<p class="lsw-text">저장 공간(LocalStorage·IndexedDB)이 부족해 변경 사항을 저장하지 못했어요. 기존 데이터는 삭제되지 않았습니다. Lemon Manager에서 용량을 확인하고 불필요한 데이터를 정리해 주세요.</p>' +
       '</div>' +
       '<div class="lsw-act">' +
+      '<button class="lsw-mute" type="button">다시 보지 않기</button>' +
       '<a class="lsw-open" href="' + managerHref() + '">Lemon Manager 열기' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"></path><path d="M9 7h8v8"></path></svg></a>' +
       '<button class="lsw-close" type="button" aria-label="경고 닫기">' +
@@ -137,6 +397,12 @@
       '</div>';
     doc.body.appendChild(el);
     el.querySelector('.lsw-close').addEventListener('click', closeStorageWarn);
+    el.querySelector('.lsw-mute').addEventListener('click', function () {
+      setWarnMuted(true);
+      closeStorageWarn();
+      toast('저장 공간 경고를 다시 보지 않아요', 'info');
+      hap(10);
+    });
     void el.offsetWidth;
     el.classList.add('show');
     warnEl = el;
@@ -380,6 +646,12 @@
     var ACTIVE = key + '__active';
     var timer = null, pending = null, badge = null;
 
+    /* IndexedDB 저장까지 실패한 경우에만 경고 배지로 돌린다. */
+    doc.addEventListener('lemon:idb-error', function (e) {
+      var k = e.detail && e.detail.key;
+      if (k === key || k === ACTIVE) setBadge('저장 공간 부족', 'full');
+    });
+
     function currentId() { var v = store.raw(ACTIVE, ''); return v || null; }
     function stamp() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
     function setBadge(text, state) {
@@ -398,7 +670,9 @@
       if (!rec) rec = arch.add(Object.assign({}, payload, { auto: true }));
       if (rec && arch.saveOk()) {
         store.rawSet(ACTIVE, rec.id);
-        setBadge('자동 저장됨 ' + stamp(), 'saved');
+        /* localStorage 가 꽉 차 IndexedDB 로 넘겨 저장된 경우도 정상 저장으로 보여 준다. */
+        if (store.source(key) === 'idb' || store.source(ACTIVE) === 'idb') setBadge('자동 저장됨 (IDB) ' + stamp(), 'idb');
+        else setBadge('자동 저장됨 ' + stamp(), 'saved');
         return rec;
       }
       /* Storage is full: keep what the user has, say so plainly. */
@@ -537,6 +811,10 @@
   }
 
   /* ---------------- boot ---------------- */
+  /* IndexedDB 복원은 페이지가 그려지기 전에 시작해 둔다. sessionStorage 미러는 먼저 동기적으로 읽는다. */
+  sessSeed();
+  hydrate();
+
   doc.addEventListener('DOMContentLoaded', function () {
     kitStyle();
     bindTheme();
@@ -547,7 +825,14 @@
 
   window.Lemon = {
     store: store,
+    ready: ready,
+    hydrated: function () { return hydrated; },
+    hydrate: hydrate,
+    idb: { name: IDB_NAME, store: IDB_STORE, open: idbOpen, all: idbGetAll },
     storageWarn: storageWarn,
+    storageWarnMuted: function () { return warnMutedNow(); },
+    storageWarnMute: function () { setWarnMuted(true); },
+    storageWarnUnmute: function () { setWarnMuted(false); },
     closeStorageWarn: closeStorageWarn,
     toast: toast,
     copy: copy,

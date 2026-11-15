@@ -492,13 +492,16 @@ tailwind.config = {
       <p class="mt-2 text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
         브라우저는 오리진(사이트)마다 저장 공간을 나눠 줍니다. LocalStorage 는 약 5MB(문자 기준)로 작고,
         IndexedDB 는 훨씬 큰 쿼터를 받습니다. 한도에 닿으면 <span class="mono">setItem</span> 이
-        <span class="mono">QuotaExceededError</span> 를 던지고 저장이 통째로 실패합니다.
-        Lemon soft 공통 런타임은 이때 <span class="font-semibold">기존 데이터를 절대 잘라내지 않고</span>,
-        화면 위에 경고 배너와 함께 이 페이지로 오는 버튼을 띄웁니다.
-        반대로 IndexedDB 는 넉넉해서 이 페이지에서도 용량 경고나 한도를 두지 않고, 지금 사용량과 항목 수만 보여줍니다.
+        <span class="mono">QuotaExceededError</span> 를 던집니다.
+        이때 Lemon soft 공통 런타임은 <span class="font-semibold">기존 데이터를 절대 잘라내지 않고</span>
+        같은 키를 <span class="mono">lemon_kv_idb_v1</span>(IndexedDB)에 자동으로 이어서 저장합니다.
+        새로고침해도 IndexedDB 에서 그대로 복원되므로 작업이 사라지지 않습니다.
+        IndexedDB 저장까지 실패할 때만 화면 위에 경고 배너와 이 페이지로 오는 버튼을 띄우며,
+        배너의 <span class="font-semibold">다시 보지 않기</span>를 누르면 그 뒤로는 자동으로 뜨지 않습니다(이 화면의 “경고 다시 보기”로 되돌릴 수 있어요).
       </p>
       <div class="flex flex-wrap gap-2 mt-3">
         <button class="chip-btn" data-act="preview-warn">경고 배너 미리보기</button>
+        <button class="chip-btn" data-act="toggle-mute">경고 다시 보기</button>
         <button class="chip-btn" data-act="goto-backup">백업 하러 가기</button>
       </div>
     </div>
@@ -673,6 +676,7 @@ tailwind.config = {
     { re: /^flux_creator$/, label: 'Cream Motion', tone: 'pink' },
     { re: /^flux_ddays$|^flux_daily_task_counts$/, label: 'Lemon Start', tone: 'amber' },
     { re: /^burned_hash_|^burned_/, label: 'Lemon Erase', tone: 'red' },
+    { re: /^lemon_kv_idb_/, label: '자동 저장(IDB)', tone: 'teal' },
     { re: /^lemon_autosave_/, label: '자동 저장(공통)', tone: 'slate' },
     { re: /^lemon_money_/, label: 'Lemon Money', tone: 'amber' },
     { re: /^lemon_shelf_/, label: 'Lemon Shelf', tone: 'yellow' },
@@ -796,7 +800,9 @@ tailwind.config = {
     });
   }
 
-  function knownDBNames() { return ['lemon_shelf_media_v1']; }
+  /* localStorage 가 꽉 찼을 때 lemon-ui.js 가 대신 쓰는 저장소 */
+  var KV_DB = 'lemon_kv_idb_v1';
+  function knownDBNames() { return ['lemon_shelf_media_v1', KV_DB]; }
 
   function listDBs() {
     return new Promise(function (res) {
@@ -843,6 +849,16 @@ tailwind.config = {
     try { return bytesOfString(JSON.stringify(v)); } catch (e) { return 0; }
   }
 
+  function recordPreview(v) {
+    /* lemon_kv_idb_v1 레코드({ key, value, ts })는 value 내용을 보여 준다. */
+    if (v && typeof v === 'object' && !(v instanceof Blob) && typeof v.value !== 'undefined' && typeof v.ts !== 'undefined') {
+      var val = v.value;
+      var text = typeof val === 'string' ? previewOfRaw(val) : previewOf(val);
+      return text + (v.ts ? ' · ' + shortDate(v.ts) : '');
+    }
+    return previewOf(v);
+  }
+
   function scanStores(db, deep) {
     var names = Array.prototype.slice.call(db.objectStoreNames);
     return Promise.all(names.map(function (sn) {
@@ -873,7 +889,7 @@ tailwind.config = {
           if (typeof Blob !== 'undefined' && v instanceof Blob && /^image\//.test(v.type || '')) {
             try { thumb = URL.createObjectURL(v); state.thumbs.push(thumb); } catch (e) { }
           }
-          recs.push({ key: cur.key, size: size, thumb: thumb, preview: previewOf(v) });
+          recs.push({ key: cur.key, size: size, thumb: thumb, preview: recordPreview(v) });
           cur.continue();
         };
         rq.onerror = function () { out.error = 'cursor'; out.records = recs; res(out); };
@@ -1094,7 +1110,11 @@ tailwind.config = {
       });
       items.push({
         ok: !!window.Lemon, label: '공통 런타임',
-        text: window.Lemon ? '경고 배너·자동저장 배지가 연결되어 있어요.' : 'lemon-ui.js 를 불러오지 못했어요.'
+        text: window.Lemon
+          ? ((Lemon.storageWarnMuted && Lemon.storageWarnMuted())
+            ? '경고 배너를 꺼 두었어요 — 위의 "경고 다시 보기"로 켤 수 있어요.'
+            : '경고 배너·자동저장 배지가 연결되어 있어요. IndexedDB 폴백도 켜져 있어요.')
+          : 'lemon-ui.js 를 불러오지 못했어요.'
       });
       items.push({
         ok: true, info: true, label: 'IndexedDB 사용량',
@@ -1239,14 +1259,17 @@ tailwind.config = {
       return;
     }
     box.innerHTML = state.idb.map(function (db) {
-      var c = TONE[classify(db.name).tone] || TONE.slate;
+      var cls = classify(db.name);
+      var c = TONE[cls.tone] || TONE.slate;
+      var isKv = db.name === KV_DB;
       var head = '<div class="flex items-start justify-between gap-2">' +
         '<div class="min-w-0">' +
         '<div class="flex items-center gap-1.5 flex-wrap">' +
-        '<span class="tag" style="--c:' + c + '">IndexedDB</span>' +
+        '<span class="tag" style="--c:' + c + '">' + esc(cls.label === '기타' ? 'IndexedDB' : cls.label) + '</span>' +
         '<span class="mono text-[11px] font-bold truncate">' + esc(db.name) + '</span>' +
         '</div>' +
         '<p class="meta-line num mt-1">v' + esc(String(db.version || '-')) + ' · 스토어 ' + db.stores.length + '개 · 항목 ' + db.count + '개 · ' + fmtB(db.size) + '</p>' +
+        (isKv ? '<p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">LocalStorage 가 꽉 찼을 때 lemon-ui.js 가 같은 키를 대신 저장한 곳입니다. 항목을 지우면 해당 서비스의 그 데이터가 사라집니다.</p>' : '') +
         '</div>' +
         (db.error ? '<span class="tag" style="--c:' + TONE.rose + '">접근 오류</span>' : '') +
         '</div>';
@@ -1269,8 +1292,11 @@ tailwind.config = {
           }
           if (rest.length) {
             cells += '<div class="mt-2 space-y-1">' + rest.slice(0, 40).map(function (r) {
-              return '<div class="flex items-center justify-between gap-2 text-[10px] py-0.5">' +
-                '<span class="mono truncate text-neutral-600 dark:text-neutral-300">' + esc(String(r.key)) + '</span>' +
+              return '<div class="flex items-start justify-between gap-2 text-[10px] py-0.5">' +
+                '<span class="min-w-0 flex-1">' +
+                '<span class="mono truncate block text-neutral-600 dark:text-neutral-300">' + esc(String(r.key)) + '</span>' +
+                (r.preview ? '<span class="block truncate text-[9.5px] text-neutral-400">' + esc(r.preview) + '</span>' : '') +
+                '</span>' +
                 '<span class="num text-neutral-400 shrink-0">' + fmtB(r.size) + '</span>' +
                 '<button class="mini-btn danger !w-6 !h-6" data-act="del-idb" data-db="' + esc(db.name) + '" data-store="' + esc(st.name) + '" data-key="' + esc(String(r.key)) + '" aria-label="삭제">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg></button>' +
@@ -1353,6 +1379,7 @@ tailwind.config = {
       ['Flux Sheets', 'flux_sheets_* / lemon_autosave_*', 'LocalStorage'],
       ['Lemon QR · PDF · Focus', 'flux_qr_* / flux_pdf_* / flux_focus_*', 'LocalStorage'],
       ['공통 자동 저장', 'lemon_autosave_*', 'LocalStorage'],
+      ['자동 저장(IDB 폴백)', 'lemon_kv_idb_v1', 'IndexedDB'],
       ['허브 프로젝트', 'cream_apk_projects / flux_unified_projects', 'LocalStorage'],
       ['테마', 'cream_theme / lemon_theme / flux_theme', 'LocalStorage']
     ];
@@ -1422,14 +1449,14 @@ tailwind.config = {
           tx = db.transaction(storeName, 'readwrite');
           st = tx.objectStore(storeName);
         } catch (e) { try { db.close(); } catch (e2) { } return rej(e); }
-        var rq = st.delete(isNaN(Number(key)) ? key : Number(key));
+        var rq = st.delete(dbName === KV_DB ? String(key) : (isNaN(Number(key)) ? key : Number(key)));
         rq.onsuccess = function () { res(true); };
         rq.onerror = function () { rej(rq.error); };
         tx.oncomplete = function () { try { db.close(); } catch (e) { } };
       });
     }).then(function () {
       pushLog('delete', 'IndexedDB ' + dbName + '/' + storeName + ' 1개 삭제', 0);
-      Lemon.toast('미디어 1개를 지웠어요', 'ok');
+      Lemon.toast(dbName === KV_DB ? '자동 저장 항목 1개를 지웠어요' : '미디어 1개를 지웠어요', 'ok');
       scanAll();
     }).catch(function () {
       Lemon.toast('IndexedDB 삭제에 실패했어요', 'err');
@@ -1458,19 +1485,20 @@ tailwind.config = {
     return new Blob([arr], { type: type || 'application/octet-stream' });
   }
 
+  /* 모든 값을 Promise 로 돌려준다 (collectIDB 가 .then 으로 이어 붙이기 때문). */
   function serValue(v) {
-    if (v === null || v === undefined) return v;
+    if (v === null || v === undefined) return Promise.resolve(v);
     var t = typeof v;
-    if (t === 'string' || t === 'number' || t === 'boolean') return v;
+    if (t === 'string' || t === 'number' || t === 'boolean') return Promise.resolve(v);
     if (typeof Blob !== 'undefined' && v instanceof Blob) {
       return blobToDataURL(v).then(function (data) {
         return { __lemonBlob: true, type: v.type || '', name: v.name || '', size: v.size, data: data };
       });
     }
-    if (v instanceof ArrayBuffer) return { __lemonBuf: true, data: bufToB64(v) };
-    if (ArrayBuffer.isView(v)) return { __lemonBuf: true, data: bufToB64(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)) };
+    if (v instanceof ArrayBuffer) return Promise.resolve({ __lemonBuf: true, data: bufToB64(v) });
+    if (ArrayBuffer.isView(v)) return Promise.resolve({ __lemonBuf: true, data: bufToB64(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)) });
     if (Array.isArray(v)) return Promise.all(v.map(serValue));
-    if (v instanceof Date) return { __lemonDate: v.toISOString() };
+    if (v instanceof Date) return Promise.resolve({ __lemonDate: v.toISOString() });
     if (typeof v === 'object') {
       var keys = Object.keys(v), out = {}, chain = Promise.resolve();
       keys.forEach(function (k) {
@@ -1478,7 +1506,7 @@ tailwind.config = {
       });
       return chain.then(function () { return out; });
     }
-    return String(v);
+    return Promise.resolve(String(v));
   }
 
   function deValue(v) {
@@ -1724,7 +1752,18 @@ tailwind.config = {
                 st = tx.objectStore(s.name);
               } catch (e) { return r3(false); }
               (s.records || []).forEach(function (rec) {
-                try { st.put(deValue(rec.value), rec.key); } catch (e) { }
+                /* keyPath 가 있는 스토어(예: lemon_kv_idb_v1 의 kv)에는 키를 따로 넘기면 안 된다. */
+                var kp = s.keyPath, inline = (kp !== null && kp !== undefined);
+                try {
+                  var v = deValue(rec.value);
+                  if (!inline) { st.put(v, rec.key); return; }
+                  if (typeof kp === 'string' && kp && rec.key !== undefined &&
+                    (!v || typeof v !== 'object' || v[kp] === undefined)) {
+                    v = Object.assign({}, v);
+                    v[kp] = rec.key;
+                  }
+                  st.put(v);
+                } catch (e) { }
               });
               tx.oncomplete = function () { r3(true); };
               tx.onerror = function () { r3(false); };
@@ -1774,9 +1813,12 @@ tailwind.config = {
       }
       if (act === 'del-idb') {
         var db = t.getAttribute('data-db'), st = t.getAttribute('data-store'), idk = t.getAttribute('data-key');
+        var isKvDel = db === KV_DB;
         openConfirm({
-          title: '미디어를 지울까요?',
-          desc: 'IndexedDB ' + db + ' / ' + st + ' 에서 이 항목 하나를 지웁니다.',
+          title: isKvDel ? '자동 저장 항목을 지울까요?' : '미디어를 지울까요?',
+          desc: isKvDel
+            ? 'IndexedDB ' + db + ' / ' + st + ' 에서 이 항목 하나를 지웁니다. 저장 공간이 꽉 차 이곳으로 넘어온 데이터라면 그것이 유일한 사본일 수 있어요. 먼저 백업해 두는 것을 권합니다.'
+            : 'IndexedDB ' + db + ' / ' + st + ' 에서 이 항목 하나를 지웁니다.',
           body: '<div class="panel-soft p-3"><div class="kv"><span class="k">키</span><span class="v mono">' + esc(idk) + '</span></div></div>',
           okLabel: '삭제',
           onOk: function () { deleteIDBRecord(db, st, idk); }
@@ -1813,6 +1855,13 @@ tailwind.config = {
       }
       if (act === 'preview-warn') {
         if (window.Lemon && Lemon.storageWarn) Lemon.storageWarn({ force: true });
+        return;
+      }
+      if (act === 'toggle-mute') {
+        if (!window.Lemon || !Lemon.storageWarnUnmute) return;
+        Lemon.storageWarnUnmute();
+        Lemon.toast('저장 공간 경고를 다시 표시해요', 'ok');
+        renderHome();
         return;
       }
       if (act === 'clear-log') {
