@@ -583,6 +583,36 @@
   }
   function toggleTheme() { setTheme(isDark() ? 'light' : 'dark'); }
 
+  /* ---------------- global animation mode ----------------
+     Developer Hub의 '애니메이션 줄이기/끄기' 설정(lemon_anim_mode)을
+     이 런타임을 쓰는 모든 서비스가 함께 따른다. */
+  var ANIM_KEY = 'lemon_anim_mode';
+  function readAnimMode() {
+    try {
+      var m = store.raw(ANIM_KEY, null);
+      if (m === null || m === undefined) m = localStorage.getItem(ANIM_KEY);
+      m = String(m == null ? 'full' : m).replace(/^"|"$/g, '');
+      return (m === 'reduced' || m === 'off') ? m : 'full';
+    } catch (e) { return 'full'; }
+  }
+  function applyAnimMode(mode) {
+    if (mode !== 'full' && mode !== 'reduced' && mode !== 'off') mode = 'full';
+    root.setAttribute('data-anim', mode);
+    doc.dispatchEvent(new CustomEvent('lemon:anim', { detail: { mode: mode } }));
+    return mode;
+  }
+  function setAnimMode(mode) {
+    mode = (mode === 'reduced' || mode === 'off') ? mode : 'full';
+    try { localStorage.setItem(ANIM_KEY, mode); } catch (e) { }
+    return applyAnimMode(mode);
+  }
+  function bindAnim() {
+    applyAnimMode(readAnimMode());
+    window.addEventListener('storage', function (e) {
+      if (e.key === ANIM_KEY) applyAnimMode(e.newValue);
+    });
+  }
+
   function bindTheme() {
     var btns = doc.querySelectorAll('[data-theme-toggle]');
     for (var i = 0; i < btns.length; i++) {
@@ -882,6 +912,7 @@
   doc.addEventListener('DOMContentLoaded', function () {
     kitStyle();
     bindTheme();
+    bindAnim();
     bindRipple();
     bindRanges();
     reveal();
@@ -906,6 +937,8 @@
     isDark: isDark,
     setTheme: setTheme,
     toggleTheme: toggleTheme,
+    setAnimMode: setAnimMode,
+    animMode: readAnimMode,
     initTabs: initTabs,
     archive: makeArchive,
     project: project,
