@@ -1,0 +1,3517 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Flux Drive — 내 파일과 FLUX 작업물을 한곳에</title>
+<meta name="description" content="Flux Drive는 브라우저 안에서만 도는 개인 드라이브입니다. 폴더와 파일을 올리고, 이미지·PDF·코드·오디오·동영상을 미리 보고, Flux Docs·Sheets·Slides·Memo·Calendar·Builder에 저장된 내 작업물까지 한 화면에서 열고 내려받습니다. 서버 전송 없이 IndexedDB에만 저장하고 ZIP으로 통째로 백업합니다.">
+<meta name="theme-color" content="#2f6df6">
+<meta property="og:title" content="Flux Drive — 내 파일과 FLUX 작업물을 한곳에">
+<meta property="og:description" content="폴더·파일 보관함과 Flux Docs·Sheets·Slides·Memo·Calendar·Builder 작업물 통합 보기, 리치 미리보기, 용량 분석, ZIP 백업까지. 로그인 없이 브라우저에만 저장.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232f6df6'/%3E%3Cpath d='M7 12.5h18v11a2 2 0 01-2 2H9a2 2 0 01-2-2z' fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M7 12.5l2.2-4.2A2 2 0 0111 7.2h5.4a2 2 0 011.7 1l1.6 2.7' fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem('cream_theme');
+    document.documentElement.classList.toggle('dark', t ? t === 'dark' : true);
+  } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__driveErrs = [];
+    addEventListener('error', function (e) { window.__driveErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__driveErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+:root {
+  --brand: #2f6df6;
+  --brand-2: #00b3d6;
+  --brand-deep: #1c4fd0;
+  --brand-rgb: 47, 109, 246;
+
+  --paper: #f4f6fa;
+  --paper-2: #eceff6;
+  --sheet: #ffffff;
+  --sheet-2: #fafbfe;
+  --ink: #14161c;
+  --ink-2: #4c5261;
+  --ink-3: #878da0;
+  --line: rgba(20, 22, 28, .12);
+  --line-2: rgba(20, 22, 28, .07);
+  --chip: rgba(20, 22, 28, .05);
+  --glass: rgba(255, 255, 255, .78);
+  --shadow: 0 22px 60px -40px rgba(18, 30, 60, .5);
+  --shadow-hi: 0 28px 64px -32px rgba(18, 30, 60, .34);
+  --side-w: 252px;
+  --top-h: 62px;
+  --dock-h: 66px;
+  --r: 16px;
+  --ok: #0f9d63;
+  --warn: #d97706;
+  --danger: #e11d48;
+}
+html.dark {
+  --brand: #6c9bff;
+  --brand-2: #45d6ea;
+  --brand-deep: #a9c4ff;
+  --brand-rgb: 108, 155, 255;
+
+  --paper: #07090d;
+  --paper-2: #0d1016;
+  --sheet: #12151c;
+  --sheet-2: #171b23;
+  --ink: #eef1f7;
+  --ink-2: #b0b7c6;
+  --ink-3: #7b8296;
+  --line: rgba(255, 255, 255, .12);
+  --line-2: rgba(255, 255, 255, .07);
+  --chip: rgba(255, 255, 255, .07);
+  --glass: rgba(14, 17, 23, .82);
+  --shadow: 0 26px 70px -42px rgba(0, 0, 0, .95);
+  --shadow-hi: 0 30px 64px -32px rgba(0, 0, 0, .9);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+html, body {
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button { border: 0; background: none; cursor: pointer; padding: 0; }
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, h4, p { margin: 0; }
+input, textarea { outline: none; }
+ul { margin: 0; padding: 0; list-style: none; }
+::selection { background: color-mix(in srgb, var(--brand) 55%, transparent); color: #fff; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.mono { font-family: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ---------- ambient ---------- */
+.ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.ambient span {
+  position: absolute; border-radius: 9999px; filter: blur(90px); opacity: .32;
+  animation: orb 26s ease-in-out infinite;
+}
+html.dark .ambient span { opacity: .3; filter: blur(110px); }
+.ambient span:nth-child(1) { width: 420px; height: 420px; top: -120px; left: -80px; background: color-mix(in srgb, var(--brand) 55%, transparent); }
+.ambient span:nth-child(2) { width: 360px; height: 360px; top: 10%; right: -120px; background: color-mix(in srgb, var(--brand-2) 45%, transparent); animation-duration: 33s; animation-delay: -8s; }
+.ambient span:nth-child(3) { width: 300px; height: 300px; bottom: -140px; left: 34%; background: color-mix(in srgb, var(--brand) 32%, transparent); animation-duration: 29s; animation-delay: -15s; }
+@keyframes orb {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(26px, -30px, 0) scale(1.07); }
+  66% { transform: translate3d(-22px, 20px, 0) scale(.95); }
+}
+
+/* ---------- app shell ---------- */
+.app {
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr);
+  min-height: 100vh;
+  width: 100%;
+}
+.sidebar {
+  position: sticky; top: 0; align-self: start;
+  height: 100vh;
+  display: flex; flex-direction: column;
+  gap: 10px;
+  padding: 14px 12px 12px;
+  border-right: 1px solid var(--line-2);
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  z-index: 30;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 10px; border-radius: 14px; }
+.brand-mark {
+  width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0;
+  display: grid; place-items: center; color: #fff;
+  background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 14px 30px -16px rgba(var(--brand-rgb), .85);
+  transition: transform .3s cubic-bezier(.3, 1.5, .5, 1);
+}
+.brand:hover .brand-mark { transform: rotate(-6deg) scale(1.06); }
+.brand-mark .i { width: 21px; height: 21px; stroke-width: 1.8; }
+.brand-txt { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.brand-txt b { font-size: 15px; font-weight: 800; letter-spacing: -.02em; }
+.brand-txt i {
+  font-style: normal; font-size: 9.5px; font-weight: 800; letter-spacing: .16em;
+  color: var(--ink-3); text-transform: uppercase;
+}
+.new-btn {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 11px 13px; margin-bottom: 4px;
+  border-radius: 14px; color: #fff; font-size: 13.5px; font-weight: 800;
+  background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 16px 30px -18px rgba(var(--brand-rgb), .95);
+  transition: transform .18s cubic-bezier(.3, 1.6, .5, 1), filter .2s;
+  position: relative; overflow: hidden;
+}
+.new-btn:hover { transform: translateY(-2px); filter: brightness(1.04); }
+.new-btn:active { transform: scale(.97); }
+.new-btn kbd {
+  margin-left: auto; font-family: inherit; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, .24);
+}
+.side-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 2px 0 8px; }
+.side-scroll::-webkit-scrollbar { width: 6px; }
+.side-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 11px;
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  transition: background .16s, color .16s, transform .16s;
+  width: 100%; text-align: left;
+}
+.nav-item .i { width: 17px; height: 17px; opacity: .85; }
+.nav-item:hover { background: var(--chip); color: var(--ink); }
+.nav-item:active { transform: scale(.985); }
+.nav-item.on {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  font-weight: 800;
+}
+html.dark .nav-item.on { color: var(--brand); background: color-mix(in srgb, var(--brand) 18%, transparent); }
+.nav-item .count {
+  margin-left: auto; font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+  color: var(--ink-3); background: var(--chip); border-radius: 999px; padding: 1px 7px;
+}
+.nav-item.on .count { color: var(--brand); background: color-mix(in srgb, var(--brand) 16%, transparent); }
+.side-sec { margin-top: 16px; }
+.side-sec-head { display: flex; align-items: center; justify-content: space-between; padding: 0 10px 7px; }
+.side-sec-head h3 { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.mini-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10.5px; font-weight: 800; color: var(--ink-3);
+  padding: 2px 6px; border-radius: 7px; transition: color .16s, background .16s;
+}
+.mini-btn .i { width: 13px; height: 13px; }
+.mini-btn:hover { color: var(--brand); background: var(--chip); }
+.folder-list { display: flex; flex-direction: column; gap: 1px; }
+.folder-chip {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 11px; border-radius: 9px; font-size: 12.5px; color: var(--ink-2);
+  transition: background .16s, color .16s; text-align: left;
+}
+.folder-chip:hover { background: var(--chip); color: var(--ink); }
+.folder-chip .i { width: 15px; height: 15px; color: var(--brand); opacity: .8; }
+.folder-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-chip .cnt { margin-left: auto; font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.side-foot {
+  display: flex; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line-2);
+}
+.side-foot button, .side-foot a {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 2px; border-radius: 10px; font-size: 10px; font-weight: 700; color: var(--ink-3);
+  transition: background .16s, color .16s, transform .16s;
+}
+.side-foot .i { width: 16px; height: 16px; }
+.side-foot button:hover, .side-foot a:hover { color: var(--brand); background: var(--chip); }
+.side-foot button:active { transform: scale(.94); }
+.scrim {
+  position: fixed; inset: 0; background: rgba(6, 8, 12, .5); z-index: 35;
+  opacity: 0; pointer-events: none; transition: opacity .28s ease;
+  backdrop-filter: blur(2px);
+}
+.scrim.show { opacity: 1; pointer-events: auto; }
+
+/* ---------- main ---------- */
+.main { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 10px;
+  height: var(--top-h); padding: 0 20px;
+  border-bottom: 1px solid var(--line-2);
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+.tb-title { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tb-title h1 {
+  font-size: 17px; font-weight: 800; letter-spacing: -.02em;
+  display: flex; align-items: center; gap: 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tb-title p { font-size: 11.5px; color: var(--ink-3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-spacer { flex: 1; }
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 11px;
+  display: inline-grid; place-items: center;
+  border: 1px solid var(--line);
+  background: var(--sheet);
+  color: var(--ink-2);
+  transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), color .18s, border-color .18s, background .18s;
+  flex-shrink: 0;
+}
+html.dark .icon-btn { background: rgba(23, 27, 35, .8); }
+.icon-btn:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.icon-btn:active { transform: scale(.92); }
+.icon-btn.on { color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; }
+.search-wrap {
+  position: relative; display: flex; align-items: center; gap: 7px;
+  width: min(340px, 34vw); height: 38px; padding: 0 10px;
+  border-radius: 12px; border: 1px solid var(--line);
+  background: var(--sheet); color: var(--ink-3);
+  transition: border-color .18s, box-shadow .18s, width .25s ease;
+}
+.search-wrap:focus-within {
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 13%, transparent);
+  width: min(420px, 40vw);
+}
+.search-wrap .i { width: 16px; height: 16px; }
+.search-wrap input { flex: 1; min-width: 0; border: 0; background: none; font-size: 13px; color: var(--ink); }
+.search-wrap input::placeholder { color: var(--ink-3); }
+.search-clear {
+  width: 20px; height: 20px; border-radius: 999px; display: none;
+  place-items: center; color: var(--ink-3); background: var(--chip);
+}
+.search-clear.show { display: grid; }
+.search-clear .i { width: 12px; height: 12px; }
+.hub-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 12px; border-radius: 11px;
+  font-size: 12px; font-weight: 800; color: var(--ink-2);
+  border: 1px solid var(--line); background: var(--sheet);
+  transition: color .18s, border-color .18s, transform .16s;
+  white-space: nowrap;
+}
+.hub-link .i { width: 15px; height: 15px; }
+.hub-link:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); transform: translateY(-1px); }
+.hub-link:active { transform: scale(.96); }
+.only-mobile { display: none !important; }
+
+.content { flex: 1; padding: 18px 22px 34px; min-width: 0; }
+.crumbs {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  font-size: 12.5px; font-weight: 700; color: var(--ink-3); margin-bottom: 14px;
+}
+.crumbs button { padding: 4px 7px; border-radius: 8px; transition: background .16s, color .16s; display: inline-flex; align-items: center; gap: 5px; }
+.crumbs button:hover { color: var(--brand); background: var(--chip); }
+.crumbs .sep { opacity: .5; }
+.crumbs .cur { color: var(--ink); font-weight: 800; }
+.crumbs .i { width: 14px; height: 14px; }
+
+.toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.toolbar .grow { flex: 1; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 12px; border-radius: 10px;
+  font-size: 12.5px; font-weight: 700; color: var(--ink-2);
+  border: 1px solid var(--line); background: var(--sheet);
+  transition: color .16s, border-color .16s, transform .16s, background .16s;
+  white-space: nowrap;
+}
+.pill .i { width: 15px; height: 15px; }
+.pill:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); transform: translateY(-1px); }
+.pill:active { transform: scale(.96); }
+.pill.on { color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; box-shadow: 0 12px 24px -16px rgba(var(--brand-rgb), .9); }
+.pill.danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.fchip {
+  padding: 5px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+  color: var(--ink-3); background: var(--chip); border: 1px solid transparent;
+  transition: color .16s, background .16s, border-color .16s, transform .16s;
+}
+.fchip:hover { color: var(--ink); transform: translateY(-1px); }
+.fchip.on { color: var(--brand); background: color-mix(in srgb, var(--brand) 13%, transparent); border-color: color-mix(in srgb, var(--brand) 32%, transparent); }
+.fchip .n { font-variant-numeric: tabular-nums; opacity: .7; margin-left: 3px; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--chip); }
+.seg button {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border-radius: 7px; font-size: 11.5px; font-weight: 700; color: var(--ink-3);
+  transition: background .18s, color .18s, transform .14s;
+}
+.seg button .i { width: 14px; height: 14px; }
+.seg button.on { background: var(--sheet); color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+html.dark .seg button.on { background: rgba(255, 255, 255, .16); color: #fff; }
+.seg button:active { transform: scale(.94); }
+
+/* ---------- file grid ---------- */
+.grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(174px, 1fr));
+}
+.card {
+  position: relative; display: flex; flex-direction: column; gap: 8px;
+  padding: 13px 13px 11px; min-height: 150px;
+  border-radius: var(--r); border: 1px solid var(--line-2);
+  background: var(--sheet);
+  box-shadow: 0 1px 2px rgba(16, 20, 30, .04);
+  text-align: left; cursor: pointer;
+  transition: transform .26s cubic-bezier(.2, .85, .25, 1), box-shadow .26s, border-color .2s, background .2s;
+  animation: cardIn .4s cubic-bezier(.22, 1, .36, 1) both;
+  will-change: transform;
+  overflow: hidden;
+}
+@keyframes cardIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 22px 40px -26px rgba(20, 40, 90, .5);
+    border-color: color-mix(in srgb, var(--brand) 32%, var(--line-2));
+  }
+  .card:hover .card-actions { opacity: 1; transform: none; }
+}
+.card:active { transform: scale(.99); }
+.card.sel { border-color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 35%, transparent); background: color-mix(in srgb, var(--brand) 5%, var(--sheet)); }
+.card.dragover { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, var(--sheet)); transform: scale(1.02); }
+.card-top { display: flex; align-items: flex-start; gap: 8px; }
+.tile {
+  width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--tc, var(--brand)) 13%, transparent);
+  color: var(--tc, var(--brand));
+  transition: transform .26s cubic-bezier(.3, 1.5, .5, 1);
+}
+.card:hover .tile { transform: scale(1.07) rotate(-3deg); }
+.tile .i { width: 21px; height: 21px; }
+.tile.thumb { overflow: hidden; padding: 0; background: var(--chip); }
+.tile.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-name {
+  font-size: 13px; font-weight: 800; letter-spacing: -.01em; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  word-break: break-all;
+}
+.card-meta { font-size: 10.5px; color: var(--ink-3); font-weight: 600; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.card-bottom { margin-top: auto; display: flex; align-items: center; gap: 6px; }
+.card-tag {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 6px;
+  color: var(--ink-3); background: var(--chip);
+}
+.card-actions {
+  position: absolute; top: 8px; right: 8px; display: flex; gap: 3px;
+  opacity: 0; transform: translateY(-3px); transition: opacity .2s, transform .2s;
+}
+.card-actions button {
+  width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center;
+  background: var(--sheet); color: var(--ink-2); border: 1px solid var(--line-2);
+  transition: color .16s, background .16s, transform .16s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
+}
+.card-actions button .i { width: 13px; height: 13px; }
+.card-actions button:hover { color: var(--brand); }
+.card-actions button:active { transform: scale(.9); }
+.card-actions button.starred { color: #eab308; }
+.check {
+  position: absolute; top: 8px; left: 8px; width: 19px; height: 19px; border-radius: 6px;
+  border: 1.5px solid var(--line); background: var(--sheet);
+  display: grid; place-items: center; color: transparent;
+  transition: background .16s, border-color .16s, color .16s, transform .16s, opacity .16s;
+  z-index: 2; opacity: 0;
+}
+.check .i { width: 12px; height: 12px; stroke-width: 3; }
+.card:hover .check, .card.sel .check { opacity: 1; }
+.check.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.app.selmode .check { opacity: 1; }
+.app.selmode .card-actions { opacity: 0 !important; }
+.app.selmode .fab { display: none !important; }
+.check:hover { border-color: var(--brand); }
+.check.hint { opacity: 1; }
+.star-mark { position: absolute; top: 9px; left: 9px; color: #eab308; display: none; }
+.star-mark.show { display: block; }
+.star-mark .i { width: 15px; height: 15px; fill: currentColor; }
+
+/* ---------- file list ---------- */
+.list { display: flex; flex-direction: column; gap: 2px; }
+.list-head, .row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 92px 78px 108px 74px;
+  align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 10px;
+}
+.list-head {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-3); border-bottom: 1px solid var(--line-2); border-radius: 0;
+  padding-bottom: 9px; margin-bottom: 4px;
+}
+.row {
+  border: 1px solid transparent; cursor: pointer;
+  transition: background .16s, border-color .16s, transform .16s;
+  animation: cardIn .32s cubic-bezier(.22, 1, .36, 1) both;
+}
+.row:hover { background: var(--sheet); border-color: var(--line-2); transform: translateX(2px); }
+.row.sel { background: color-mix(in srgb, var(--brand) 8%, var(--sheet)); border-color: color-mix(in srgb, var(--brand) 40%, transparent); }
+.row .r-name { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.row .r-name .tile { width: 28px; height: 28px; border-radius: 8px; }
+.row .r-name .tile .i { width: 15px; height: 15px; }
+.row .r-name b { font-size: 12.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .cell { font-size: 11.5px; color: var(--ink-3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .r-actions { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; transition: opacity .16s; }
+.row:hover .r-actions { opacity: 1; }
+.row .r-actions button {
+  width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: var(--ink-3);
+  transition: color .16s, background .16s;
+}
+.row .r-actions button:hover { color: var(--brand); background: var(--chip); }
+.row .r-actions .i { width: 13px; height: 13px; }
+.row .check { position: static; opacity: 1; }
+
+/* ---------- section headings ---------- */
+.sec-head { display: flex; align-items: baseline; gap: 9px; margin: 4px 0 12px; flex-wrap: wrap; row-gap: 8px; }
+.sec-head h2 { font-size: 14.5px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+.sec-head p { font-size: 11.5px; color: var(--ink-3); font-weight: 600; flex: 1 1 220px; min-width: 0; }
+.sec-head .grow { flex: 1; }
+
+/* ---------- empty state ---------- */
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 54px 20px 60px; text-align: center;
+  border: 1px dashed var(--line); border-radius: 22px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brand) 4%, transparent), transparent 70%);
+  animation: fadeIn .5s ease both;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.empty-art {
+  position: relative; width: 116px; height: 116px; display: grid; place-items: center;
+  border-radius: 30px; color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  animation: floaty 5s ease-in-out infinite;
+}
+.empty-art .i { width: 52px; height: 52px; stroke-width: 1.3; }
+.empty-art::after {
+  content: ''; position: absolute; inset: -7px; border-radius: 34px;
+  border: 1px dashed color-mix(in srgb, var(--brand) 35%, transparent);
+  animation: spinSlow 22s linear infinite;
+}
+@keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+.empty h3 { font-size: 16.5px; font-weight: 800; }
+.empty p { font-size: 12.5px; color: var(--ink-3); max-width: 380px; line-height: 1.65; }
+.empty-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 16px; border-radius: 12px; color: #fff;
+  font-size: 12.5px; font-weight: 800;
+  background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 14px 28px -16px rgba(var(--brand-rgb), .9);
+  transition: transform .16s cubic-bezier(.3, 1.5, .5, 1), filter .2s;
+}
+.btn-primary .i { width: 16px; height: 16px; }
+.btn-primary:hover { transform: translateY(-2px); filter: brightness(1.05); }
+.btn-primary:active { transform: scale(.96); }
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 16px; border-radius: 12px; font-size: 12.5px; font-weight: 800;
+  color: var(--ink-2); border: 1px solid var(--line); background: var(--sheet);
+  transition: color .16s, border-color .16s, transform .16s;
+}
+.btn-ghost .i { width: 16px; height: 16px; }
+.btn-ghost:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); transform: translateY(-1px); }
+.btn-ghost:active { transform: scale(.96); }
+.btn-danger {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 10px 16px; border-radius: 12px; font-size: 12.5px; font-weight: 800;
+  color: #fff; background: var(--danger);
+  transition: filter .18s, transform .16s;
+}
+.btn-danger:hover { filter: brightness(1.06); }
+.btn-danger:active { transform: scale(.96); }
+
+/* ---------- drop overlay ---------- */
+.dropzone {
+  position: fixed; inset: 0; z-index: 60; display: none;
+  align-items: center; justify-content: center; padding: 24px;
+  background: rgba(8, 12, 20, .55); backdrop-filter: blur(6px);
+}
+.dropzone.show { display: flex; animation: fadeIn .18s ease both; }
+.dz-inner {
+  width: min(480px, 92vw); padding: 34px 26px; border-radius: 26px; text-align: center;
+  border: 2px dashed color-mix(in srgb, var(--brand) 60%, transparent);
+  background: var(--sheet); color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  animation: popIn .32s cubic-bezier(.2, 1.5, .4, 1) both;
+  box-shadow: var(--shadow-hi);
+}
+.dz-inner .dz-ico {
+  width: 68px; height: 68px; border-radius: 20px; display: grid; place-items: center;
+  color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+  animation: pulseGlow 1.6s ease-in-out infinite;
+}
+.dz-inner .dz-ico .i { width: 30px; height: 30px; }
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--brand-rgb), .45); transform: scale(1); }
+  50% { box-shadow: 0 0 0 16px rgba(var(--brand-rgb), 0); transform: scale(1.05); }
+}
+.dz-inner b { font-size: 15px; font-weight: 800; }
+.dz-inner span { font-size: 12px; color: var(--ink-3); }
+
+/* ---------- modal ---------- */
+.modal {
+  position: fixed; inset: 0; z-index: 70; display: none;
+  padding: 22px; align-items: center; justify-content: center;
+  background: rgba(6, 9, 15, .58); backdrop-filter: blur(5px);
+}
+.modal.show { display: flex; animation: fadeIn .18s ease both; }
+.sheet {
+  width: 100%; max-width: 520px; max-height: calc(100vh - 44px);
+  display: flex; flex-direction: column;
+  border-radius: 22px; border: 1px solid var(--line);
+  background: var(--sheet); box-shadow: var(--shadow-hi);
+  animation: springIn .42s cubic-bezier(.16, 1.24, .3, 1) both;
+  overflow: hidden;
+}
+.modal.closing .sheet { animation: springOut .2s ease both; }
+.sheet.wide { max-width: 1000px; }
+.sheet.mid { max-width: 680px; }
+@keyframes springIn {
+  0% { opacity: 0; transform: translateY(18px) scale(.93); }
+  60% { opacity: 1; transform: translateY(-3px) scale(1.008); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes springOut { to { opacity: 0; transform: translateY(10px) scale(.96); } }
+.sheet-head {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+  border-bottom: 1px solid var(--line-2);
+}
+.sheet-head .st { min-width: 0; flex: 1; }
+.sheet-head h2 { font-size: 14.5px; font-weight: 800; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-head p { font-size: 11px; color: var(--ink-3); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-body { padding: 16px; overflow: auto; min-height: 0; flex: 1; }
+.sheet-body.flush { padding: 0; }
+.sheet-foot {
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  border-top: 1px solid var(--line-2); background: var(--sheet-2); flex-wrap: wrap;
+}
+.sheet-foot .grow { flex: 1; }
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 11px; font-weight: 800; color: var(--ink-3); margin-bottom: 5px; }
+.input {
+  width: 100%; padding: 9px 11px; border-radius: 11px;
+  border: 1px solid var(--line); background: var(--paper); font-size: 13px; color: var(--ink);
+  transition: border-color .18s, box-shadow .18s;
+}
+.input:focus { border-color: color-mix(in srgb, var(--brand) 60%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 12%, transparent); }
+.hint { font-size: 11px; color: var(--ink-3); line-height: 1.6; }
+.modal-close { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: var(--ink-3); }
+.modal-close:hover { color: var(--ink); background: var(--chip); }
+.tabs { display: flex; gap: 4px; padding: 3px; border-radius: 11px; background: var(--chip); margin-bottom: 12px; }
+.tabs button { flex: 1; padding: 6px 8px; border-radius: 8px; font-size: 11.5px; font-weight: 800; color: var(--ink-3); transition: background .16s, color .16s; }
+.tabs button.on { background: var(--sheet); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .1); }
+
+/* folder picker */
+.pick-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
+.pick-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px;
+  font-size: 12.5px; font-weight: 600; color: var(--ink-2); text-align: left; width: 100%;
+  transition: background .16s, color .16s;
+}
+.pick-row:hover { background: var(--chip); color: var(--ink); }
+.pick-row.on { background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); font-weight: 800; }
+.pick-row .i { width: 15px; height: 15px; color: var(--brand); }
+.pick-row .ind { color: var(--ink-3); font-size: 10px; margin-left: auto; }
+
+/* preview */
+.pv-wrap { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.pv-stage {
+  flex: 1; min-height: 320px; display: grid; place-items: center;
+  background:
+    repeating-conic-gradient(from 0deg, var(--paper-2) 0% 25%, var(--paper) 0% 50%) 50% / 22px 22px;
+  overflow: auto; position: relative; padding: 14px;
+}
+.pv-stage img {
+  max-width: 100%; max-height: 62vh; border-radius: 10px;
+  box-shadow: 0 20px 50px -24px rgba(0, 0, 0, .5);
+  transition: transform .3s cubic-bezier(.2, .9, .25, 1);
+  transform-origin: center center;
+}
+.pv-stage iframe { width: 100%; height: 62vh; border: 0; border-radius: 10px; background: #fff; }
+.pv-stage video, .pv-stage audio { max-width: 100%; border-radius: 12px; }
+.pv-stage video { max-height: 62vh; box-shadow: 0 20px 50px -26px rgba(0, 0, 0, .6); }
+.pv-stage .audio-card {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 30px 26px; border-radius: 20px; background: var(--sheet); border: 1px solid var(--line);
+  box-shadow: var(--shadow); width: min(420px, 100%);
+}
+.pv-stage .audio-card .tile { width: 62px; height: 62px; border-radius: 18px; }
+.pv-stage .audio-card .tile .i { width: 30px; height: 30px; }
+.pv-stage .audio-card b { font-size: 13px; font-weight: 800; text-align: center; word-break: break-all; }
+.pv-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--line-2); background: var(--sheet-2); flex-wrap: wrap; }
+.pv-toolbar .zoomval { font-size: 11px; font-weight: 800; color: var(--ink-3); min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+.pv-info {
+  width: 272px; flex-shrink: 0; padding: 16px; border-left: 1px solid var(--line-2);
+  overflow: auto; display: flex; flex-direction: column; gap: 12px;
+  background: var(--sheet);
+}
+.pv-info .kv { display: flex; flex-direction: column; gap: 2px; }
+.pv-info .kv span { font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.pv-info .kv b { font-size: 12px; font-weight: 700; word-break: break-all; }
+.pv-main { display: flex; min-height: 0; flex: 1; }
+.pv-code {
+  width: 100%; margin: 0; padding: 12px 0; overflow: auto; background: var(--sheet);
+  font-family: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px; line-height: 1.65; color: var(--ink); max-height: 62vh; text-align: left;
+}
+.pv-code .ln { display: flex; }
+.pv-code .ln i {
+  width: 46px; flex-shrink: 0; text-align: right; padding-right: 12px;
+  color: var(--ink-3); font-style: normal; opacity: .7; user-select: none;
+}
+.pv-code .ln code { white-space: pre; padding-right: 14px; }
+.pv-text {
+  width: 100%; max-height: 62vh; overflow: auto; padding: 18px 20px;
+  background: var(--sheet); border-radius: 12px; border: 1px solid var(--line-2);
+  font-size: 13px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; text-align: left;
+}
+.pv-json { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; }
+.pv-note {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 40px 20px; text-align: center; color: var(--ink-3);
+}
+.pv-note .tile { width: 58px; height: 58px; border-radius: 17px; }
+.pv-note .tile .i { width: 28px; height: 28px; }
+.pv-note b { color: var(--ink); font-size: 14px; }
+.pv-note p { font-size: 12px; line-height: 1.7; max-width: 300px; }
+
+/* analytics */
+.an-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat {
+  padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line-2);
+  background: var(--sheet); display: flex; flex-direction: column; gap: 3px;
+  transition: transform .22s cubic-bezier(.2, .9, .3, 1), box-shadow .22s;
+}
+.stat:hover { transform: translateY(-3px); box-shadow: 0 18px 34px -24px rgba(20, 40, 90, .45); }
+.stat span { font-size: 10.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.stat b { font-size: 21px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat i { font-size: 11px; font-style: normal; color: var(--ink-3); font-weight: 600; }
+.bars { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--chip); margin: 6px 0 14px; }
+.bars i { display: block; height: 100%; transition: width .6s cubic-bezier(.22, 1, .36, 1), filter .2s; }
+.bars i:hover { filter: brightness(1.1); }
+.type-list { display: flex; flex-direction: column; gap: 9px; }
+.type-row { display: grid; grid-template-columns: 116px minmax(0, 1fr) 88px 56px; align-items: center; gap: 10px; font-size: 12px; }
+.type-row .tn { display: flex; align-items: center; gap: 7px; font-weight: 700; color: var(--ink-2); }
+.type-row .tn .dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.type-row .track { height: 7px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+.type-row .track i { display: block; height: 100%; border-radius: 999px; transition: width .6s cubic-bezier(.22, 1, .36, 1); }
+.type-row .tb { text-align: right; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.type-row .tc { text-align: right; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.big-list { display: flex; flex-direction: column; gap: 4px; }
+.big-row { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 10px; font-size: 12px; transition: background .16s; }
+.big-row:hover { background: var(--chip); }
+.big-row .tile { width: 26px; height: 26px; border-radius: 8px; }
+.big-row .tile .i { width: 14px; height: 14px; }
+.big-row b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.big-row span { margin-left: auto; color: var(--ink-3); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+/* works */
+.works-apps { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.wapp {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px 6px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 800;
+  border: 1px solid var(--line-2); background: var(--sheet); color: var(--ink-2);
+  transition: transform .16s, border-color .18s, color .18s;
+}
+.wapp .dot { width: 16px; height: 16px; border-radius: 5px; display: grid; place-items: center; color: #fff; }
+.wapp .dot .i { width: 10px; height: 10px; }
+.wapp .n { opacity: .6; font-size: 10px; font-variant-numeric: tabular-nums; }
+.wapp:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--brand) 40%, transparent); }
+.wapp.on { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); background: color-mix(in srgb, var(--brand) 9%, var(--sheet)); }
+.work-card { min-height: 168px; }
+.work-card .src { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.work-card .snippet {
+  font-size: 11px; color: var(--ink-3); line-height: 1.6; margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.work-card .card-bottom { gap: 5px; }
+.wbadge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 9.5px; font-weight: 800; padding: 2px 6px; border-radius: 6px;
+  color: color-mix(in srgb, var(--wc, var(--brand)) 75%, black);
+  background: color-mix(in srgb, var(--wc, var(--brand)) 14%, transparent);
+}
+html.dark .wbadge { color: color-mix(in srgb, var(--wc, var(--brand)) 50%, white); }
+.scan-state { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
+.scan-state .spin {
+  width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--line);
+  border-top-color: var(--brand); animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* upload progress */
+.upbar {
+  display: flex; align-items: center; gap: 9px; margin: 0 0 12px;
+  padding: 8px 12px; border-radius: 12px;
+  border: 1px solid var(--line-2); background: var(--sheet);
+  animation: popIn .3s cubic-bezier(.22, 1, .4, 1) both;
+}
+.upbar .track { flex: 1; height: 6px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+.upbar .track i {
+  display: block; height: 100%; width: 0%; border-radius: 999px;
+  background-image: linear-gradient(90deg, var(--brand), var(--brand-2));
+  transition: width .35s cubic-bezier(.22, 1, .36, 1);
+  position: relative;
+}
+.upbar .track i::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent);
+  animation: progShine 1.2s linear infinite;
+}
+@keyframes progShine { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.upbar span { font-size: 11px; font-weight: 800; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* stagger + micro animations */
+.card { animation-delay: var(--d, 0ms); }
+.row { animation-delay: var(--d, 0ms); }
+@keyframes starPop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.4) rotate(-14deg); }
+  70% { transform: scale(.9) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+.star-bounce .i { animation: starPop .5s cubic-bezier(.22, 1.4, .36, 1) both; }
+.crumbs { animation: crumbIn .32s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes crumbIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.tb-title h1 { animation: titleIn .4s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes titleIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* Developer Hub 전역 애니메이션 설정 */
+html[data-anim="reduced"] *,
+html[data-anim="reduced"] *::before,
+html[data-anim="reduced"] *::after {
+  animation-duration: .16s !important;
+  animation-delay: 0ms !important;
+  transition-duration: .16s !important;
+}
+html[data-anim="reduced"] .ambient span,
+html[data-anim="reduced"] .empty-art,
+html[data-anim="reduced"] .empty-art::after,
+html[data-anim="reduced"] .dz-ico,
+html[data-anim="reduced"] .upbar .track i::after,
+html[data-anim="reduced"] .progress-fill::after { animation: none !important; }
+html[data-anim="reduced"] .card:hover { transform: translateY(-2px); }
+html[data-anim="reduced"] .card:hover .tile { transform: none; }
+html[data-anim="reduced"] .btn-shimmer::after { display: none; }
+html[data-anim="off"] *,
+html[data-anim="off"] *::before,
+html[data-anim="off"] *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+  animation-delay: 0ms !important;
+}
+html[data-anim="off"] .ambient span,
+html[data-anim="off"] .empty-art::after { animation: none !important; }
+
+/* misc */
+.toasts { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 95; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.loading-row { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 44px; color: var(--ink-3); font-size: 12px; font-weight: 700; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--brand); animation: spin .8s linear infinite; }
+.notice {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+  background: color-mix(in srgb, var(--brand) 7%, transparent);
+  font-size: 12px; color: var(--ink-2); line-height: 1.6;
+}
+.notice .i { width: 16px; height: 16px; color: var(--brand); margin-top: 1px; }
+.share-out {
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--paper);
+  font-size: 11px; word-break: break-all; font-family: ui-monospace, monospace;
+  color: var(--ink-2); max-height: 88px; overflow: auto;
+}
+.dim { color: var(--ink-3); }
+.divider { height: 1px; background: var(--line-2); margin: 12px 0; }
+.selbar {
+  position: sticky; bottom: 14px; z-index: 18;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 16px auto 0; width: fit-content; max-width: 100%;
+  padding: 8px 10px; border-radius: 15px;
+  background: var(--sheet); border: 1px solid var(--line);
+  box-shadow: var(--shadow-hi);
+  animation: springIn .34s cubic-bezier(.16, 1.24, .3, 1) both;
+}
+.selbar b { font-size: 12px; font-weight: 800; padding: 0 4px; font-variant-numeric: tabular-nums; }
+.fab {
+  position: fixed; right: 18px; bottom: calc(var(--dock-h) + 18px); z-index: 25;
+  width: 54px; height: 54px; border-radius: 18px; display: none; place-items: center;
+  color: #fff; background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 18px 34px -16px rgba(var(--brand-rgb), .9);
+  transition: transform .18s cubic-bezier(.3, 1.6, .5, 1);
+}
+.fab .i { width: 24px; height: 24px; }
+.fab:active { transform: scale(.93); }
+.dock { display: none; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1080px) {
+  .pv-info { display: none; }
+}
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 280px;
+    transform: translateX(-104%); transition: transform .3s cubic-bezier(.22, 1, .36, 1);
+    box-shadow: var(--shadow-hi); background: var(--sheet); z-index: 40;
+  }
+  .sidebar.open { transform: none; }
+  .only-mobile { display: inline-grid !important; }
+  #btnNewFolder, #btnUpload, #themeBtnTop { display: none !important; }
+  .hub-link .lbl { display: none; }
+  .hub-link { width: 36px; padding: 0; justify-content: center; }
+  .topbar { padding: 0 12px; gap: 7px; }
+  .tb-title { flex: 1 1 auto; }
+  .tb-title h1 { font-size: 15px; }
+  .tb-title p { display: none; }
+  .tb-spacer { display: none; }
+  .search-wrap { width: auto; flex: 1 1 90px; min-width: 0; }
+  .search-wrap:focus-within { width: auto; }
+  .search-wrap input { font-size: 12px; }
+  .toolbar {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    padding-bottom: 2px; margin-bottom: 10px;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .toolbar > * { flex-shrink: 0; }
+  .toolbar .grow { flex: 1 0 8px; }
+  #tbExample, #tbZip { display: none; }
+  .sec-head .grow { display: none; }
+  .sec-head p { flex-basis: 100%; order: 4; }
+  .content { padding: 14px 14px calc(var(--dock-h) + 26px); }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .dock {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 26;
+    display: flex; align-items: stretch; justify-content: space-around;
+    height: calc(var(--dock-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--glass); backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border-top: 1px solid var(--line-2);
+  }
+  .dock button {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-size: 9.5px; font-weight: 800; color: var(--ink-3);
+    transition: color .18s, transform .16s;
+  }
+  .dock button .i { width: 20px; height: 20px; }
+  .dock button.on { color: var(--brand); }
+  .dock button.on .i { filter: drop-shadow(0 4px 8px rgba(var(--brand-rgb), .5)); }
+  .dock button:active { transform: scale(.92); }
+  .fab { display: grid; }
+  .list-head { display: none; }
+  .row { grid-template-columns: 24px minmax(0, 1fr) 60px; }
+  .row .cell.hide-m { display: none; }
+  .row .r-actions { opacity: 1; }
+  .selbar { position: fixed; left: 10px; right: 10px; width: auto; bottom: calc(var(--dock-h) + 10px); margin: 0; justify-content: center; }
+  .modal { padding: 10px; align-items: flex-end; }
+  .sheet { max-height: calc(100vh - 20px); border-radius: 20px; }
+  .pv-stage iframe { height: 54vh; }
+  .pv-stage img { max-height: 48vh; }
+  .pv-code, .pv-text { max-height: 54vh; }
+  .type-row { grid-template-columns: 92px minmax(0, 1fr) 74px; }
+  .type-row .tc { display: none; }
+}
+@media (max-width: 420px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .card { min-height: 150px; padding: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-anim="full"] *,
+  html:not([data-anim]) *,
+  *, *::before, *::after {
+    animation-duration: .001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001s !important;
+    scroll-behavior: auto !important;
+  }
+  .empty-art, .ambient span { animation: none !important; }
+}
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M4.6 8.4h14.8v9a2 2 0 01-2 2H6.6a2 2 0 01-2-2z"/><path d="M4.6 8.4l1.8-3.1a1.8 1.8 0 011.6-.9h4.2a1.8 1.8 0 011.5.8l1.4 2.2"/><path d="M8.6 12.6h6.8M8.6 15.6h4.2"/></symbol>
+  <symbol id="i-hub" viewBox="0 0 24 24"><rect x="3.2" y="3.2" width="7" height="7" rx="2"/><rect x="13.8" y="3.2" width="7" height="7" rx="2"/><rect x="3.2" y="13.8" width="7" height="7" rx="2"/><rect x="13.8" y="13.8" width="7" height="7" rx="2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="M15.8 15.8L21 21"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.8a2 2 0 012-2h3.4l2 2.4h7.6a2 2 0 012 2v9a2 2 0 01-2 2H5.5a2 2 0 01-2-2z"/></symbol>
+  <symbol id="i-folder-plus" viewBox="0 0 24 24"><path d="M3.5 6.8a2 2 0 012-2h3.4l2 2.4h7.6a2 2 0 012 2v9a2 2 0 01-2 2H5.5a2 2 0 01-2-2z"/><path d="M12 11.4v5M9.5 13.9h5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 19.5V8"/><path d="M7.6 11.8L12 7.4l4.4 4.4"/><path d="M4.5 4.5h15"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5V16"/><path d="M7.6 12.2L12 16.6l4.4-4.4"/><path d="M4.5 19.5h15"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.6l2.5 5.3 5.8.7-4.3 4 1.1 5.7-5.1-2.9-5.1 2.9 1.1-5.7-4.3-4 5.8-.7z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.2 7V4.9A1.4 1.4 0 0110.6 3.5h2.8a1.4 1.4 0 011.4 1.4V7"/><path d="M6.4 7l.9 12.1a1.6 1.6 0 001.6 1.5h6.2a1.6 1.6 0 001.6-1.5L17.6 7"/><path d="M10.4 11v6M13.6 11v6"/></symbol>
+  <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4.6 10.4A7.8 7.8 0 1112 20"/><path d="M4.2 5.4v5h5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h16"/></symbol>
+  <symbol id="i-chevron-r" viewBox="0 0 24 24"><path d="M9 5.5l6.5 6.5L9 18.5"/></symbol>
+  <symbol id="i-chevron-l" viewBox="0 0 24 24"><path d="M15 5.5L8.5 12 15 18.5"/></symbol>
+  <symbol id="i-chevrondown" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.6l4.5 4.5L19 6.9"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="8.8" cy="9.6" r="1.6"/><path d="M20.5 15.2l-4.6-4.4-6.6 8.4"/></symbol>
+  <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M6 3.5h7.4L19 9.2V19a1.6 1.6 0 01-1.6 1.5H6.5A1.5 1.5 0 015 19V5A1.5 1.5 0 016 3.5z"/><path d="M13.2 3.6V9h5.6"/><path d="M8.6 16.6v-4h1.3a1.3 1.3 0 010 2.6H8.6M13 16.6v-4h1.1a2 2 0 010 4z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3.5h7.4L19 9.2V19a1.6 1.6 0 01-1.6 1.5H6.5A1.5 1.5 0 015 19V5A1.5 1.5 0 016 3.5z"/><path d="M13.2 3.6V9h5.6"/><path d="M8.4 12.6h7.2M8.4 16h5"/></symbol>
+  <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="4" y="3.8" width="16" height="16.4" rx="2"/><path d="M4 9.2h16M4 14.6h16M9.4 9.2v11"/></symbol>
+  <symbol id="i-slide" viewBox="0 0 24 24"><rect x="3.2" y="4.5" width="17.6" height="12" rx="2"/><path d="M12 16.5v3.2M8.4 20.2h7.2"/><path d="M8.5 8.4h7M8.5 11.4h4"/></symbol>
+  <symbol id="i-audio" viewBox="0 0 24 24"><path d="M4 14.5v-5M8 17.5v-11M12 15.5v-7M16 18.5v-13M20 13.5v-3"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3.2" y="5.5" width="12.8" height="13" rx="2.2"/><path d="M16 10.4l4.4-2.6v8.4L16 13.6z"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.6 7.2L3.8 12l4.8 4.8M15.4 7.2L20.2 12l-4.8 4.8"/><path d="M13.4 4.6l-2.8 14.8"/></symbol>
+  <symbol id="i-zip" viewBox="0 0 24 24"><path d="M6 3.5h12a1.5 1.5 0 011.5 1.5v14a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 19V5A1.5 1.5 0 016 3.5z"/><path d="M11 3.6v2M13 6.6v2M11 9.6v2M13 12.6v2"/><path d="M10.4 15.4h3.2v2.4h-3.2z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h7.4L19 9.2V19a1.6 1.6 0 01-1.6 1.5H6.5A1.5 1.5 0 015 19V5A1.5 1.5 0 016 3.5z"/><path d="M13.2 3.6V9h5.6"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.4 18.5a4 4 0 01-.4-8 5.2 5.2 0 0110-1.2 3.6 3.6 0 01.6 7.1"/><path d="M7.4 18.5h9.6"/></symbol>
+  <symbol id="i-drive" viewBox="0 0 24 24"><path d="M8.6 4.2h6.8l5 8.6-3.4 5.9H7l-3.3-5.9z"/><path d="M8.6 4.2l4.2 7.2M19.4 12.8h-8.6M7 18.7l4-6.7"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6v4.8l3 1.8"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.7A8.2 8.2 0 019.4 4 8.4 8.4 0 1020 14.7z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.2M12 19.2v2.2M4.2 12H2M22 12h-2.2M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="17.5" cy="5.6" r="2.6"/><circle cx="6.5" cy="12" r="2.6"/><circle cx="17.5" cy="18.4" r="2.6"/><path d="M8.9 10.7l6.2-3.6M8.9 13.3l6.2 3.6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.6" y="8.6" width="11.4" height="11.4" rx="2.2"/><path d="M15.4 5.6a2 2 0 00-2-2H6.2A2.6 2.6 0 003.6 6.2v7.2a2 2 0 002 2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10.4 13.6a3.8 3.8 0 005.4 0l2.8-2.8a3.8 3.8 0 10-5.4-5.4l-1.2 1.2"/><path d="M13.6 10.4a3.8 3.8 0 00-5.4 0L5.4 13.2a3.8 3.8 0 105.4 5.4l1.2-1.2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.6 12S6 5.8 12 5.8 21.4 12 21.4 12 18 18.2 12 18.2 2.6 12 2.6 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24"><path d="M3.5 7.2A2 2 0 015.5 5.2h3.2l2 2.2h7.8a2 2 0 012 2v8.4a2 2 0 01-2 2H5.5a2 2 0 01-2-2z"/><path d="M13 11v5M10.6 13.4L13 11l2.4 2.4"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M20 11.4A8 8 0 116 5.6"/><path d="M20 4.6v6.4h-6"/></symbol>
+  <symbol id="i-zoom-in" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="M15.8 15.8L21 21M8 10.8h5.6M10.8 8v5.6"/></symbol>
+  <symbol id="i-zoom-out" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="M15.8 15.8L21 21M8 10.8h5.6"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.4 10.6A7.8 7.8 0 1112 19.8"/><path d="M4 5.6v5.2h5.2"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4.5v15M3.8 16.2L7 19.4l3.2-3.2"/><path d="M17 19.5v-15M13.8 7.8L17 4.6l3.2 3.2"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.2l1.7 4.9 4.9 1.7-4.9 1.7L12 16.4l-1.7-4.9-4.9-1.7 4.9-1.7z"/><path d="M18 15.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 11v5.4M12 7.8v.1"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8.4V6a2 2 0 012-2h2.4M15.6 4H18a2 2 0 012 2v2.4M20 15.6V18a2 2 0 01-2 2h-2.4M8.4 20H6a2 2 0 01-2-2v-2.4"/><path d="M8 12h8"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 3.5h12a1.8 1.8 0 011.8 1.8v9.4l-5.2 5.2H6a1.8 1.8 0 01-1.8-1.8V5.3A1.8 1.8 0 016 3.5z"/><path d="M19.6 14.9h-5v5"/><path d="M8.2 8.6h7.4M8.2 12.2h4.4"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.6" y="5" width="16.8" height="15.2" rx="2.2"/><path d="M3.6 9.8h16.8M8.2 3.4v3.2M15.8 3.4v3.2"/></symbol>
+  <symbol id="i-builder" viewBox="0 0 24 24"><rect x="3.4" y="4.2" width="17.2" height="4.6" rx="1.6"/><rect x="3.4" y="11.2" width="7.6" height="8.6" rx="1.6"/><rect x="13.2" y="11.2" width="7.4" height="8.6" rx="1.6"/></symbol>
+  <symbol id="i-image2" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8.4 9.6l2.6 2.6 4.6-4.6"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4.4h5.6V10"/><path d="M19.6 4.4L11 13"/><path d="M18 14.4v4.2a1.4 1.4 0 01-1.4 1.4H5.4A1.4 1.4 0 014 18.6V7.4A1.4 1.4 0 015.4 6h4.2"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4.2l8.2 14.6H3.8z"/><path d="M12 9.6v4.2M12 16.6v.1"/></symbol>
+  <symbol id="i-disk" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 4v5h6V4"/><circle cx="12" cy="15" r="2.2"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4.4 8.6h15.2M15.8 4.6l3.8 4-3.8 4"/><path d="M19.6 15.4H4.4M8.2 11.4l-3.8 4 3.8 4"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4.2l9.3-9.3a2 2 0 000-2.8l-1.4-1.4a2 2 0 00-2.8 0L4 15.8V20z"/><path d="M14 6.5l3.5 3.5"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.4" y="4" width="17.2" height="4.4" rx="1.4"/><path d="M5 8.4V19a1.4 1.4 0 001.4 1.4h11.2A1.4 1.4 0 0019 19V8.4"/><path d="M9.6 13h4.8"/></symbol>
+</svg>
+
+<div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<div class="app" id="app">
+  <aside class="sidebar" id="sidebar" aria-label="Flux Drive 메뉴">
+    <a class="brand" href="index.html" title="Lemon soft Developer Hub로 이동">
+      <span class="brand-mark"><svg class="i"><use href="#i-logo"></use></svg></span>
+      <span class="brand-txt"><b>Flux Drive</b><i>FLUX</i></span>
+    </a>
+
+    <button class="new-btn" id="btnNewMenu">
+      <svg class="i"><use href="#i-plus"></use></svg><span>새로 만들기</span><kbd>N</kbd>
+    </button>
+
+    <div class="side-scroll">
+      <nav class="nav-group" id="navGroup" aria-label="보기 선택">
+        <button class="nav-item on" data-view="drive"><svg class="i"><use href="#i-drive"></use></svg><span>내 드라이브</span><span class="count" id="cntDrive">0</span></button>
+        <button class="nav-item" data-view="recent"><svg class="i"><use href="#i-clock"></use></svg><span>최근 항목</span><span class="count" id="cntRecent">0</span></button>
+        <button class="nav-item" data-view="starred"><svg class="i"><use href="#i-star"></use></svg><span>중요 문서함</span><span class="count" id="cntStar">0</span></button>
+        <button class="nav-item" data-view="works"><svg class="i"><use href="#i-spark"></use></svg><span>내 FLUX 작업물</span><span class="count" id="cntWorks">0</span></button>
+        <button class="nav-item" data-view="analytics"><svg class="i"><use href="#i-disk"></use></svg><span>용량 분석</span></button>
+        <button class="nav-item" data-view="trash"><svg class="i"><use href="#i-trash"></use></svg><span>휴지통</span><span class="count" id="cntTrash">0</span></button>
+      </nav>
+
+      <section class="side-sec">
+        <div class="side-sec-head">
+          <h3>폴더</h3>
+          <button class="mini-btn" id="btnNewFolderSide"><svg class="i"><use href="#i-folder-plus"></use></svg>만들기</button>
+        </div>
+        <div class="folder-list" id="quickFolders"></div>
+      </section>
+    </div>
+
+    <div class="side-foot">
+      <button id="btnExportZip" title="전체 또는 선택 항목을 ZIP으로 백업"><svg class="i"><use href="#i-archive"></use></svg><span>백업</span></button>
+      <button id="btnImportZip" title="ZIP 백업을 드라이브로 복원"><svg class="i"><use href="#i-restore"></use></svg><span>복원</span></button>
+      <a href="index.html" title="Lemon soft Developer Hub" id="hubSide"><svg class="i"><use href="#i-hub"></use></svg><span>허브</span></a>
+      <button id="themeBtn" title="라이트·다크 모드 전환" data-theme-toggle><svg class="i"><use href="#i-moon"></use></svg><span>테마</span></button>    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="menuBtn" aria-label="메뉴 열기"><svg class="i"><use href="#i-menu"></use></svg></button>
+      <div class="tb-title">
+        <h1><span id="viewTitle">내 드라이브</span></h1>
+        <p id="viewSub">내 파일과 폴더를 보관합니다</p>
+      </div>
+      <div class="tb-spacer"></div>
+      <div class="search-wrap">
+        <svg class="i"><use href="#i-search"></use></svg>
+        <input id="searchInput" type="search" placeholder="파일·폴더 검색" autocomplete="off" aria-label="파일 검색">
+        <button class="search-clear" id="searchClear" aria-label="검색 지우기"><svg class="i"><use href="#i-x"></use></svg></button>
+      </div>
+      <button class="icon-btn" id="btnNewFolder" title="새 폴더 (F)" aria-label="새 폴더"><svg class="i"><use href="#i-folder-plus"></use></svg></button>
+      <button class="icon-btn" id="btnUpload" title="파일 올리기 (U)" aria-label="파일 올리기"><svg class="i"><use href="#i-upload"></use></svg></button>
+      <button class="icon-btn" id="themeBtnTop" title="라이트·다크 모드 전환" aria-label="테마 전환" data-theme-toggle><svg class="i"><use href="#i-moon"></use></svg></button>
+      <a class="hub-link" href="index.html" id="hubTop" title="Lemon soft Developer Hub로 이동">
+        <svg class="i"><use href="#i-hub"></use></svg><span class="lbl">Developer Hub</span>
+      </a>
+    </header>
+
+    <div class="content">
+      <div class="crumbs" id="crumbs"></div>
+
+      <div class="toolbar" id="mainToolbar">
+        <button class="pill" id="tbUpload"><svg class="i"><use href="#i-upload"></use></svg>파일 올리기</button>
+        <button class="pill" id="tbNewFolder"><svg class="i"><use href="#i-folder-plus"></use></svg>새 폴더</button>
+        <button class="pill" id="tbZip"><svg class="i"><use href="#i-archive"></use></svg>ZIP 백업</button>
+        <button class="pill" id="tbExample"><svg class="i"><use href="#i-spark"></use></svg>예시로 둘러보기</button>
+        <button class="pill danger" id="tbEmpty" hidden><svg class="i"><use href="#i-trash"></use></svg>휴지통 비우기</button>
+        <div class="grow"></div>
+        <button class="pill" id="tbSort"><svg class="i"><use href="#i-sort"></use></svg><span id="sortLabel">이름순</span></button>
+        <div class="seg" id="viewSeg" role="tablist" aria-label="보기 방식">
+          <button data-mode="grid" class="on" title="그리드 보기" role="tab"><svg class="i"><use href="#i-grid"></use></svg></button>
+          <button data-mode="list" title="리스트 보기" role="tab"><svg class="i"><use href="#i-list"></use></svg></button>
+        </div>
+      </div>
+
+      <div class="filters" id="filterBar"></div>
+
+      <div class="upbar" id="upProgress" hidden>
+        <span id="upText">올리는 중</span>
+        <div class="track"><i id="upFill"></i></div>
+      </div>
+
+      <div id="board" aria-live="polite"></div>
+      <div id="selHost"></div>
+    </div>
+  </main>
+
+  <nav class="dock" id="dock" aria-label="주요 보기">
+    <button data-view="drive" class="on"><svg class="i"><use href="#i-drive"></use></svg><span>드라이브</span></button>
+    <button data-view="recent"><svg class="i"><use href="#i-clock"></use></svg><span>최근</span></button>
+    <button data-view="works"><svg class="i"><use href="#i-spark"></use></svg><span>작업물</span></button>
+    <button data-view="starred"><svg class="i"><use href="#i-star"></use></svg><span>중요</span></button>
+    <button data-view="trash"><svg class="i"><use href="#i-trash"></use></svg><span>휴지통</span></button>
+  </nav>
+
+  <button class="fab only-mobile" id="fab" aria-label="새로 만들기"><svg class="i"><use href="#i-plus"></use></svg></button>
+</div>
+
+<noscript><div style="padding:18px;margin:14px;border:1px solid #ddd;border-radius:14px;font-size:13px">Flux Drive는 브라우저에서 도는 도구입니다. JavaScript를 켜면 파일 보관함과 FLUX 작업물 보기를 쓸 수 있습니다.</div></noscript>
+
+<div class="dropzone" id="dropzone" aria-hidden="true">
+  <div class="dz-inner">
+    <span class="dz-ico"><svg class="i"><use href="#i-upload"></use></svg></span>
+    <b>여기에 놓으면 바로 올라갑니다</b>
+    <span id="dzTarget">내 드라이브에 저장됩니다</span>
+  </div>
+</div>
+
+<input type="file" id="fileInput" multiple hidden>
+<input type="file" id="zipInput" accept=".zip,application/zip" hidden>
+
+<div id="modalRoot"></div>
+<script src="lemon-ui.js"></script>
+<script src="vendor/lz-string.min.js"></script>
+<script>
+/* =====================================================================
+   Flux Drive · 로컬 드라이브 (IndexedDB flux_drive_v1)
+   파일·폴더 보관함, 리치 미리보기, FLUX 작업물 통합 보기, ZIP 백업.
+   서버로 아무것도 보내지 않습니다.
+   ===================================================================== */
+(function () {
+  'use strict';
+
+  var doc = document;
+  var $ = function (s, r) { return (r || doc).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || doc).querySelectorAll(s)); };
+  var L = window.Lemon || {};
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function toast(msg, type) { try { L.toast ? L.toast(msg, type || 'ok') : console.log(msg); } catch (e) { } }
+  function hap(ms) { try { L.hap ? L.hap(ms) : null; } catch (e) { } }
+  function fmtBytes(b) { return L.fmtBytes ? L.fmtBytes(b) : (b || 0) + ' B'; }
+  function icon(id, cls) { return '<svg class="i ' + (cls || '') + '"><use href="#' + id + '"></use></svg>'; }
+  function uid(p) { return (p || 'n') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function nowTs() { return Date.now(); }
+  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+
+  function when(ts) {
+    if (!ts) return '-';
+    var d = new Date(ts), n = new Date();
+    var same = d.toDateString() === n.toDateString();
+    if (same) return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    var y = new Date(n.getTime() - 86400000);
+    if (d.toDateString() === y.toDateString()) return '어제';
+    var diff = (n.getTime() - ts) / 86400000;
+    if (diff < 7 && diff > 0) return Math.max(1, Math.floor(diff)) + '일 전';
+    return d.getFullYear() + '. ' + (d.getMonth() + 1) + '. ' + d.getDate() + '.';
+  }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function fullDate(ts) {
+    if (!ts) return '-';
+    var d = new Date(ts);
+    return d.getFullYear() + '. ' + pad2(d.getMonth() + 1) + '. ' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function stamp() {
+    var d = new Date();
+    return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes());
+  }
+
+  /* ---------------- file type map ---------------- */
+  var TYPES = [
+    { id: 'image', name: '이미지', icon: 'i-image', color: '#0ea5e9', exts: 'png jpg jpeg gif webp svg avif bmp heic ico' },
+    { id: 'pdf', name: 'PDF', icon: 'i-pdf', color: '#e11d48', exts: 'pdf' },
+    { id: 'doc', name: '문서', icon: 'i-doc', color: '#2563eb', exts: 'doc docx hwp hwpx odt rtf pages txt md markdown rst log' },
+    { id: 'code', name: '코드·데이터', icon: 'i-code', color: '#475569', exts: 'js mjs ts jsx tsx html htm css scss json xml yml yaml py java c cs cpp go rs rb php sh sql vue svelte csv tsv' },
+    { id: 'sheet', name: '스프레드시트', icon: 'i-sheet', color: '#0f9d63', exts: 'xls xlsx numbers ods' },
+    { id: 'slide', name: '프레젠테이션', icon: 'i-slide', color: '#ea580c', exts: 'ppt pptx key odp' },
+    { id: 'audio', name: '오디오', icon: 'i-audio', color: '#a855f7', exts: 'mp3 wav ogg m4a aac flac opus amr' },
+    { id: 'video', name: '동영상', icon: 'i-video', color: '#db2777', exts: 'mp4 webm mov mkv avi m4v mpg mpeg' },
+    { id: 'zip', name: '압축', icon: 'i-zip', color: '#a16207', exts: 'zip rar 7z tar gz bz2' },
+    { id: 'file', name: '기타', icon: 'i-file', color: '#64748b', exts: '' }
+  ];
+  var TYPE_BY_ID = {};
+  TYPES.forEach(function (t) {
+    TYPE_BY_ID[t.id] = t;
+    t.list = t.exts ? t.exts.split(' ') : [];
+  });
+  function extOf(name) {
+    var m = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,8})$/);
+    return m ? m[1] : '';
+  }
+  function typeOf(node) {
+    var e = extOf(node.name || '');
+    for (var i = 0; i < TYPES.length; i++) {
+      if (TYPES[i].list.indexOf(e) > -1) return TYPES[i];
+    }
+    var mime = node.mime || '';
+    if (mime.indexOf('image/') === 0) return TYPE_BY_ID.image;
+    if (mime === 'application/pdf') return TYPE_BY_ID.pdf;
+    if (mime.indexOf('audio/') === 0) return TYPE_BY_ID.audio;
+    if (mime.indexOf('video/') === 0) return TYPE_BY_ID.video;
+    if (mime.indexOf('text/') === 0) return TYPE_BY_ID.doc;
+    return TYPE_BY_ID.file;
+  }
+  function isTextLike(node) {
+    var t = typeOf(node).id;
+    if (t === 'doc' || t === 'code') return (node.size || 0) <= 900000;
+    return false;
+  }
+  var MIME = {
+    txt: 'text/plain;charset=utf-8', md: 'text/markdown;charset=utf-8', csv: 'text/csv;charset=utf-8',
+    json: 'application/json', html: 'text/html;charset=utf-8', css: 'text/css;charset=utf-8',
+    js: 'text/javascript;charset=utf-8', svg: 'image/svg+xml', pdf: 'application/pdf',
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', mp4: 'video/mp4', webm: 'video/webm',
+    zip: 'application/zip'
+  };
+  function mimeOf(name, given) {
+    if (given && given !== 'application/octet-stream') return given;
+    return MIME[extOf(name)] || 'application/octet-stream';
+  }
+
+  /* ---------------- IndexedDB ---------------- */
+  var DB_NAME = 'flux_drive_v1';
+  var DB_VER = 1;
+  var dbP = null;
+  function openDB() {
+    if (dbP) return dbP;
+    dbP = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('IndexedDB를 쓸 수 없는 브라우저입니다.')); return; }
+      var rq;
+      try { rq = indexedDB.open(DB_NAME, DB_VER); } catch (e) { rej(e); return; }
+      rq.onupgradeneeded = function () {
+        var db = rq.result;
+        if (!db.objectStoreNames.contains('nodes')) {
+          var st = db.createObjectStore('nodes', { keyPath: 'id' });
+          st.createIndex('parentId', 'parentId', { unique: false });
+          st.createIndex('trashed', 'trashed', { unique: false });
+          st.createIndex('updatedAt', 'updatedAt', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'k' });
+      };
+      rq.onsuccess = function () {
+        var db = rq.result;
+        db.onversionchange = function () { try { db.close(); } catch (e) { } dbP = null; };
+        res(db);
+      };
+      rq.onerror = function () { rej(rq.error || new Error('저장소를 열지 못했습니다.')); };
+      rq.onblocked = function () { rej(new Error('저장소가 다른 탭에서 사용 중입니다.')); };
+    });
+    dbP = dbP.then(function (db) { return db; }, function (err) { dbP = null; throw err; });
+    return dbP;
+  }
+  function reqP(req) {
+    return new Promise(function (res, rej) {
+      req.onsuccess = function () { res(req.result); };
+      req.onerror = function () { rej(req.error); };
+    });
+  }
+  function store(db, name, mode) { return db.transaction(name, mode || 'readonly').objectStore(name); }
+  function getAllNodes() {
+    return openDB().then(function (db) { return reqP(store(db, 'nodes').getAll()); });
+  }
+  function putNode(node) {
+    return openDB().then(function (db) { return reqP(store(db, 'nodes', 'readwrite').put(node)); });
+  }
+  function putManyNodes(list) {
+    return openDB().then(function (db) {
+      var tx = db.transaction('nodes', 'readwrite'), st = tx.objectStore('nodes');
+      list.forEach(function (n) { st.put(n); });
+      return new Promise(function (res, rej) { tx.oncomplete = res; tx.onerror = function () { rej(tx.error); }; });
+    });
+  }
+  function putBlob(id, blob) {
+    return openDB().then(function (db) { return reqP(store(db, 'blobs', 'readwrite').put({ id: id, blob: blob })); });
+  }
+  function getBlob(id) {
+    return openDB().then(function (db) { return reqP(store(db, 'blobs').get(id)); })
+      .then(function (rec) { return rec ? rec.blob : null; });
+  }
+  function deleteBlob(id) {
+    return openDB().then(function (db) { return reqP(store(db, 'blobs', 'readwrite').delete(id)); });
+  }
+  function deleteNodeRow(id) {
+    return openDB().then(function (db) { return reqP(store(db, 'nodes', 'readwrite').delete(id)); });
+  }
+  function clearEverything() {
+    return openDB().then(function (db) {
+      var tx = db.transaction(['nodes', 'blobs'], 'readwrite');
+      tx.objectStore('nodes').clear();
+      tx.objectStore('blobs').clear();
+      return new Promise(function (res, rej) { tx.oncomplete = res; tx.onerror = function () { rej(tx.error); }; });
+    });
+  }
+  function askPersist() {
+    try {
+      if (navigator.storage && navigator.storage.persist && !window.__drivePersistAsked) {
+        window.__drivePersistAsked = true;
+        navigator.storage.persist().catch(function () { });
+      }
+    } catch (e) { }
+  }
+
+  /* ---------------- state ---------------- */
+  var S = {
+    view: 'drive',
+    folderId: null,
+    query: '',
+    filter: 'all',
+    mode: 'grid',
+    sort: 'name',
+    nodes: [],
+    byId: {},
+    selected: {},
+    works: [],
+    workApps: [],
+    worksScanned: false,
+    worksNote: '',
+    previewEl: null,
+    previewUrl: null,
+    imgZoom: 1,
+    imgRot: 0,
+    lastFocus: null
+  };
+  var thumbCache = {};
+
+  function loadPrefs() {
+    try {
+      var m = localStorage.getItem('flux_drive_view_mode');
+      if (m === 'grid' || m === 'list') S.mode = m;
+      var s = localStorage.getItem('flux_drive_sort');
+      if (s === 'name' || s === 'updated' || s === 'size') S.sort = s;
+    } catch (e) { }
+  }
+  function savePrefs() {
+    try {
+      localStorage.setItem('flux_drive_view_mode', S.mode);
+      localStorage.setItem('flux_drive_sort', S.sort);
+    } catch (e) { }
+  }
+
+  function childrenOf(parentId) {
+    return S.nodes.filter(function (n) { return !n.trashed && n.parentId === (parentId || null); });
+  }
+  function descendantsOf(id, acc) {
+    acc = acc || [];
+    S.nodes.forEach(function (n) {
+      if (n.parentId === id) { acc.push(n); descendantsOf(n.id, acc); }
+    });
+    return acc;
+  }
+  function pathOf(id) {
+    var path = [], guard = 0, cur = S.byId[id];
+    while (cur && guard++ < 40) { path.unshift(cur); cur = cur.parentId ? S.byId[cur.parentId] : null; }
+    return path;
+  }
+  function folderPathOf(id) {
+    var p = [], guard = 0, cur = id;
+    while (cur && S.byId[cur] && guard++ < 40) { p.unshift(S.byId[cur].name); cur = S.byId[cur].parentId; }
+    return p.join('/');
+  }
+  function usage() {
+    var bytes = 0, files = 0, folders = 0, starred = 0, trashed = 0;
+    S.nodes.forEach(function (n) {
+      if (n.trashed) { trashed++; return; }
+      if (n.kind === 'folder') folders++;
+      else { files++; bytes += (n.size || 0); }
+      if (n.starred) starred++;
+    });
+    return { bytes: bytes, files: files, folders: folders, starred: starred, trashed: trashed };
+  }
+
+  /* ---------------- store operations ---------------- */
+  function loadAll() {
+    return getAllNodes().then(function (list) {
+      S.nodes = list || [];
+      S.byId = {};
+      S.nodes.forEach(function (n) { S.byId[n.id] = n; });
+    });
+  }
+
+  function createFolder(name, parentId) {
+    var clean = String(name || '').trim() || '새 폴더';
+    var node = {
+      id: uid('f'), kind: 'folder', name: uniqueName(clean, parentId), parentId: parentId || null,
+      size: 0, mime: '', ext: '', createdAt: nowTs(), updatedAt: nowTs(), starred: 0, trashed: 0, trashedAt: 0
+    };
+    return putNode(node).then(function () {
+      S.nodes.push(node); S.byId[node.id] = node;
+      return node;
+    });
+  }
+  function uniqueName(name, parentId) {
+    var siblings = S.nodes.filter(function (n) { return !n.trashed && n.parentId === (parentId || null); });
+    var taken = {};
+    siblings.forEach(function (n) { taken[n.name.toLowerCase()] = 1; });
+    if (!taken[name.toLowerCase()]) return name;
+    var base = name.replace(/(\.[a-z0-9]{1,8})$/i, '');
+    var ext = name.slice(base.length);
+    var i = 2;
+    while (taken[(base + ' (' + i + ')' + ext).toLowerCase()]) i++;
+    return base + ' (' + i + ')' + ext;
+  }
+
+  function saveFileNode(file, parentId, opts) {
+    opts = opts || {};
+    var name = uniqueName(opts.name || file.name || '이름 없는 파일', parentId);
+    var node = {
+      id: uid('d'), kind: 'file', name: name, parentId: parentId || null,
+      size: file.size || 0, mime: mimeOf(name, file.type), ext: extOf(name),
+      createdAt: nowTs(), updatedAt: nowTs(), starred: opts.starred ? 1 : 0, trashed: 0, trashedAt: 0,
+      note: opts.note || ''
+    };
+    return putBlob(node.id, file).then(function () { return putNode(node); }).then(function () {
+      S.nodes.push(node); S.byId[node.id] = node;
+      return node;
+    });
+  }
+
+  function updateNode(id, patch) {
+    var n = S.byId[id];
+    if (!n) return Promise.resolve(null);
+    Object.keys(patch).forEach(function (k) { n[k] = patch[k]; });
+    n.updatedAt = patch.keepTime ? n.updatedAt : nowTs();
+    return putNode(n).then(function () { return n; });
+  }
+
+  function trashNode(id) {
+    var n = S.byId[id];
+    if (!n) return Promise.resolve();
+    var list = [n].concat(n.kind === 'folder' ? descendantsOf(id) : []);
+    var ts = nowTs();
+    list.forEach(function (x) { x.trashed = 1; x.trashedAt = ts; });
+    return putManyNodes(list);
+  }
+  function restoreNode(id) {
+    var n = S.byId[id];
+    if (!n) return Promise.resolve();
+    var list = [n].concat(n.kind === 'folder' ? descendantsOf(id) : []);
+    list.forEach(function (x) {
+      if (x.trashed) { x.trashed = 0; x.trashedAt = 0; }
+    });
+    /* 부모가 휴지통이면 최상위로 올린다 */
+    list.forEach(function (x) {
+      if (x.parentId && (!S.byId[x.parentId] || S.byId[x.parentId].trashed)) x.parentId = null;
+    });
+    return putManyNodes(list);
+  }
+  function deleteForever(id) {
+    var n = S.byId[id];
+    if (!n) return Promise.resolve();
+    var list = [n].concat(n.kind === 'folder' ? descendantsOf(id) : []);
+    var chain = Promise.resolve();
+    list.forEach(function (x) {
+      chain = chain.then(function () { return deleteNodeRow(x.id); })
+        .then(function () { return deleteBlob(x.id); })
+        .then(function () { delete thumbCache[x.id]; delete S.byId[x.id]; });
+    });
+    return chain.then(function () {
+      var gone = {};
+      list.forEach(function (x) { gone[x.id] = 1; });
+      S.nodes = S.nodes.filter(function (x) { return !gone[x.id]; });
+    });
+  }
+
+  /* ---------------- thumbnail cache ---------------- */
+  function thumbFor(node) {
+    return new Promise(function (res) {
+      if (thumbCache[node.id]) return res(thumbCache[node.id]);
+      getBlob(node.id).then(function (b) {
+        if (!b) return res(null);
+        var url = URL.createObjectURL(b);
+        thumbCache[node.id] = url;
+        res(url);
+      }, function () { res(null); });
+    });
+  }
+  function hydrateThumbs() {
+    var slots = $$('[data-thumb]').slice(0, 80);
+    slots.forEach(function (el) {
+      var id = el.getAttribute('data-thumb');
+      thumbFor(S.byId[id] || { id: id }).then(function (url) {
+        if (!url || !el.isConnected) return;
+        el.classList.add('thumb');
+        el.innerHTML = '<img alt="" loading="lazy" src="' + url + '">';
+      });
+    });
+  }
+
+  /* ---------------- view data ---------------- */
+  function currentItems() {
+    var q = S.query.trim().toLowerCase();
+    var list;
+    if (S.view === 'trash') {
+      list = S.nodes.filter(function (n) { return !!n.trashed; });
+    } else if (S.view === 'starred') {
+      list = S.nodes.filter(function (n) { return !n.trashed && n.starred; });
+    } else if (S.view === 'recent') {
+      list = S.nodes.filter(function (n) { return !n.trashed; });
+    } else if (S.view === 'drive') {
+      list = q ? S.nodes.filter(function (n) { return !n.trashed; }) : childrenOf(S.folderId);
+    } else {
+      list = [];
+    }
+    if (q) {
+      list = list.filter(function (n) {
+        if (n.name.toLowerCase().indexOf(q) > -1) return true;
+        var ext = (n.ext || '').toLowerCase();
+        if (ext && ('.' + ext) === q) return true;
+        var t = typeOf(n);
+        return t.id !== 'file' && (t.name.toLowerCase().indexOf(q) > -1);
+      });
+    }
+    if (S.filter !== 'all') {
+      list = list.filter(function (n) {
+        if (S.filter === 'folder') return n.kind === 'folder';
+        return n.kind === 'file' && typeOf(n).id === S.filter;
+      });
+    }
+    return list;
+  }
+
+  function sortItems(list) {
+    var arr = list.slice();
+    arr.sort(function (a, b) {
+      if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
+      if (S.sort === 'updated') return (b.updatedAt || 0) - (a.updatedAt || 0);
+      if (S.sort === 'size') return (b.size || 0) - (a.size || 0);
+      return String(a.name).localeCompare(String(b.name), 'ko');
+    });
+    return arr;
+  }
+
+  /* ---------------- shell chrome ---------------- */
+  var VIEW_META = {
+    drive: { t: '내 드라이브', s: '내 파일과 폴더를 보관합니다' },
+    recent: { t: '최근 항목', s: '최근에 바꾼 파일을 모아 봅니다' },
+    starred: { t: '중요 문서함', s: '별표한 파일과 폴더' },
+    works: { t: '내 FLUX 작업물', s: 'Flux 앱에 저장된 내 작업을 한곳에서' },
+    analytics: { t: '용량 분석', s: '무엇이 얼마나 공간을 쓰는지' },
+    trash: { t: '휴지통', s: '지운 항목은 여기서 되살립니다' }
+  };
+
+  function renderChrome() {
+    var m = VIEW_META[S.view] || VIEW_META.drive;
+    $('#viewTitle').textContent = S.view === 'drive' && S.folderId ? (S.byId[S.folderId] ? S.byId[S.folderId].name : '내 드라이브') : m.t;
+    $('#viewSub').textContent = m.s;
+    $$('.nav-item').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === S.view); });
+    $$('#dock button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === S.view); });
+    var u = usage();
+    $('#cntDrive').textContent = u.files + u.folders;
+    $('#cntRecent').textContent = u.files;
+    $('#cntStar').textContent = u.starred;
+    $('#cntTrash').textContent = u.trashed;
+    $('#cntWorks').textContent = S.works.length || 0;
+    var itemView = S.view === 'drive' || S.view === 'recent' || S.view === 'starred' || S.view === 'trash';
+    var sortBtn = doc.getElementById('tbSort'), seg = doc.getElementById('viewSeg');
+    if (sortBtn) sortBtn.hidden = !itemView;
+    if (seg) seg.hidden = !itemView;
+    var trashView = S.view === 'trash';
+    ['tbUpload', 'tbNewFolder', 'tbExample'].forEach(function (id) {
+      var el = doc.getElementById(id);
+      if (el) el.hidden = trashView;
+    });
+    var emptyBtn = doc.getElementById('tbEmpty');
+    if (emptyBtn) emptyBtn.hidden = !trashView || !u.trashed;
+    renderQuickFolders();
+    renderCrumbs();
+  }
+
+  function renderQuickFolders() {
+    var host = $('#quickFolders');
+    var folders = S.nodes.filter(function (n) { return !n.trashed && n.kind === 'folder' && !n.parentId; })
+      .sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'ko'); })
+      .slice(0, 8);
+    if (!folders.length) {
+      host.innerHTML = '<p class="hint" style="padding:4px 11px">폴더가 없습니다. 오른쪽 위 폴더 버튼으로 만드세요.</p>';
+      return;
+    }
+    host.innerHTML = folders.map(function (f) {
+      var cnt = S.nodes.filter(function (n) { return !n.trashed && n.parentId === f.id; }).length;
+      return '<button class="folder-chip" data-folder="' + f.id + '">' + icon('i-folder') +
+        '<span>' + esc(f.name) + '</span><span class="cnt">' + cnt + '</span></button>';
+    }).join('');
+  }
+
+  function renderCrumbs() {
+    var host = $('#crumbs');
+    if (S.view !== 'drive') {
+      host.innerHTML = '<button data-crumb="root">' + icon('i-drive') + 'Flux Drive</button>' +
+        '<span class="sep">' + icon('i-chevron-r') + '</span><span class="cur">' + esc((VIEW_META[S.view] || {}).t || '') + '</span>';
+      return;
+    }
+    var path = S.folderId ? pathOf(S.folderId) : [];
+    var html = '<button data-crumb="root">' + icon('i-drive') + '내 드라이브</button>';
+    path.forEach(function (n, i) {
+      html += '<span class="sep">' + icon('i-chevron-r') + '</span>' +
+        '<button data-crumb="' + n.id + '"' + (i === path.length - 1 ? ' class="cur"' : '') + '>' + esc(n.name) + '</button>';
+    });
+    host.innerHTML = html;
+  }
+
+  function renderFilters(items) {
+    var bar = $('#filterBar');
+    if (S.view === 'works' || S.view === 'analytics') { bar.innerHTML = ''; bar.hidden = true; return; }
+    bar.hidden = false;
+    var counts = { all: items.length, folder: 0 };
+    items.forEach(function (n) {
+      if (n.kind === 'folder') counts.folder++;
+      else { var t = typeOf(n).id; counts[t] = (counts[t] || 0) + 1; }
+    });
+    var chips = [{ id: 'all', name: '전체', n: counts.all }, { id: 'folder', name: '폴더', n: counts.folder }];
+    TYPES.forEach(function (t) { if (counts[t.id]) chips.push({ id: t.id, name: t.name, n: counts[t.id] }); });
+    bar.innerHTML = chips.map(function (c) {
+      return '<button class="fchip' + (S.filter === c.id ? ' on' : '') + '" data-filter="' + c.id + '">' +
+        esc(c.name) + '<span class="n">' + c.n + '</span></button>';
+    }).join('');
+  }
+
+  function emptyHTML() {
+    if (S.view === 'trash') {
+      return '<div class="empty"><div class="empty-art">' + icon('i-trash') + '</div>' +
+        '<h3>휴지통이 비어 있어요</h3><p>지운 파일은 여기에 잠시 보관되고, 원할 때 되살리거나 완전히 지울 수 있습니다.</p></div>';
+    }
+    if (S.view === 'starred') {
+      return '<div class="empty"><div class="empty-art">' + icon('i-star') + '</div>' +
+        '<h3>중요 표시한 항목이 없어요</h3><p>파일 카드의 별표를 눌러 두면 이곳에서 한 번에 찾을 수 있습니다.</p></div>';
+    }
+    if (S.query) {
+      return '<div class="empty"><div class="empty-art">' + icon('i-search') + '</div>' +
+        '<h3>검색 결과가 없어요</h3><p>"' + esc(S.query) + '"에 맞는 파일이나 폴더를 찾지 못했습니다. 다른 이름이나 확장자로 찾아보세요.</p>' +
+        '<div class="empty-actions"><button class="btn-ghost" data-act="clear-search">' + icon('i-x') + '검색 지우기</button></div></div>';
+    }
+    if (S.filter !== 'all') {
+      return '<div class="empty"><div class="empty-art">' + icon('i-search') + '</div>' +
+        '<h3>이 유형의 항목이 없어요</h3><p>필터를 바꾸거나 파일을 올려 보세요.</p>' +
+        '<div class="empty-actions"><button class="btn-ghost" data-filter="all">' + icon('i-list') + '전체 보기</button></div></div>';
+    }
+    if (S.view === 'recent') {
+      return '<div class="empty"><div class="empty-art">' + icon('i-clock') + '</div>' +
+        '<h3>아직 최근 항목이 없어요</h3><p>파일을 올리면 최근에 바꾼 순서대로 이곳에 쌓입니다.</p>' +
+        '<div class="empty-actions"><button class="btn-primary" data-act="upload">' + icon('i-upload') + '파일 올리기</button></div></div>';
+    }
+    return '<div class="empty"><div class="empty-art">' + icon('i-cloud') + '</div>' +
+      '<h3>' + (S.folderId ? '이 폴더가 비어 있어요' : '아직 아무것도 없어요') + '</h3>' +
+      '<p>파일을 끌어다 놓거나 아래 버튼으로 올려 보세요. 폴더를 만들어 정리할 수도 있고, 이미 쓰고 있는 Flux Docs·Sheets·Memo·Calendar 작업물은 "내 FLUX 작업물"에서 바로 열 수 있습니다.</p>' +
+      '<div class="empty-actions">' +
+      '<button class="btn-primary" data-act="upload">' + icon('i-upload') + '파일 올리기</button>' +
+      '<button class="btn-ghost" data-act="new-folder">' + icon('i-folder-plus') + '폴더 만들기</button>' +
+      '<button class="btn-ghost" data-act="example">' + icon('i-spark') + '예시 파일·폴더 체험</button>' +
+      '</div></div>';
+  }
+
+  /* ---------------- card / row markup ---------------- */
+  function starBtn(n) {
+    return '<button data-act="star" data-id="' + n.id + '" class="' + (n.starred ? 'starred' : '') +
+      '" title="' + (n.starred ? '중요 해제' : '중요 표시') + '" aria-label="중요 표시">' +
+      icon('i-star') + '</button>';
+  }
+  function cardHTML(n, i) {
+    var t = n.kind === 'folder' ? { icon: 'i-folder', color: '#2f6df6', name: '폴더' } : typeOf(n);
+    var tile = n.kind === 'file' && typeOf(n).id === 'image'
+      ? '<span class="tile" data-thumb="' + n.id + '" style="--tc:' + t.color + '">' + icon(t.icon) + '</span>'
+      : '<span class="tile" style="--tc:' + t.color + '">' + icon(t.icon) + '</span>';
+    var meta = n.kind === 'folder'
+      ? '<div class="card-meta">' + icon('i-folder', 'tiny') + '폴더 · ' + when(n.updatedAt) + '</div>'
+      : '<div class="card-meta">' + fmtBytes(n.size) + ' · ' + when(n.updatedAt) + '</div>';
+    var actions = n.trashed
+      ? '<button data-act="restore" data-id="' + n.id + '" title="되살리기" aria-label="되살리기">' + icon('i-restore') + '</button>' +
+      '<button data-act="purge" data-id="' + n.id + '" title="완전 삭제" aria-label="완전 삭제">' + icon('i-trash') + '</button>'
+      : starBtn(n) + '<button data-act="menu" data-id="' + n.id + '" title="더보기" aria-label="더보기">' + icon('i-more') + '</button>';
+    return '<article class="card' + (S.selected[n.id] ? ' sel' : '') + '" data-id="' + n.id + '" data-kind="' + n.kind + '" tabindex="0" style="--d:' + Math.min((i || 0) * 22, 240) + 'ms">' +
+      '<button class="check' + (S.selected[n.id] ? ' on' : '') + '" data-act="select" data-id="' + n.id + '" aria-label="선택">' + icon('i-check') + '</button>' +
+      '<div class="card-actions">' + actions + '</div>' +
+      '<div class="card-top">' + tile + '</div>' +
+      '<div class="card-name">' + esc(n.name) + '</div>' + meta +
+      '<div class="card-bottom"><span class="card-tag">' + esc(t.name) + '</span>' +
+      (n.starred ? '<span class="wbadge" style="--wc:#eab308">' + icon('i-star') + '중요</span>' : '') +
+      (n.trashed ? '<span class="wbadge" style="--wc:#e11d48">휴지통</span>' : '') +
+      '</div></article>';
+  }
+  function rowHTML(n, i) {
+    var t = n.kind === 'folder' ? { icon: 'i-folder', color: '#2f6df6', name: '폴더' } : typeOf(n);
+    var actions = S.view === 'trash'
+      ? '<button data-act="restore" data-id="' + n.id + '" title="되살리기">' + icon('i-restore') + '</button>' +
+      '<button data-act="purge" data-id="' + n.id + '" title="완전 삭제">' + icon('i-trash') + '</button>'
+      : '<button data-act="download" data-id="' + n.id + '" title="내려받기">' + icon('i-download') + '</button>' +
+      starBtn(n) +
+      '<button data-act="menu" data-id="' + n.id + '" title="더보기">' + icon('i-more') + '</button>';
+    return '<div class="row' + (S.selected[n.id] ? ' sel' : '') + '" data-id="' + n.id + '" data-kind="' + n.kind + '" tabindex="0" style="--d:' + Math.min((i || 0) * 18, 200) + 'ms">' +
+      '<button class="check' + (S.selected[n.id] ? ' on' : '') + '" data-act="select" data-id="' + n.id + '" aria-label="선택">' + icon('i-check') + '</button>' +
+      '<div class="r-name"><span class="tile" style="--tc:' + t.color + '">' + icon(t.icon) + '</span><b>' + esc(n.name) + '</b></div>' +
+      '<span class="cell hide-m">' + esc(t.name) + '</span>' +
+      '<span class="cell">' + (n.kind === 'folder' ? '-' : fmtBytes(n.size)) + '</span>' +
+      '<span class="cell hide-m">' + when(n.updatedAt) + '</span>' +
+      '<span class="r-actions">' + actions + '</span></div>';
+  }
+
+  /* ---------------- render ---------------- */
+  function render() {
+    renderChrome();
+    var board = $('#board');
+    if (S.view === 'works') { renderWorks(); return; }
+    if (S.view === 'analytics') { renderAnalytics(); return; }
+
+    var base = currentItems();
+    renderFilters(base);
+    var items = sortItems(base);
+    if (!items.length) {
+      board.innerHTML = emptyHTML();
+      renderSelBar();
+      return;
+    }
+    if (S.mode === 'list') {
+      board.innerHTML = '<div class="list"><div class="list-head"><span></span><span>이름</span><span>유형</span><span>크기</span><span>수정</span><span></span></div>' +
+        items.map(rowHTML).join('') + '</div>';
+    } else {
+      board.innerHTML = '<div class="grid">' + items.map(cardHTML).join('') + '</div>';
+    }
+    hydrateThumbs();
+    renderSelBar();
+  }
+
+  function renderSelBar() {
+    var host = $('#selHost');
+    var ids = Object.keys(S.selected);
+    var appEl = doc.getElementById('app');
+    if (appEl) appEl.classList.toggle('selmode', ids.length > 0);
+    if (!ids.length) { host.innerHTML = ''; return; }
+    var trash = S.view === 'trash';
+    host.innerHTML = '<div class="selbar"><b>' + ids.length + '개 선택</b>' +
+      (trash
+        ? '<button class="pill" data-sact="restore">' + icon('i-restore') + '되살리기</button>' +
+        '<button class="pill danger" data-sact="purge">' + icon('i-trash') + '완전 삭제</button>'
+        : '<button class="pill" data-sact="download">' + icon('i-download') + '내려받기</button>' +
+        '<button class="pill" data-sact="zip">' + icon('i-archive') + 'ZIP</button>' +
+        '<button class="pill" data-sact="move">' + icon('i-move') + '이동</button>' +
+        '<button class="pill" data-sact="star">' + icon('i-star') + '중요</button>' +
+        '<button class="pill danger" data-sact="trash">' + icon('i-trash') + '휴지통</button>') +
+      '<button class="pill" data-sact="clear">' + icon('i-x') + '해제</button></div>';
+  }
+
+  /* ================= modal system ================= */
+  var openSheets = [];
+  function openSheet(opts) {
+    var root = $('#modalRoot');
+    var wrap = doc.createElement('div');
+    wrap.className = 'modal show';
+    wrap.innerHTML =
+      '<div class="sheet ' + (opts.size || '') + '" role="dialog" aria-modal="true" aria-label="' + esc(opts.title || '창') + '">' +
+      '<div class="sheet-head"><div class="st"><h2>' + (opts.titleHTML || esc(opts.title || '')) + '</h2>' +
+      (opts.sub ? '<p>' + esc(opts.sub) + '</p>' : '') + '</div>' +
+      '<button class="modal-close" data-close aria-label="닫기">' + icon('i-x') + '</button></div>' +
+      '<div class="sheet-body' + (opts.flush ? ' flush' : '') + '">' + (opts.body || '') + '</div>' +
+      (opts.foot ? '<div class="sheet-foot">' + opts.foot + '</div>' : '') +
+      '</div>';
+    root.appendChild(wrap);
+    openSheets.push(wrap);
+    S.lastFocus = doc.activeElement;
+    wrap.addEventListener('mousedown', function (e) {
+      if (e.target === wrap && !opts.sticky) closeSheet(wrap);
+    });
+    $$('[data-close]', wrap).forEach(function (b) { b.addEventListener('click', function () { closeSheet(wrap); }); });
+    if (opts.onMount) setTimeout(function () { opts.onMount(wrap); }, 0);
+    return wrap;
+  }
+  function closeSheet(el) {
+    var wrap = el || openSheets[openSheets.length - 1];
+    if (!wrap || !wrap.parentNode) return;
+    wrap.classList.add('closing');
+    openSheets = openSheets.filter(function (w) { return w !== wrap; });
+    if (S.previewUrl && wrap.contains($('#pvStage'))) { try { URL.revokeObjectURL(S.previewUrl); } catch (e) { } S.previewUrl = null; }
+    setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 190);
+    if (S.lastFocus && S.lastFocus.focus && !openSheets.length) { try { S.lastFocus.focus(); } catch (e) { } }
+  }
+  function closeAllSheets() { openSheets.slice().forEach(function (w) { closeSheet(w); }); }
+
+  function askName(opt) {
+    return new Promise(function (resolve) {
+      var wrap = openSheet({
+        title: opt.title || '이름',
+        sub: opt.sub || '',
+        size: 'mid',
+        body: '<div class="field"><label for="nameField">' + esc(opt.label || '이름') + '</label>' +
+          '<input class="input" id="nameField" value="' + esc(opt.value || '') + '" placeholder="' + esc(opt.placeholder || '') + '" autocomplete="off"></div>' +
+          (opt.hint ? '<p class="hint">' + esc(opt.hint) + '</p>' : ''),
+        foot: '<div class="grow"></div><button class="btn-ghost" data-close>취소</button>' +
+          '<button class="btn-primary" id="nameOk">' + esc(opt.okLabel || '확인') + '</button>'
+      });
+      var input = $('#nameField', wrap);
+      function done() {
+        var v = input.value.trim();
+        if (!v) { input.focus(); input.classList.add('shake'); setTimeout(function () { input.classList.remove('shake'); }, 380); return; }
+        closeSheet(wrap); resolve(v);
+      }
+      $('#nameOk', wrap).addEventListener('click', done);
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); done(); } });
+      setTimeout(function () { try { input.focus(); input.select(); } catch (e) { } }, 60);
+      wrap.addEventListener('modal:closed', function () { resolve(null); });
+      var obs = new MutationObserver(function () {
+        if (!wrap.parentNode) { obs.disconnect(); resolve(null); }
+      });
+      obs.observe(doc.body, { childList: true, subtree: true });
+    });
+  }
+
+  function confirmSheet(opt) {
+    return new Promise(function (resolve) {
+      var wrap = openSheet({
+        title: opt.title || '확인',
+        size: 'mid',
+        body: '<p style="font-size:13px;line-height:1.7;color:var(--ink-2)">' + (opt.bodyHTML || esc(opt.body || '')) + '</p>',
+        foot: '<div class="grow"></div><button class="btn-ghost" data-close>취소</button>' +
+          '<button class="' + (opt.danger ? 'btn-danger' : 'btn-primary') + '" id="cfmOk">' + esc(opt.okLabel || '확인') + '</button>'
+      });
+      var answered = false;
+      $('#cfmOk', wrap).addEventListener('click', function () { answered = true; closeSheet(wrap); resolve(true); });
+      var obs = new MutationObserver(function () {
+        if (!wrap.parentNode) { obs.disconnect(); if (!answered) resolve(false); }
+      });
+      obs.observe(doc.body, { childList: true, subtree: true });
+    });
+  }
+
+  /* ================= upload ================= */
+  function uploadTargetFolder() { return S.view === 'drive' ? S.folderId : null; }
+
+  function uploadFiles(fileList, parentId) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return Promise.resolve(0);
+    askPersist();
+    var big = files.filter(function (f) { return f.size > 120 * 1024 * 1024; });
+    var go = big.length
+      ? confirmSheet({
+        title: '큰 파일이 있습니다',
+        bodyHTML: '120MB가 넘는 파일이 ' + big.length + '개 있습니다. 브라우저 저장 공간은 기기마다 다르고, 공간이 부족하면 저장에 실패할 수 있습니다.<br><br>그래도 올릴까요?',
+        okLabel: '올리기'
+      })
+      : Promise.resolve(true);
+    return go.then(function (ok) {
+      if (!ok) return 0;
+      var done = 0, failed = 0;
+      var bar = $('#upProgress'), fill = $('#upFill'), label = $('#upText');
+      if (bar) { bar.hidden = false; fill.style.width = '4%'; }
+      if (label) label.textContent = '올리는 중 0/' + files.length;
+      toast(files.length + '개 파일을 올리는 중입니다', 'info');
+      var chain = Promise.resolve();
+      files.forEach(function (f, i) {
+        chain = chain.then(function () {
+          return saveFileNode(f, parentId).then(function () { done++; }, function (err) {
+            failed++; console.warn('[Flux Drive] 업로드 실패', f.name, err);
+          }).then(function () {
+            if (fill) fill.style.width = Math.round(((i + 1) / files.length) * 100) + '%';
+            if (label) label.textContent = '올리는 중 ' + (i + 1) + '/' + files.length + ' · ' + f.name.slice(0, 18);
+          });
+        });
+      });
+      return chain.then(function () {
+        hap();
+        if (failed) toast(done + '개 올림 · ' + failed + '개 실패 (저장 공간 확인)', 'err');
+        else toast(done + '개 파일을 올렸습니다');
+        if (bar) {
+          setTimeout(function () { bar.hidden = true; if (fill) fill.style.width = '0%'; }, 620);
+        }
+        render();
+        return done;
+      });
+    });
+  }
+
+  /* ================= preview ================= */
+  function openItem(id) {
+    var n = S.byId[id];
+    if (!n) return;
+    if (n.kind === 'folder') {
+      S.view = 'drive'; S.folderId = n.id; S.filter = 'all'; S.query = '';
+      $('#searchInput').value = ''; $('#searchClear').classList.remove('show');
+      render();
+      return;
+    }
+    openPreview(n);
+  }
+
+  function openPreview(node) {
+    var t = typeOf(node);
+    var mid = 'pv_' + node.id;
+    var tools = '<div class="pv-toolbar" id="pvTools">' +
+      '<button class="pill" data-pv="open">' + icon('i-external') + '새 탭에서 열기</button>' +
+      '<button class="pill" data-pv="copy">' + icon('i-copy') + '내용 복사</button>' +
+      '<span class="grow" style="flex:1"></span>' +
+      '<div id="pvZoomBox" hidden><button class="pill" data-pv="zout" title="축소">' + icon('i-zoom-out') + '</button>' +
+      '<span class="zoomval" id="pvZoomVal">100%</span>' +
+      '<button class="pill" data-pv="zin" title="확대">' + icon('i-zoom-in') + '</button>' +
+      '<button class="pill" data-pv="zreset" title="원래 크기">' + icon('i-reset') + '</button>' +
+      '<button class="pill" data-pv="rotate" title="회전">' + icon('i-rotate') + '</button></div></div>';
+    var info = '<div class="pv-info">' +
+      '<div class="kv"><span>이름</span><b>' + esc(node.name) + '</b></div>' +
+      '<div class="kv"><span>유형</span><b>' + esc(t.name) + (node.ext ? ' (' + esc(node.ext.toUpperCase()) + ')' : '') + '</b></div>' +
+      '<div class="kv"><span>크기</span><b>' + fmtBytes(node.size) + '</b></div>' +
+      '<div class="kv"><span>올린 날</span><b>' + fullDate(node.createdAt) + '</b></div>' +
+      '<div class="kv"><span>수정</span><b>' + fullDate(node.updatedAt) + '</b></div>' +
+      '<div class="divider"></div>' +
+      '<div class="kv"><span>위치</span><b>' + esc(folderPathOf(node.parentId) || '내 드라이브') + '</b></div>' +
+      '</div>';
+    var wrap = openSheet({
+      title: node.name,
+      sub: t.name + ' · ' + fmtBytes(node.size) + ' · ' + when(node.updatedAt),
+      size: 'wide', flush: true, sticky: true,
+      body: tools + '<div class="pv-main"><div class="pv-stage" id="pvStage"><div class="loading-row"><span class="spinner"></span>여는 중…</div></div>' + info + '</div>',
+      foot: '<button class="pill" data-pv="download">' + icon('i-download') + '내려받기</button>' +
+        '<button class="pill" data-pv="rename">' + icon('i-edit') + '이름 변경</button>' +
+        '<button class="pill" data-pv="move">' + icon('i-move') + '이동</button>' +
+        '<button class="pill" data-pv="star">' + icon('i-star') + (node.starred ? '중요 해제' : '중요 표시') + '</button>' +
+        (isTextLike(node) || t.id === 'code' ? '<button class="pill" data-pv="share">' + icon('i-share') + '링크 공유</button>' : '') +
+        '<div style="flex:1"></div>' +
+        '<button class="pill danger" data-pv="trash">' + icon('i-trash') + '휴지통으로</button>' +
+        '<button class="btn-ghost" data-close>닫기</button>'
+    });
+    wrap.setAttribute('data-preview', mid);
+    var stage = $('#pvStage', wrap);
+
+    getBlob(node.id).then(function (blob) {
+      if (!blob) { stage.innerHTML = '<div class="pv-note">' + icon('i-warn') + '<b>파일을 읽지 못했습니다</b><p>저장소에서 내용을 찾을 수 없습니다.</p></div>'; return; }
+      var url = URL.createObjectURL(blob);
+      S.previewUrl = url;
+      var tid = t.id;
+      if (tid === 'image') {
+        stage.innerHTML = '<img id="pvImg" alt="' + esc(node.name) + '" src="' + url + '">';
+        $('#pvZoomBox', wrap).hidden = false;
+        S.imgZoom = 1; S.imgRot = 0;
+        updateImg();
+      } else if (tid === 'pdf') {
+        stage.innerHTML = '<iframe id="pvFrame" title="PDF 미리보기" src="' + url + '#toolbar=1&view=FitH"></iframe>' +
+          '<p class="hint" style="position:absolute;bottom:6px;left:0;right:0;text-align:center;background:var(--sheet);padding:4px">PDF가 보이지 않으면 위의 "새 탭에서 열기"를 눌러 주세요.</p>';
+      } else if (tid === 'video') {
+        stage.innerHTML = '<video id="pvVideo" controls playsinline preload="metadata" src="' + url + '"></video>';
+      } else if (tid === 'audio') {
+        stage.innerHTML = '<div class="audio-card"><span class="tile" style="--tc:#a855f7">' + icon('i-audio') + '</span>' +
+          '<b>' + esc(node.name) + '</b><audio id="pvAudio" controls preload="metadata" src="' + url + '"></audio>' +
+          '<span class="hint">' + fmtBytes(node.size) + ' · ' + esc(node.ext.toUpperCase()) + '</span></div>';
+      } else if (isTextLike(node)) {
+        blob.text().then(function (text) {
+          if (!doc.body.contains(stage)) return;
+          renderTextPreview(stage, text, /^(html|htm)$/i.test(node.ext || ''));
+          $('#pvTools', wrap).setAttribute('data-text', '1');
+        });
+      } else {
+        stage.innerHTML = '<div class="pv-note"><span class="tile" style="--tc:' + t.color + '">' + icon(t.icon) + '</span>' +
+          '<b>이 형식은 미리보기를 지원하지 않아요</b><p>' + esc(node.ext ? node.ext.toUpperCase() + ' 파일' : '이 파일') + '은(는) 내려받아 확인해 주세요. 텍스트·이미지·PDF·오디오·동영상은 바로 볼 수 있습니다.</p>' +
+          '<button class="btn-primary" data-pv="download">' + icon('i-download') + '내려받기</button></div>';
+      }
+    }, function () {
+      stage.innerHTML = '<div class="pv-note">' + icon('i-warn') + '<b>파일을 읽지 못했습니다</b><p>저장소 접근에 실패했습니다.</p></div>';
+    });
+
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pv]');
+      if (!b) return;
+      var act = b.getAttribute('data-pv');
+      if (act === 'open') {
+        if (!S.previewUrl) return;
+        window.open(S.previewUrl, '_blank', 'noopener');
+      } else if (act === 'copy') {
+        var txt = currentPreviewText(wrap);
+        if (txt) L.copy ? L.copy(txt, '내용을 복사했습니다') : toast('복사했습니다');
+        else toast('복사할 텍스트가 없습니다', 'err');
+      } else if (act === 'zin' || act === 'zout' || act === 'zreset' || act === 'rotate') {
+        if (act === 'zin') S.imgZoom = clamp(S.imgZoom + .25, .5, 4);
+        if (act === 'zout') S.imgZoom = clamp(S.imgZoom - .25, .5, 4);
+        if (act === 'zreset') { S.imgZoom = 1; S.imgRot = 0; }
+        if (act === 'rotate') S.imgRot = (S.imgRot + 90) % 360;
+        updateImg();
+      } else if (act === 'download') {
+        downloadNode(node.id);
+      } else if (act === 'rename') {
+        renameNode(node.id);
+      } else if (act === 'move') {
+        moveNodes([node.id]);
+      } else if (act === 'star') {
+        toggleStar(node.id);
+        closeSheet(wrap);
+      } else if (act === 'share') {
+        shareNode(node);
+      } else if (act === 'trash') {
+        closeSheet(wrap);
+        doTrash([node.id]);
+      }
+    });
+  }
+
+  function updateImg() {
+    var img = $('#pvImg');
+    if (!img) return;
+    img.style.transform = 'scale(' + S.imgZoom + ') rotate(' + S.imgRot + 'deg)';
+    var lbl = $('#pvZoomVal');
+    if (lbl) lbl.textContent = Math.round(S.imgZoom * 100) + '%';
+  }
+
+  function renderTextPreview(stage, text, isHTML) {
+    var showHTML = isHTML;
+    var body = '<div class="tabs" style="margin:0 0 10px"><button class="' + (showHTML ? '' : 'on') + '" data-tmode="raw">소스</button>' +
+      '<button class="' + (showHTML ? 'on' : '') + '" data-tmode="pretty">결과</button></div>' +
+      '<div id="pvTextHost"></div>';
+    stage.innerHTML = '<div style="width:100%;max-height:66vh;overflow:auto">' + body + '</div>';
+    var host = $('#pvTextHost', stage);
+    function paint(mode) {
+      if (mode === 'pretty') {
+        host.innerHTML = '<iframe class="pv-frame" style="width:100%;height:58vh;border:1px solid var(--line);border-radius:10px;background:#fff" sandbox="allow-same-origin" srcdoc="' + esc(text).replace(/"/g, '&quot;') + '"></iframe>';
+      } else {
+        var lines = text.split(/\r?\n/);
+        var shown = lines.slice(0, 4000);
+        host.innerHTML = '<pre class="pv-code">' + shown.map(function (l, i) {
+          return '<span class="ln"><i>' + (i + 1) + '</i><code>' + esc(l) + '</code></span>';
+        }).join('') + '</pre>' + (lines.length > shown.length ? '<p class="hint" style="padding:8px 12px">' + lines.length + '줄 중 4000줄만 표시했습니다. 전체 내용은 내려받아 확인하세요.</p>' : '');
+      }
+      stage.setAttribute('data-mode', mode);
+    }
+    paint(showHTML ? 'pretty' : 'raw');
+    stage.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-tmode]');
+      if (!b) return;
+      $$('[data-tmode]', stage).forEach(function (x) { x.classList.toggle('on', x === b); });
+      paint(b.getAttribute('data-tmode'));
+    });
+  }
+
+  function currentPreviewText(wrap) {
+    var code = $('.pv-code', wrap);
+    if (code) return Array.prototype.map.call($$('.ln code', code), function (c) { return c.textContent; }).join('\n');
+    var txt = $('.pv-text', wrap);
+    return txt ? txt.textContent : '';
+  }
+
+  function downloadNode(id) {
+    var n = S.byId[id];
+    if (!n) return;
+    if (n.kind === 'folder') { toast('폴더는 ZIP 백업으로 내려받을 수 있습니다', 'info'); exportZip([id]); return; }
+    getBlob(id).then(function (blob) {
+      if (!blob) { toast('파일 내용을 찾지 못했습니다', 'err'); return; }
+      (L.downloadBlob || downloadBlobFallback)(n.name, blob);
+      toast('내려받기를 시작했습니다');
+    });
+  }
+  function downloadBlobFallback(name, blob) {
+    var url = URL.createObjectURL(blob), a = doc.createElement('a');
+    a.href = url; a.download = name; doc.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1200);
+  }
+
+  /* ================= item actions ================= */
+  function toggleStar(id) {
+    var n = S.byId[id];
+    if (!n) return;
+    updateNode(id, { starred: n.starred ? 0 : 1, keepTime: true }).then(function () {
+      hap();
+      render();
+    });
+  }
+  function renameNode(id) {
+    var n = S.byId[id];
+    if (!n) return;
+    askName({ title: '이름 변경', label: '새 이름', value: n.name, okLabel: '변경' }).then(function (v) {
+      if (!v || v === n.name) return;
+      updateNode(id, { name: uniqueName(v, n.parentId), ext: extOf(v) }).then(function () {
+        toast('이름을 바꿨습니다'); render();
+      });
+    });
+  }
+  function doTrash(ids) {
+    var folders = ids.filter(function (id) { return S.byId[id] && S.byId[id].kind === 'folder'; });
+    var msg = folders.length
+      ? '폴더 ' + folders.length + '개를 휴지통으로 옮깁니다. 폴더 안의 파일도 함께 들어가고, 휴지통에서 되살릴 수 있습니다.'
+      : '선택한 ' + ids.length + '개 항목을 휴지통으로 옮깁니다.';
+    confirmSheet({ title: '휴지통으로 옮길까요?', body: msg, okLabel: '옮기기' }).then(function (ok) {
+      if (!ok) return;
+      var chain = Promise.resolve();
+      ids.forEach(function (id) { chain = chain.then(function () { return trashNode(id); }); });
+      chain.then(function () {
+        S.selected = {};
+        hap();
+        toast(ids.length + '개 항목을 휴지통으로 옮겼습니다');
+        render();
+      });
+    });
+  }
+  function purgeNodes(ids) {
+    confirmSheet({
+      title: '완전히 지울까요?',
+      bodyHTML: '선택한 ' + ids.length + '개 항목을 저장소에서 지웁니다.<br><br><b>되살릴 수 없습니다.</b> 남겨야 할 파일이라면 먼저 내려받으세요.',
+      okLabel: '완전 삭제', danger: true
+    }).then(function (ok) {
+      if (!ok) return;
+      var chain = Promise.resolve();
+      ids.forEach(function (id) { chain = chain.then(function () { return deleteForever(id); }); });
+      chain.then(function () { S.selected = {}; toast('완전히 지웠습니다'); render(); });
+    });
+  }
+  function restoreNodes(ids) {
+    var chain = Promise.resolve();
+    ids.forEach(function (id) { chain = chain.then(function () { return restoreNode(id); }); });
+    chain.then(function () { S.selected = {}; hap(); toast('되살렸습니다'); render(); });
+  }
+  function emptyTrash() {
+    var ids = S.nodes.filter(function (n) { return !!n.trashed; }).map(function (n) { return n.id; });
+    if (!ids.length) { toast('휴지통이 이미 비어 있습니다', 'info'); return; }
+    confirmSheet({
+      title: '휴지통을 비울까요?',
+      bodyHTML: '휴지통의 ' + ids.length + '개 항목을 저장소에서 지웁니다.<br><br><b>되살릴 수 없습니다.</b>',
+      okLabel: '비우기', danger: true
+    }).then(function (ok) {
+      if (!ok) return;
+      var chain = Promise.resolve();
+      ids.forEach(function (id) { chain = chain.then(function () { return deleteForever(id); }); });
+      chain.then(function () { toast('휴지통을 비웠습니다'); render(); });
+    });
+  }
+
+  function moveNodes(ids) {
+    var banned = {};
+    ids.forEach(function (id) {
+      banned[id] = 1;
+      if (S.byId[id] && S.byId[id].kind === 'folder') descendantsOf(id).forEach(function (d) { banned[d.id] = 1; });
+    });
+    var folders = S.nodes.filter(function (n) { return !n.trashed && n.kind === 'folder' && !banned[n.id]; });
+    function depthOf(n) { return pathOf(n.id).length - 1; }
+    var rows = '<button class="pick-row" data-pick="__root"><span class="i">' + icon('i-drive') + '</span>내 드라이브<span class="ind">최상위</span></button>';
+    folders.sort(function (a, b) { return folderPathOf(a.id).localeCompare(folderPathOf(b.id), 'ko'); });
+    rows += folders.map(function (f) {
+      var pad = 10 + depthOf(f) * 14;
+      return '<button class="pick-row" data-pick="' + f.id + '" style="padding-left:' + pad + 'px">' + icon('i-folder') + esc(f.name) + '</button>';
+    }).join('');
+    var picked = '__root';
+    var wrap = openSheet({
+      title: '다른 폴더로 이동',
+      sub: ids.length + '개 항목',
+      size: 'mid',
+      body: '<div class="pick-list" id="pickList">' + rows + '</div>',
+      foot: '<span class="hint">이동할 폴더를 고르세요</span><div style="flex:1"></div>' +
+        '<button class="btn-ghost" data-close>취소</button><button class="btn-primary" id="moveOk">이동</button>'
+    });
+    $('#pickList', wrap).addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pick]');
+      if (!b) return;
+      picked = b.getAttribute('data-pick');
+      $$('[data-pick]', wrap).forEach(function (x) { x.classList.toggle('on', x === b); });
+    });
+    $('#moveOk', wrap).addEventListener('click', function () {
+      var target = picked === '__root' ? null : picked;
+      var chain = Promise.resolve();
+      ids.forEach(function (id) {
+        chain = chain.then(function () {
+          var n = S.byId[id];
+          if (!n) return;
+          return updateNode(id, { parentId: target, name: uniqueName(n.name, target) });
+        });
+      });
+      chain.then(function () {
+        closeSheet(wrap); S.selected = {};
+        toast(ids.length + '개 항목을 옮겼습니다'); render();
+      });
+    });
+  }
+
+  /* ================= share ================= */
+  function b64encode(str) {
+    try { return btoa(unescape(encodeURIComponent(str))); } catch (e) { return ''; }
+  }
+  function shareNode(node) {
+    getBlob(node.id).then(function (blob) {
+      if (!blob) { toast('파일을 읽지 못했습니다', 'err'); return; }
+      return blob.text().then(function (text) {
+        if (text.length > 140000) { toast('글자가 너무 많아 링크로 만들 수 없습니다 (140KB 이하)', 'err'); return; }
+        var payload = JSON.stringify({ n: node.name, t: text, m: node.mime || mimeOf(node.name) });
+        var code = (window.LZString && LZString.compressToEncodedURIComponent)
+          ? LZString.compressToEncodedURIComponent(payload)
+          : b64encode(payload);
+        var url = location.origin + location.pathname + '#file=' + code;
+        var wrap = openSheet({
+          title: '링크로 공유',
+          sub: node.name,
+          size: 'mid',
+          body: '<div class="notice">' + icon('i-info') +
+            '<div>이 링크에는 <b>파일 내용이 그대로 담겨</b> 있습니다. 받는 사람은 Flux Drive에서 열어 자기 드라이브에 저장할 수 있고, 링크를 아는 사람은 누구나 내용을 볼 수 있으니 개인정보가 담긴 파일은 공유하지 마세요.</div></div>' +
+            '<div class="share-out" id="shareOut" style="margin-top:12px">' + esc(url) + '</div>' +
+            '<p class="hint" style="margin-top:8px">텍스트 파일 ' + fmtBytes(text.length) + ' 기준 · ' + esc(url.length.toLocaleString()) + '자</p>',
+          foot: '<button class="btn-ghost" data-close>닫기</button><div style="flex:1"></div>' +
+            '<button class="btn-primary" id="shareCopy">' + icon('i-copy') + '링크 복사</button>'
+        });
+        $('#shareCopy', wrap).addEventListener('click', function () {
+          if (L.copy) L.copy(url, '공유 링크를 복사했습니다');
+          else { navigator.clipboard && navigator.clipboard.writeText(url); toast('복사했습니다'); }
+        });
+      });
+    });
+  }
+
+  function checkHashImport() {
+    var h = location.hash || '';
+    if (h.indexOf('#file=') !== 0) return;
+    var code = h.slice(6);
+    var json = '';
+    try {
+      json = (window.LZString && LZString.decompressFromEncodedURIComponent)
+        ? LZString.decompressFromEncodedURIComponent(code)
+        : decodeURIComponent(escape(atob(code)));
+    } catch (e) { json = ''; }
+    var payload = null;
+    try { payload = JSON.parse(json); } catch (e) { payload = null; }
+    if (!payload || !payload.n) { toast('공유 링크를 읽지 못했습니다', 'err'); return; }
+    var name = String(payload.n), text = String(payload.t || '');
+    var wrap = openSheet({
+      title: '공유받은 파일',
+      sub: name + ' · ' + fmtBytes(text.length),
+      size: 'mid',
+      body: '<div class="notice">' + icon('i-share') + '<div>링크로 받은 파일입니다. 내 드라이브에 저장하면 계속 보관하고 내려받을 수 있습니다.</div></div>' +
+        '<pre class="pv-text pv-json" style="margin-top:12px;max-height:34vh">' + esc(text.slice(0, 20000)) + '</pre>' +
+        (text.length > 20000 ? '<p class="hint">앞부분 20000자만 보여 줍니다.</p>' : ''),
+      foot: '<button class="btn-ghost" data-close>그냥 보기</button><div style="flex:1"></div>' +
+        '<button class="btn-primary" id="hashSave">' + icon('i-download') + '내 드라이브에 저장</button>'
+    });
+    $('#hashSave', wrap).addEventListener('click', function () {
+      var file = new File([text], name, { type: payload.m || mimeOf(name) });
+      saveFileNode(file, null).then(function () {
+        closeSheet(wrap);
+        try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+        toast('내 드라이브에 저장했습니다');
+        S.view = 'drive'; S.folderId = null; render();
+      });
+    });
+  }
+
+  /* ================= item menu ================= */
+  function openItemMenu(id) {
+    var n = S.byId[id];
+    if (!n) return;
+    var inTrash = !!n.trashed;
+    var rows = [];
+    if (!inTrash) {
+      rows.push(['preview', 'i-eye', n.kind === 'folder' ? '폴더 열기' : '미리보기']);
+      rows.push(['download', 'i-download', n.kind === 'folder' ? 'ZIP으로 내려받기' : '내려받기']);
+      if (n.kind === 'file' && isTextLike(n)) rows.push(['share', 'i-share', '링크로 공유']);
+      rows.push(['rename', 'i-edit', '이름 변경']);
+      rows.push(['move', 'i-move', '다른 폴더로 이동']);
+      rows.push(['star', 'i-star', n.starred ? '중요 해제' : '중요 표시']);
+      rows.push(['trash', 'i-trash', '휴지통으로']);
+    } else {
+      rows.push(['restore', 'i-restore', '되살리기']);
+      rows.push(['purge', 'i-trash', '완전 삭제']);
+    }
+    var wrap = openSheet({
+      title: n.name,
+      sub: (n.kind === 'folder' ? '폴더' : typeOf(n).name) + ' · ' + (n.kind === 'folder' ? '하위 ' + descendantsOf(n.id).length + '개 항목' : fmtBytes(n.size)),
+      body: '<div class="pick-list">' + rows.map(function (r) {
+        return '<button class="pick-row" data-mact="' + r[0] + '">' + icon(r[1]) + r[2] + '</button>';
+      }).join('') + '</div>'
+    });
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-mact]');
+      if (!b) return;
+      var act = b.getAttribute('data-mact');
+      closeSheet(wrap);
+      if (act === 'preview') openItem(id);
+      else if (act === 'download') downloadNode(id);
+      else if (act === 'share') shareNode(n);
+      else if (act === 'rename') renameNode(id);
+      else if (act === 'move') moveNodes([id]);
+      else if (act === 'star') toggleStar(id);
+      else if (act === 'trash') doTrash([id]);
+      else if (act === 'restore') restoreNodes([id]);
+      else if (act === 'purge') purgeNodes([id]);
+    });
+  }
+
+  /* ================= analytics ================= */
+  function renderAnalytics() {
+    var board = $('#board');
+    $('#filterBar').hidden = true;
+    var u = usage();
+    var byType = {};
+    TYPES.forEach(function (t) { byType[t.id] = { t: t, bytes: 0, count: 0 }; });
+    S.nodes.forEach(function (n) {
+      if (n.trashed || n.kind !== 'file') return;
+      var r = byType[typeOf(n).id];
+      r.bytes += (n.size || 0); r.count++;
+    });
+    var rows = Object.keys(byType).map(function (k) { return byType[k]; })
+      .filter(function (r) { return r.count > 0; })
+      .sort(function (a, b) { return b.bytes - a.bytes; });
+    var total = u.bytes || 0;
+    var bars = '<div class="bars">' + (total ? rows.map(function (r) {
+      return '<i style="width:' + Math.max(1.5, (r.bytes / total) * 100) + '%;background:' + r.t.color + '" title="' + esc(r.t.name) + ' ' + fmtBytes(r.bytes) + '"></i>';
+    }).join('') : '<i style="width:100%;background:var(--chip)"></i>') + '</div>';
+
+    var statCards =
+      '<div class="an-grid">' +
+      '<div class="stat"><span>전체 용량</span><b>' + fmtBytes(total) + '</b><i>파일 ' + u.files + '개</i></div>' +
+      '<div class="stat"><span>폴더</span><b>' + u.folders + '개</b><i>휴지통 ' + u.trashed + '개</i></div>' +
+      '<div class="stat"><span>중요 표시</span><b>' + u.starred + '개</b><i>중요 문서함에서 확인</i></div>' +
+      '<div class="stat"><span>가장 큰 파일</span><b>' + fmtBytes(topFiles(1)[0] ? topFiles(1)[0].size : 0) + '</b><i id="bigName">' + esc(topFiles(1)[0] ? topFiles(1)[0].name : '없음') + '</i></div>' +
+      '</div>';
+
+    var typeList = rows.length
+      ? '<div class="type-list">' + rows.map(function (r) {
+        var pct = total ? (r.bytes / total) * 100 : 0;
+        return '<div class="type-row"><span class="tn"><i class="dot" style="background:' + r.t.color + '"></i>' + esc(r.t.name) + '</span>' +
+          '<span class="track"><i style="width:' + Math.max(1.5, pct) + '%;background:' + r.t.color + '"></i></span>' +
+          '<span class="tb">' + fmtBytes(r.bytes) + '</span><span class="tc">' + r.count + '개</span></div>';
+      }).join('') + '</div>'
+      : '<p class="hint">파일을 올리면 유형별 점유율이 여기에 그려집니다.</p>';
+
+    var biggest = topFiles(6);
+    var bigList = biggest.length
+      ? '<div class="big-list">' + biggest.map(function (n) {
+        var t = typeOf(n);
+        return '<button class="big-row" data-id="' + n.id + '"><span class="tile" style="--tc:' + t.color + '">' + icon(t.icon) + '</span>' +
+          '<b>' + esc(n.name) + '</b><span>' + fmtBytes(n.size) + '</span></button>';
+      }).join('') + '</div>'
+      : '<p class="hint">아직 파일이 없습니다.</p>';
+
+    board.innerHTML =
+      statCards +
+      '<div class="panel" style="padding:16px;border-radius:18px;background:var(--sheet);border:1px solid var(--line-2);margin-bottom:14px">' +
+      '<div class="sec-head" style="margin:0 0 6px"><h2>유형별 점유율</h2><p>' + (rows.length ? rows.length + '가지 유형' : '데이터 없음') + '</p></div>' +
+      bars + typeList + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">' +
+      '<div class="panel" style="padding:16px;border-radius:18px;background:var(--sheet);border:1px solid var(--line-2)">' +
+      '<div class="sec-head" style="margin:0 0 8px"><h2>큰 파일 순위</h2></div>' + bigList + '</div>' +
+      '<div class="panel" style="padding:16px;border-radius:18px;background:var(--sheet);border:1px solid var(--line-2)">' +
+      '<div class="sec-head" style="margin:0 0 8px"><h2>브라우저 저장 공간</h2><p>이 사이트 전체</p></div>' +
+      '<div id="quotaBox"><div class="loading-row" style="padding:14px"><span class="spinner"></span>확인 중…</div></div>' +
+      '</div></div>' +
+      '<div class="empty" style="margin-top:16px;padding:26px 18px;border-style:dashed">' +
+      '<p style="font-size:12.5px;color:var(--ink-2);max-width:560px">용량은 이 브라우저 안에서만 계산합니다. 파일을 줄이려면 큰 파일을 내려받은 뒤 휴지통에서 완전히 지우세요. 폴더째 지우면 안의 파일도 함께 정리됩니다.</p>' +
+      '</div>';
+
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(function (est) {
+        var box = $('#quotaBox');
+        if (!box) return;
+        var usageBytes = est.usage || 0, quota = est.quota || 0;
+        var pct = quota ? Math.min(100, (usageBytes / quota) * 100) : 0;
+        box.innerHTML = '<div class="stat" style="border:0;padding:0;background:none"><b>' + fmtBytes(usageBytes) + '</b><i>사용 가능 ' + fmtBytes(quota) + ' 중</i></div>' +
+          '<div class="bars" style="margin:10px 0 6px"><i style="width:' + Math.max(1, pct) + '%;background:linear-gradient(90deg,var(--brand),var(--brand-2))"></i></div>' +
+          '<p class="hint">' + pct.toFixed(1) + '% 사용 중 · 드라이브 밖의 이 사이트 데이터도 포함됩니다.</p>';
+      }, function () {
+        var box = $('#quotaBox'); if (box) box.innerHTML = '<p class="hint">이 브라우저는 저장 공간 조회를 지원하지 않습니다.</p>';
+      });
+    } else {
+      $('#quotaBox').innerHTML = '<p class="hint">이 브라우저는 저장 공간 조회를 지원하지 않습니다.</p>';
+    }
+  }
+  function topFiles(n) {
+    return S.nodes.filter(function (x) { return !x.trashed && x.kind === 'file'; })
+      .sort(function (a, b) { return (b.size || 0) - (a.size || 0); }).slice(0, n || 6);
+  }
+
+  /* ================= FLUX works ================= */
+  var APPS = [
+    { id: 'fluxdocs', name: 'Flux Docs', file: 'flux-docs.html', color: '#0284c7', icon: 'i-doc', keys: ['flux_docs_projects'], label: '문서' },
+    { id: 'sheets', name: 'Flux Sheets', file: 'sheets.html', color: '#0f9d63', icon: 'i-sheet', keys: ['fluxsheets_project'], label: '시트' },
+    { id: 'slides', name: 'Flux Slides', file: 'slides.html', color: '#7c3aed', icon: 'i-slide', keys: ['flux_slides_deck'], label: '슬라이드' },
+    { id: 'memo', name: 'Flux Memo', file: 'memo.html', color: '#f0a500', icon: 'i-note', keys: ['flux_memo_v1_snapshot'], label: '메모' },
+    { id: 'calendar', name: 'Flux Calendar', file: 'calendar.html', color: '#4f46e5', icon: 'i-calendar', keys: ['flux_calendar_v1_snapshot'], label: '일정' },
+    { id: 'builder', name: 'Flux Builder', file: 'builder.html', color: '#4d7c0f', icon: 'i-builder', keys: ['lemon_builder_v1'], label: '사이트' },
+    { id: 'notes', name: 'Flux Notes', file: 'notes.html', color: '#0d9488', icon: 'i-note', keys: ['flux_notes_v1', 'flux_notes'], label: '노트' },
+    { id: 'lemondocs', name: 'Lemon Docs', file: 'docs.html', color: '#0891b2', icon: 'i-doc', keys: ['flux_docs_saved', 'flux_docs_saved_doc'], label: '문서' },
+    { id: 'board', name: 'Lemon Board', file: 'board.html', color: '#4338ca', icon: 'i-image2', keys: ['flux_board_projects'], label: '보드' },
+    { id: 'quiz', name: 'Lemon Quiz', file: 'quiz.html', color: '#b45309', icon: 'i-sheet', keys: ['flux_quiz_projects', 'flux_quiz_sets'], label: '퀴즈' },
+    { id: 'form', name: 'Lemon Form', file: 'form.html', color: '#ea580c', icon: 'i-doc', keys: ['flux_forms_saved'], label: '폼' },
+    { id: 'frame', name: 'Lemon Frame', file: 'frame.html', color: '#9333ea', icon: 'i-image2', keys: ['flux_frames_saved'], label: '이미지' },
+    { id: 'focus', name: 'Lemon Focus', file: 'focus.html', color: '#059669', icon: 'i-check', keys: ['flux_focus_tasks', 'flux_ddays'], label: '할 일' },
+    { id: 'money', name: 'Lemon Money', file: 'money.html', color: '#ca8a04', icon: 'i-sheet', keys: ['flux_money_v3', 'lemon_money_state'], label: '가계부' },
+    { id: 'planner', name: 'Lemon Planner', file: 'planner.html', color: '#4a6642', icon: 'i-calendar', keys: ['flux_planner_v1'], label: '계획' },
+    { id: 'study', name: 'Lemon Study', file: 'study.html', color: '#0369a1', icon: 'i-file', keys: ['flux_study_v1'], label: '학습' },
+    { id: 'diary', name: 'Lemon Diary', file: 'diary.html', color: '#9d174d', icon: 'i-note', keys: ['flux_diary_v1'], label: '일기' },
+    { id: 'minutes', name: 'Lemon Minutes', file: 'minutes.html', color: '#0c4a6e', icon: 'i-file', keys: ['flux_minutes_v1'], label: '회의록' },
+    { id: 'habit', name: 'Lemon Habit', file: 'habit.html', color: '#65a30d', icon: 'i-check', keys: ['flux_habits_v1', 'flux_habits'], label: '습관' }
+  ];
+  var APP_BY_KEY = {};
+  APPS.forEach(function (a) { a.keys.forEach(function (k) { APP_BY_KEY[k] = a; }); });
+  var IGNORE_KEYS = {
+    cream_theme: 1, flux_theme: 1, lemon_theme: 1, lemon_anim_mode: 1, lemon_storage_warn_muted: 1,
+    flux_drive_view_mode: 1, flux_drive_sort: 1, flux_unified_projects: 1, flux_stats_v1: 1,
+    flux_publish_v1: 1, flux_launcher_prefill_code: 1, flux_launcher_prefill_name: 1,
+    flux_short_links: 1, web_launcher_sites: 1, cream_apk_projects: 1, lemonAutosavePill: 1
+  };
+  function appForKey(key) {
+    if (APP_BY_KEY[key]) return APP_BY_KEY[key];
+    if (/^fluxsheets_/i.test(key)) return APPS[1];
+    if (/^flux_slides/i.test(key)) return APPS[2];
+    if (/^flux_memo/i.test(key)) return APPS[3];
+    if (/^flux_calendar/i.test(key)) return APPS[4];
+    if (/^lemon_builder/i.test(key)) return APPS[5];
+    if (/^flux_notes?/i.test(key)) return APPS[6];
+    if (/^flux_docs_/i.test(key)) return APPS[0];
+    if (/^flux_board/i.test(key)) return APPS[8];
+    if (/^flux_quiz/i.test(key)) return APPS[9];
+    if (/^flux_forms?/i.test(key)) return APPS[10];
+    if (/^flux_frames?/i.test(key)) return APPS[11];
+    if (/^flux_focus|^flux_ddays/i.test(key)) return APPS[12];
+    if (/^flux_money|^lemon_money/i.test(key)) return APPS[13];
+    if (/^flux_planner/i.test(key)) return APPS[14];
+    if (/^flux_diary/i.test(key)) return APPS[16];
+    if (/^flux_habits?/i.test(key)) return APPS[18];
+    return null;
+  }
+  function isIgnored(key) {
+    if (IGNORE_KEYS[key]) return true;
+    if (/__active$/.test(key)) return true;
+    if (/^lemon_autosave_/i.test(key)) return true;
+    if (/^flux_drive/i.test(key)) return true;
+    if (/^cream_/i.test(key) || /^lemon_ui/i.test(key)) return true;
+    return false;
+  }
+
+  function pickStr(o, keys) {
+    for (var i = 0; i < keys.length; i++) {
+      var v = o[keys[i]];
+      if (typeof v === 'string' && v.trim()) return v;
+    }
+    return '';
+  }
+  function pickNum(o, keys) {
+    for (var i = 0; i < keys.length; i++) {
+      var v = o[keys[i]];
+      if (typeof v === 'number' && isFinite(v)) return v < 1e11 ? (v < 1e10 ? v * 1000 : v) : v;
+      if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) { var t = Date.parse(v); if (!isNaN(t)) return t; }
+    }
+    return 0;
+  }
+  function cleanText(s) {
+    return String(s || '')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ').trim();
+  }
+  var TITLE_KEYS = ['title', 'name', 'label', 'heading', 'subject', 'docTitle', 'pageTitle', 'siteName', 'caption'];
+  var BODY_KEYS = ['body', 'content', 'text', 'markdown', 'md', 'description', 'desc', 'summary', 'note', 'html', 'snippet', 'value', 'answer'];
+  var TIME_KEYS = ['updatedAt', 'updated', 'mtime', 'modifiedAt', 'savedAt', 'createdAt', 'created', 'ts', 'date', 'start', 'time'];
+  var STRUCT_ARRAYS = ['items', 'pages', 'slides', 'events', 'cells', 'blocks', 'notes', 'tasks', 'entries', 'sections', 'columns', 'rows', 'questions', 'checklist', 'list'];
+
+  function looksLikeItem(o) {
+    var title = pickStr(o, TITLE_KEYS);
+    if (!title || title.length > 200) return null;
+    var body = pickStr(o, BODY_KEYS);
+    var time = pickNum(o, TIME_KEYS);
+    var struct = false;
+    for (var i = 0; i < STRUCT_ARRAYS.length; i++) {
+      if (Array.isArray(o[STRUCT_ARRAYS[i]]) && o[STRUCT_ARRAYS[i]].length) { struct = true; break; }
+    }
+    if (!body && !time && !struct) return null;
+    var metaOnly = ['id', 'title', 'name', 'label', 'color', 'visible', 'order', 'type', 'icon', 'emoji', 'pinned', 'starred', 'archived'];
+    var keys = Object.keys(o);
+    var onlyMeta = keys.every(function (k) { return metaOnly.indexOf(k) > -1; });
+    if (onlyMeta) return null;
+    return {
+      title: title.trim().slice(0, 180),
+      updated: time,
+      snippet: cleanText(body).slice(0, 300),
+      payload: o,
+      struct: struct
+    };
+  }
+
+  function walkWorks(app, value, path, out, depth, budget) {
+    if (!value || depth > 6 || budget.n++ > 2500) return;
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length && i < 240; i++) {
+        if (!budget.n || budget.n++ > 2500) break;
+        walkWorks(app, value[i], path + '[' + i + ']', out, depth + 1, budget);
+      }
+      return;
+    }
+    if (typeof value !== 'object') return;
+    var item = looksLikeItem(value);
+    if (item) {
+      item.app = app;
+      item.ref = path;
+      out.push(item);
+    }
+    var keys = Object.keys(value);
+    for (var j = 0; j < keys.length && j < 60; j++) {
+      var k = keys[j], v = value[k];
+      if (!v || typeof v !== 'object') continue;
+      if (item && (k === 'body' || k === 'blocks' || k === 'cells' || k === 'pages' || k === 'html' || k === 'data')) continue;
+      walkWorks(app, v, path + '.' + k, out, depth + 1, budget);
+    }
+  }
+
+  function scanWorks() {
+    var out = [];
+    var raw = [];
+    try { raw = Object.keys(localStorage); } catch (e) { raw = []; }
+    raw.forEach(function (key) {
+      if (isIgnored(key)) return;
+      var app = appForKey(key);
+      if (!app) return;
+      var text = null;
+      try {
+        text = (L.store && L.store.raw) ? L.store.raw(key, null) : localStorage.getItem(key);
+      } catch (e) { text = null; }
+      if (!text || text.length < 2) return;
+      var val = null;
+      try { val = JSON.parse(text); } catch (e) { val = null; }
+      if (val === null) {
+        if (text.length < 40000) val = { title: key.replace(/^flux_?/, '').replace(/_/g, ' '), text: text, updatedAt: Date.now() };
+        else return;
+      }
+      walkWorks(app, val, key, out, 0, { n: 0 });
+    });
+
+    return scanIdbWorks().then(function (dbItems) {
+      out = out.concat(dbItems);
+      var seen = {};
+      var list = out.filter(function (it) {
+        var key = it.app.id + '|' + it.title + '|' + (it.updated || 0) + '|' + it.snippet.slice(0, 40);
+        if (seen[key]) return false;
+        seen[key] = 1;
+        return true;
+      });
+      /* 앱별 상한 */
+      var perApp = {};
+      list.sort(function (a, b) { return (b.updated || 0) - (a.updated || 0); });
+      list = list.filter(function (it) {
+        perApp[it.app.id] = (perApp[it.app.id] || 0) + 1;
+        return perApp[it.app.id] <= 80;
+      });
+      S.works = list;
+      S.worksScanned = true;
+      S.workApps = APPS.map(function (a) {
+        return { app: a, count: list.filter(function (x) { return x.app.id === a.id; }).length };
+      }).filter(function (x) { return x.count > 0; });
+      return list;
+    });
+  }
+
+  function openIdb(name, version, storeName) {
+    return new Promise(function (res, rej) {
+      var rq;
+      try { rq = indexedDB.open(name, version); } catch (e) { rej(e); return; }
+      rq.onsuccess = function () { res(rq.result); };
+      rq.onerror = function () { rej(rq.error); };
+      rq.onblocked = function () { rej(new Error('blocked')); };
+      if (!version) rq.onupgradeneeded = function () { };
+    });
+  }
+  function readAll(db, storeName) {
+    return new Promise(function (res, rej) {
+      if (!db.objectStoreNames.contains(storeName)) return res([]);
+      var tx;
+      try { tx = db.transaction(storeName, 'readonly'); } catch (e) { return res([]); }
+      var rq = tx.objectStore(storeName).getAll();
+      rq.onsuccess = function () { res(rq.result || []); };
+      rq.onerror = function () { rej(rq.error); };
+    });
+  }
+  function scanIdbWorks() {
+    var jobs = [
+      { name: 'flux_memo_v1', store: 'main', app: APPS[3] },
+      { name: 'flux_calendar_v1', store: 'main', app: APPS[4] },
+      { name: 'lemon_builder_v1', store: 'projects', app: APPS[5] },
+      { name: 'lemon_kv_idb_v1', store: 'kv', app: null }
+    ];
+    var out = [];
+    var chain = Promise.resolve();
+    jobs.forEach(function (job) {
+      chain = chain.then(function () {
+        return openIdb(job.name).then(function (db) {
+          return readAll(db, job.store).then(function (rows) {
+            rows.forEach(function (rec) {
+              var app = job.app;
+              if (!app) {
+                if (!rec || typeof rec.key !== 'string') return;
+                if (isIgnored(rec.key)) return;
+                app = appForKey(rec.key);
+                if (!app) return;
+              }
+              var val = null;
+              if (typeof rec.value === 'string') {
+                try { val = JSON.parse(rec.value); } catch (e) { val = null; }
+                if (val === null) val = { title: rec.key || (job.app && job.app.name) || '작업물', text: rec.value, updatedAt: rec.ts || 0 };
+              } else if (rec.blob && typeof rec.blob === 'object') {
+                return;
+              } else if (rec && typeof rec === 'object') {
+                val = rec;
+              }
+              if (val) walkWorks(app, val, job.name + '/' + (rec.key || rec.id || ''), out, 0, { n: 0 });
+            });
+            try { db.close(); } catch (e) { }
+          }, function () { try { db.close(); } catch (e) { } });
+        }, function () { /* 없는 DB는 건너뛴다 */ });
+      });
+    });
+    return chain.then(function () { return out; });
+  }
+
+  function renderWorks() {
+    var board = $('#board');
+    $('#filterBar').hidden = true;
+    if (!S.worksScanned) {
+      board.innerHTML = '<div class="loading-row"><span class="spinner"></span>FLUX 도구에 저장된 작업물을 찾는 중…</div>';
+      return;
+    }
+    var q = S.query.trim().toLowerCase();
+    var appFilter = S.workApp || 'all';
+    var list = S.works.filter(function (w) {
+      if (appFilter !== 'all' && w.app.id !== appFilter) return false;
+      if (!q) return true;
+      return (w.title + ' ' + w.snippet + ' ' + w.app.name).toLowerCase().indexOf(q) > -1;
+    });
+    var appsBar = '<div class="works-apps"><button class="wapp' + (appFilter === 'all' ? ' on' : '') + '" data-wapp="all">' +
+      '<span class="dot" style="background:linear-gradient(135deg,var(--brand),var(--brand-2))">' + icon('i-spark') + '</span>전체<span class="n">' + S.works.length + '</span></button>' +
+      S.workApps.map(function (w) {
+        return '<button class="wapp' + (appFilter === w.app.id ? ' on' : '') + '" data-wapp="' + w.app.id + '">' +
+          '<span class="dot" style="background:' + w.app.color + '">' + icon(w.app.icon) + '</span>' + esc(w.app.name) + '<span class="n">' + w.count + '</span></button>';
+      }).join('') + '</div>';
+
+    var head = '<div class="sec-head"><h2>작업물 목록</h2><p>Flux Docs·Sheets·Slides·Memo·Calendar·Builder 등 이 브라우저에 저장된 작업</p>' +
+      '<span class="grow"></span>' +
+      '<button class="pill" data-wact="rescan">' + icon('i-scan') + '다시 찾기</button>' +
+      '<button class="pill" data-wact="backup">' + icon('i-download') + 'JSON 백업</button></div>';
+
+    if (!S.works.length) {
+      board.innerHTML = head + appsBar +
+        '<div class="empty"><div class="empty-art">' + icon('i-spark') + '</div>' +
+        '<h3>아직 FLUX 작업물이 없어요</h3>' +
+        '<p>Flux Docs·Sheets·Slides·Memo·Calendar·Builder에서 문서나 메모를 만들면, 이 브라우저에 저장된 작업을 여기서 자동으로 모아 보여 줍니다. 로그인도, 서버 전송도 필요 없습니다.</p>' +
+        '<div class="empty-actions">' +
+        '<a class="btn-primary" href="memo.html">' + icon('i-note') + 'Flux Memo 열기</a>' +
+        '<a class="btn-ghost" href="flux-docs.html">' + icon('i-doc') + 'Flux Docs 열기</a>' +
+        '<button class="btn-ghost" data-wact="rescan">' + icon('i-scan') + '다시 찾기</button>' +
+        '</div></div>';
+      return;
+    }
+
+    var cards = list.map(function (w, i) {
+      var t = w.updated ? when(w.updated) : '시각 정보 없음';
+      var badge = '<span class="wbadge" style="--wc:' + w.app.color + '">' + icon(w.app.icon) + esc(w.app.name) + '</span>';
+      return '<article class="card work-card" data-work="' + i + '" tabindex="0" style="--wc:' + w.app.color + '">' +
+        '<div class="card-top"><span class="tile" style="--tc:' + w.app.color + '">' + icon(w.app.icon) + '</span>' +
+        '<div style="min-width:0"><div class="src">' + esc(w.app.label || '작업물') + '</div>' +
+        '<div class="card-name" style="font-size:12.5px">' + esc(w.title.replace(/<[^>]+>/g, '')) + '</div></div></div>' +
+        '<div class="snippet">' + (w.snippet ? esc(w.snippet) : '<span class="dim">내용 미리보기 없음</span>') + '</div>' +
+        '<div class="card-bottom">' + badge + '<span class="card-tag" style="margin-left:auto">' + esc(t) + '</span></div>' +
+        '</article>';
+    }).join('');
+
+    board.innerHTML = head + appsBar + (list.length
+      ? '<div class="grid">' + cards + '</div><div class="note" style="margin-top:14px;font-size:11.5px;color:var(--ink-3)">' +
+      '<p>이 목록은 이 브라우저에 저장된 FLUX 도구의 데이터를 읽어 만든 것입니다. 원본은 각 서비스에 그대로 있고, 여기서는 열어 보거나 백업만 합니다.</p></div>'
+      : '<div class="empty"><div class="empty-art">' + icon('i-search') + '</div><h3>조건에 맞는 작업물이 없어요</h3><p>다른 앱이나 검색어로 찾아보세요.</p></div>');
+    S.workView = list;
+  }
+
+  var FACT_LABELS = {
+    pages: '페이지', slides: '슬라이드', items: '항목', notes: '메모', events: '일정',
+    questions: '문항', rows: '행', columns: '열', blocks: '블록', tasks: '할 일', sections: '섹션', entries: '기록'
+  };
+  function workFacts(w) {
+    var o = w.payload || {}, rows = [];
+    var start = o.start || o.startDate || o.date || o.time || o.datetime;
+    if (start) rows.push(['일시', String(start).replace('T', ' ')]);
+    if (o.end) rows.push(['종료', String(o.end).replace('T', ' ')]);
+    if (o.location) rows.push(['장소', String(o.location)]);
+    if (o.label || (o.labels && o.labels.length)) rows.push(['라벨', String(o.label || (o.labels || []).join(', '))]);
+    Object.keys(FACT_LABELS).forEach(function (k) {
+      if (Array.isArray(o[k]) && o[k].length) rows.push([FACT_LABELS[k], o[k].length + '개']);
+    });
+    if (o.amount || o.total) rows.push(['금액', String(o.amount || o.total)]);
+    return rows;
+  }
+  function openWorkPreview(w) {
+    var snippet = w.snippet || '(내용이 없습니다)';
+    var jsonText = '';
+    try { jsonText = JSON.stringify(w.payload, null, 2); } catch (e) { jsonText = ''; }
+    var facts = workFacts(w);
+    var factHTML = facts.length
+      ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">' + facts.map(function (f) {
+        return '<span class="wbadge" style="--wc:' + w.app.color + ';font-size:11px;padding:5px 9px">' + esc(f[0]) + ' · ' + esc(f[1]) + '</span>';
+      }).join('') + '</div>'
+      : '';
+    var wrap = openSheet({
+      title: w.title,
+      sub: w.app.name + ' · ' + (w.updated ? fullDate(w.updated) : '시각 정보 없음'),
+      size: 'wide',
+      body: '<div class="notice" style="margin-bottom:12px">' + icon('i-info') +
+        '<div>이 작업물은 <b>' + esc(w.app.name) + '</b>에 저장되어 있습니다. 여기서는 읽기만 하며, 고치려면 서비스에서 열어 주세요.</div></div>' + factHTML +
+        '<div class="tabs" id="workTabs"><button class="on" data-wtab="read">내용</button><button data-wtab="raw">원본 JSON</button></div>' +
+        '<pre class="pv-text" id="workRead" style="max-height:46vh">' + esc(snippet || '') + '</pre>' +
+        '<pre class="pv-text pv-json" id="workRaw" hidden style="max-height:46vh">' + esc(jsonText.slice(0, 60000)) + '</pre>',
+      foot: '<button class="pill" data-wp="copy">' + icon('i-copy') + '내용 복사</button>' +
+        '<button class="pill" data-wp="json">' + icon('i-download') + 'JSON 내려받기</button>' +
+        '<div style="flex:1"></div>' +
+        (w.app.file ? '<a class="btn-primary" href="' + w.app.file + '" target="_blank" rel="noopener">' + icon('i-external') + esc(w.app.name) + '에서 열기</a>' : '') +
+        '<button class="btn-ghost" data-close>닫기</button>'
+    });
+    $('#workTabs', wrap).addEventListener('click', function (e) {
+      var b = e.target.closest('[data-wtab]');
+      if (!b) return;
+      var mode = b.getAttribute('data-wtab');
+      $$('[data-wtab]', wrap).forEach(function (x) { x.classList.toggle('on', x === b); });
+      $('#workRead', wrap).hidden = mode !== 'read';
+      $('#workRaw', wrap).hidden = mode !== 'raw';
+    });
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-wp]');
+      if (!b) return;
+      var act = b.getAttribute('data-wp');
+      if (act === 'copy') L.copy ? L.copy(snippet, '내용을 복사했습니다') : toast('복사했습니다');
+      if (act === 'json') {
+        var blob = new Blob([jsonText || snippet], { type: 'application/json' });
+        (L.downloadBlob || downloadBlobFallback)(safeFileName(w.title) + '.json', blob);
+        toast('JSON으로 내려받았습니다');
+      }
+    });
+  }
+  function safeFileName(s) {
+    return String(s || 'work').replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 60) || 'work';
+  }
+
+  function backupWorksJson() {
+    var data = {
+      app: 'Flux Drive', kind: 'flux-works', exportedAt: new Date().toISOString(),
+      count: S.works.length,
+      works: S.works.map(function (w) {
+        return { app: w.app.name, file: w.app.file, title: w.title, updated: w.updated ? new Date(w.updated).toISOString() : null, snippet: w.snippet, data: w.payload };
+      })
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    (L.downloadBlob || downloadBlobFallback)('flux-works-' + stamp() + '.json', blob);
+    toast(S.works.length + '개 작업물을 JSON으로 내려받았습니다');
+  }
+
+  /* ================= ZIP (내장 구현) ================= */
+  /* 외부 라이브러리 없이 ZIP을 쓰고 읽는다. 텍스트는 가능하면 deflate로 압축한다. */
+  var CRC_TABLE = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(u8) {
+    var crc = 0 ^ (-1);
+    for (var i = 0; i < u8.length; i++) crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ u8[i]) & 0xFF];
+    return (crc ^ (-1)) >>> 0;
+  }
+  function dosDateTime(ts) {
+    var d = new Date(ts || Date.now());
+    var time = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((Math.floor(d.getSeconds() / 2)) & 31);
+    var date = (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31);
+    return { time: time, date: date };
+  }
+  function deflateRaw(bytes) {
+    if (typeof CompressionStream === 'undefined') return Promise.resolve(null);
+    try {
+      var stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      return new Response(stream).arrayBuffer().then(function (ab) { return new Uint8Array(ab); }, function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+  function inflateRaw(bytes) {
+    if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('이 브라우저는 ZIP 압축 해제를 지원하지 않습니다'));
+    var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(stream).arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+  }
+  function zipBuild(parts) {
+    var enc = new TextEncoder();
+    var chunks = [], central = [], offset = 0, cdSize = 0;
+    var chain = Promise.resolve();
+    var prepared = [];
+    parts.forEach(function (p) {
+      chain = chain.then(function () {
+        var bytes = p.bytes || new Uint8Array(0);
+        var crc = p.dir ? 0 : crc32(bytes);
+        var deflateWanted = !p.dir && p.deflate !== false && bytes.length > 512;
+        return (deflateWanted ? deflateRaw(bytes) : Promise.resolve(null)).then(function (comp) {
+          var useComp = comp && comp.length < bytes.length * 0.95;
+          var name = enc.encode(p.path + (p.dir ? '/' : ''));
+          var dt = dosDateTime(p.ts);
+          var method = useComp ? 8 : 0;
+          var payload = useComp ? comp : bytes;
+          var lh = new DataView(new ArrayBuffer(30));
+          lh.setUint32(0, 0x04034b50, true);
+          lh.setUint16(4, 20, true);
+          lh.setUint16(6, 0x0800, true);
+          lh.setUint16(8, method, true);
+          lh.setUint16(10, dt.time, true);
+          lh.setUint16(12, dt.date, true);
+          lh.setUint32(14, crc, true);
+          lh.setUint32(18, payload.length, true);
+          lh.setUint32(22, bytes.length, true);
+          lh.setUint16(26, name.length, true);
+          lh.setUint16(28, 0, true);
+          prepared.push({
+            name: name, crc: crc, method: method, payload: payload, size: bytes.length,
+            time: dt.time, date: dt.date, offset: offset, dir: !!p.dir
+          });
+          offset += 30 + name.length + payload.length;
+        });
+      });
+    });
+    return chain.then(function () {
+      prepared.forEach(function (e) {
+        var lh = new DataView(new ArrayBuffer(30));
+        lh.setUint32(0, 0x04034b50, true);
+        lh.setUint16(4, 20, true);
+        lh.setUint16(6, 0x0800, true);
+        lh.setUint16(8, e.method, true);
+        lh.setUint16(10, e.time, true);
+        lh.setUint16(12, e.date, true);
+        lh.setUint32(14, e.crc, true);
+        lh.setUint32(18, e.payload.length, true);
+        lh.setUint32(22, e.size, true);
+        lh.setUint16(26, e.name.length, true);
+        lh.setUint16(28, 0, true);
+        chunks.push(new Uint8Array(lh.buffer), e.name, e.payload);
+        var ch = new DataView(new ArrayBuffer(46));
+        ch.setUint32(0, 0x02014b50, true);
+        ch.setUint16(4, 20, true);
+        ch.setUint16(6, 20, true);
+        ch.setUint16(8, 0x0800, true);
+        ch.setUint16(10, e.method, true);
+        ch.setUint16(12, e.time, true);
+        ch.setUint16(14, e.date, true);
+        ch.setUint32(16, e.crc, true);
+        ch.setUint32(20, e.payload.length, true);
+        ch.setUint32(24, e.size, true);
+        ch.setUint16(28, e.name.length, true);
+        ch.setUint16(30, 0, true);
+        ch.setUint16(32, 0, true);
+        ch.setUint16(34, 0, true);
+        ch.setUint16(36, 0, true);
+        ch.setUint32(38, e.dir ? 0x10 : 0, true);
+        ch.setUint32(42, e.offset, true);
+        central.push(new Uint8Array(ch.buffer), e.name);
+        cdSize += 46 + e.name.length;
+      });
+      var eocd = new DataView(new ArrayBuffer(22));
+      eocd.setUint32(0, 0x06054b50, true);
+      eocd.setUint16(4, 0, true);
+      eocd.setUint16(6, 0, true);
+      eocd.setUint16(8, prepared.length, true);
+      eocd.setUint16(10, prepared.length, true);
+      eocd.setUint32(12, cdSize, true);
+      eocd.setUint32(16, offset, true);
+      eocd.setUint16(20, 0, true);
+      return new Blob(chunks.concat(central, [new Uint8Array(eocd.buffer)]), { type: 'application/zip' });
+    });
+  }
+  function zipRead(file) {
+    return file.arrayBuffer().then(function (ab) {
+      var buf = new Uint8Array(ab), dv = new DataView(ab);
+      var eocd = -1;
+      for (var i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) {
+        if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      if (eocd < 0) throw new Error('ZIP 형식이 아닙니다');
+      var count = dv.getUint16(eocd + 10, true), cdOff = dv.getUint32(eocd + 16, true);
+      var dec = new TextDecoder('utf-8');
+      var out = [], p = cdOff;
+      for (var n = 0; n < count; n++) {
+        if (p + 46 > buf.length || dv.getUint32(p, true) !== 0x02014b50) break;
+        var method = dv.getUint16(p + 10, true);
+        var csize = dv.getUint32(p + 20, true);
+        var nlen = dv.getUint16(p + 28, true);
+        var elen = dv.getUint16(p + 30, true);
+        var clen = dv.getUint16(p + 32, true);
+        var loff = dv.getUint32(p + 42, true);
+        var name = dec.decode(buf.subarray(p + 46, p + 46 + nlen));
+        var lnlen = dv.getUint16(loff + 26, true), lelen = dv.getUint16(loff + 28, true);
+        var dstart = loff + 30 + lnlen + lelen;
+        var comp = buf.subarray(dstart, dstart + csize);
+        out.push({ path: name, dir: /\/$/.test(name), method: method, comp: comp });
+        p += 46 + nlen + elen + clen;
+      }
+      var chain = Promise.resolve();
+      out.forEach(function (e) {
+        chain = chain.then(function () {
+          if (e.dir || e.method === 0) { e.bytes = e.comp; return; }
+          if (e.method === 8) return inflateRaw(e.comp).then(function (b) { e.bytes = b; });
+          throw new Error('지원하지 않는 압축 방식(' + e.method + ')');
+        });
+      });
+      return chain.then(function () { return out; });
+    });
+  }
+
+  function exportZip(ids) {
+    var chosen;
+    if (ids && ids.length) chosen = ids.filter(function (id) { return S.byId[id]; });
+    else chosen = S.nodes.filter(function (n) { return !n.trashed && !n.parentId; }).map(function (n) { return n.id; });
+    if (!chosen.length) { toast('백업할 항목이 없습니다', 'info'); return; }
+    var entries = [];
+    chosen.forEach(function (id) {
+      (function walkEntry(node, base) {
+        var p = base ? base + '/' + node.name : node.name;
+        entries.push({ node: node, path: p });
+        if (node.kind === 'folder') {
+          S.nodes.filter(function (x) { return x.parentId === node.id && !x.trashed; })
+            .forEach(function (c) { walkEntry(c, p); });
+        }
+      })(S.byId[id], '');
+    });
+    var fileEntries = entries.filter(function (e) { return e.node.kind === 'file'; });
+    toast(fileEntries.length + '개 파일을 ZIP으로 묶는 중입니다', 'info');
+    var parts = [];
+    entries.filter(function (e) { return e.node.kind === 'folder'; }).forEach(function (e) {
+      parts.push({ path: e.path, dir: true, ts: e.node.updatedAt });
+    });
+    var chain = Promise.resolve(), done = 0;
+    fileEntries.forEach(function (e) {
+      chain = chain.then(function () {
+        return getBlob(e.node.id).then(function (blob) {
+          if (!blob) return;
+          return blob.arrayBuffer().then(function (ab) {
+            parts.push({ path: e.path, bytes: new Uint8Array(ab), ts: e.node.updatedAt });
+            done++;
+          });
+        }, function () { });
+      });
+    });
+    chain.then(function () {
+      var manifest = {
+        app: 'Flux Drive', version: 1, exportedAt: new Date().toISOString(),
+        files: fileEntries.map(function (e) {
+          return { path: e.path, size: e.node.size, mime: e.node.mime, updated: new Date(e.node.updatedAt).toISOString(), starred: !!e.node.starred };
+        }),
+        folders: entries.filter(function (e) { return e.node.kind === 'folder'; }).map(function (e) { return e.path; })
+      };
+      parts.push({ path: 'flux-drive-manifest.json', bytes: new TextEncoder().encode(JSON.stringify(manifest, null, 2)), deflate: true });
+      if (!ids) {
+        var works = { app: 'Flux Drive', kind: 'flux-works', exportedAt: new Date().toISOString(), count: S.works.length,
+          works: S.works.map(function (w) { return { app: w.app.name, title: w.title, updated: w.updated ? new Date(w.updated).toISOString() : null, snippet: w.snippet, data: w.payload }; }) };
+        parts.push({ path: 'flux-works.json', bytes: new TextEncoder().encode(JSON.stringify(works, null, 1)), deflate: true });
+      }
+      return zipBuild(parts);
+    }).then(function (blob) {
+      (L.downloadBlob || downloadBlobFallback)('flux-drive-' + stamp() + '.zip', blob);
+      toast(done + '개 파일을 ' + fmtBytes(blob.size) + ' ZIP으로 내려받았습니다');
+    }, function (err) {
+      console.warn('[Flux Drive] ZIP 생성 실패', err);
+      toast('ZIP을 만들지 못했습니다', 'err');
+    });
+  }
+
+  function importZip(file) {
+    if (!file) return;
+    toast('ZIP을 읽는 중입니다', 'info');
+    zipRead(file).then(function (list) {
+      var folderCount = list.filter(function (e) { return e.dir; }).length;
+      var fileCount = list.filter(function (e) { return !e.dir; }).length;
+      return confirmSheet({
+        title: 'ZIP 백업을 복원할까요?',
+        bodyHTML: esc(file.name) + '<br><br>폴더 ' + folderCount + '개, 파일 ' + fileCount + '개를 찾았습니다. 내 드라이브 최상위에 같은 구조로 복원하며, 이미 있는 파일은 이름 뒤에 번호가 붙습니다.',
+        okLabel: '복원'
+      }).then(function (ok) {
+        if (!ok) return;
+        list.sort(function (a, b) { return a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path); });
+        var map = { '': null }, done = 0, failed = 0;
+        var chain = Promise.resolve();
+        list.forEach(function (e) {
+          var clean = e.path.replace(/\/+$/, '');
+          if (!clean) return;
+          var parts = clean.split('/');
+          var parentPath = parts.slice(0, -1).join('/');
+          chain = chain.then(function () {
+            var parentId = map.hasOwnProperty(parentPath) ? map[parentPath] : null;
+            if (e.dir) {
+              if (map.hasOwnProperty(clean)) return;
+              return createFolder(parts[parts.length - 1], parentId).then(function (n) { map[clean] = n.id; });
+            }
+            if (/(^|\/)(flux-drive-manifest\.json|flux-works\.json)$/i.test(clean)) return;
+            if (/^\.DS_Store$/i.test(parts[parts.length - 1])) return;
+            var nm = parts[parts.length - 1];
+            var f = new File([e.bytes], nm, { type: mimeOf(nm) });
+            return saveFileNode(f, parentId).then(function (n) { map[clean] = n.id; done++; },
+              function (err) { failed++; console.warn('[Flux Drive] 복원 실패', clean, err); });
+          });
+        });
+        return chain.then(function () {
+          hap();
+          toast(done + '개 파일을 복원했습니다' + (failed ? ' · ' + failed + '개 실패' : ''), failed ? 'err' : 'ok');
+          S.view = 'drive'; S.folderId = null; S.selected = {}; render();
+        });
+      });
+    }, function (err) {
+      console.warn(err);
+      toast(err && err.message ? err.message : 'ZIP 파일을 읽지 못했습니다', 'err');
+    });
+  }
+
+  /* ================= example ================= */
+  function makePng(w, h, painter) {
+    var c = doc.createElement('canvas');
+    c.width = w; c.height = h;
+    var ctx = c.getContext('2d');
+    painter(ctx, w, h);
+    return new Promise(function (res) { c.toBlob(function (b) { res(b); }, 'image/png'); });
+  }
+  function makeWav(seconds, freq) {
+    var rate = 22050, n = Math.floor(rate * seconds);
+    var buf = new ArrayBuffer(44 + n * 2), view = new DataView(buf);
+    function str(off, s) { for (var i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); }
+    str(0, 'RIFF'); view.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    str(36, 'data'); view.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) {
+      var t = i / rate;
+      var env = Math.sin(Math.PI * Math.min(1, t / seconds)) * Math.exp(-t * 1.2);
+      view.setInt16(44 + i * 2, Math.sin(2 * Math.PI * freq * t) * env * 0.5 * 32767, true);
+    }
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+  function makePdf() {
+    /* 아주 작은 1페이지 PDF를 직접 만든다 (외부 라이브러리 없이) */
+    var lines = [
+      'BT /F1 26 Tf 64 742 Td (Flux Drive sample document) Tj ET',
+      'BT /F1 13 Tf 64 712 Td (This PDF was created inside your browser.) Tj ET',
+      'BT /F1 13 Tf 64 692 Td (Everything stays on this device.) Tj ET',
+      'BT /F1 11 Tf 64 650 Td (Try zoom, rotate, download, share, and ZIP backup in Flux Drive.) Tj ET'
+    ];
+    var content = lines.join('\n');
+    var objs = [];
+    objs.push('<< /Type /Catalog /Pages 2 0 R >>');
+    objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+    objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>');
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+    var out = '%PDF-1.4\n';
+    var offsets = [];
+    objs.forEach(function (o, i) {
+      offsets.push(out.length);
+      out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n';
+    });
+    var xref = out.length;
+    out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+    offsets.forEach(function (off) {
+      out += ('0000000000' + off).slice(-10) + ' 00000 n \n';
+    });
+    out += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+    return new Blob([out], { type: 'application/pdf' });
+  }
+
+  function seedExample() {
+    confirmSheet({
+      title: '예시 파일과 폴더를 만들까요?',
+      bodyHTML: '프로젝트 폴더와 문서·이미지·오디오·PDF 예시 파일을 만들어 드라이브 사용법을 둘러볼 수 있게 합니다. 마음에 들지 않으면 폴더째 지우면 됩니다.',
+      okLabel: '만들기'
+    }).then(function (ok) {
+      if (!ok) return;
+      toast('예시 폴더를 만드는 중입니다', 'info');
+      var rootId = null, docId = null, imgId = null;
+      createFolder('프로젝트', null).then(function (f) {
+        rootId = f.id;
+        return createFolder('문서', rootId);
+      }).then(function (f) {
+        docId = f.id;
+        return createFolder('이미지', rootId);
+      }).then(function (f) {
+        imgId = f.id;
+        var md = '# 환영합니다\n\nFlux Drive는 브라우저 안에서만 도는 개인 드라이브입니다.\n\n- 파일과 폴더를 자유롭게 올리고 정리합니다\n- 이미지, PDF, 코드, 오디오, 동영상을 바로 미리 봅니다\n- Flux Docs·Sheets·Memo·Calendar 작업물을 한곳에서 엽니다\n- ZIP으로 통째로 백업하고 다시 복원합니다\n\n오른쪽 위 별표를 눌러 중요 문서함에 담아 두세요.';
+        var csv = '항목,분류,금액,메모\n노트북,장비,1200000,2026년 구매\n모니터,장비,320000,\n구독,소프트웨어,15000,매달 결제\n교재,교육,48000,';
+        var json = JSON.stringify({ title: 'Flux Drive 메모', createdAt: new Date().toISOString(), items: [{ text: '폴더 정리하기', done: true }, { text: 'ZIP 백업 받아 두기', done: false }] }, null, 2);
+        var txt = '회의 메모\n\n1. Flux Drive 폴더 구조 정리\n2. Flux Docs 문서는 링크 공유 사용\n3. 매주 금요일 ZIP 백업\n\n다음 회의: 다음 주 화요일 오후 4시';
+        return saveFileNode(new File([md], '환영합니다.md', { type: 'text/markdown' }), rootId, { starred: 1 })
+          .then(function () { return saveFileNode(new File([txt], '회의 메모.txt', { type: 'text/plain' }), docId); })
+          .then(function () { return saveFileNode(new File([csv], '예산표.csv', { type: 'text/csv' }), docId); })
+          .then(function () { return saveFileNode(new File([json], '할 일.json', { type: 'application/json' }), docId); })
+          .then(function () { return makePng(960, 600, function (ctx, w, h) {
+            var g = ctx.createLinearGradient(0, 0, w, h);
+            g.addColorStop(0, '#2f6df6'); g.addColorStop(.55, '#00b3d6'); g.addColorStop(1, '#7c5cff');
+            ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+            ctx.globalAlpha = .18; ctx.fillStyle = '#ffffff';
+            for (var i = 0; i < 9; i++) { ctx.beginPath(); ctx.arc(120 + i * 105, 120 + (i % 3) * 150, 70, 0, Math.PI * 2); ctx.fill(); }
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '700 54px sans-serif';
+            ctx.fillText('Flux Drive', 60, h - 120);
+            ctx.font = '400 26px sans-serif';
+            ctx.fillText('예시 이미지 — 미리보기에서 확대·회전해 보세요', 60, h - 74);
+          }); })
+          .then(function (png) { return saveFileNode(new File([png], '드라이브 카드.png', { type: 'image/png' }), imgId); })
+          .then(function () { return saveFileNode(new File([makePdf()], '예시 문서.pdf', { type: 'application/pdf' }), docId); })
+          .then(function () { return saveFileNode(new File([makeWav(1.4, 660)], '알림음.wav', { type: 'audio/wav' }), imgId); });
+      }).then(function () {
+        hap();
+        if (L.confetti) L.confetti();
+        toast('예시 폴더를 만들었습니다. 폴더를 열어 보세요');
+        S.view = 'drive'; S.folderId = rootId; S.filter = 'all'; render();
+      }, function (err) {
+        console.warn(err);
+        toast('예시 파일을 만드는 중 문제가 생겼습니다', 'err');
+      });
+    });
+  }
+
+  /* ================= new menu ================= */
+  function openNewMenu() {
+    var wrap = openSheet({
+      title: '새로 만들기',
+      sub: '지금 위치: ' + (S.view === 'drive' && S.folderId && S.byId[S.folderId] ? folderPathOf(S.folderId) : '내 드라이브'),
+      body: '<div class="pick-list">' +
+        '<button class="pick-row" data-nact="folder">' + icon('i-folder-plus') + '새 폴더</button>' +
+        '<button class="pick-row" data-nact="upload">' + icon('i-upload') + '파일 올리기</button>' +
+        '<button class="pick-row" data-nact="example">' + icon('i-spark') + '예시 파일·폴더 체험</button>' +
+        '<button class="pick-row" data-nact="works">' + icon('i-spark') + '내 FLUX 작업물 보기</button>' +
+        '</div>'
+    });
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-nact]');
+      if (!b) return;
+      var act = b.getAttribute('data-nact');
+      closeSheet(wrap);
+      if (act === 'folder') newFolder();
+      else if (act === 'upload') $('#fileInput').click();
+      else if (act === 'example') seedExample();
+      else if (act === 'works') switchView('works');
+    });
+  }
+
+  function newFolder() {
+    askName({ title: '새 폴더', label: '폴더 이름', placeholder: '예: 프로젝트, 2026 문서', okLabel: '만들기' })
+      .then(function (name) {
+        if (!name) return;
+        var parent = S.view === 'drive' ? S.folderId : null;
+        createFolder(name, parent).then(function (n) {
+          toast('"' + n.name + '" 폴더를 만들었습니다');
+          if (S.view !== 'drive') { S.view = 'drive'; S.folderId = null; }
+          S.filter = 'all'; render();
+        });
+      });
+  }
+
+  /* ================= view switching ================= */
+  function switchView(view) {
+    S.view = view;
+    S.query = '';
+    S.filter = 'all';
+    S.selected = {};
+    S.workApp = S.workApp || 'all';
+    $('#searchInput').value = '';
+    $('#searchClear').classList.remove('show');
+    if (view === 'drive') S.folderId = S.folderId && S.byId[S.folderId] ? S.folderId : null;
+    closeSidebar();
+    var board = $('#board');
+    board.classList.remove('view-anim');
+    void board.offsetWidth;
+    board.classList.add('view-anim');
+    render();
+  }
+
+  function animateBoard() {
+    var board = $('#board');
+    board.classList.remove('view-anim');
+    void board.offsetWidth;
+    board.classList.add('view-anim');
+  }
+
+  function openSidebar() { $('#sidebar').classList.add('open'); $('#scrim').classList.add('show'); }
+  function closeSidebar() { $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('show'); }
+
+  /* ================= ripple ================= */
+  function attachRipple() {
+    doc.addEventListener('pointerdown', function (e) {
+      if (doc.documentElement.getAttribute('data-anim') === 'off') return;
+      var el = e.target.closest('.pill, .btn-primary, .btn-ghost, .icon-btn, .new-btn, .nav-item, .fchip, .wapp, .dock button, .check, .seg button, .pick-row, .big-row, .card-actions button, .modal-close');
+      if (!el) return;
+      var r = el.getBoundingClientRect();
+      var span = doc.createElement('span');
+      span.className = 'click-ripple';
+      var size = Math.max(r.width, r.height);
+      span.style.width = span.style.height = size + 'px';
+      span.style.left = (e.clientX - r.left - size / 2) + 'px';
+      span.style.top = (e.clientY - r.top - size / 2) + 'px';
+      var prevPos = getComputedStyle(el).position;
+      if (prevPos === 'static') el.style.position = 'relative';
+      if (getComputedStyle(el).overflow === 'visible') el.style.overflow = 'hidden';
+      el.appendChild(span);
+      setTimeout(function () { span.remove(); }, 640);
+    });
+  }
+
+  /* ================= theme / animation mode ================= */
+  function isDark() { return doc.documentElement.classList.contains('dark'); }
+  function syncThemeIcons() {
+    var dark = isDark();
+    ['#themeBtnTop', '#themeBtn'].forEach(function (sel) {
+      var b = $(sel);
+      if (!b) return;
+      var use = b.querySelector('use');
+      if (use) use.setAttribute('href', dark ? '#i-sun' : '#i-moon');
+    });
+    var box = $('#themeBtnTop');
+    if (box) box.setAttribute('title', dark ? '라이트 모드로' : '다크 모드로');
+  }
+  function animMode() {
+    try { return localStorage.getItem('lemon_anim_mode') || 'full'; } catch (e) { return 'full'; }
+  }
+  function applyAnimMode(mode) {
+    var m = (mode === 'reduced' || mode === 'off') ? mode : 'full';
+    doc.documentElement.setAttribute('data-anim', m);
+    return m;
+  }
+
+  /* ================= events ================= */
+  function wire() {
+    doc.addEventListener('click', function (e) {
+      var t = e.target;
+      var navBtn = t.closest('[data-view]');
+      if (navBtn && (navBtn.closest('#navGroup') || navBtn.closest('#dock') || navBtn.closest('#board'))) { switchView(navBtn.getAttribute('data-view')); return; }
+      var fold = t.closest('[data-folder]');
+      if (fold) { S.view = 'drive'; S.folderId = fold.getAttribute('data-folder'); S.filter = 'all'; S.query = ''; S.selected = {}; $('#searchInput').value = ''; closeSidebar(); animateBoard(); render(); return; }
+      var crumb = t.closest('[data-crumb]');
+      if (crumb) {
+        var c = crumb.getAttribute('data-crumb');
+        S.view = 'drive'; S.folderId = c === 'root' ? null : c; S.filter = 'all'; S.selected = {}; animateBoard(); render(); return;
+      }
+      var fc = t.closest('[data-filter]');
+      if (fc) { S.filter = fc.getAttribute('data-filter'); render(); return; }
+      var waBtn = t.closest('[data-wapp]');
+      if (waBtn) { S.workApp = waBtn.getAttribute('data-wapp'); renderWorks(); return; }
+      var wact = t.closest('[data-wact]');
+      if (wact) {
+        var a = wact.getAttribute('data-wact');
+        if (a === 'rescan') { S.worksScanned = false; renderWorks(); scanWorks().then(function () { if (S.view === 'works') renderWorks(); renderChrome(); }); }
+        else if (a === 'backup') backupWorksJson();
+        return;
+      }
+      var workCard = t.closest('[data-work]');
+      if (workCard) {
+        var idx = parseInt(workCard.getAttribute('data-work'), 10);
+        var w = (S.workView || [])[idx];
+        if (w) openWorkPreview(w);
+        return;
+      }
+      var sact = t.closest('[data-sact]');
+      if (sact) {
+        var sa = sact.getAttribute('data-sact');
+        var ids = Object.keys(S.selected);
+        if (sa === 'clear') { S.selected = {}; render(); }
+        else if (sa === 'download') ids.forEach(function (id, i) { setTimeout(function () { downloadNode(id); }, i * 320); });
+        else if (sa === 'zip') exportZip(ids);
+        else if (sa === 'move') moveNodes(ids);
+        else if (sa === 'star') {
+          var chain = Promise.resolve();
+          ids.forEach(function (id) { chain = chain.then(function () { return updateNode(id, { starred: 1 }); }); });
+          chain.then(function () { toast('중요 표시했습니다'); render(); });
+        }
+        else if (sa === 'trash') doTrash(ids);
+        else if (sa === 'restore') restoreNodes(ids);
+        else if (sa === 'purge') purgeNodes(ids);
+        return;
+      }
+      var act = t.closest('[data-act]');
+      if (act) {
+        var a2 = act.getAttribute('data-act');
+        var id2 = act.getAttribute('data-id');
+        e.stopPropagation();
+        if (a2 === 'select') toggleSelect(id2);
+        else if (a2 === 'star') { toggleStar(id2); bounceStar(act); }
+        else if (a2 === 'menu') openItemMenu(id2);
+        else if (a2 === 'upload') $('#fileInput').click();
+        else if (a2 === 'new-folder') newFolder();
+        else if (a2 === 'example') seedExample();
+        else if (a2 === 'clear-search') { clearSearch(); }
+        else if (a2 === 'download') downloadNode(id2);
+        else if (a2 === 'restore') restoreNodes([id2]);
+        else if (a2 === 'purge') purgeNodes([id2]);
+        return;
+      }
+      var card = t.closest('.card[data-id], .row[data-id]');
+      if (card && !t.closest('.check') && !t.closest('.card-actions') && !t.closest('.r-actions')) {
+        if (longPressed) { longPressed = false; return; }
+        openItem(card.getAttribute('data-id'));
+        return;
+      }
+      var big = t.closest('.big-row[data-id]');
+      if (big) { openItem(big.getAttribute('data-id')); return; }
+    });
+
+    doc.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if (openSheets.length) { closeSheet(); return; }
+        closeSidebar(); return;
+      }
+      var tag = (e.target.tagName || '').toLowerCase();
+      var typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
+      if (typing) return;
+      if (e.key === '/') { e.preventDefault(); $('#searchInput').focus(); }
+      else if (e.key === 'u' || e.key === 'U') { e.preventDefault(); $('#fileInput').click(); }
+      else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); newFolder(); }
+      else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openNewMenu(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && Object.keys(S.selected).length) {
+        e.preventDefault();
+        doTrash(Object.keys(S.selected));
+      }
+      else if (e.key === 'Enter' || e.key === ' ') {
+        var focusCard = doc.activeElement && doc.activeElement.closest ? doc.activeElement.closest('.card[data-id], .row[data-id]') : null;
+        if (focusCard) { e.preventDefault(); openItem(focusCard.getAttribute('data-id')); }
+      }
+    });
+
+    $('#navGroup').addEventListener('click', function () { });
+    $('#menuBtn').addEventListener('click', openSidebar);
+    $('#scrim').addEventListener('click', closeSidebar);
+    $('#btnNewMenu').addEventListener('click', openNewMenu);
+    $('#fab').addEventListener('click', openNewMenu);
+    $('#btnNewFolder').addEventListener('click', newFolder);
+    $('#tbNewFolder').addEventListener('click', newFolder);
+    $('#btnNewFolderSide').addEventListener('click', function () { closeSidebar(); newFolder(); });
+    $('#btnUpload').addEventListener('click', function () { $('#fileInput').click(); });
+    $('#tbUpload').addEventListener('click', function () { $('#fileInput').click(); });
+    $('#tbZip').addEventListener('click', function () { exportZip(null); });
+    $('#btnExportZip').addEventListener('click', function () { exportZip(null); });
+    $('#btnImportZip').addEventListener('click', function () { $('#zipInput').click(); });
+    $('#tbExample').addEventListener('click', seedExample);
+    $('#tbEmpty').addEventListener('click', emptyTrash);
+    $('#fileInput').addEventListener('change', function (e) {
+      var files = e.target.files;
+      uploadFiles(files, uploadTargetFolder());
+      e.target.value = '';
+    });
+    $('#zipInput').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (f) importZip(f);
+      e.target.value = '';
+    });
+    $('#tbSort').addEventListener('click', function () {
+      S.sort = S.sort === 'name' ? 'updated' : (S.sort === 'updated' ? 'size' : 'name');
+      $('#sortLabel').textContent = S.sort === 'name' ? '이름순' : (S.sort === 'updated' ? '최근 수정순' : '용량순');
+      savePrefs();
+      render();
+    });
+    $('#viewSeg').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-mode]');
+      if (!b) return;
+      S.mode = b.getAttribute('data-mode');
+      $$('#viewSeg button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      savePrefs(); render();
+    });
+    var searchTimer = null;
+    $('#searchInput').addEventListener('input', function (e) {
+      var v = e.target.value;
+      $('#searchClear').classList.toggle('show', !!v);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () {
+        S.query = v;
+        if (S.view === 'works' || S.view === 'analytics') render();
+        else { animateBoard(); render(); }
+      }, 120);
+    });
+    $('#searchClear').addEventListener('click', clearSearch);
+    ['#themeBtn', '#themeBtnTop'].forEach(function (sel) {
+      var b = $(sel);
+      if (b) b.addEventListener('click', function () { setTimeout(syncThemeIcons, 30); });
+    });
+
+    /* drag & drop from OS */
+    var dragDepth = 0;
+    function showDz() {
+      $('#dzTarget').textContent = (S.view === 'drive' && S.folderId && S.byId[S.folderId] ? folderPathOf(S.folderId) : '내 드라이브') + '에 저장됩니다';
+      $('#dropzone').classList.add('show');
+    }
+    window.addEventListener('dragenter', function (e) {
+      if (!e.dataTransfer || Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') < 0) return;
+      dragDepth++; showDz();
+    });
+    window.addEventListener('dragover', function (e) {
+      if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') > -1) e.preventDefault();
+    });
+    window.addEventListener('dragleave', function (e) {
+      if (!e.dataTransfer) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (!dragDepth) $('#dropzone').classList.remove('show');
+    });
+    window.addEventListener('drop', function (e) {
+      if (!e.dataTransfer) return;
+      if (Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') < 0) return;
+      e.preventDefault();
+      dragDepth = 0;
+      $('#dropzone').classList.remove('show');
+      if (e.dataTransfer.files && e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files, uploadTargetFolder());
+    });
+
+    /* internal drag: card onto folder */
+    $('#board').addEventListener('dragstart', function (e) {
+      var card = e.target.closest('.card[data-id]');
+      if (!card) return;
+      try { e.dataTransfer.setData('text/flux-drive', card.getAttribute('data-id')); e.dataTransfer.effectAllowed = 'move'; } catch (err) { }
+    });
+    $('#board').addEventListener('dragover', function (e) {
+      var card = e.target.closest('.card[data-kind="folder"]');
+      if (!card) return;
+      e.preventDefault();
+      $$('.card.dragover').forEach(function (x) { x.classList.remove('dragover'); });
+      card.classList.add('dragover');
+    });
+    $('#board').addEventListener('dragleave', function (e) {
+      var card = e.target.closest('.card[data-kind="folder"]');
+      if (card) card.classList.remove('dragover');
+    });
+    $('#board').addEventListener('drop', function (e) {
+      var card = e.target.closest('.card[data-kind="folder"]');
+      if (!card) return;
+      var srcId = '';
+      try { srcId = e.dataTransfer.getData('text/flux-drive'); } catch (err) { }
+      if (!srcId) return;
+      e.preventDefault();
+      card.classList.remove('dragover');
+      var target = card.getAttribute('data-id');
+      var chain = Promise.resolve(), n = 0;
+      [srcId].forEach(function (id) {
+        var node = S.byId[id];
+        if (!node || id === target) return;
+        if (node.kind === 'folder' && (descendantsOf(id).some(function (d) { return d.id === target; }) || target === id)) { toast('폴더를 자기 안으로 옮길 수 없습니다', 'err'); return; }
+        chain = chain.then(function () { return updateNode(id, { parentId: target, name: uniqueName(node.name, target) }); });
+        n++;
+      });
+      chain.then(function () { if (n) { toast('옮겼습니다'); render(); } });
+    });
+
+    window.addEventListener('hashchange', checkHashImport);
+
+    /* OS-wide changes: theme and animation mode from Developer Hub */
+    window.addEventListener('storage', function (e) {
+      if (e.key === 'lemon_anim_mode') applyAnimMode(e.newValue || 'full');
+      if (e.key === 'cream_theme' && e.newValue) {
+        doc.documentElement.classList.toggle('dark', e.newValue === 'dark');
+        syncThemeIcons();
+      }
+    });
+  }
+
+  var pressTimer = null, longPressed = false;
+  function bindLongPress() {
+    var board = $('#board');
+    board.addEventListener('pointerdown', function (e) {
+      var card = e.target.closest('.card[data-id], .row[data-id]');
+      if (!card || e.target.closest('[data-act]')) return;
+      longPressed = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(function () {
+        longPressed = true;
+        toggleSelect(card.getAttribute('data-id'));
+        hap(18);
+      }, 480);
+    });
+    ['pointerup', 'pointercancel', 'pointermove', 'pointerleave'].forEach(function (ev) {
+      board.addEventListener(ev, function () { clearTimeout(pressTimer); });
+    });
+    board.addEventListener('contextmenu', function (e) {
+      if (e.target.closest('.card[data-id], .row[data-id]')) e.preventDefault();
+    });
+  }
+
+  function toggleSelect(id) {
+    if (S.selected[id]) delete S.selected[id]; else S.selected[id] = 1;
+    var card = $('[data-id="' + id + '"]');
+    if (card) card.classList.toggle('sel', !!S.selected[id]);
+    var chk = $('.check[data-id="' + id + '"]');
+    if (chk) chk.classList.toggle('on', !!S.selected[id]);
+    renderSelBar();
+  }
+  function bounceStar(btn) {
+    if (!btn) return;
+    btn.classList.add('star-bounce');
+    setTimeout(function () { btn.classList.remove('star-bounce'); }, 520);
+  }
+  function clearSearch() {
+    S.query = '';
+    $('#searchInput').value = '';
+    $('#searchClear').classList.remove('show');
+    render();
+  }
+
+  /* ================= boot ================= */
+  function boot() {
+    loadPrefs();
+    applyAnimMode(animMode());
+    $('#sortLabel').textContent = S.sort === 'name' ? '이름순' : (S.sort === 'updated' ? '최근 수정순' : '용량순');
+    $$('#viewSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === S.mode); });
+    syncThemeIcons();
+    wire();
+    bindLongPress();
+    attachRipple();
+    openDB().then(loadAll).then(function () {
+      render();
+      scanWorks().then(function () { renderChrome(); }, function () { renderChrome(); });
+      checkHashImport();
+    }, function (err) {
+      console.warn('[Flux Drive] 저장소 열기 실패', err);
+      $('#board').innerHTML = '<div class="empty"><div class="art empty-art">' + icon('i-warn') + '</div>' +
+        '<h3>브라우저 저장소를 열 수 없습니다</h3>' +
+        '<p>' + esc(err && err.message ? err.message : 'IndexedDB를 사용할 수 없습니다.') + '</p>' +
+        '<p class="hint">시크릿 모드나 저장소가 막힌 환경에서는 파일이 저장되지 않습니다. 일반 창에서 다시 열어 주세요. FLUX 작업물 보기는 저장소와 별개로 동작합니다.</p>' +
+        '<div class="empty-actions"><button class="btn-primary" data-view="works">' + icon('i-spark') + 'FLUX 작업물 보기</button></div></div>';
+      scanWorks().then(renderChrome, renderChrome);
+    });
+  }
+
+  if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
