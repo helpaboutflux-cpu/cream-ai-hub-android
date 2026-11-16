@@ -1,0 +1,2103 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Wiki — 실시간 위키백과 숏폼</title>
+<meta name="description" content="위키백과를 한 장씩 넘기는 숏폼 지식 피드. 실시간 랜덤 문서, 오늘의 인기 문서, 화제 문서를 세로 스와이프로 끝없이 넘기고, 연관 문서로 이어 읽고, 좋아요·스크랩·음성 낭독·검색까지 한 화면에서. 서버 없이 브라우저에서만 동작합니다.">
+<meta name="theme-color" content="#2A4DDB">
+<meta property="og:title" content="Lemon Wiki — 실시간 위키백과 숏폼">
+<meta property="og:description" content="밑으로 넘기면 새로운 지식이 다음 장으로. 실시간 위키백과 문서를 풀스크린 카드로, 연관 문서·음성 낭독·스크랩까지.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232A4DDB'/%3E%3Cpath d='M9 8.5h5.2c1.6 0 2.8 1.2 2.8 2.8v12c0-1.4-1-2.4-2.4-2.4H9z' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M23 8.5h-5.2c-1.6 0-2.8 1.2-2.8 2.8v12c0-1.4 1-2.4 2.4-2.4H23z' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__wikiErrs = [];
+    addEventListener('error', function (e) { window.__wikiErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__wikiErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  /* ===== tokens ===== */
+  :root {
+    --accent: #2A4DDB;
+    --accent-rgb: 42, 77, 219;
+    --accent-2: #6C7BFF;
+    --gold: #C08A16;
+    --paper: #f6f6fa;
+    --paper-2: #ecebf3;
+    --sheet: #fdfdff;
+    --ink: #111117;
+    --ink2: #55555f;
+    --ink3: #8a8a97;
+    --line: rgba(17, 17, 23, .13);
+    --line2: rgba(17, 17, 23, .07);
+    --glass: rgba(255, 255, 255, .76);
+    --glassbd: rgba(17, 17, 23, .10);
+    --shadow: 0 30px 80px -42px rgba(13, 15, 40, .55);
+    --top: 52px;
+    --chips: 46px;
+    --bartrack: 3px;
+    --railw: 58px;
+  }
+  html.dark {
+    --accent: #8A9BFF;
+    --accent-rgb: 138, 155, 255;
+    --accent-2: #B4BFFF;
+    --gold: #E8B641;
+    --paper: #07070b;
+    --paper-2: #0f0f15;
+    --sheet: #0b0b11;
+    --ink: #f3f3f7;
+    --ink2: #9b9baa;
+    --ink3: #6c6c7a;
+    --line: rgba(255, 255, 255, .15);
+    --line2: rgba(255, 255, 255, .07);
+    --glass: rgba(20, 20, 26, .66);
+    --glassbd: rgba(255, 255, 255, .12);
+    --shadow: 0 40px 100px -50px rgba(0, 0, 0, .92);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, "SF Mono", monospace; }
+  .app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ===== top bar ===== */
+  .topbar {
+    flex: 0 0 var(--top);
+    height: var(--top);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 0 12px;
+    border-bottom: 1px solid var(--line2);
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    position: relative; z-index: 20;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; text-decoration: none; color: inherit; }
+  .mark {
+    width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
+    background: linear-gradient(140deg, var(--accent) 0%, var(--accent-2) 100%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 20px -10px rgba(var(--accent-rgb), .9);
+  }
+  .mark svg { width: 17px; height: 17px; color: #fff; }
+  .brand-txt { min-width: 0; overflow: hidden; }
+  .brand-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 900; letter-spacing: -0.035em; line-height: 1.1; white-space: nowrap; }
+  .brand-tag {
+    font-size: 8px; font-weight: 800; letter-spacing: .14em; padding: 2px 5px; border-radius: 4px;
+    border: 1px solid rgba(var(--accent-rgb), .42); color: var(--accent); background: rgba(var(--accent-rgb), .08);
+  }
+  .brand-sub { font-size: 9.5px; color: var(--ink3); letter-spacing: .02em; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .top-actions { display: flex; align-items: center; gap: 6px; }
+  .tbtn {
+    width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--glassbd); background: var(--glass); color: var(--ink2);
+    transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), color .2s, border-color .2s, background-color .2s;
+    position: relative; flex-shrink: 0;
+  }
+  .tbtn svg { width: 17px; height: 17px; }
+  .tbtn:hover { color: var(--accent); border-color: rgba(var(--accent-rgb), .45); }
+  .tbtn:active { transform: scale(.9); }
+  .tbtn .ic-sun { display: none; }
+  .dark .tbtn .ic-sun { display: block; }
+  .dark .tbtn .ic-moon { display: none; }
+  .tbtn .bdg {
+    position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 800;
+    display: none; align-items: center; justify-content: center; line-height: 1;
+    box-shadow: 0 2px 8px -2px rgba(var(--accent-rgb), .9);
+  }
+  .tbtn .bdg.on { display: inline-flex; }
+  .tbtn.spinning svg { animation: spin .85s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .langpill {
+    display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 10px;
+    border-radius: 11px; border: 1px solid var(--glassbd); background: var(--glass); color: var(--ink2);
+    font-size: 11px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; flex-shrink: 0;
+    transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), color .2s, border-color .2s;
+  }
+  .langpill svg { width: 13px; height: 13px; opacity: .8; }
+  .langpill b { font-weight: 900; color: var(--accent); }
+  .langpill:hover { border-color: rgba(var(--accent-rgb), .45); }
+  .langpill:active { transform: scale(.94); }
+  .kbhint { display: none; align-items: center; gap: 4px; font-size: 9.5px; color: var(--ink3); margin-right: 2px; }
+  .kbhint i {
+    font-style: normal; font-family: ui-monospace, Menlo, monospace; font-size: 9px; padding: 2px 5px;
+    border-radius: 5px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink2);
+  }
+
+  @media (max-width: 412px) {
+    .brand-tag { display: none; }
+    .topbar { padding: 0 10px; }
+    .top-actions { gap: 5px; }
+    .tbtn { width: 32px; height: 32px; border-radius: 10px; }
+    .langpill { height: 32px; padding: 0 8px; font-size: 10.5px; }
+    .langpill .lp-full { display: none; }
+  }
+  @media (max-width: 360px) {
+    .brand-name { font-size: 13px; }
+    .brand-sub { font-size: 9px; }
+  }
+
+  /* ===== mode chips ===== */
+  .chipsrow {
+    flex: 0 0 var(--chips); height: var(--chips);
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 12px; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; -ms-overflow-style: none;
+    border-bottom: 1px solid var(--line2);
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    position: relative; z-index: 19;
+  }
+  .chipsrow::-webkit-scrollbar { display: none; }
+  .cat {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 11px; border-radius: 999px;
+    border: 1px solid var(--line); background: transparent; color: var(--ink2);
+    font-size: 11.5px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap;
+    transition: background-color .18s, color .18s, border-color .18s, transform .12s;
+  }
+  .cat svg { width: 12px; height: 12px; opacity: .75; }
+  .cat:hover { border-color: var(--ink3); color: var(--ink); }
+  .cat:active { transform: scale(.95); }
+  .cat.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .cat.on svg { opacity: 1; }
+  .cat .num { font-size: 9px; font-family: ui-monospace, Menlo, monospace; opacity: .62; }
+  .chip-note {
+    flex-shrink: 0; margin-left: 2px; font-size: 9.5px; color: var(--ink3);
+    font-family: ui-monospace, Menlo, monospace; letter-spacing: .01em; padding-left: 8px;
+    border-left: 1px solid var(--line2); white-space: nowrap;
+  }
+  .chip-note b { color: var(--accent); font-weight: 800; }
+
+  /* ===== progress ===== */
+  .prog { flex: 0 0 var(--bartrack); height: var(--bartrack); background: var(--line2); position: relative; z-index: 19; overflow: hidden; }
+  .prog > i {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent) 100%);
+    background-size: 200% 100%;
+    transition: width .34s cubic-bezier(.22, 1, .36, 1);
+    animation: barflow 4s linear infinite;
+  }
+  @keyframes barflow { to { background-position: -200% 0; } }
+
+  /* ===== stage ===== */
+  .stagewrap {
+    flex: 1 1 auto; min-height: 0; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; overflow: hidden;
+  }
+  .stage {
+    position: relative; width: 100%; height: 100%; overflow: hidden;
+    background: var(--sheet); isolation: isolate;
+  }
+  .feed {
+    position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden;
+    scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain;
+  }
+  .feed::-webkit-scrollbar { display: none; }
+  .grain {
+    position: absolute; inset: 0; z-index: 15; pointer-events: none; opacity: .045; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  }
+
+  /* ===== card ===== */
+  .reel {
+    position: relative; height: 100%; width: 100%;
+    scroll-snap-align: start; scroll-snap-stop: always;
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--sheet);
+    --h: 220deg;
+  }
+  .reel::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; width: 12%; z-index: 6;
+    background: var(--accent); transition: width .7s cubic-bezier(.16, 1, .3, 1); pointer-events: none;
+  }
+  .reel.is-on::after { width: 100%; }
+
+  .reel-media { position: relative; flex: 0 0 44%; min-height: 0; overflow: hidden; background: var(--paper-2); }
+  .pattern {
+    position: absolute; inset: 0;
+    background-color: var(--paper-2);
+    background-image:
+      radial-gradient(120% 96% at 10% -8%, hsl(var(--h) 72% 58% / .62) 0%, hsl(var(--h) 72% 58% / 0) 62%),
+      radial-gradient(92% 72% at 94% 94%, hsl(calc(var(--h) + 46deg) 70% 52% / .42) 0%, hsl(calc(var(--h) + 46deg) 70% 52% / 0) 58%),
+      repeating-linear-gradient(118deg, hsl(var(--h) 60% 46% / .16) 0 1.5px, transparent 1.5px 22px);
+  }
+  html.dark .pattern {
+    background-color: #0d0d14;
+    background-image:
+      radial-gradient(120% 96% at 10% -8%, hsl(var(--h) 70% 56% / .48) 0%, hsl(var(--h) 70% 56% / 0) 60%),
+      radial-gradient(92% 72% at 94% 94%, hsl(calc(var(--h) + 46deg) 66% 50% / .30) 0%, hsl(calc(var(--h) + 46deg) 66% 50% / 0) 58%),
+      repeating-linear-gradient(118deg, hsl(var(--h) 66% 62% / .13) 0 1.5px, transparent 1.5px 22px);
+  }
+  .photo {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    opacity: 0; transition: opacity .6s ease, transform 8s linear; transform: scale(1.02);
+    will-change: transform, opacity;
+  }
+  .photo.ok { opacity: 1; }
+  .reel.is-on .photo.ok { transform: scale(1.085); }
+  .veil { position: absolute; inset: 0; pointer-events: none; }
+  .reel.has-photo .veil {
+    background:
+      linear-gradient(180deg, rgba(5, 6, 14, .44) 0%, rgba(5, 6, 14, .04) 26%, rgba(5, 6, 14, 0) 46%),
+      linear-gradient(0deg, var(--sheet) 0%, rgba(0, 0, 0, 0) 34%);
+  }
+  .reel:not(.has-photo) .veil { background: linear-gradient(0deg, var(--sheet) 0%, rgba(0, 0, 0, 0) 32%); }
+  .reel:not(.has-photo) .reel-media { flex: 0 0 32%; }
+
+  .glyph {
+    position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+    width: 26%; max-width: 150px; height: auto; opacity: .2; color: hsl(var(--h) 70% 46%);
+    stroke-width: 1.15; pointer-events: none;
+  }
+  html.dark .glyph { opacity: .26; color: hsl(var(--h) 78% 72%); }
+  .reel.has-photo .glyph { display: none; }
+
+  .media-foot {
+    position: absolute; left: 12px; right: 12px; bottom: 9px; z-index: 3;
+    display: flex; align-items: center; gap: 7px; min-width: 0;
+  }
+  .src {
+    display: inline-flex; align-items: center; gap: 5px; max-width: 62%;
+    padding: 3px 8px; border-radius: 6px; background: var(--accent); color: #fff;
+    font-size: 10px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 6px 16px -10px rgba(var(--accent-rgb), 1);
+  }
+  html.dark .src { color: #0b0b11; }
+  .src b { font-weight: 900; overflow: hidden; text-overflow: ellipsis; }
+  .hot {
+    display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+    font-size: 9.5px; font-weight: 800; color: var(--ink2);
+    font-family: ui-monospace, Menlo, monospace; padding: 3px 6px; border-radius: 6px;
+    background: color-mix(in srgb, var(--sheet) 72%, transparent); border: 1px solid var(--glassbd);
+  }
+  .hot svg { width: 10px; height: 10px; color: var(--gold); }
+  .pos {
+    margin-left: auto; display: inline-flex; align-items: baseline; gap: 2px; flex-shrink: 0;
+    font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: var(--ink3); letter-spacing: .04em;
+    padding: 3px 6px; border-radius: 6px;
+    background: color-mix(in srgb, var(--sheet) 72%, transparent); border: 1px solid var(--glassbd);
+  }
+  .pos b { font-size: 12px; color: var(--ink); font-weight: 800; }
+  .pos i { font-style: normal; opacity: .55; }
+
+  .reel-body {
+    position: relative; flex: 1 1 auto; min-height: 0;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    padding-right: calc(var(--railw) + 6px);
+    display: flex; flex-direction: column; gap: 7px;
+    background: var(--sheet);
+  }
+  .bodytop { position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; gap: 7px; }
+  .kicker {
+    position: relative; z-index: 1; flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .kicker .dash { width: 15px; height: 2px; background: var(--accent); display: block; flex-shrink: 0; }
+  .kicker .sep { opacity: .4; }
+  .kicker .lmode { color: var(--ink3); letter-spacing: .1em; }
+  .headline {
+    position: relative; z-index: 1; flex: 0 0 auto; margin: 0;
+    font-size: clamp(20px, 5.4vw, 29px); line-height: 1.2; font-weight: 900; letter-spacing: -0.04em;
+    color: var(--ink); text-wrap: balance; word-break: keep-all; overflow-wrap: break-word;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .summary {
+    position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; margin: 0;
+    font-size: clamp(12.5px, 3.3vw, 14.5px); line-height: 1.62; color: var(--ink2); letter-spacing: -0.003em;
+    overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start;
+  }
+  .summary > span { display: block; width: 100%; flex: 0 0 auto; word-break: keep-all; overflow-wrap: break-word; }
+  .tocbox { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line2); min-height: 0; overflow: hidden; }
+  .tochead {
+    display: flex; align-items: center; gap: 5px; margin-bottom: 2px;
+    font-size: 8.5px; font-weight: 800; letter-spacing: .14em; color: var(--ink3); text-transform: uppercase;
+  }
+  .tochead svg { width: 10px; height: 10px; color: var(--accent); }
+  .tocrow {
+    display: flex; align-items: baseline; gap: 6px; height: 21px; overflow: hidden;
+    text-decoration: none; color: var(--ink2); font-size: 10.5px; line-height: 21px; letter-spacing: -.01em;
+  }
+  .tocrow:hover { color: var(--ink); }
+  .tocrow em { flex-shrink: 0; font-style: normal; font-family: ui-monospace, Menlo, monospace; font-size: 8.5px; color: var(--accent); opacity: .75; }
+  .tocrow .tn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tocrow svg { width: 9px; height: 9px; opacity: .45; flex-shrink: 0; align-self: center; }
+  .nextlist { display: flex; flex-direction: column; gap: 1px; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line2); }
+  .nextlist button { display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left; padding: 1px 0; color: var(--ink2); font-size: 10.5px; line-height: 1.5; letter-spacing: -.01em; }
+  .nextlist button:hover { color: var(--ink); }
+  .nextlist .nm { flex-shrink: 0; font-size: 8px; font-weight: 800; color: var(--accent); letter-spacing: -.01em; padding: 1px 4px; border-radius: 4px; background: rgba(var(--accent-rgb), .12); }
+  .nextlist .nt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nextlist .na { flex-shrink: 0; width: 10px; height: 10px; opacity: .55; }
+  .relwrap { position: relative; z-index: 1; margin-top: 8px; flex-shrink: 0; min-height: 0; }
+  .relhead {
+    display: flex; align-items: center; gap: 5px; margin-bottom: 5px;
+    font-size: 8.5px; font-weight: 800; letter-spacing: .14em; color: var(--ink3); text-transform: uppercase;
+  }
+  .relhead svg { width: 10px; height: 10px; color: var(--accent); }
+  .relchips { display: flex; gap: 5px; overflow: hidden; }
+  .relchip {
+    display: inline-flex; align-items: center; justify-content: space-between; gap: 4px;
+    flex: 1 1 0; min-width: 0;
+    padding: 6px 9px; border-radius: 999px;
+    border: 1px solid var(--line); background: color-mix(in srgb, var(--paper-2) 58%, transparent);
+    color: var(--ink); font-size: 10.5px; font-weight: 700; letter-spacing: -.01em;
+    transition: transform .14s cubic-bezier(.34, 1.56, .64, 1), border-color .18s, background-color .18s;
+  }
+  .relchip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .relchip svg { width: 10px; height: 10px; flex-shrink: 0; color: var(--accent); opacity: .8; }
+  .relchip:hover { border-color: rgba(var(--accent-rgb), .5); background: rgba(var(--accent-rgb), .08); }
+  .relchip:active { transform: scale(.95); }
+  .relskel {
+    height: 27px; border-radius: 999px; flex: 0 0 auto;
+    background: linear-gradient(90deg, var(--paper-2) 0%, color-mix(in srgb, var(--paper-2) 45%, var(--sheet)) 50%, var(--paper-2) 100%);
+    background-size: 200% 100%; animation: skel 1.4s linear infinite;
+  }
+  @keyframes skel { to { background-position: -200% 0; } }
+  .reel-foot {
+    position: relative; z-index: 1; flex-shrink: 0; margin-top: 8px; padding-top: 7px;
+    display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line2);
+  }
+  .srclink {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 800; letter-spacing: .03em; color: var(--ink);
+    text-decoration: none; padding: 3px 0;
+  }
+  .srclink svg { width: 12px; height: 12px; transition: transform .2s; color: var(--accent); }
+  .srclink:hover svg { transform: translate(2px, -2px); }
+  .rel { font-size: 9.5px; color: var(--ink3); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* entrance */
+  .reel .headline, .reel .summary, .reel .reel-foot, .reel .kicker, .reel .relwrap { opacity: 0; transform: translateY(14px); }
+  .reel.is-on .kicker { animation: rise .42s cubic-bezier(.16, 1, .3, 1) .04s forwards; }
+  .reel.is-on .headline { animation: rise .52s cubic-bezier(.16, 1, .3, 1) .09s forwards; }
+  .reel.is-on .summary { animation: rise .55s cubic-bezier(.16, 1, .3, 1) .16s forwards; }
+  .reel.is-on .relwrap { animation: rise .55s cubic-bezier(.16, 1, .3, 1) .21s forwards; }
+  .reel.is-on .reel-foot { animation: rise .55s cubic-bezier(.16, 1, .3, 1) .26s forwards; }
+  @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+
+  /* ===== rail ===== */
+  .rail {
+    position: absolute; right: 8px; bottom: 16px; z-index: 8;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .rbtn { display: flex; flex-direction: column; align-items: center; gap: 3px; width: var(--railw); padding: 0; }
+  .ricon {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--glassbd); background: var(--glass);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    color: var(--ink2); position: relative;
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), color .2s, background-color .2s, border-color .2s;
+  }
+  .ricon svg { width: 19px; height: 19px; }
+  .rbtn:hover .ricon { color: var(--ink); border-color: var(--line); }
+  .rbtn:active .ricon { transform: scale(.88); }
+  .rbtn.on .ricon { color: var(--accent); border-color: rgba(var(--accent-rgb), .5); background: rgba(var(--accent-rgb), .12); }
+  .rbtn.on .ricon svg { fill: rgba(var(--accent-rgb), .18); }
+  .rbtn .rlab {
+    font-size: 8.5px; font-weight: 800; color: var(--ink3); letter-spacing: .01em;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .rbtn.on .rlab { color: var(--accent); }
+  .rbtn.pop .ricon { animation: pop .38s cubic-bezier(.34, 1.56, .64, 1); }
+  @keyframes pop { 0% { transform: scale(1); } 38% { transform: scale(1.24); } 100% { transform: scale(1); } }
+  .burst { position: absolute; inset: 0; pointer-events: none; }
+  .burst i { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); opacity: 0; }
+  .rbtn.pop .burst i { animation: burst .6s ease-out forwards; }
+  @keyframes burst {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(.6); }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.2); }
+  }
+  .ttson .ricon { color: var(--accent); border-color: rgba(var(--accent-rgb), .55); }
+  .ttson .ricon::after {
+    content: ""; position: absolute; inset: -1px; border-radius: 50%;
+    border: 2px solid rgba(var(--accent-rgb), .55); animation: pulse 1.5s ease-out infinite;
+  }
+  @keyframes pulse { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.5); opacity: 0; } }
+
+  /* ===== jump controls ===== */
+  .navpair { position: absolute; top: 12px; right: 10px; z-index: 9; display: flex; flex-direction: column; gap: 6px; }
+  .navbtn {
+    width: 32px; height: 32px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--glassbd); background: var(--glass); color: var(--ink2);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    transition: transform .15s, color .2s, opacity .2s;
+  }
+  .navbtn svg { width: 15px; height: 15px; }
+  .navbtn:hover { color: var(--ink); }
+  .navbtn:active { transform: scale(.9); }
+  .navbtn[disabled] { opacity: .26; pointer-events: none; }
+  .sidebtn { display: none; }
+
+  /* ===== TTS bar ===== */
+  .ttsbar {
+    position: absolute; top: 12px; left: 10px; right: 50px; z-index: 10;
+    display: none; align-items: center; gap: 8px;
+    padding: 7px 8px 7px 10px; border-radius: 12px;
+    background: var(--glass); border: 1px solid rgba(var(--accent-rgb), .38);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 14px 34px -22px rgba(0, 0, 0, .6);
+  }
+  .ttsbar.on { display: flex; animation: rise2 .32s cubic-bezier(.16, 1, .3, 1); }
+  @keyframes rise2 { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  .wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; flex-shrink: 0; }
+  .wave i { width: 2px; background: var(--accent); border-radius: 1px; height: 5px; animation: wave 1s ease-in-out infinite; }
+  .wave i:nth-child(2) { animation-delay: .16s; }
+  .wave i:nth-child(3) { animation-delay: .32s; }
+  .wave i:nth-child(4) { animation-delay: .48s; }
+  @keyframes wave { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+  .ttstxt { flex: 1; min-width: 0; font-size: 10px; font-weight: 700; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ttsauto {
+    flex-shrink: 0; font-size: 9px; font-weight: 800; padding: 4px 8px; border-radius: 7px;
+    border: 1px solid var(--line); color: var(--ink3); letter-spacing: -.01em;
+  }
+  .ttsauto.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  html.dark .ttsauto.on { color: #0b0b11; }
+  .ttsx { flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink2); }
+  .ttsx svg { width: 13px; height: 13px; }
+
+  /* ===== skeleton / empty ===== */
+  .skel { padding: 14px; display: flex; flex-direction: column; gap: 12px; height: 100%; }
+  .skel .bar { border-radius: 10px; background: linear-gradient(90deg, var(--paper-2) 0%, color-mix(in srgb, var(--paper-2) 45%, var(--sheet)) 50%, var(--paper-2) 100%); background-size: 200% 100%; animation: skel 1.4s linear infinite; }
+  .empty {
+    height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 32px; text-align: center; scroll-snap-align: start;
+  }
+  .empty svg { width: 42px; height: 42px; color: var(--ink3); }
+  .empty h3 { margin: 0; font-size: 16px; font-weight: 900; letter-spacing: -.03em; }
+  .empty p { margin: 0; font-size: 12.5px; color: var(--ink2); line-height: 1.65; max-width: 300px; }
+  .empty button {
+    margin-top: 4px; padding: 9px 16px; border-radius: 11px; background: var(--ink); color: var(--paper);
+    font-size: 12px; font-weight: 800;
+  }
+
+  /* ===== overlay / sheets ===== */
+  .ovl {
+    position: fixed; inset: 0; z-index: 60; display: none;
+    background: rgba(5, 6, 14, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    align-items: flex-end; justify-content: center;
+  }
+  .ovl.on { display: flex; animation: fadein .2s ease; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .sht {
+    width: 100%; max-width: 560px; max-height: 84vh; display: flex; flex-direction: column;
+    background: var(--paper); border: 1px solid var(--line); border-bottom: 0;
+    border-radius: 22px 22px 0 0; box-shadow: var(--shadow);
+    animation: sheet .3s cubic-bezier(.16, 1, .3, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  @keyframes sheet { from { transform: translateY(28px); opacity: .6; } to { transform: none; opacity: 1; } }
+  @media (min-width: 760px) {
+    .ovl { align-items: center; }
+    .sht { border-radius: 20px; border-bottom: 1px solid var(--line); max-height: 78vh; }
+  }
+  .phead { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line2); flex-shrink: 0; }
+  .phead h2 { margin: 0; font-size: 15px; font-weight: 900; letter-spacing: -.035em; }
+  .phead .cnt { font-size: 10px; font-family: ui-monospace, Menlo, monospace; color: var(--ink3); }
+  .phead .x { margin-left: auto; width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line2); display: inline-flex; align-items: center; justify-content: center; color: var(--ink2); }
+  .phead .x svg { width: 14px; height: 14px; }
+  .ptabs { display: flex; gap: 4px; padding: 10px 14px 0; flex-shrink: 0; }
+  .ptab { padding: 6px 11px; border-radius: 9px; font-size: 11.5px; font-weight: 800; color: var(--ink3); border: 1px solid transparent; }
+  .ptab.on { background: var(--paper-2); color: var(--ink); border-color: var(--line2); }
+  .plist { overflow-y: auto; padding: 10px 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .prow {
+    display: flex; gap: 10px; align-items: flex-start; padding: 10px 11px; border-radius: 13px;
+    border: 1px solid var(--line2); background: color-mix(in srgb, var(--paper-2) 62%, transparent); width: 100%;
+  }
+  .prow:hover { border-color: var(--line); }
+  .prow .thumb { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; flex-shrink: 0; background: var(--paper-2); }
+  .prow .dot { width: 4px; height: 26px; border-radius: 3px; background: var(--accent); flex-shrink: 0; margin-top: 2px; }
+  .prow .tx { min-width: 0; flex: 1; text-align: left; background: none; border: 0; padding: 0; color: inherit; }
+  .prow .tt { font-size: 12.5px; font-weight: 800; line-height: 1.4; letter-spacing: -.02em; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: keep-all; }
+  .prow .mt { font-size: 9.5px; color: var(--ink3); margin-top: 3px; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .rm { flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink3); border: 1px solid var(--line2); }
+  .prow .rm svg { width: 12px; height: 12px; }
+  .pempty { padding: 30px 10px; text-align: center; color: var(--ink3); font-size: 12px; line-height: 1.7; }
+
+  .searchbox { padding: 12px 14px 8px; display: flex; gap: 8px; flex-shrink: 0; }
+  .sinput { flex: 1; display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-radius: 11px; border: 1px solid var(--line); background: var(--paper-2); }
+  .sinput svg { width: 14px; height: 14px; color: var(--ink3); flex-shrink: 0; }
+  .sinput input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font: inherit; font-size: 12.5px; }
+  .sinput input::placeholder { color: var(--ink3); }
+  .sfoot { padding: 8px 14px 14px; font-size: 9.5px; color: var(--ink3); font-family: ui-monospace, Menlo, monospace; flex-shrink: 0; }
+
+  /* ===== responsive ===== */
+  @media (min-width: 760px) {
+    :root { --railw: 62px; }
+    .kbhint { display: inline-flex; }
+    .stage {
+      width: auto; height: calc(100% - 24px); aspect-ratio: 9 / 16;
+      border-radius: 26px; border: 1px solid var(--line);
+      box-shadow: var(--shadow); max-width: 440px; max-height: 848px;
+    }
+    .stagewrap::before {
+      content: ""; position: absolute; inset: 0;
+      background:
+        radial-gradient(60% 54% at 50% 0%, rgba(var(--accent-rgb), .12) 0%, rgba(0, 0, 0, 0) 70%),
+        radial-gradient(46% 40% at 84% 88%, rgba(108, 123, 255, .09) 0%, rgba(0, 0, 0, 0) 72%);
+      pointer-events: none;
+    }
+    .reel-body { padding: 16px 18px 18px; padding-right: calc(var(--railw) + 10px); gap: 9px; }
+    .bodytop { gap: 9px; }
+    .reel-media { flex: 0 0 46%; }
+    .reel:not(.has-photo) .reel-media { flex: 0 0 36%; }
+    .rail { right: 10px; bottom: 20px; gap: 12px; }
+    .navpair { display: none; }
+    .sidebtn {
+      display: inline-flex; align-items: center; justify-content: center;
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 1px solid var(--line); background: var(--glass); color: var(--ink2);
+      box-shadow: 0 10px 26px -18px rgba(0, 0, 0, .8);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      z-index: 12; transition: transform .2s, color .2s, opacity .2s;
+    }
+    .sidebtn svg { width: 18px; height: 18px; }
+    .sidebtn:hover { color: var(--accent); }
+    .sidebtn:active { transform: translateY(-50%) scale(.92); }
+    .sidebtn[disabled] { opacity: .3; pointer-events: none; }
+    .sidebtn.prev { left: max(16px, calc(50% - 268px)); }
+    .sidebtn.next { right: max(16px, calc(50% - 268px)); }
+    .ttsbar { top: 14px; left: 12px; right: 12px; }
+    .headline { font-size: 26px; }
+    .summary { font-size: 13.5px; -webkit-line-clamp: 4; }
+  }
+  @media (max-height: 740px) {
+    .reel-media { flex: 0 0 40%; }
+    .headline { -webkit-line-clamp: 3; }
+    .summary { -webkit-line-clamp: 3; }
+  }
+  @media (max-height: 660px) {
+    .summary { -webkit-line-clamp: 2; }
+    .nextlist { display: none !important; }
+    .rail { gap: 6px; bottom: 10px; }
+    .ricon { width: 36px; height: 36px; }
+    .rbtn .rlab { font-size: 8px; }
+    .relwrap { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001s !important; transition-duration: .001s !important; }
+    .reel.is-on .photo.ok { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="index.html" title="Lemon soft 허브로">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.6C10.7 5.2 8.9 4.5 6.4 4.5H3.6v13.2h3.1c2.3 0 4 .7 5.3 2 1.3-1.3 3-2 5.3-2h3.1V4.5h-2.8c-2.5 0-4.3.7-5.6 2.1z"></path><path d="M12 6.9v13"></path></svg>
+      </span>
+      <span class="brand-txt">
+        <span class="brand-name">Lemon Wiki <span class="brand-tag">WIKI</span></span>
+        <span class="brand-sub" id="brandSub">한 장씩 넘기는 실시간 지식</span>
+      </span>
+    </a>
+    <div class="top-actions">
+      <span class="kbhint" aria-hidden="true"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="width:9px;height:9px"><path d="m6 14 6-6 6 6"></path></svg></i><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="width:9px;height:9px"><path d="m6 10 6 6 6-6"></path></svg></i><span>이동</span><i>Space</i><span>다음</span></span>
+      <button class="langpill" id="btnLang" title="언어 전환 (한국어 / English)" aria-label="언어 전환">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="8.6"></circle><path d="M3.5 12h17M12 3.4c2.4 2.4 3.6 5.4 3.6 8.6S14.4 18.2 12 20.6C9.6 18.2 8.4 15.2 8.4 12S9.6 5.8 12 3.4z"></path></svg>
+        <b id="langNow">한국어</b><span class="lp-full" id="langAlt">/ EN</span>
+      </button>
+      <button class="tbtn" id="btnRefresh" title="지금 다시 불러오기" aria-label="피드 새로고침">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"></path><path d="M20.6 4v5.2h-5.2"></path></svg>
+      </button>
+      <button class="tbtn" id="btnSearch" title="위키백과 검색" aria-label="위키 검색">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+      </button>
+      <button class="tbtn" id="btnSaved" title="저장함" aria-label="저장함 열기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2L5.5 20.5v-16a1 1 0 0 1 1-1z"></path></svg>
+        <span class="bdg" id="saveBadge">0</span>
+      </button>
+      <button class="tbtn" id="btnTheme" title="라이트·다크 전환" aria-label="테마 전환">
+        <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+        <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.4"></circle><path d="M12 2.2v2M12 19.8v2M4.4 4.4l1.4 1.4M18.2 18.2l1.4 1.4M2.2 12h2M19.8 12h2M4.4 19.6l1.4-1.4M18.2 5.8l1.4-1.4"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <nav class="chipsrow" id="chips" aria-label="피드 모드"></nav>
+
+  <div class="prog" aria-hidden="true"><i id="progFill"></i></div>
+
+  <main class="stagewrap">
+    <button class="sidebtn prev" id="sidePrev" aria-label="이전 문서">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 6-6 6 6"></path></svg>
+    </button>
+    <div class="stage" id="stage">
+      <div class="feed" id="feed" tabindex="0" aria-label="위키백과 숏폼 피드"></div>
+      <div class="grain" aria-hidden="true"></div>
+
+      <div class="ttsbar" id="ttsbar">
+        <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="ttstxt" id="ttsTitle">낭독 준비 중</span>
+        <button class="ttsauto" id="btnAuto" aria-pressed="false">자동 넘김</button>
+        <button class="ttsx" id="btnTtsStop" aria-label="낭독 중지">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg>
+        </button>
+      </div>
+
+      <div class="navpair">
+        <button class="navbtn" id="jumpPrev" aria-label="이전 문서">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 6-6 6 6"></path></svg>
+        </button>
+        <button class="navbtn" id="jumpNext" aria-label="다음 문서">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 10-6 6-6-6"></path></svg>
+        </button>
+      </div>
+
+      <div class="rail" id="rail">
+        <button class="rbtn" id="rLike" aria-pressed="false" aria-label="좋아요">
+          <span class="ricon">
+            <span class="burst" aria-hidden="true"><i style="--dx:-15px;--dy:-11px"></i><i style="--dx:15px;--dy:-13px"></i><i style="--dx:-17px;--dy:9px"></i><i style="--dx:13px;--dy:15px"></i><i style="--dx:0;--dy:-19px"></i></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.4a4.7 4.7 0 0 1 0-6.7 4.8 4.8 0 0 1 6.8 0l.3.3.3-.3a4.8 4.8 0 0 1 6.8 0 4.7 4.7 0 0 1 0 6.7z"></path></svg>
+          </span>
+          <span class="rlab" id="likeN">0</span>
+        </button>
+        <button class="rbtn" id="rSave" aria-pressed="false" aria-label="스크랩 저장">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2L5.5 20.5v-16a1 1 0 0 1 1-1z"></path></svg>
+          </span>
+          <span class="rlab" id="saveN">저장</span>
+        </button>
+        <button class="rbtn" id="rTts" aria-pressed="false" aria-label="음성 낭독">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"></path><path d="M15.5 9.2a4 4 0 0 1 0 5.6"></path><path d="M18.2 6.6a7.5 7.5 0 0 1 0 10.8"></path></svg>
+          </span>
+          <span class="rlab">낭독</span>
+        </button>
+        <button class="rbtn" id="rShare" aria-label="공유">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v10"></path><path d="m8.2 7.3 3.8-3.8 3.8 3.8"></path><path d="M5 13.5v5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-5"></path></svg>
+          </span>
+          <span class="rlab">공유</span>
+        </button>
+        <button class="rbtn" id="rOpen" aria-label="위키 원문 열기">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.5h5.5V10"></path><path d="M19.2 4.8 11 13"></path><path d="M18 15v3.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H9"></path></svg>
+          </span>
+          <span class="rlab">원문</span>
+        </button>
+      </div>
+    </div>
+    <button class="sidebtn next" id="sideNext" aria-label="다음 문서">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 10 6 6 6-6"></path></svg>
+    </button>
+  </main>
+</div>
+
+<!-- 저장함 -->
+<div class="ovl" id="ovlSaved" role="dialog" aria-modal="true" aria-label="저장함">
+  <div class="sht">
+    <div class="phead">
+      <h2>저장함</h2>
+      <span class="cnt" id="savedCnt">0건</span>
+      <button class="x" id="closeSaved" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg></button>
+    </div>
+    <div class="ptabs" role="tablist">
+      <button class="ptab on" data-ptab="save" role="tab" aria-selected="true">스크랩</button>
+      <button class="ptab" data-ptab="like" role="tab" aria-selected="false">좋아요</button>
+      <button class="ptab" data-ptab="clear" style="margin-left:auto;color:var(--ink3)">비우기</button>
+    </div>
+    <div class="plist" id="savedList"></div>
+  </div>
+</div>
+
+<!-- 검색 -->
+<div class="ovl" id="ovlSearch" role="dialog" aria-modal="true" aria-label="위키 검색">
+  <div class="sht">
+    <div class="phead">
+      <h2>위키백과 검색</h2>
+      <span class="cnt" id="searchLang">한국어판</span>
+      <button class="x" id="closeSearch" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg></button>
+    </div>
+    <div class="searchbox">
+      <label class="sinput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+        <input id="q" type="search" placeholder="키워드로 문서 찾기" autocomplete="off" aria-label="검색어">
+      </label>
+    </div>
+    <div class="plist" id="searchList"></div>
+    <div class="sfoot" id="searchFoot">문서를 고르면 그 문서와 연관 문서를 피드에 올려 바로 이어 읽습니다.</div>
+  </div>
+</div>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var doc = document;
+  var feed = doc.getElementById('feed');
+  var chipsEl = doc.getElementById('chips');
+  var progFill = doc.getElementById('progFill');
+
+  var KEY_SAVED = 'lemon_wiki_saved_v1';
+  var KEY_LIKES = 'lemon_wiki_likes_v1';
+  var KEY_AUTO = 'lemon_wiki_auto_v1';
+  var KEY_LANG = 'lemon_wiki_lang_v1';
+  var KEY_MODE = 'lemon_wiki_mode_v1';
+
+  var store = (window.Lemon && window.Lemon.store) ? window.Lemon.store : {
+    get: function (k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  };
+  function toast(msg, type) {
+    if (window.Lemon && Lemon.toast) { Lemon.toast(msg, type || 'info'); return; }
+    console.log('[toast]', msg);
+  }
+  function hap() { if (window.Lemon && Lemon.hap) { try { Lemon.hap(); } catch (e) { } } }
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ================= state ================= */
+  var DOCS = [];         /* card list, grows forever */
+  var idx = 0;
+  var lang = 'ko';
+  var mode = 'random';
+  var liked = {};
+  var saved = [];
+  var autoNext = false;
+  var loading = false;
+  var exhausted = false;
+  var gen = 0;           /* 세대 번호: 모드·언어 전환 시 이전 비동기 결과를 버린다 */
+  var seen = {};
+  var speaking = null;
+  var speakToken = 0;
+
+  (function loadState() {
+    var l = store.get(KEY_LIKES, {});
+    if (l && typeof l === 'object') liked = l;
+    var s = store.get(KEY_SAVED, []);
+    if (Array.isArray(s)) saved = s.filter(function (x) { return x && x.title; });
+    autoNext = store.get(KEY_AUTO, false) === true;
+    var lv = store.get(KEY_LANG, 'ko');
+    if (lv === 'en' || lv === 'ko') lang = lv;
+    var mv = store.get(KEY_MODE, 'random');
+    if (mv === 'popular' || mv === 'featured' || mv === 'random') mode = mv;
+  })();
+  function persistLikes() { store.set(KEY_LIKES, liked); }
+  function persistSaved() { store.set(KEY_SAVED, saved); }
+  function docKey(l, t) { return l + '|' + t; }
+
+  var MODES = [
+    { k: 'random', n: '랜덤 탐색', hint: '무작위 문서' },
+    { k: 'popular', n: '오늘의 인기', hint: '많이 읽은 문서' },
+    { k: 'featured', n: '지금 화제', hint: '화제·뉴스 문서' }
+  ];
+  var GLYPHS = [
+    '<path d="M12 6.6C10.7 5.2 8.9 4.5 6.4 4.5H3.6v13.2h3.1c2.3 0 4 .7 5.3 2 1.3-1.3 3-2 5.3-2h3.1V4.5h-2.8c-2.5 0-4.3.7-5.6 2.1z"></path><path d="M12 6.9v13"></path>',
+    '<circle cx="12" cy="12" r="8.4"></circle><path d="M3.8 12h16.4M12 3.6c2.3 2.3 3.5 5.2 3.5 8.4S14.3 18.1 12 20.4C9.7 18.1 8.5 15.2 8.5 12S9.7 5.9 12 3.6z"></path>',
+    '<path d="M12 3.4 14.5 9l6 .5-4.6 3.9 1.4 5.9L12 16.4l-5.3 2.9 1.4-5.9L3.5 9.5l6-.5z"></path>',
+    '<path d="M4 19.5V7.2L12 3.5l8 3.7v12.3"></path><path d="M4 19.5h16M9 19.5v-6h6v6"></path>',
+    '<circle cx="12" cy="12" r="3.2"></circle><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"></path>',
+    '<path d="M4 20.5V13M9 20.5V9M14 20.5v-5M19 20.5V4.5"></path><path d="M3 20.5h18"></path>',
+    '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M7.5 9.5h9M7.5 13h6.5M7.5 16.5h4"></path>',
+    '<path d="M12 20.5c4.2-4.6 6.3-7.7 6.3-10.4A6.3 6.3 0 0 0 12 3.8a6.3 6.3 0 0 0-6.3 6.3c0 2.7 2.1 5.8 6.3 10.4z"></path><circle cx="12" cy="10" r="2.4"></circle>'
+  ];
+
+  /* ================= api ================= */
+  function getJSON(url, ms) {
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { ctrl.abort(); }, ms || 9000);
+    return fetch(url, { credentials: 'omit', signal: ctrl.signal, cache: 'no-store' })
+      .then(function (r) { clearTimeout(t); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .catch(function (e) { clearTimeout(t); throw e; });
+  }
+  function apiUrl(l, params) {
+    var base = 'https://' + l + '.wikipedia.org/w/api.php?format=json&origin=*&formatversion=1';
+    var q = Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
+    return base + '&' + q;
+  }
+  function upsize(u) {
+    if (!u) return '';
+    var m = u.match(/\/(\d{1,4})px-/);
+    if (!m) return u;
+    var w = parseInt(m[1], 10);
+    if (w >= 900) return u;
+    return u.replace('/' + m[1] + 'px-', '/900px-');
+  }
+  /* 로고·아이콘·픽토그램 같은 투명 PNG는 배경 사진으로 쓰면 깨져 보이므로 걸러낸다 */
+  function imgOK(u) {
+    if (!u) return '';
+    if (/\.svg(\?|$)/i.test(u)) return '';
+    var name = decodeURIComponent(u.split('?')[0].split('/').pop() || '');
+    if (name === '') return '';
+    if (/(logo|wordmark|icon|pictogram|emblem|wappen|coat_of_arms|coat-of-arms|seal_of|symbol|flag_of|flag-of)/i.test(name)) return '';
+    return u;
+  }
+  function titleOf(t) { return String(t || '').replace(/_/g, ' '); }
+
+  function quality(d) {
+    if (!d || !d.title) return false;
+    var t = d.title;
+    if (/^(목록|분류|틀|파일|포털|위키백과|사용자|도움말)[:\s]/.test(t)) return false;
+    if (t.trim().length < 2) return false;
+    if (/^[^\uAC00-\uD7A3A-Za-z0-9]+$/.test(t)) return false;
+    if (/^(List of|Category|Template|File|Portal|Wikipedia|Help|Draft)[:\s]/i.test(t)) return false;
+    if (/\(동음이의\)|\(disambiguation\)/i.test(t)) return false;
+    var ex = String(d.extract || '').trim();
+    if (ex.length < 70) return false;
+    if (/다음과 같은 (뜻|것들|항목)/.test(ex)) return false;
+    if (/may refer to|can refer to|most commonly refers to|may stand for/i.test(ex)) return false;
+    if (/^\d{3,4}년$/.test(t)) return false;
+    return true;
+  }
+
+  function normRandom(r, source) {
+    var pages = (r && r.query && r.query.pages) || {};
+    var out = [];
+    Object.keys(pages).forEach(function (k) {
+      var p = pages[k];
+      if (!p || p.missing !== undefined) return;
+      out.push({
+        title: p.title,
+        extract: (p.extract || '').replace(/\s+\n/g, '\n').trim(),
+        desc: p.description || '',
+        image: imgOK(upsize((p.thumbnail && p.thumbnail.source) || '')),
+        url: (p.canonicalurl || p.fullurl || ('https://' + lang + '.wikipedia.org/wiki/' + encodeURIComponent(p.title))),
+        lang: lang,
+        source: source || 'random',
+        meta: ''
+      });
+    });
+    return out.filter(quality);
+  }
+
+  function fetchRandomBatch(l, n) {
+    return getJSON(apiUrl(l, {
+      action: 'query',
+      generator: 'random',
+      grnnamespace: '0',
+      grnlimit: String(n),
+      prop: 'description|pageimages|extracts|info',
+      inprop: 'url',
+      exintro: '1',
+      explaintext: '1',
+      exsentences: '4',
+      piprop: 'thumbnail',
+      pithumbsize: '900'
+    }), 11000).then(function (r) { return normRandom(r, 'random'); });
+  }
+
+  function fetchSummary(l, title) {
+    var url = 'https://' + l + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(titleOf(title));
+    return getJSON(url, 10000).then(function (d) {
+      if (!d || !d.title || d.type === 'disambiguation') throw new Error('no summary');
+      return {
+        title: titleOf(d.title),
+        extract: String(d.extract || '').trim(),
+        desc: d.description || '',
+        image: imgOK(upsize((d.thumbnail && d.thumbnail.source) || '')),
+        url: (d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page) || ('https://' + l + '.wikipedia.org/wiki/' + encodeURIComponent(d.title)),
+        lang: l,
+        source: 'summary',
+        meta: ''
+      };
+    });
+  }
+
+  /* 여러 문서의 썸네일·요약·설명을 한 번에 채운다 */
+  function enrich(l, list, chunk) {
+    var c = chunk || 20;
+    var jobs = [];
+    for (var i = 0; i < list.length; i += c) {
+      (function (part) {
+        var titles = part.filter(function (d) { return d.title && (!d.extract || d.extract.length < 40 || !d.image); })
+          .map(function (d) { return titleOf(d.title); }).slice(0, c);
+        if (!titles.length) return;
+        jobs.push(getJSON(apiUrl(l, {
+          action: 'query',
+          titles: titles.join('|'),
+          prop: 'description|pageimages|extracts',
+          exintro: '1',
+          explaintext: '1',
+          exsentences: '4',
+          piprop: 'thumbnail',
+          pithumbsize: '900',
+          redirects: '1'
+        }), 11000).then(function (r) {
+          var pages = (r && r.query && r.query.pages) || {};
+          var byTitle = {};
+          Object.keys(pages).forEach(function (k) {
+            var p = pages[k];
+            if (!p || p.missing !== undefined) return;
+            byTitle[titleOf(p.title)] = p;
+          });
+          part.forEach(function (d) {
+            var p = byTitle[titleOf(d.title)];
+            if (!p) return;
+            if (!d.extract && p.extract) d.extract = String(p.extract).trim();
+            if (!d.desc && p.description) d.desc = p.description;
+            if (!d.image && p.thumbnail && p.thumbnail.source) d.image = imgOK(upsize(p.thumbnail.source));
+          });
+        }).catch(function () { }));
+      })(list.slice(i, i + c));
+    }
+    return Promise.all(jobs).then(function () { return list; });
+  }
+
+  function ymd(offsetDays) {
+    var d = new Date(Date.now() + (offsetDays || 0) * 86400000);
+    return {
+      y: d.getUTCFullYear(),
+      m: ('0' + (d.getUTCMonth() + 1)).slice(-2),
+      d: ('0' + d.getUTCDate()).slice(-2)
+    };
+  }
+
+  function fetchPopular(l, limit) {
+    var t = ymd(-1);
+    var url = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/top/' + l + '.wikipedia/all-access/' + t.y + '/' + t.m + '/' + t.d;
+    return getJSON(url, 11000).then(function (r) {
+      var arts = (((r.items || [])[0] || {}).articles) || [];
+      var out = [];
+      arts.forEach(function (a) {
+        var title = titleOf(decodeURIComponent(a.article || ''));
+        if (!title || title.indexOf(':') > -1) return;
+        if (/^(대문|Main Page|Wikipedia|Wikipédia|Hauptseite)$/i.test(title)) return;
+        if (out.length >= (limit || 36)) return;
+        out.push({
+          title: title,
+          extract: '',
+          desc: '',
+          image: '',
+          url: 'https://' + l + '.wikipedia.org/wiki/' + encodeURIComponent(title),
+          lang: l,
+          source: 'popular',
+          meta: (a.views >= 1000 ? (Math.round(a.views / 1000) + '천 회') : (a.views + '회'))
+        });
+      });
+      return enrich(l, out).then(function (arr) {
+        return arr.filter(function (d) { return d.extract && d.extract.length > 40; });
+      });
+    });
+  }
+
+  function fetchFeatured(l) {
+    var today = ymd(0), yest = ymd(-1);
+    function day(t) { return t.y + '/' + t.m + '/' + t.d; }
+    var base = 'https://' + l + '.wikipedia.org/api/rest_v1/feed/featured/';
+    return getJSON(base + day(today), 11000).catch(function () { return getJSON(base + day(yest), 11000); })
+      .then(function (f) {
+        var out = [];
+        if (f.tfa && f.tfa.title) {
+          out.push({
+            title: titleOf(f.tfa.title), extract: String(f.tfa.extract || '').trim(), desc: f.tfa.description || '',
+            image: imgOK(upsize((f.tfa.thumbnail && f.tfa.thumbnail.source) || f.tfa.originalimage && f.tfa.originalimage.source || '')),
+            url: (f.tfa.content_urls && f.tfa.content_urls.desktop && f.tfa.content_urls.desktop.page) || '',
+            lang: l, source: 'featured', meta: '오늘의 알찬 글'
+          });
+        }
+        (f.news || []).forEach(function (n) {
+          var lk = (n.links || [])[0];
+          if (!lk || !lk.title) return;
+          out.push({
+            title: titleOf(lk.title),
+            extract: '',
+            desc: lk.description || '',
+            image: imgOK(upsize((lk.thumbnail && lk.thumbnail.source) || (lk.originalimage && lk.originalimage.source) || '')),
+            url: (lk.content_urls && lk.content_urls.desktop && lk.content_urls.desktop.page) || '',
+            lang: l, source: 'featured', meta: '화제'
+          });
+        });
+        var mr = f.mostread;
+        var marts = mr && (mr.articles || (Array.isArray(mr) ? mr : [])) || [];
+        marts.slice(0, 24).forEach(function (a) {
+          if (!a || !a.title || a.namespace && a.namespace.id !== 0) return;
+          out.push({
+            title: titleOf(a.title),
+            extract: String(a.extract || '').trim(),
+            desc: a.description || '',
+            image: imgOK(upsize((a.thumbnail && a.thumbnail.source) || '')),
+            url: (a.content_urls && a.content_urls.desktop && a.content_urls.desktop.page) || '',
+            lang: l, source: 'featured', meta: a.views ? (Math.round(a.views / 1000) + '천 회') : '읽는 중'
+          });
+        });
+        return enrich(l, out).then(function (arr) {
+          var seenT = {};
+          return arr.filter(function (d) {
+            if (!d.title || seenT[d.title]) return false;
+            if (!d.extract || d.extract.length < 40) return false;
+            seenT[d.title] = 1;
+            return true;
+          });
+        });
+      });
+  }
+
+  function fetchRelated(l, title) {
+    var url = apiUrl(l, {
+      action: 'query',
+      generator: 'search',
+      gsrsearch: 'morelike:' + titleOf(title),
+      gsrlimit: '6',
+      gsrnamespace: '0',
+      prop: 'pageimages|extracts|description',
+      exintro: '1',
+      explaintext: '1',
+      exsentences: '3',
+      piprop: 'thumbnail',
+      pithumbsize: '900'
+    });
+    return getJSON(url, 10000).then(function (r) {
+      var list = normRandom(r, 'related');
+      var self = titleOf(title);
+      return list.filter(function (d) { return d.title !== self; }).slice(0, 3);
+    }).catch(function () { return []; });
+  }
+
+  function searchTitles(l, q) {
+    var url = apiUrl(l, {
+      action: 'query',
+      list: 'search',
+      srsearch: q,
+      srlimit: '12',
+      srnamespace: '0',
+      srprop: 'snippet|wordcount'
+    });
+    return getJSON(url, 9000).then(function (r) {
+      var list = (r.query && r.query.search) || [];
+      return list.map(function (s) {
+        return {
+          title: s.title,
+          snippet: String(s.snippet || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+          words: s.wordcount || 0
+        };
+      });
+    });
+  }
+
+  /* ================= loading ================= */
+  var FALLBACK = {
+    ko: [
+      { title: '위키백과', desc: '자유 백과사전', extract: '위키백과는 누구나 참여해 문서를 만들고 고칠 수 있는 다언어 인터넷 백과사전입니다. 2001년 1월에 시작했고, 문서는 자원봉사 편집자 공동체가 작성합니다.', image: '', url: 'https://ko.wikipedia.org/wiki/위키백과', lang: 'ko', source: 'fallback', meta: '안내' },
+      { title: '세종대왕', desc: '조선 제4대 국왕', extract: '세종은 조선의 제4대 국왕입니다. 훈민정음을 창제하고 과학 기술과 문화를 크게 일으켜 조선 전기의 기틀을 세웠습니다.', image: '', url: 'https://ko.wikipedia.org/wiki/세종', lang: 'ko', source: 'fallback', meta: '백업' }
+    ],
+    en: [
+      { title: 'Wikipedia', desc: 'Free online encyclopedia', extract: 'Wikipedia is a free, multilingual online encyclopedia written and maintained by a community of volunteers through open collaboration. It was launched in January 2001.', image: '', url: 'https://en.wikipedia.org/wiki/Wikipedia', lang: 'en', source: 'fallback', meta: 'guide' }
+    ]
+  };
+
+  function nextBatch(g) {
+    var l = lang, m = mode;
+    var p;
+    if (m === 'popular') {
+      p = (DOCS.length && DOCS[0].source === 'popular') ? Promise.resolve([]) : fetchPopular(l, 40);
+    } else if (m === 'featured') {
+      p = (DOCS.length && DOCS[0].source === 'featured') ? Promise.resolve([]) : fetchFeatured(l);
+    } else {
+      p = fetchRandomBatch(l, 10).then(function (arr) {
+        if (arr.length >= 8) return arr;
+        return fetchRandomBatch(l, 10).then(function (a2) {
+          var map = {};
+          arr.concat(a2).forEach(function (d) { map[d.title] = d; });
+          return Object.keys(map).map(function (k) { return map[k]; });
+        });
+      });
+    }
+    return p.then(function (arr) {
+      if (g !== gen) return [];
+      var fresh = arr.filter(function (d) {
+        var k = docKey(l, d.title);
+        if (seen[k]) return false;
+        seen[k] = 1;
+        return true;
+      });
+      if (!fresh.length) {
+        if (m === 'random') { exhausted = false; }
+        else exhausted = true;
+      }
+      return fresh;
+    });
+  }
+
+  var hashUsed = false;
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function appendDocs(arr) {
+    if (!arr || !arr.length) return;
+    var start = DOCS.length;
+    DOCS = DOCS.concat(arr);
+    var html = arr.map(function (d) { return cardHTML(d); }).join('');
+    var tmp = doc.createElement('div');
+    tmp.innerHTML = html;
+    while (tmp.firstChild) feed.appendChild(tmp.firstChild);
+    renumber();
+    if (start === 0) { markActive(true); }
+    ensureRelatedFor(idx);
+  }
+
+  function loadMore() {
+    if (loading || exhausted) return;
+    loading = true;
+    var g = gen;
+    nextBatch(g).then(function (arr) {
+      if (g !== gen) return;
+      loading = false;
+      if (!arr.length) {
+        if (mode !== 'random' && DOCS.length) exhausted = true;
+        return;
+      }
+      appendDocs(arr);
+    }).catch(function (e) {
+      if (g !== gen) return;
+      loading = false;
+      console.warn('[wiki] load failed', e && e.message);
+      if (!DOCS.length) showEmpty();
+      else toast('다음 문서를 불러오지 못했습니다. 잠시 후 다시 시도하세요', 'err');
+    });
+  }
+
+  function showEmpty() {
+    feed.innerHTML = '<div class="empty">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.6C10.7 5.2 8.9 4.5 6.4 4.5H3.6v13.2h3.1c2.3 0 4 .7 5.3 2 1.3-1.3 3-2 5.3-2h3.1V4.5h-2.8c-2.5 0-4.3.7-5.6 2.1z"></path><path d="M12 6.9v13"></path></svg>' +
+      '<h3>위키백과에 연결하지 못했습니다</h3>' +
+      '<p>실시간 위키백과 API 응답이 지연되고 있습니다. 다시 시도하면 대부분 바로 이어집니다.</p>' +
+      '<button type="button" id="btnRetry">다시 시도</button></div>';
+    var b = doc.getElementById('btnRetry');
+    if (b) b.addEventListener('click', function () { boot(true); });
+    progFill.style.width = '0%';
+    setRailState(null);
+  }
+
+  function skeleton() {
+    var one = '<div class="skel">' +
+      '<div class="bar" style="flex:0 0 40%"></div>' +
+      '<div class="bar" style="height:26px;width:78%"></div>' +
+      '<div class="bar" style="height:14px"></div>' +
+      '<div class="bar" style="height:14px;width:92%"></div>' +
+      '<div class="bar" style="height:14px;width:66%"></div></div>';
+    feed.innerHTML = '<div class="reel">' + one + one + one + '</div>';
+  }
+
+  /* ================= render ================= */
+  function hueOf(s) {
+    var h = 0, i;
+    s = String(s || '');
+    for (i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    var hues = [212, 252, 168, 32, 288, 196, 340, 128];
+    return hues[Math.abs(h) % hues.length];
+  }
+  function readSec(d) {
+    var n = String(d.extract || '').length;
+    var perMin = d.lang === 'ko' ? 480 : 1100;
+    var s = Math.round((n / perMin) * 60);
+    return s < 15 ? 15 : s;
+  }
+  function modeLabel(d) {
+    if (d.source === 'popular') return '오늘의 인기';
+    if (d.source === 'featured') return '지금 화제';
+    if (d.source === 'related') return '이어 읽기';
+    if (d.source === 'search') return '검색 문서';
+    if (d.source === 'fallback') return '안내';
+    return '랜덤 탐색';
+  }
+
+  function cardHTML(d) {
+    var hasImg = !!d.image;
+    var hue = hueOf(d.title);
+    var g = GLYPHS[Math.abs(hue) % GLYPHS.length];
+    var badge = d.desc || (d.lang === 'ko' ? '위키백과 문서' : 'Wikipedia article');
+    var metaChip = d.meta ? '<span class="hot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20.5V13M9 20.5V9M14 20.5v-5M19 20.5V4.5"></path><path d="M3 20.5h18"></path></svg>' + esc(d.meta) + '</span>' : '';
+    return '<article class="reel' + (hasImg ? ' has-photo' : '') + '" data-title="' + esc(d.title) + '" data-lang="' + esc(d.lang) + '"' +
+      ' data-url="' + esc(d.url) + '" style="--h:' + hue + 'deg">' +
+      '<div class="reel-media">' +
+        '<div class="pattern" aria-hidden="true"></div>' +
+        (hasImg ? '<img class="photo" src="' + esc(d.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : '') +
+        '<div class="veil" aria-hidden="true"></div>' +
+        '<svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + g + '</svg>' +
+        '<div class="media-foot">' +
+          '<span class="src"><b>' + esc(badge) + '</b></span>' +
+          metaChip +
+          '<span class="pos"><b>01</b><i>/</i><span class="tot">1</span></span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="reel-body">' +
+      '<div class="bodytop">' +
+        '<div class="kicker"><span class="dash"></span>' + (d.lang === 'ko' ? '위키백과 한국어판' : 'WIKIPEDIA EN') +
+          '<span class="sep">&#183;</span><span class="lmode">' + esc(modeLabel(d)) + '</span></div>' +
+        '<h2 class="headline">' + esc(d.title) + '</h2>' +
+        '<div class="summary"><span data-full="' + esc(d.extract || '') + '">' + esc(d.extract || '') + '</span><div class="tocbox" data-toc></div></div>' +
+      '</div>' +
+        '<div class="relwrap">' +
+          '<div class="relhead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5 14.5 9.5"></path><path d="M13 6.5h4.5V11"></path><path d="M11 17.5H6.5V13"></path></svg>연관 문서</div>' +
+          '<div class="relchips"><span class="relskel" style="width:34%"></span><span class="relskel" style="width:27%"></span><span class="relskel" style="width:22%"></span></div>' +
+          '<div class="nextlist" data-next></div>' +
+        '</div>' +
+        '<div class="reel-foot">' +
+          '<a class="srclink" href="' + esc(d.url || '#') + '" target="_blank" rel="noopener">위키 원문<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8M9.5 8H16v6.5"></path></svg></a>' +
+          '<span class="rel">약 ' + readSec(d) + '초 낭독</span>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }
+
+  function renumber() {
+    var cards = feed.querySelectorAll('.reel');
+    var total = cards.length;
+    for (var i = 0; i < total; i++) {
+      var c = cards[i];
+      var p = c.querySelector('.pos b');
+      if (p) p.textContent = String(i + 1).padStart(2, '0');
+      var t = c.querySelector('.pos .tot');
+      if (t) t.textContent = String(total);
+    }
+  }
+
+  /* ---- related chips ---- */
+  var relCache = {};
+  function ensureRelatedFor(i) {
+    var card = feed.children[i];
+    if (!card) return;
+    var d = DOCS[i];
+    if (!d) return;
+    var wrap = card.querySelector('.relchips');
+    if (!wrap || wrap.getAttribute('data-done')) return;
+    var key = docKey(d.lang, d.title);
+    var cached = relCache[key];
+    if (cached) { paintRelated(card, cached); return; }
+    fetchRelated(d.lang, d.title).then(function (list) {
+      relCache[key] = list;
+      var now = -1;
+      for (var k = 0; k < DOCS.length; k++) {
+        if (DOCS[k].title === d.title && DOCS[k].lang === d.lang) { now = k; break; }
+      }
+      var el = now >= 0 ? feed.children[now] : null;
+      if (el) paintRelated(el, list);
+    });
+  }
+  function paintRelated(card, list) {
+    var wrap = card.querySelector('.relchips');
+    if (!wrap) return;
+    wrap.setAttribute('data-done', '1');
+    if (!list || !list.length) {
+      var block = card.querySelector('.relwrap');
+      if (block) block.style.display = 'none';
+      return;
+    }
+    wrap.innerHTML = list.slice(0, 3).map(function (r) {
+      var label = String(r.title || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || r.title;
+      return '<button class="relchip" type="button" data-rel="' + esc(r.title) + '" data-rlang="' + esc(r.lang) + '" title="' + esc(r.title) + '">' +
+        '<span>' + esc(label) + '</span>' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></button>';
+    }).join('');
+    fitSummary(card);
+  }
+
+  /* ================= active tracking ================= */
+  var activeEl = null;
+  function cutText(s, n) {
+    var t = s.slice(0, n);
+    var sp = Math.max(t.lastIndexOf(' '), t.lastIndexOf('\n'));
+    if (sp > n - 22) t = t.slice(0, sp);
+    return t.replace(/[\s,.;:·]+$/, '') + '…';
+  }
+  function textRoom(card, withToc) {
+    var top = card.querySelector('.bodytop');
+    var k = card.querySelector('.kicker');
+    var hd = card.querySelector('.headline');
+    var toc = card.querySelector('[data-toc]');
+    if (!top || !k || !hd) return 0;
+    var gap = parseFloat(getComputedStyle(top).rowGap) || 8;
+    var tocH = (withToc && toc && toc.offsetHeight) ? toc.getBoundingClientRect().height + 8 : 0;
+    return top.clientHeight - k.offsetHeight - hd.offsetHeight - gap * 2 - tocH;
+  }
+  function fitSummary(card) {
+    if (!card) return;
+    var box = card.querySelector('.summary');
+    var p = box && box.querySelector('span');
+    if (!p || !box) return;
+    var full = p.getAttribute('data-full') || '';
+    if (!full) return;
+    p.textContent = full;
+    var room = textRoom(card, true);
+    if (room <= 0) return;
+    if (p.scrollHeight <= room + 1) return;
+    var lo = 0, hi = full.length;
+    while (lo < hi - 1) {
+      var mid = Math.ceil((lo + hi) / 2);
+      p.textContent = cutText(full, mid);
+      if (p.scrollHeight <= room + 1) lo = mid; else hi = mid;
+    }
+    p.textContent = lo > 18 ? cutText(full, lo) : full.slice(0, 18) + '…';
+  }
+
+  /* 문서 목차: 본문이 짧아 남는 자리에 실제 문서의 목차를 채운다 */
+  var secCache = {};
+  function fetchSections(l, t) {
+    var key = docKey(l, t);
+    if (secCache[key]) return Promise.resolve(secCache[key]);
+    var url = apiUrl(l, { action: 'parse', page: titleOf(t), prop: 'sections', redirects: '1' });
+    return getJSON(url, 9000).then(function (r) {
+      var list = (r && r.parse && r.parse.sections) || [];
+      var skip = /^(같이 보기|각주|주석|외부 링크|참고 문헌|참고 자료|관련 문서|Further reading|See also|References|External links|Notes|Bibliography|Citations|Sources)$/i;
+      var out = [];
+      list.forEach(function (s) {
+        var line = String(s.line || '').replace(/<[^>]*>/g, '').trim();
+        if (!line || skip.test(line)) return;
+        var lv = parseInt(s.toclevel, 10);
+        if (!(lv >= 1 && lv <= 3)) return;
+        out.push({ line: line, anchor: s.anchor || '' });
+      });
+      secCache[key] = out.slice(0, 10);
+      return secCache[key];
+    }).catch(function () { secCache[key] = []; return []; });
+  }
+  function paintToc(card, i) {
+    var box = card.querySelector('[data-toc]');
+    var summ = card.querySelector('.summary');
+    var sp = summ && summ.querySelector('span');
+    if (!box || !sp) return;
+    var d = DOCS[i];
+    if (!d) return;
+    var list = secCache[docKey(d.lang, d.title)] || [];
+    var left = textRoom(card, false) - sp.getBoundingClientRect().height;
+    var rows = Math.min(list.length, Math.max(0, Math.floor((left - 26) / 21)), 8);
+    if (!list.length || rows < 2) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      fitSummary(card);
+      return;
+    }
+    var arrow = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8M9.5 8H16v6.5"></path></svg>';
+    box.style.display = '';
+    box.innerHTML = '<div class="tochead"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6.5h16M4 12h16M4 17.5h9"></path></svg>문서 목차</div>' +
+      list.slice(0, rows).map(function (s, k) {
+        return '<a class="tocrow" href="' + esc(d.url) + '#' + encodeURIComponent(s.anchor) + '" target="_blank" rel="noopener">' +
+          '<em>' + (k + 1) + '</em><span class="tn">' + esc(s.line) + '</span>' + arrow + '</a>';
+      }).join('');
+    fitSummary(card);
+  }
+  function maybeToc(card, i) {
+    var box = card.querySelector('[data-toc]');
+    var summ = card.querySelector('.summary');
+    var sp = summ && summ.querySelector('span');
+    if (!box || !sp) return;
+    box.innerHTML = '';
+    box.style.display = 'none';
+    fitSummary(card);
+    var d = DOCS[i];
+    if (!d) return;
+    var left = textRoom(card, false) - sp.getBoundingClientRect().height;
+    if (left < 64) return;
+    var key = docKey(d.lang, d.title);
+    if (!secCache[key]) {
+      fetchSections(d.lang, d.title).then(function () {
+        if (DOCS[idx] === d) paintToc(card, i);
+      });
+      return;
+    }
+    paintToc(card, i);
+  }
+  function fillNext(card, i) {
+    if (!card) return;
+    var box = card.querySelector('[data-next]');
+    if (!box) return;
+    var out = '';
+    for (var k = 1; k <= 2; k++) {
+      var d = DOCS[i + k];
+      if (!d) break;
+      out += '<button type="button" data-goto="' + (i + k) + '">' +
+        '<span class="nm">' + esc(modeLabel(d)) + '</span>' +
+        '<span class="nt">' + esc(d.title) + '</span>' +
+        '<svg class="na" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 10 6 6 6-6"></path></svg></button>';
+    }
+    box.innerHTML = out;
+    box.style.display = out ? '' : 'none';
+  }
+
+  function activate(i) {
+    if (i < 0 || i >= DOCS.length) return;
+    idx = i;
+    var cards = feed.children;
+    if (activeEl && activeEl !== cards[i]) activeEl.classList.remove('is-on');
+    activeEl = cards[i] || null;
+    if (activeEl) activeEl.classList.add('is-on');
+    fillNext(cards[i], i);
+    maybeToc(cards[i], i);
+    updateProgress();
+    setRailState(DOCS[i] || null);
+    ensureRelatedFor(i);
+    maybeLoad();
+    var dv = doc.getElementById('sidePrev'), dn = doc.getElementById('sideNext');
+    var jp = doc.getElementById('jumpPrev'), jn = doc.getElementById('jumpNext');
+    if (dv) dv.disabled = i <= 0;
+    if (dn) dn.disabled = DOCS.length - 1 <= i && exhausted;
+    if (jp) jp.disabled = i <= 0;
+    if (jn) jn.disabled = false;
+  }
+  function markActive(force) {
+    var h = feed.clientHeight || 1;
+    var i = Math.round(feed.scrollTop / h);
+    i = Math.max(0, Math.min(Math.max(0, DOCS.length - 1), i));
+    if (!force && Date.now() < lockUntil && i !== idx) return;
+    if (!force && i === idx && activeEl) { ensureRelatedFor(i); maybeLoad(); return; }
+    activate(i);
+  }
+
+  function maybeLoad() {
+    if (DOCS.length - idx <= 4) loadMore();
+  }
+
+  function updateProgress() {
+    var total = DOCS.length || 0;
+    var pct = total ? ((idx + 1) / total) * 100 : 0;
+    progFill.style.width = Math.max(total ? 2 : 0, pct).toFixed(2) + '%';
+  }
+
+  /* ================= rail ================= */
+  var rLike = doc.getElementById('rLike');
+  var rSave = doc.getElementById('rSave');
+  var rTts = doc.getElementById('rTts');
+  var rShare = doc.getElementById('rShare');
+  var rOpen = doc.getElementById('rOpen');
+
+  function hashN(s) {
+    var h = 0, i;
+    s = String(s || '');
+    for (i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    return Math.abs(h);
+  }
+  function likeCount(d) {
+    if (!d) return 0;
+    return 64 + (hashN(d.title) % 940) + (liked[docKey(d.lang, d.title)] ? 1 : 0);
+  }
+
+  function setRailState(d) {
+    if (!d) {
+      rLike.disabled = true; rSave.disabled = true; rTts.disabled = true; rShare.disabled = true; rOpen.disabled = true;
+      return;
+    }
+    rLike.disabled = false; rSave.disabled = false; rTts.disabled = false; rShare.disabled = false; rOpen.disabled = false;
+    var k = docKey(d.lang, d.title);
+    rLike.classList.toggle('on', !!liked[k]);
+    rLike.setAttribute('aria-pressed', liked[k] ? 'true' : 'false');
+    doc.getElementById('likeN').textContent = String(likeCount(d));
+    var isSaved = saved.some(function (s) { return s.title === d.title && s.lang === d.lang; });
+    rSave.classList.toggle('on', isSaved);
+    rSave.setAttribute('aria-pressed', isSaved ? 'true' : 'false');
+    doc.getElementById('saveN').textContent = saved.length ? String(saved.length) : '저장';
+    rTts.classList.toggle('on', !!speaking && speaking.title === d.title);
+    var sb = doc.getElementById('saveBadge');
+    if (saved.length) { sb.classList.add('on'); sb.textContent = saved.length > 99 ? '99+' : String(saved.length); }
+    else sb.classList.remove('on');
+    if (speaking && speaking.title !== d.title) stopSpeech(true);
+  }
+
+  function pop(el) {
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
+    setTimeout(function () { el.classList.remove('pop'); }, 640);
+  }
+
+  rLike.addEventListener('click', function () {
+    var d = DOCS[idx]; if (!d) return;
+    var k = docKey(d.lang, d.title);
+    if (liked[k]) delete liked[k];
+    else { liked[k] = Date.now(); pop(rLike); hap(); }
+    persistLikes();
+    setRailState(d);
+  });
+
+  rSave.addEventListener('click', function () {
+    var d = DOCS[idx]; if (!d) return;
+    var i = -1;
+    saved.forEach(function (s, k) { if (s.title === d.title && s.lang === d.lang) i = k; });
+    if (i >= 0) { saved.splice(i, 1); toast('저장함에서 뺐습니다', 'info'); }
+    else {
+      saved.unshift({ title: d.title, lang: d.lang, desc: d.desc || '', image: d.image || '', url: d.url || '', savedAt: Date.now() });
+      toast('저장함에 담았습니다', 'ok');
+      pop(rSave); hap();
+    }
+    persistSaved();
+    setRailState(d);
+  });
+
+  rShare.addEventListener('click', function () {
+    var d = DOCS[idx]; if (!d) return;
+    var url = location.origin + location.pathname + '#wiki=' + encodeURIComponent(d.lang + ':' + d.title);
+    if (navigator.share) {
+      navigator.share({ title: d.title, text: d.title + ' — 위키백과', url: url }).catch(function () { });
+      return;
+    }
+    if (window.Lemon && Lemon.copy) { Lemon.copy(url, '공유 링크를 복사했습니다'); return; }
+    try { navigator.clipboard.writeText(url); toast('공유 링크를 복사했습니다', 'ok'); }
+    catch (e) { toast('복사에 실패했습니다', 'err'); }
+  });
+
+  rOpen.addEventListener('click', function () {
+    var d = DOCS[idx]; if (!d) return;
+    window.open(d.url || ('https://' + d.lang + '.wikipedia.org/wiki/' + encodeURIComponent(d.title)), '_blank', 'noopener');
+  });
+
+  /* ================= TTS ================= */
+  var ttsBar = doc.getElementById('ttsbar');
+  var ttsTitle = doc.getElementById('ttsTitle');
+  var btnAuto = doc.getElementById('btnAuto');
+  var synth = window.speechSynthesis || null;
+  var VOICES = {};
+
+  function pickVoice(l) {
+    if (!synth) return null;
+    var vs = synth.getVoices() || [];
+    var want = l === 'en' ? /^(en)/i : /^(ko)/i;
+    for (var i = 0; i < vs.length; i++) { if (want.test(vs[i].lang)) return vs[i]; }
+    return null;
+  }
+  function refreshVoices() { VOICES.ko = pickVoice('ko'); VOICES.en = pickVoice('en'); }
+  if (synth) {
+    refreshVoices();
+    if (synth.addEventListener) synth.addEventListener('voiceschanged', refreshVoices);
+  }
+
+  function setAuto(v) {
+    autoNext = !!v;
+    store.set(KEY_AUTO, autoNext);
+    btnAuto.classList.toggle('on', autoNext);
+    btnAuto.setAttribute('aria-pressed', autoNext ? 'true' : 'false');
+    toast(autoNext ? '낭독이 끝나면 다음 문서로 넘어갑니다' : '자동 넘김을 껐습니다', 'info');
+  }
+
+  function stopSpeech(silent) {
+    speakToken++;
+    speaking = null;
+    if (synth) { try { synth.cancel(); } catch (e) { } }
+    ttsBar.classList.remove('on');
+    rTts.classList.remove('on', 'ttson');
+    rTts.setAttribute('aria-pressed', 'false');
+    if (!silent) toast('낭독을 멈췄습니다', 'info');
+  }
+
+  function speakAt(i) {
+    var d = DOCS[i];
+    if (!d) { stopSpeech(true); return; }
+    var token = ++speakToken;
+    if (synth) { try { synth.cancel(); } catch (e) { } }
+    speaking = d;
+    ttsBar.classList.add('on');
+    rTts.classList.add('on', 'ttson');
+    rTts.setAttribute('aria-pressed', 'true');
+    ttsTitle.textContent = d.title + ' — ' + (d.desc || (d.lang === 'ko' ? '위키백과' : 'Wikipedia'));
+
+    if (!synth || typeof SpeechSynthesisUtterance === 'undefined') {
+      toast('이 브라우저는 음성 낭독을 지원하지 않습니다', 'err');
+      stopSpeech(true);
+      return;
+    }
+    var text = d.title + '. ' + (d.extract || '');
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = d.lang === 'en' ? 'en-US' : 'ko-KR';
+    var v = VOICES[d.lang === 'en' ? 'en' : 'ko'];
+    if (v) { try { u.voice = v; } catch (e) { } }
+    u.rate = d.lang === 'en' ? 1.02 : 1.04;
+    u.pitch = 1;
+    u.onend = function () {
+      if (token !== speakToken) return;
+      if (autoNext && idx < DOCS.length - 1) {
+        speaking = null;
+        go(1);
+        setTimeout(function () { if (token === speakToken) speakAt(idx); }, 420);
+      } else {
+        stopSpeech(true);
+      }
+    };
+    u.onerror = function (ev) {
+      if (token !== speakToken) return;
+      var code = ev && ev.error;
+      stopSpeech(true);
+      if (code === 'not-allowed') toast('브라우저가 음성 재생을 막았습니다. 다시 눌러 주세요', 'err');
+      else toast('이 기기에서는 음성 낭독을 쓸 수 없습니다. 기기 설정의 TTS 음성을 확인해 주세요', 'err');
+    };
+    synth.speak(u);
+  }
+
+  rTts.addEventListener('click', function () {
+    if (speaking) { stopSpeech(); return; }
+    speakAt(idx);
+  });
+  btnAuto.addEventListener('click', function () { setAuto(!autoNext); });
+  doc.getElementById('btnTtsStop').addEventListener('click', function () { stopSpeech(); });
+
+  /* ================= navigation ================= */
+  var lockUntil = 0, wheelAcc = 0;
+
+  function go(step) {
+    var next = Math.max(0, Math.min(DOCS.length - 1, idx + step));
+    if (next === idx) { maybeLoad(); return; }
+    lockUntil = Date.now() + 460;
+    var h = feed.clientHeight || 1;
+    feed.scrollTo({ top: next * h, behavior: 'smooth' });
+    activate(next);
+    hap();
+  }
+
+  feed.addEventListener('click', function (e) {
+    var g = e.target.closest ? e.target.closest('[data-goto]') : null;
+    if (g) {
+      e.preventDefault();
+      var target = parseInt(g.getAttribute('data-goto'), 10);
+      if (!isNaN(target)) go(target - idx);
+      return;
+    }
+    var b = e.target.closest ? e.target.closest('[data-rel]') : null;
+    if (!b) return;
+    e.preventDefault();
+    openRelated(b.getAttribute('data-rel'), b.getAttribute('data-rlang') || lang);
+  });
+
+  function openRelated(title, l) {
+    if (!title) return;
+    toast(title + ' 문서를 불러오는 중입니다', 'info');
+    fetchSummary(l, title).then(function (d) {
+      d.source = 'related';
+      insertAfter(idx, d);
+      go(1);
+    }).catch(function () {
+      toast('문서를 불러오지 못했습니다', 'err');
+    });
+  }
+
+  function insertAfter(i, d) {
+    var k = docKey(d.lang, d.title);
+    seen[k] = 1;
+    DOCS.splice(i + 1, 0, d);
+    var tmp = doc.createElement('div');
+    tmp.innerHTML = cardHTML(d);
+    var node = tmp.firstChild;
+    var ref = feed.children[i + 1] || null;
+    feed.insertBefore(node, ref);
+    renumber();
+    ensureRelatedFor(i + 1);
+  }
+
+  feed.addEventListener('scroll', function () {
+    if (feed._raf) return;
+    feed._raf = requestAnimationFrame(function () { feed._raf = null; markActive(false); });
+  }, { passive: true });
+
+  feed.addEventListener('wheel', function (e) {
+    if (e.ctrlKey) return;
+    e.preventDefault();
+    if (Date.now() < lockUntil) { wheelAcc = 0; return; }
+    wheelAcc += e.deltaY;
+    if (Math.abs(wheelAcc) > 26) {
+      go(wheelAcc > 0 ? 1 : -1);
+      wheelAcc = 0;
+    }
+  }, { passive: false });
+
+  feed.addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (k === 'ArrowDown' || k === 'PageDown' || k === ' ') { e.preventDefault(); go(1); }
+    else if (k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); go(-1); }
+    else if (k === 'Home') { e.preventDefault(); feed.scrollTo({ top: 0, behavior: 'smooth' }); activate(0); }
+  });
+
+  doc.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+    if (doc.querySelector('.ovl.on')) { if (e.key === 'Escape') closeAll(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === ' ' || e.key === 'PageDown' || e.key === 'PageUp') {
+      if (t === feed) return;
+      e.preventDefault();
+      go(e.key === 'ArrowUp' || e.key === 'PageUp' ? -1 : 1);
+    }
+  });
+
+  ['jumpPrev', 'sidePrev'].forEach(function (id) {
+    doc.getElementById(id).addEventListener('click', function () { go(-1); });
+  });
+  ['jumpNext', 'sideNext'].forEach(function (id) {
+    doc.getElementById(id).addEventListener('click', function () { go(1); });
+  });
+
+  /* ================= chips / mode / lang ================= */
+  function buildChips() {
+    var html = MODES.map(function (m) {
+      return '<button class="cat' + (m.k === mode ? ' on' : '') + '" data-mode="' + m.k + '" aria-pressed="' + (m.k === mode) + '">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        (m.k === 'random'
+          ? '<path d="M4 7h3.5l9 10H20M4 17h3.5l9-10H20"></path><path d="m17.6 4.6 2.4 2.4-2.4 2.4M17.6 14.6l2.4 2.4-2.4 2.4"></path>'
+          : m.k === 'popular'
+            ? '<path d="M4 20.5V13M9 20.5V9M14 20.5v-5M19 20.5V4.5"></path><path d="M3 20.5h18"></path>'
+            : '<path d="M12 20.5c3.6 0 6-2.5 6-5.6 0-3.6-3.2-5.4-3.2-8.9 0-.7-.2-1.3-.5-1.8-1.6 2.2-2.4 4-2.4 5.7 0 1.4.6 2.3.6 3.1 0 .9-.7 1.6-1.5 1.6-.9 0-1.6-.8-1.6-1.9 0-.5.1-.9.2-1.4-1.9 1.4-3.6 3.4-3.6 6.3 0 3.4 2.4 5.9 6 5.9z"></path>') +
+        '</svg>' + esc(m.n) + '</button>';
+    }).join('');
+    html += '<span class="chip-note" id="chipNote">' + noteText() + '</span>';
+    chipsEl.innerHTML = html;
+  }
+  function noteText() {
+    var l = lang === 'ko' ? '한국어판' : 'EN';
+    if (mode === 'popular') return '<b>' + l + '</b> 어제 많이 읽은 문서';
+    if (mode === 'featured') return '<b>' + l + '</b> 오늘의 화제 문서';
+    return '<b>' + l + '</b> 무작위 문서';
+  }
+  function updateNote() {
+    var n = doc.getElementById('chipNote');
+    if (n) n.innerHTML = noteText();
+  }
+
+  chipsEl.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.cat') : null;
+    if (!b) return;
+    var m = b.getAttribute('data-mode');
+    if (m === mode) return;
+    setMode(m);
+  });
+
+  function setMode(m) {
+    mode = m;
+    store.set(KEY_MODE, mode);
+    stopSpeech(true);
+    Array.prototype.forEach.call(chipsEl.querySelectorAll('.cat'), function (c) {
+      var on = c.getAttribute('data-mode') === mode;
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    updateNote();
+    boot(true);
+  }
+
+  function setLang(l) {
+    lang = l;
+    store.set(KEY_LANG, lang);
+    stopSpeech(true);
+    doc.getElementById('langNow').textContent = l === 'ko' ? '한국어' : 'English';
+    doc.getElementById('langAlt').textContent = l === 'ko' ? '/ EN' : '/ KO';
+    doc.getElementById('searchLang').textContent = l === 'ko' ? '한국어판' : 'English Wikipedia';
+    var q = doc.getElementById('q');
+    if (q) q.placeholder = l === 'ko' ? '키워드로 문서 찾기' : 'Search Wikipedia';
+    updateNote();
+    boot(true);
+  }
+
+  doc.getElementById('btnLang').addEventListener('click', function () {
+    setLang(lang === 'ko' ? 'en' : 'ko');
+  });
+
+  doc.getElementById('btnRefresh').addEventListener('click', function () {
+    var b = doc.getElementById('btnRefresh');
+    if (b.classList.contains('spinning')) return;
+    b.classList.add('spinning');
+    boot(true).then(function () { b.classList.remove('spinning'); });
+    setTimeout(function () { b.classList.remove('spinning'); }, 12000);
+  });
+
+  /* ================= saved sheet ================= */
+  var ovlSaved = doc.getElementById('ovlSaved');
+  var savedList = doc.getElementById('savedList');
+  var ptab = 'save';
+
+  function renderSaved() {
+    var list = ptab === 'save' ? saved : DOCS.filter(function (d) { return liked[docKey(d.lang, d.title)]; });
+    doc.getElementById('savedCnt').textContent = list.length + '건';
+    if (!list.length) {
+      savedList.innerHTML = '<div class="pempty">' + (ptab === 'save'
+        ? '아직 스크랩한 문서가 없습니다.<br>카드 오른쪽 저장 버튼으로 모아 두세요.'
+        : '좋아요한 문서가 없습니다.<br>마음에 드는 문서에 하트를 눌러 보세요.') + '</div>';
+      return;
+    }
+    savedList.innerHTML = list.map(function (d) {
+      var meta = (d.lang === 'ko' ? '한국어판' : 'EN') + ' · ' + (d.desc || '위키백과');
+      var thumb = d.image ? '<img class="thumb" src="' + esc(d.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="dot" aria-hidden="true"></span>';
+      return '<div class="prow">' + thumb +
+        '<button class="tx" type="button" data-open="' + esc(d.title) + '" data-olang="' + esc(d.lang) + '">' +
+          '<div class="tt">' + esc(d.title) + '</div>' +
+          '<div class="mt">' + esc(meta) + '</div>' +
+        '</button>' +
+        '<button class="rm" type="button" data-rm="' + esc(d.title) + '" data-rmlang="' + esc(d.lang) + '" aria-label="목록에서 빼기">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg>' +
+        '</button></div>';
+    }).join('');
+  }
+
+  savedList.addEventListener('click', function (e) {
+    var rm = e.target.closest ? e.target.closest('[data-rm]') : null;
+    if (rm) {
+      var t = rm.getAttribute('data-rm'), l = rm.getAttribute('data-rmlang');
+      if (ptab === 'save') {
+        saved = saved.filter(function (s) { return !(s.title === t && s.lang === l); });
+        persistSaved();
+      } else {
+        delete liked[docKey(l, t)];
+        persistLikes();
+      }
+      setRailState(DOCS[idx] || null);
+      renderSaved();
+      return;
+    }
+    var op = e.target.closest ? e.target.closest('[data-open]') : null;
+    if (op) {
+      var title = op.getAttribute('data-open'), ol = op.getAttribute('data-olang');
+      closeAll();
+      jumpToTitle(title, ol);
+    }
+  });
+
+  Array.prototype.forEach.call(doc.querySelectorAll('.ptab[data-ptab]'), function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-ptab');
+      if (k === 'clear') {
+        if (ptab === 'save') { saved = []; persistSaved(); }
+        else { liked = {}; persistLikes(); }
+        setRailState(DOCS[idx] || null);
+        renderSaved();
+        toast('목록을 비웠습니다', 'info');
+        return;
+      }
+      ptab = k;
+      Array.prototype.forEach.call(doc.querySelectorAll('.ptab[data-ptab]'), function (x) {
+        var on = x.getAttribute('data-ptab') === k;
+        x.classList.toggle('on', on);
+        x.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      renderSaved();
+    });
+  });
+
+  function openSheet(el) { el.classList.add('on'); }
+  function closeAll() {
+    ovlSaved.classList.remove('on');
+    ovlSearch.classList.remove('on');
+  }
+  doc.getElementById('btnSaved').addEventListener('click', function () { ptab = 'save'; renderSaved(); openSheet(ovlSaved); });
+  doc.getElementById('closeSaved').addEventListener('click', closeAll);
+  ovlSaved.addEventListener('click', function (e) { if (e.target === ovlSaved) closeAll(); });
+
+  function jumpToTitle(title, l) {
+    for (var i = 0; i < DOCS.length; i++) {
+      if (DOCS[i].title === title && DOCS[i].lang === l) {
+        lockUntil = Date.now() + 460;
+        feed.scrollTo({ top: i * feed.clientHeight, behavior: Math.abs(i - idx) > 2 ? 'auto' : 'smooth' });
+        activate(i);
+        return;
+      }
+    }
+    fetchSummary(l, title).then(function (d) {
+      d.source = 'related';
+      insertAfter(idx, d);
+      go(1);
+    }).catch(function () { toast('문서를 불러오지 못했습니다', 'err'); });
+  }
+
+  /* ================= search ================= */
+  var ovlSearch = doc.getElementById('ovlSearch');
+  var qEl = doc.getElementById('q');
+  var searchList = doc.getElementById('searchList');
+  var searchFoot = doc.getElementById('searchFoot');
+  var searchTimer = 0, searchSeq = 0;
+
+  function runSearch() {
+    var q = (qEl.value || '').trim();
+    if (!q) {
+      searchList.innerHTML = '<div class="pempty">영화, 인물, 과학, 역사 — 무엇이든 검색해 보세요.<br>결과를 고르면 그 문서와 연관 문서가 피드에 올라갑니다.</div>';
+      searchFoot.textContent = '위키백과 실시간 검색 · ' + (lang === 'ko' ? '한국어판' : 'English Wikipedia');
+      return;
+    }
+    var seq = ++searchSeq;
+    searchFoot.textContent = '검색 중...';
+    searchTitles(lang, q).then(function (list) {
+      if (seq !== searchSeq) return;
+      searchFoot.textContent = list.length + '건 · 문서를 고르면 피드로 이동합니다.';
+      if (!list.length) {
+        searchList.innerHTML = '<div class="pempty">검색 결과가 없습니다.<br>다른 키워드나 언어판으로 시도해 보세요.</div>';
+        return;
+      }
+      searchList.innerHTML = list.map(function (s) {
+        return '<div class="prow"><span class="dot" aria-hidden="true"></span>' +
+          '<button class="tx" type="button" data-pick="' + esc(s.title) + '">' +
+            '<div class="tt">' + esc(s.title) + '</div>' +
+            '<div class="mt">' + esc(s.snippet || '') + '</div>' +
+          '</button></div>';
+      }).join('');
+    }).catch(function () {
+      if (seq !== searchSeq) return;
+      searchFoot.textContent = '검색에 실패했습니다. 잠시 후 다시 시도하세요.';
+      searchList.innerHTML = '<div class="pempty">위키백과 검색 API에 연결하지 못했습니다.</div>';
+    });
+  }
+
+  searchList.addEventListener('click', function (e) {
+    var op = e.target.closest ? e.target.closest('[data-pick]') : null;
+    if (!op) return;
+    var t = op.getAttribute('data-pick');
+    closeAll();
+    toast(t + ' 문서를 불러오는 중입니다', 'info');
+    fetchSummary(lang, t).then(function (d) {
+      d.source = 'search';
+      insertAfter(idx, d);
+      go(1);
+    }).catch(function () { toast('문서를 불러오지 못했습니다', 'err'); });
+  });
+
+  qEl.addEventListener('input', function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 280);
+  });
+  qEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+  });
+  doc.getElementById('btnSearch').addEventListener('click', function () {
+    openSheet(ovlSearch);
+    runSearch();
+    setTimeout(function () { qEl.focus(); }, 60);
+  });
+  doc.getElementById('closeSearch').addEventListener('click', closeAll);
+  ovlSearch.addEventListener('click', function (e) { if (e.target === ovlSearch) closeAll(); });
+
+  /* ================= theme ================= */
+  doc.getElementById('btnTheme').addEventListener('click', function () {
+    var dark = !doc.documentElement.classList.contains('dark');
+    if (window.Lemon && Lemon.setTheme) { Lemon.setTheme(dark ? 'dark' : 'light'); }
+    else {
+      doc.documentElement.classList.toggle('dark', dark);
+      try { localStorage.setItem('cream_theme', dark ? 'dark' : 'light'); } catch (e) { }
+    }
+    var meta = doc.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', dark ? '#07070b' : '#2A4DDB');
+  });
+
+  /* ================= images ================= */
+  feed.addEventListener('error', function (e) {
+    var t = e.target;
+    if (!t || t.tagName !== 'IMG') return;
+    var reel = t.closest ? t.closest('.reel') : null;
+    if (reel) reel.classList.remove('has-photo');
+    if (t.parentNode) t.remove();
+  }, true);
+  feed.addEventListener('load', function (e) {
+    var t = e.target;
+    if (t && t.tagName === 'IMG') t.classList.add('ok');
+  }, true);
+
+  /* ================= layout ================= */
+  window.addEventListener('hashchange', function () {
+    var w = parseHash();
+    if (!w) return;
+    jumpToTitle(w.title, w.lang);
+  });
+  var rzT = 0;
+  window.addEventListener('resize', function () {
+    clearTimeout(rzT);
+    rzT = setTimeout(function () {
+      var h = feed.clientHeight || 1;
+      feed.scrollTop = idx * h;
+      markActive(true);
+    }, 160);
+  });
+
+  /* ================= boot ================= */
+  function parseHash() {
+    var h = location.hash.replace(/^#/, '');
+    if (!h) return null;
+    var m = h.match(/(?:^|&)wiki=([^&]+)/) || h.match(/^title=(.+)$/);
+    if (!m) return null;
+    var v = decodeURIComponent(m[1]);
+    var l = lang, t = v;
+    var mm = v.match(/^(ko|en):(.+)$/);
+    if (mm) { l = mm[1]; t = mm[2]; }
+    return { lang: l, title: t };
+  }
+
+  function boot(reset) {
+    var g = ++gen;
+    exhausted = false;
+    loading = false;
+    stopSpeech(true);
+    if (reset) {
+      DOCS = []; idx = 0; seen = {}; relCache = {};
+      skeleton();
+      feed.scrollTop = 0;
+      setRailState(null);
+      progFill.style.width = '0%';
+      buildChips();
+    }
+    var want = !hashUsed ? parseHash() : null;
+    hashUsed = true;
+    var firstDoc = null;
+    var pre = Promise.resolve();
+    if (want) {
+      pre = fetchSummary(want.lang, want.title).then(function (d) {
+        if (g !== gen) return;
+        d.source = 'related';
+        seen[docKey(d.lang, d.title)] = 1;
+        firstDoc = d;
+      }).catch(function () { });
+    }
+    return pre.then(function () {
+      if (g !== gen) return;
+      var note = doc.getElementById('chipNote');
+      if (note) note.innerHTML = noteText() + ' <b>불러오는 중</b>';
+      loading = true;
+      return nextBatch(g).then(function (arr) {
+        if (g !== gen) return;
+        loading = false;
+        var list = (firstDoc ? [firstDoc] : []).concat(arr || []);
+        if (!list.length) {
+          list = (FALLBACK[lang] || FALLBACK.ko).map(clone);
+          toast('백업 문서로 표시합니다. 새로고침을 눌러 다시 시도하세요', 'err');
+        }
+        feed.innerHTML = '';
+        DOCS = []; idx = 0; activeEl = null;
+        appendDocs(list);
+        updateNote();
+        renumber();
+        activate(0);
+        setTimeout(function () { try { feed.focus({ preventScroll: true }); } catch (e) { } }, 260);
+      }).catch(function (e) {
+        if (g !== gen) return;
+        loading = false;
+        console.warn('[wiki] boot failed', e && e.message);
+        feed.innerHTML = '';
+        DOCS = []; activeEl = null;
+        appendDocs((FALLBACK[lang] || FALLBACK.ko).map(clone));
+        toast('위키백과에 연결하지 못했습니다. 새로고침으로 다시 시도하세요', 'err');
+      });
+    });
+  }
+
+  /* initial labels */
+  doc.getElementById('langNow').textContent = lang === 'ko' ? '한국어' : 'English';
+  doc.getElementById('langAlt').textContent = lang === 'ko' ? '/ EN' : '/ KO';
+  doc.getElementById('searchLang').textContent = lang === 'ko' ? '한국어판' : 'English Wikipedia';
+  if (lang === 'en') {
+    doc.getElementById('q').placeholder = 'Search Wikipedia';
+    doc.getElementById('brandSub').textContent = '실시간 지식 한 장씩';
+  }
+  if (autoNext) { btnAuto.classList.add('on'); btnAuto.setAttribute('aria-pressed', 'true'); }
+  buildChips();
+  boot(true);
+
+  window.__wikiReady = true;
+})();
+</script>
+</body>
+</html>
