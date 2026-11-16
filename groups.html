@@ -1747,7 +1747,7 @@ var S = {
   memo: '',
   memoRev: 0,
   media: { mic: false, cam: false, screen: false, deafen: false, facing: 'user' },
-  micTrack: null, camTrack: null, screenTrack: null,
+  micTrack: null, camTrack: null, screenTrack: null, screenStream: null,
   out: null, preview: null,
   layout: 'grid',
   replyTo: null,
@@ -1884,8 +1884,36 @@ function wantVideoTrack() {
   if (S.media.cam && S.camTrack && S.camTrack.readyState === 'live') return S.camTrack;
   return placeholderTrack();
 }
+var mixDest = null, mixSrcMic = null, mixSrcScr = null, mixTrack = null;
+/* 화면 공유의 시스템 오디오와 마이크를 하나로 섞는다. 섞을 수 없으면 마이크만 보낸다. */
+function refreshAudioMix() {
+  try {
+    if (!S.media.screen || !S.screenStream || !S.screenStream.getAudioTracks().length) {
+      if (mixSrcScr) { try { mixSrcScr.disconnect(); } catch (e) { } }
+      if (mixSrcMic) { try { mixSrcMic.disconnect(); } catch (e) { } }
+      mixSrcScr = null; mixSrcMic = null; mixTrack = null;
+      return;
+    }
+    var ctx = getCtx(); if (!ctx) return;
+    if (!mixDest) mixDest = ctx.createMediaStreamDestination();
+    var at = S.screenStream.getAudioTracks()[0];
+    if (mixSrcScr) { try { mixSrcScr.disconnect(); } catch (e) { } }
+    mixSrcScr = ctx.createMediaStreamSource(new MediaStream([at]));
+    mixSrcScr.connect(mixDest);
+    if (S.micTrack && S.micTrack.readyState === 'live') {
+      if (!mixSrcMic) {
+        try { mixSrcMic = ctx.createMediaStreamSource(new MediaStream([S.micTrack])); } catch (e) { mixSrcMic = null; }
+      }
+      if (mixSrcMic) { try { mixSrcMic.connect(mixDest); } catch (e) { } }
+    }
+    var t = mixDest.stream.getAudioTracks()[0];
+    if (t) mixTrack = t;
+  } catch (e) { mixTrack = null; }
+}
 function wantAudioTrack() {
+  if (S.media.screen && mixTrack && mixTrack.readyState === 'live') return mixTrack;
   if (S.media.mic && S.micTrack && S.micTrack.readyState === 'live') return S.micTrack;
+  if (S.media.screen && S.screenStream && S.screenStream.getAudioTracks().length) return S.screenStream.getAudioTracks()[0];
   return silentTrack();
 }
 function pushTracks() {
@@ -1949,14 +1977,14 @@ function setMic(on, opts) {
   if (!on) {
     S.media.mic = false;
     if (S.micTrack) S.micTrack.enabled = false;
-    pushTracks(); syncMediaUI(); broadcast({ t: 'media', mic: false, cam: S.media.cam, screen: S.media.screen }, true);
+    refreshAudioMix(); pushTracks(); syncMediaUI(); broadcast({ t: 'media', mic: false, cam: S.media.cam, screen: S.media.screen }, true);
     if (!opts.silent) toast('마이크를 껐습니다', 'i-mic-off');
     return Promise.resolve();
   }
   return ensureMic().then(function (tr) {
     if (!tr) throw new Error('no-mic');
     S.media.mic = true; tr.enabled = true;
-    pushTracks(); syncMediaUI();
+    refreshAudioMix(); pushTracks(); syncMediaUI();
     broadcast({ t: 'media', mic: true, cam: S.media.cam, screen: S.media.screen }, true);
     if (!opts.silent) toast('마이크를 켰습니다', 'i-mic');
   }).catch(function () {
@@ -2001,11 +2029,13 @@ function toggleScreen() {
     toast('이 브라우저는 화면 공유를 지원하지 않습니다', 'i-alert'); return;
   }
   navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: true }).then(function (st) {
+    S.screenStream = st;
     S.screenTrack = st.getVideoTracks()[0];
     S.media.screen = true;
     if (S.screenTrack) {
       S.screenTrack.addEventListener('ended', function () { stopScreen(true); });
     }
+    refreshAudioMix();
     pushTracks(); syncMediaUI(); renderTiles();
     broadcast({ t: 'media', mic: S.media.mic, cam: S.media.cam, screen: true }, true);
     setPane(activePane());
@@ -2016,7 +2046,12 @@ function toggleScreen() {
 }
 function stopScreen(silentEnd) {
   S.media.screen = false;
+  if (S.screenStream) {
+    S.screenStream.getTracks().forEach(function (t) { killTrack(t); });
+    S.screenStream = null;
+  }
   killTrack(S.screenTrack); S.screenTrack = null;
+  refreshAudioMix();
   pushTracks(); syncMediaUI(); renderTiles();
   broadcast({ t: 'media', mic: S.media.mic, cam: S.media.cam, screen: false }, true);
   if (!silentEnd) toast('화면 공유를 멈췄습니다', 'i-screen-off');
