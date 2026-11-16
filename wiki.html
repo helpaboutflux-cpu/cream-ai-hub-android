@@ -2,7 +2,7 @@
 <html lang="ko" class="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Lemon Wiki — 실시간 위키백과 숏폼</title>
 <meta name="description" content="위키백과를 한 장씩 넘기는 숏폼 지식 피드. 실시간 랜덤 문서, 오늘의 인기 문서, 화제 문서를 세로 스와이프로 끝없이 넘기고, 연관 문서로 이어 읽고, 좋아요·스크랩·음성 낭독·검색까지 한 화면에서. 서버 없이 브라우저에서만 동작합니다.">
 <meta name="theme-color" content="#2A4DDB">
@@ -544,6 +544,26 @@
   .sinput input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink); font: inherit; font-size: 12.5px; }
   .sinput input::placeholder { color: var(--ink3); }
   .sfoot { padding: 8px 14px 14px; font-size: 9.5px; color: var(--ink3); font-family: ui-monospace, Menlo, monospace; flex-shrink: 0; }
+  .searchbox .sgo {
+    flex-shrink: 0; height: 36px; padding: 0 15px; border-radius: 11px; border: 1px solid transparent;
+    background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 900; letter-spacing: -.02em;
+    display: inline-flex; align-items: center; justify-content: center; transition: transform .12s ease, opacity .12s ease;
+  }
+  .searchbox .sgo:active { transform: scale(.96); opacity: .88; }
+  #searchList { flex: 1 1 auto; min-height: 0; }
+  .pempty .pretry {
+    display: inline-flex; margin-top: 10px; padding: 8px 15px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font-size: 11px; font-weight: 800;
+  }
+  /* 가상 키보드가 올라오면 검색 시트를 지금 보이는 화면(visual viewport)에 붙여 결과가 가려지지 않게 한다 */
+  #ovlSearch.kb { align-items: flex-start; }
+  #ovlSearch.kb .sht {
+    position: fixed; left: 0; right: 0; top: var(--vv-top, 0px); bottom: auto;
+    width: 100%; max-width: none; height: calc(var(--vv-h, 100dvh) - 10px); max-height: none;
+    border-radius: 16px 16px 0 0; animation: none;
+  }
+  #ovlSearch.kb .phead { padding-top: 10px; padding-bottom: 8px; }
+  #ovlSearch.kb .sfoot { padding-bottom: 10px; }
 
   /* ===== responsive ===== */
   @media (min-width: 760px) {
@@ -736,12 +756,13 @@
       <span class="cnt" id="searchLang">한국어판</span>
       <button class="x" id="closeSearch" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg></button>
     </div>
-    <div class="searchbox">
+    <form class="searchbox" id="searchForm" role="search" autocomplete="off">
       <label class="sinput">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
-        <input id="q" type="search" placeholder="키워드로 문서 찾기" autocomplete="off" aria-label="검색어">
+        <input id="q" type="search" placeholder="키워드로 문서 찾기" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" inputmode="search" aria-label="검색어">
       </label>
-    </div>
+      <button class="sgo" type="submit" id="btnSearchGo" aria-label="검색 실행">검색</button>
+    </form>
     <div class="plist" id="searchList"></div>
     <div class="sfoot" id="searchFoot">문서를 고르면 그 문서와 연관 문서를 피드에 올려 바로 이어 읽습니다.</div>
   </div>
@@ -926,21 +947,98 @@
     return Promise.all(jobs).then(function (list) { return list.filter(Boolean).filter(quality); });
   }
 
-  function fetchSummary(l, title) {
-    var url = 'https://' + l + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(titleOf(title));
-    return getJSON(url, 10000).then(function (d) {
-      if (!d || !d.title || d.type === 'disambiguation') throw new Error('no summary');
-      return {
-        title: titleOf(d.title),
-        extract: String(d.extract || '').trim(),
-        desc: d.description || '',
+  /* REST summary가 실패·404·빈 요약이면 action API로, 그래도 안 되면 원문 링크만 담은 카드로 마무리한다.
+     사용자가 검색에서 직접 고른 동음이의 문서라도 막지 않는다. */
+  function summaryFromRest(l, title) {
+    var url = 'https://' + l + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(titleOf(title)) + '?redirect=true';
+    return getJSON(url, 7000).then(function (d) {
+      if (!d || (!d.title && !d.extract)) throw new Error('no summary');
+      var ex = String(d.extract || '').trim();
+      var type = String(d.type || '');
+      if (!ex && (type === 'disambiguation' || type === 'no-extract')) throw new Error('empty summary');
+      var out = {
+        title: titleOf(d.title || title),
+        extract: ex,
+        desc: d.description || (type === 'disambiguation' ? '동음이의 문서' : ''),
         image: imgOK(upsize((d.thumbnail && d.thumbnail.source) || '')),
-        url: (d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page) || ('https://' + l + '.wikipedia.org/wiki/' + encodeURIComponent(d.title)),
+        url: (d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page) || ('https://' + l + '.wikipedia.org/wiki/' + encodeURIComponent(d.title || title)),
         lang: l,
         source: 'summary',
         meta: ''
       };
+      if (type === 'disambiguation' || /다음을 (가리킨다|나타낸다|일컫는다)|may refer to|can refer to/i.test(ex)) out.disambig = true;
+      return out;
     });
+  }
+
+  function summaryFromApi(l, title) {
+    var url = apiUrl(l, {
+      action: 'query',
+      titles: titleOf(title),
+      redirects: '1',
+      prop: 'description|pageimages|extracts|info',
+      inprop: 'url',
+      exintro: '1',
+      explaintext: '1',
+      exsentences: '5',
+      piprop: 'thumbnail',
+      pithumbsize: '900'
+    });
+    return getJSON(url, 8000).then(function (r) {
+      var pages = (r && r.query && r.query.pages) || {};
+      var keys = Object.keys(pages);
+      var p = keys.length ? pages[keys[0]] : null;
+      if (!p || p.missing !== undefined || !p.title) throw new Error('missing page');
+      var ex = String(p.extract || '').trim();
+      var out = {
+        title: titleOf(p.title),
+        extract: ex,
+        desc: p.description || '',
+        image: imgOK(upsize((p.thumbnail && p.thumbnail.source) || '')),
+        url: p.canonicalurl || p.fullurl || ('https://' + l + '.wikipedia.org/wiki/' + encodeURIComponent(p.title)),
+        lang: l,
+        source: 'summary',
+        meta: ''
+      };
+      if (/다음을 (가리킨다|나타낸다|일컫는다)|may refer to|can refer to/i.test(ex)) out.disambig = true;
+      return out;
+    });
+  }
+
+  /* 동음이의 문서는 갈래 문서 목록을 연관 문서 칩으로 보여 준다 */
+  function fetchLinkTitles(l, t) {
+    var url = apiUrl(l, { action: 'query', titles: titleOf(t), redirects: '1', prop: 'links', plnamespace: '0', pllimit: '14' });
+    return getJSON(url, 6000).then(function (r) {
+      var pages = (r && r.query && r.query.pages) || {};
+      var keys = Object.keys(pages);
+      var p = keys.length ? pages[keys[0]] : null;
+      if (!p || !p.links) return [];
+      return p.links.map(function (x) { return x && x.title; }).filter(Boolean).slice(0, 3);
+    }).catch(function () { return []; });
+  }
+
+  function fetchSummary(l, title, fallbackExtract) {
+    if (!title) return Promise.reject(new Error('no title'));
+    var fb = String(fallbackExtract || '').trim();
+    function done(d) {
+      if (!d.extract && fb) d.extract = fb;
+      if (!d.disambig) return d;
+      return fetchLinkTitles(l, d.title).then(function (titles) {
+        if (titles.length) d.rel = titles;
+        return d;
+      });
+    }
+    return summaryFromRest(l, title)
+      .then(function (d) {
+        if (d.extract) return done(d);
+        return summaryFromApi(l, title).then(function (d2) {
+          d2.image = d2.image || d.image;
+          d2.desc = d2.desc || d.desc;
+          d2.disambig = d2.disambig || d.disambig;
+          return done(d2);
+        });
+      })
+      .catch(function () { return summaryFromApi(l, title).then(done); });
   }
 
   /* 여러 문서의 썸네일·요약·설명을 한 번에 채운다 */
@@ -1093,7 +1191,18 @@
     }).catch(function () { return []; });
   }
 
-  function searchTitles(l, q) {
+  /* 검색은 action API → REST 검색 → opensearch 순서로 자동 폴백해
+     한 경로가 막혀도 결과가 뜨게 한다 */
+  function cleanSnippet(s) {
+    var t = String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (t.indexOf('&') > -1) {
+      t = t.replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&apos;/g, "'")
+        .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    }
+    return t;
+  }
+
+  function searchViaApi(l, q) {
     var url = apiUrl(l, {
       action: 'query',
       list: 'search',
@@ -1102,15 +1211,80 @@
       srnamespace: '0',
       srprop: 'snippet|wordcount'
     });
-    return getJSON(url, 9000).then(function (r) {
-      var list = (r.query && r.query.search) || [];
+    return getJSON(url, 6500).then(function (r) {
+      var list = (r && r.query && r.query.search) || [];
       return list.map(function (s) {
-        return {
-          title: s.title,
-          snippet: String(s.snippet || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
-          words: s.wordcount || 0
-        };
+        return { title: s.title, snippet: cleanSnippet(s.snippet), words: s.wordcount || 0 };
       });
+    });
+  }
+
+  function searchViaRest(l, q) {
+    var url = 'https://' + l + '.wikipedia.org/w/rest.php/v1/search/page?q=' + encodeURIComponent(q) + '&limit=12';
+    return getJSON(url, 6500).then(function (r) {
+      var pages = (r && r.pages) || [];
+      return pages.map(function (p) {
+        return { title: p.title, snippet: cleanSnippet(p.excerpt || p.description || ''), words: 0 };
+      }).filter(function (s) { return !!s.title; });
+    });
+  }
+
+  function searchViaRestTitle(l, q) {
+    var url = 'https://' + l + '.wikipedia.org/w/rest.php/v1/search/title?q=' + encodeURIComponent(q) + '&limit=12';
+    return getJSON(url, 6500).then(function (r) {
+      var pages = (r && r.pages) || [];
+      return pages.map(function (p) {
+        return { title: p.title, snippet: cleanSnippet(p.description || ''), words: 0 };
+      }).filter(function (s) { return !!s.title; });
+    });
+  }
+
+  function searchViaOpenSearch(l, q) {
+    var url = 'https://' + l + '.wikipedia.org/w/api.php?format=json&action=opensearch&namespace=0&redirects=resolve&origin=*' +
+      '&limit=12&search=' + encodeURIComponent(q);
+    return getJSON(url, 5500).then(function (r) {
+      var titles = (r && r[1]) || [], descs = (r && r[2]) || [];
+      return titles.map(function (t, i) {
+        return { title: t, snippet: cleanSnippet(descs[i] || ''), words: 0 };
+      }).filter(function (s) { return !!s.title; });
+    });
+  }
+
+  function firstNonEmpty(promises) {
+    return new Promise(function (resolve, reject) {
+      var pending = promises.length, done = false, anyOK = false, lastErr = null;
+      if (!pending) { resolve([]); return; }
+      promises.forEach(function (p) {
+        p.then(function (list) {
+          anyOK = true;
+          if (done) return;
+          if (list && list.length) { done = true; resolve(list); return; }
+          pending--;
+          if (pending === 0) { done = true; resolve([]); }
+        }).catch(function (err) {
+          lastErr = err;
+          if (done) return;
+          pending--;
+          if (pending === 0) { done = true; if (anyOK) resolve([]); else reject(lastErr || new Error('search failed')); }
+        });
+      });
+    });
+  }
+  function dedupeTitles(list) {
+    var seenT = {};
+    return (list || []).filter(function (s) {
+      if (!s.title || seenT[s.title]) return false;
+      seenT[s.title] = 1;
+      return true;
+    });
+  }
+
+  function searchTitles(l, q) {
+    /* 1단계: action API와 REST 검색을 동시에 보내 먼저 답하는 쪽을 쓴다
+       2단계: 둘 다 실패·빈 결과면 REST title 검색과 opensearch를 동시에 보낸다 */
+    return firstNonEmpty([searchViaApi(l, q), searchViaRest(l, q)]).then(function (list) {
+      if (list && list.length) return dedupeTitles(list);
+      return firstNonEmpty([searchViaRestTitle(l, q), searchViaOpenSearch(l, q)]).then(dedupeTitles);
     });
   }
 
@@ -1164,6 +1338,17 @@
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function appendDocs(arr) {
     if (!arr || !arr.length) return;
+    /* 그사이 검색·연관 문서로 들어온 카드와 겹치면 버리고 넣는다 */
+    var have = {};
+    for (var k = 0; k < DOCS.length; k++) have[docKey(DOCS[k].lang, DOCS[k].title)] = 1;
+    arr = arr.filter(function (d) {
+      var key = docKey(d.lang, d.title);
+      if (!d.title || have[key]) return false;
+      have[key] = 1;
+      seen[key] = 1;
+      return true;
+    });
+    if (!arr.length) return;
     var start = DOCS.length;
     DOCS = DOCS.concat(arr);
     var html = arr.map(function (d) { return cardHTML(d); }).join('');
@@ -1300,10 +1485,19 @@
     var d = DOCS[i];
     if (!d) return;
     var wrap = card.querySelector('.relchips');
-    if (!wrap || wrap.getAttribute('data-done')) return;
+    if (!wrap) return;
     var key = docKey(d.lang, d.title);
     var cached = relCache[key];
-    if (cached) { paintRelated(card, cached); return; }
+    if (d.rel && d.rel.length && (!cached || !cached.length)) {
+      cached = d.rel.map(function (t) { return { title: t, lang: d.lang }; });
+      relCache[key] = cached;
+    }
+    if (cached) {
+      /* 이미 그린 목록과 개수가 다를 때만 다시 그린다 (빈 목록으로 숨은 칩이 다시 보이게) */
+      if (wrap.getAttribute('data-count') !== String(cached.length)) paintRelated(card, cached);
+      return;
+    }
+    if (wrap.getAttribute('data-done')) return;
     fetchRelated(d.lang, d.title).then(function (list) {
       relCache[key] = list;
       var now = -1;
@@ -1317,12 +1511,14 @@
   function paintRelated(card, list) {
     var wrap = card.querySelector('.relchips');
     if (!wrap) return;
+    var block = card.querySelector('.relwrap');
     wrap.setAttribute('data-done', '1');
+    wrap.setAttribute('data-count', String((list && list.length) || 0));
     if (!list || !list.length) {
-      var block = card.querySelector('.relwrap');
       if (block) block.style.display = 'none';
       return;
     }
+    if (block) block.style.display = '';
     wrap.innerHTML = list.slice(0, 3).map(function (r) {
       var label = String(r.title || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || r.title;
       return '<button class="relchip" type="button" data-rel="' + esc(r.title) + '" data-rlang="' + esc(r.lang) + '" title="' + esc(r.title) + '">' +
@@ -1907,7 +2103,7 @@
   function openSheet(el) { el.classList.add('on'); }
   function closeAll() {
     ovlSaved.classList.remove('on');
-    ovlSearch.classList.remove('on');
+    ovlSearch.classList.remove('on', 'kb');
   }
   doc.getElementById('btnSaved').addEventListener('click', function () { ptab = 'save'; renderSaved(); openSheet(ovlSaved); });
   doc.getElementById('closeSaved').addEventListener('click', closeAll);
@@ -1932,67 +2128,231 @@
   /* ================= search ================= */
   var ovlSearch = doc.getElementById('ovlSearch');
   var qEl = doc.getElementById('q');
+  var searchForm = doc.getElementById('searchForm');
   var searchList = doc.getElementById('searchList');
   var searchFoot = doc.getElementById('searchFoot');
-  var searchTimer = 0, searchSeq = 0;
+  var searchTimer = 0, searchSeq = 0, searchWatch = 0, slowTimer = 0, composingNow = false;
+
+  /* 가상 키보드가 올라오면 시트를 "지금 보이는 화면"에 붙여 결과가 키보드에 가리지 않게 한다.
+     (안드로이드 크롬이 레이아웃 뷰포트를 줄이지 않는 경우에도 동작) */
+  function keyboardUp() {
+    var vv = window.visualViewport;
+    if (!vv) return false;
+    return (window.innerHeight - (vv.height + vv.offsetTop)) > 110;
+  }
+  function syncViewport() {
+    var vv = window.visualViewport;
+    if (vv) {
+      var root = doc.documentElement;
+      root.style.setProperty('--vv-h', Math.round(vv.height) + 'px');
+      root.style.setProperty('--vv-top', Math.round(vv.offsetTop) + 'px');
+    }
+    var on = ovlSearch.classList.contains('on');
+    ovlSearch.classList.toggle('kb', !!on && keyboardUp());
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewport, { passive: true });
+    window.visualViewport.addEventListener('scroll', syncViewport, { passive: true });
+  }
+  window.addEventListener('resize', syncViewport, { passive: true });
+
+  function paintSearch(list, q) {
+    if (!list || !list.length) {
+      searchFoot.textContent = '0건 · 다른 키워드나 언어판으로 시도해 보세요.';
+      searchList.innerHTML = '<div class="pempty">' + esc(q) + '에 대한 검색 결과가 없습니다.<br>다른 키워드나 언어판으로 시도해 보세요.</div>';
+      return;
+    }
+    searchFoot.textContent = list.length + '건 · 문서를 고르면 피드로 이동합니다.';
+    searchList.innerHTML = list.map(function (s) {
+      return '<div class="prow"><span class="dot" aria-hidden="true"></span>' +
+        '<button class="tx" type="button" data-pick="' + esc(s.title) + '" data-snip="' + esc(s.snippet || '') + '">' +
+          '<div class="tt">' + esc(s.title) + '</div>' +
+          '<div class="mt">' + esc(s.snippet || '') + '</div>' +
+        '</button></div>';
+    }).join('');
+    searchList.scrollTop = 0;
+  }
 
   function runSearch() {
     var q = (qEl.value || '').trim();
+    clearTimeout(searchWatch);
+    clearTimeout(slowTimer);
     if (!q) {
+      searchSeq++;
       searchList.innerHTML = '<div class="pempty">영화, 인물, 과학, 역사 — 무엇이든 검색해 보세요.<br>결과를 고르면 그 문서와 연관 문서가 피드에 올라갑니다.</div>';
       searchFoot.textContent = '위키백과 실시간 검색 · ' + (lang === 'ko' ? '한국어판' : 'English Wikipedia');
       return;
     }
     var seq = ++searchSeq;
     searchFoot.textContent = '검색 중...';
+    if (!searchList.querySelector('.prow')) {
+      searchList.innerHTML = '<div class="pempty">검색 중입니다…</div>';
+    }
+    /* 오래 걸릴 때는 "검색 중"에서 멈춰 보이지 않게 안내한다 (늦게 온 결과는 그대로 그린다) */
+    slowTimer = setTimeout(function () {
+      if (seq !== searchSeq) return;
+      searchFoot.textContent = '검색이 지연되고 있습니다. 네트워크를 확인해 주세요.';
+    }, 7000);
     searchTitles(lang, q).then(function (list) {
       if (seq !== searchSeq) return;
-      searchFoot.textContent = list.length + '건 · 문서를 고르면 피드로 이동합니다.';
-      if (!list.length) {
-        searchList.innerHTML = '<div class="pempty">검색 결과가 없습니다.<br>다른 키워드나 언어판으로 시도해 보세요.</div>';
-        return;
-      }
-      searchList.innerHTML = list.map(function (s) {
-        return '<div class="prow"><span class="dot" aria-hidden="true"></span>' +
-          '<button class="tx" type="button" data-pick="' + esc(s.title) + '">' +
-            '<div class="tt">' + esc(s.title) + '</div>' +
-            '<div class="mt">' + esc(s.snippet || '') + '</div>' +
-          '</button></div>';
-      }).join('');
+      clearTimeout(slowTimer);
+      paintSearch(list, q);
     }).catch(function () {
       if (seq !== searchSeq) return;
-      searchFoot.textContent = '검색에 실패했습니다. 잠시 후 다시 시도하세요.';
-      searchList.innerHTML = '<div class="pempty">위키백과 검색 API에 연결하지 못했습니다.</div>';
+      clearTimeout(slowTimer);
+      searchFoot.textContent = '검색에 실패했습니다.';
+      searchList.innerHTML = '<div class="pempty">위키백과 검색에 연결하지 못했습니다.<br>네트워크를 확인한 뒤 다시 시도해 주세요.' +
+        '<button class="pretry" type="button" data-retry="1">다시 시도</button></div>';
+    }).then(function () {
+      /* 한글 IME가 마지막 글자를 확정한 뒤 input 이벤트 없이 값만 바뀌는 경우를 따라잡는다 */
+      if (seq !== searchSeq) return;
+      if ((qEl.value || '').trim() === q) return;
+      clearTimeout(searchWatch);
+      searchWatch = setTimeout(function () {
+        if (ovlSearch.classList.contains('on')) runSearch();
+      }, 220);
     });
   }
 
-  searchList.addEventListener('click', function (e) {
-    var op = e.target.closest ? e.target.closest('[data-pick]') : null;
-    if (!op) return;
-    var t = op.getAttribute('data-pick');
+  function dropPending() { clearTimeout(searchTimer); }
+
+  /* 검색 결과를 고르면: 키보드를 닫고, 고른 문서를 지금 카드 바로 뒤에 넣고, 그 카드로 정확히 이동 */
+  var pickToken = 0;
+  function pickDoc(t, snip) {
+    if (!t) return;
+    var name = titleOf(t);
+    for (var i = 0; i < DOCS.length; i++) {
+      if (DOCS[i].title === name && DOCS[i].lang === lang) { closeAll(); try { qEl.blur(); } catch (e) { } snapToCard(i); return; }
+    }
+    var token = ++pickToken;
+    searchSeq++;
+    clearTimeout(slowTimer);
+    dropPending();
+    try { qEl.blur(); } catch (e) { }
     closeAll();
-    toast(t + ' 문서를 불러오는 중입니다', 'info');
-    fetchSummary(lang, t).then(function (d) {
+    syncViewport();
+    toast(name + ' 문서를 불러오는 중입니다', 'info');
+    var stub = {
+      title: name,
+      extract: String(snip || '').trim(),
+      desc: '',
+      image: '',
+      url: 'https://' + lang + '.wikipedia.org/wiki/' + encodeURIComponent(name),
+      lang: lang,
+      source: 'search',
+      meta: ''
+    };
+    insertAfter(idx, stub);
+    var slot = idx + 1;
+    snapToCard(slot);
+    fetchSummary(lang, t, snip).then(function (d) {
+      if (token !== pickToken) return;
       d.source = 'search';
-      insertAfter(idx, d);
-      go(1);
-    }).catch(function () { toast('문서를 불러오지 못했습니다', 'err'); });
+      upgradeCard(slot, d);
+    }).catch(function () {
+      if (token !== pickToken) return;
+      toast('문서 요약을 불러오지 못했습니다. 원문 링크로 열람할 수 있습니다', 'err');
+    });
+  }
+
+  /* 키보드가 닫히며 화면 높이가 바뀌는 중에도 고른 카드에 정확히 고정한다 */
+  var snapToken = 0;
+  function snapToCard(i, rounds) {
+    var token = ++snapToken;
+    var left = (rounds === undefined) ? 4 : rounds;
+    (function step() {
+      if (token !== snapToken) return;
+      if (i < 0 || i >= DOCS.length) return;
+      var h = feed.clientHeight || 1;
+      lockUntil = Date.now() + 420;
+      feed.scrollTop = i * h;
+      activate(i);
+      markActive(true);
+      if (left-- > 0) setTimeout(function () { requestAnimationFrame(step); }, 90);
+    })();
+  }
+
+  function upgradeCard(i, d) {
+    var node = feed.children[i];
+    if (!node || !d) return;
+    var cur = DOCS[i] || {};
+    var merged = {
+      title: d.title || cur.title,
+      extract: d.extract || cur.extract || '',
+      desc: d.desc || cur.desc || '',
+      image: d.image || cur.image || '',
+      url: d.url || cur.url || '',
+      lang: d.lang || cur.lang || lang,
+      source: cur.source || 'search',
+      meta: d.meta || cur.meta || '',
+      rel: d.rel || cur.rel
+    };
+    DOCS[i] = merged;
+    var tmp = doc.createElement('div');
+    tmp.innerHTML = cardHTML(merged);
+    var nn = tmp.firstChild;
+    var wasActive = (activeEl === node) || node.classList.contains('is-on');
+    if (wasActive) nn.classList.add('is-on');
+    node.parentNode.replaceChild(nn, node);
+    if (activeEl === node) activeEl = nn;
+    renumber();
+    if (wasActive) { fillNext(nn, i); maybeToc(nn, i); fitSummary(nn); }
+    ensureRelatedFor(i);
+  }
+
+  searchList.addEventListener('click', function (e) {
+    if (!e.target.closest) return;
+    var retry = e.target.closest('[data-retry]');
+    if (retry) { runSearch(); return; }
+    var op = e.target.closest('[data-pick]');
+    if (!op) return;
+    pickDoc(op.getAttribute('data-pick'), op.getAttribute('data-snip') || '');
   });
 
-  qEl.addEventListener('input', function () {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(runSearch, 280);
+  /* 모바일 키보드의 엔터·검색·완료 어느 쪽이든 폼 submit으로 한 번에 검색 */
+  searchForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    dropPending();
+    runSearch();
+    if (keyboardUp()) { try { qEl.blur(); } catch (err) { } syncViewport(); }
   });
+  qEl.addEventListener('input', function (e) {
+    clearTimeout(searchTimer);
+    var ime = composingNow || (e && e.isComposing === true);
+    searchTimer = setTimeout(runSearch, ime ? 420 : 240);
+  });
+  qEl.addEventListener('compositionstart', function () { composingNow = true; });
+  qEl.addEventListener('compositionend', function () {
+    composingNow = false;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 40);
+  });
+  qEl.addEventListener('search', function () { dropPending(); runSearch(); });
+  qEl.addEventListener('change', function () { runSearch(); });
   qEl.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      e.preventDefault();
+      dropPending();
+      runSearch();
+    }
   });
   doc.getElementById('btnSearch').addEventListener('click', function () {
     openSheet(ovlSearch);
+    syncViewport();
     runSearch();
-    setTimeout(function () { qEl.focus(); }, 60);
+    setTimeout(function () {
+      try { qEl.focus({ preventScroll: true }); } catch (e) { try { qEl.focus(); } catch (e2) { } }
+      syncViewport();
+    }, 120);
   });
-  doc.getElementById('closeSearch').addEventListener('click', closeAll);
-  ovlSearch.addEventListener('click', function (e) { if (e.target === ovlSearch) closeAll(); });
+  doc.getElementById('closeSearch').addEventListener('click', function () {
+    closeAll();
+    try { qEl.blur(); } catch (e) { }
+    syncViewport();
+  });
+  ovlSearch.addEventListener('click', function (e) {
+    if (e.target === ovlSearch) { closeAll(); try { qEl.blur(); } catch (err) { } syncViewport(); }
+  });
 
   /* ================= theme ================= */
   doc.getElementById('btnTheme').addEventListener('click', function () {

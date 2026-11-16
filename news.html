@@ -2,7 +2,7 @@
 <html lang="ko" class="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>FLUX News — 숏폼 뉴스 피드</title>
 <link rel="canonical" href="news.html">
 <meta name="description" content="FLUX News — 한 화면에 한 기사씩, 스와이프로 넘겨 읽는 숏폼 뉴스. 주요 헤드라인부터 정치·경제·IT·세계·스포츠까지 카테고리 칩으로 골라 보고, 좋아요·스크랩·한국어 음성 브리핑·자동 넘김으로 이어서 소비합니다. 서버 없이 브라우저에서만 동작합니다.">
@@ -555,6 +555,15 @@
     font-size: 11.5px; font-weight: 700; padding: 0 8px; max-width: 116px;
   }
   .sfoot { padding: 8px 14px 14px; font-size: 9.5px; color: var(--ink3); font-family: ui-monospace, Menlo, monospace; flex-shrink: 0; }
+  /* 가상 키보드가 올라오면 검색 시트를 지금 보이는 화면에 붙여 결과가 가려지지 않게 한다 */
+  #searchList { flex: 1 1 auto; min-height: 0; }
+  #ovlSearch.kb { align-items: flex-start; }
+  #ovlSearch.kb .sht {
+    position: fixed; left: 0; right: 0; top: var(--vv-top, 0px); bottom: auto;
+    width: 100%; max-width: none; height: calc(var(--vv-h, 100dvh) - 10px); max-height: none;
+    border-radius: 16px 16px 0 0; animation: none;
+  }
+  #ovlSearch.kb .phead { padding-top: 10px; padding-bottom: 8px; }
 
   /* ===== responsive ===== */
   @media (min-width: 760px) {
@@ -744,7 +753,7 @@
     <div class="searchbox">
       <label class="sinput">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
-        <input id="q" type="search" placeholder="키워드·헤드라인 검색" autocomplete="off" aria-label="검색어">
+        <input id="q" type="search" placeholder="키워드·헤드라인 검색" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" inputmode="search" aria-label="검색어">
       </label>
       <select class="ssel" id="pubSel" aria-label="언론사 필터"><option value="all">모든 언론사</option></select>
     </div>
@@ -1326,7 +1335,7 @@
   });
 
   function openSheet(el) { el.classList.add('on'); }
-  function closeAll() { ovlSaved.classList.remove('on'); ovlSearch.classList.remove('on'); }
+  function closeAll() { ovlSaved.classList.remove('on'); ovlSearch.classList.remove('on', 'kb'); }
   doc.getElementById('btnSaved').addEventListener('click', function () { ptab = 'save'; renderSaved(); openSheet(ovlSaved); });
   doc.getElementById('closeSaved').addEventListener('click', closeAll);
   ovlSaved.addEventListener('click', function (e) { if (e.target === ovlSaved) closeAll(); });
@@ -1378,15 +1387,50 @@
     if (op) jumpTo(op.getAttribute('data-open'));
   });
   qEl.addEventListener('input', runSearch);
+  qEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      e.preventDefault();
+      runSearch();
+      try { qEl.blur(); } catch (err) { }
+      syncViewport();
+    }
+  });
+  /* 가상 키보드가 올라오면 시트를 지금 보이는 화면에 붙여 결과가 가려지지 않게 한다 */
+  function keyboardUp() {
+    var vv = window.visualViewport;
+    if (!vv) return false;
+    return (window.innerHeight - (vv.height + vv.offsetTop)) > 110;
+  }
+  function syncViewport() {
+    var vv = window.visualViewport;
+    if (vv) {
+      var root = doc.documentElement;
+      root.style.setProperty('--vv-h', Math.round(vv.height) + 'px');
+      root.style.setProperty('--vv-top', Math.round(vv.offsetTop) + 'px');
+    }
+    ovlSearch.classList.toggle('kb', ovlSearch.classList.contains('on') && keyboardUp());
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewport, { passive: true });
+    window.visualViewport.addEventListener('scroll', syncViewport, { passive: true });
+  }
+  window.addEventListener('resize', syncViewport, { passive: true });
   pubSel.addEventListener('change', runSearch);
   doc.getElementById('btnSearch').addEventListener('click', function () {
     if (pubSel.options.length <= 1) fillPubs();
     runSearch();
     openSheet(ovlSearch);
-    setTimeout(function () { qEl.focus(); }, 60);
+    syncViewport();
+    setTimeout(function () { try { qEl.focus({ preventScroll: true }); } catch (e) { qEl.focus(); } syncViewport(); }, 60);
   });
-  doc.getElementById('closeSearch').addEventListener('click', closeAll);
-  ovlSearch.addEventListener('click', function (e) { if (e.target === ovlSearch) closeAll(); });
+  doc.getElementById('closeSearch').addEventListener('click', function () {
+    closeAll();
+    try { qEl.blur(); } catch (e) { }
+    syncViewport();
+  });
+  ovlSearch.addEventListener('click', function (e) {
+    if (e.target === ovlSearch) { closeAll(); try { qEl.blur(); } catch (err) { } syncViewport(); }
+  });
 
   function jumpTo(id) {
     closeAll();
