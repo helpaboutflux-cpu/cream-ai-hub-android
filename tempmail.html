@@ -278,6 +278,8 @@ html.dark .btn.primary { color: #04141a; }
 }
 .mini:hover { color: var(--brand-deep); border-color: rgba(var(--brand-rgb), .45); background: rgba(var(--brand-rgb), .07); }
 html.dark .mini:hover { color: var(--brand); }
+.mini.done { color: var(--ok); border-color: rgba(15, 138, 99, .45); background: rgba(15, 138, 99, .09); animation: checkBounce .55s var(--ease); }
+@keyframes checkBounce { 0% { transform: scale(1); } 32% { transform: scale(1.13); } 58% { transform: scale(.96); } 100% { transform: scale(1); } }
 
 /* ---------------- empty state ---------------- */
 .empty-card {
@@ -397,7 +399,7 @@ html.dark .otp-chip .ol { color: var(--brand); }
 }
 .otp-chip .cp:hover { background: rgba(var(--brand-rgb), .26); transform: translateY(-1px); }
 html.dark .otp-chip .cp { color: var(--brand); }
-.otp-chip .cp.done { background: var(--ok); color: #fff; }
+.otp-chip .cp.done { background: var(--ok); color: #fff; animation: checkBounce .55s var(--ease); }
 .link-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
   padding: 6px 10px; border-radius: 11px; border: 1px solid var(--line);
@@ -451,7 +453,6 @@ html.dark .otp-chip .cp { color: var(--brand); }
   padding: 13px 14px; border-radius: 14px; border: 1px solid var(--line);
   background: var(--sheet); color: var(--ink);
   transition: border-color .2s var(--ease), transform .24s var(--ease), box-shadow .24s var(--ease), background .2s var(--ease);
-  animation: rowIn .5s var(--ease) both;
 }
 @keyframes rowIn { from { opacity: 0; transform: translateY(-10px) scale(.985); } to { opacity: 1; transform: none; } }
 .msg:hover { border-color: rgba(var(--brand-rgb), .45); transform: translateY(-2px); box-shadow: 0 18px 34px -26px rgba(6, 40, 52, .7); }
@@ -1800,15 +1801,21 @@ html.dark .page-foot a:hover { color: var(--brand); }
       $('#listEmptyText').textContent = S.messages.length
         ? '조건에 맞는 메일이 없습니다. 검색어나 필터를 바꿔 보세요.'
         : '아직 메일이 없습니다. 위 주소를 복사해 가입·인증 화면에 붙여 넣으면 여기에 도착합니다.';
+      S.listSig = '';
       return;
     }
+    /* 같은 목록을 10초마다 다시 그리면 카드 애니메이션이 처음부터 돌아 깜빡이므로, 달라진 것만 다시 그린다. */
+    var sig = list.map(function (m) {
+      return m.id + ':' + (m.read ? 1 : 0) + ':' + (m.otp && m.otp.length ? 1 : 0) + ':' + (m.hasAtt ? 1 : 0);
+    }).join(',') + '|' + S.filter + '|' + S.query;
+    if (sig === S.listSig) return;
+    S.listSig = sig;
     host.innerHTML = list.map(function (m) {
       var sn = senderName(m.from);
       var cls = 'msg' + (m.read ? '' : ' unread') + (m.fresh ? ' isnew' : '');
       var tags = '';
       if (m.otp && m.otp.length) tags += '<span class="m-tag otp">인증번호</span>';
-      if (m.hasAtt) tags += '<span class="m-tag">첨부</span>';
-      return '<button class="' + cls + '" data-msg="' + esc(m.id) + '">' +
+      if (m.hasAtt) tags += '<span class="m-tag">첨부</span>';      return '<button class="' + cls + '" data-msg="' + esc(m.id) + '">' +
         '<span class="m-ico">' + esc(initials(m.from, m.subject)) + '</span>' +
         '<span class="m-main">' +
         '<span class="m-top">' + (!m.read ? '<span class="m-dot"></span>' : '') +
@@ -2511,8 +2518,18 @@ html.dark .page-foot a:hover { color: var(--brand); }
       if (!svg) return;
       downloadText('flux-tempmail-' + safeName(S.account && S.account.address) + '.svg', svg, 'image/svg+xml');
     });
-    $('#copyAddrBtn').addEventListener('click', function () { if (S.account) copyText(S.account.address, '주소를 복사했습니다'); });
-    $('#tbCopy').addEventListener('click', function () { if (S.account) copyText(S.account.address, '주소를 복사했습니다'); });
+    $('#copyAddrBtn').addEventListener('click', function () {
+      if (!S.account) return;
+      copyText(S.account.address, '주소를 복사했습니다');
+      flashCopied(this);
+    });
+    $('#tbCopy').addEventListener('click', function () {
+      if (!S.account) return;
+      copyText(S.account.address, '주소를 복사했습니다');
+      this.classList.add('pop');
+      var el = this;
+      setTimeout(function () { el.classList.remove('pop'); }, 620);
+    });
     $('#intervalSel').addEventListener('change', function () {
       S.interval = Number(this.value) || 0;
       dbPut('meta', { k: 'interval', v: S.interval }).catch(function () { });
