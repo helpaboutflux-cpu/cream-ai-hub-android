@@ -2517,8 +2517,8 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
       walkWorks(app, val, key, out, 0, { n: 0 });
     });
 
-    return scanIdbWorks().then(function (dbItems) {
-      out = out.concat(dbItems);
+    return Promise.all([scanIdbWorks(), scanIdbGeneric()]).then(function (res) {
+      out = out.concat(res[0], res[1]);
       var seen = {};
       var list = out.filter(function (it) {
         var key = it.app.id + '|' + it.title + '|' + (it.updated || 0) + '|' + it.snippet.slice(0, 40);
@@ -2602,6 +2602,51 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     return chain.then(function () { return out; });
   }
 
+  function scanIdbGeneric() {
+    if (!indexedDB.databases) return Promise.resolve([]);
+    return indexedDB.databases().then(function (list) {
+      var out = [], chain = Promise.resolve();
+      var handled = { flux_drive_v1: 1, lemon_kv_idb_v1: 1, flux_memo_v1: 1, flux_calendar_v1: 1, lemon_builder_v1: 1 };
+      (list || []).forEach(function (info) {
+        var name = info && info.name;
+        if (!name || handled[name]) return;
+        var app = appForKey(name);
+        if (!app) return;
+        chain = chain.then(function () {
+          return openIdb(name).then(function (db) {
+            var stores = Array.prototype.slice.call(db.objectStoreNames), c = Promise.resolve();
+            stores.forEach(function (st) {
+              c = c.then(function () {
+                return readAll(db, st).then(function (rows) {
+                  rows.forEach(function (rec) {
+                    var val = null;
+                    if (typeof rec === 'string') {
+                      try { val = JSON.parse(rec); } catch (e) { val = { title: name, text: rec }; }
+                    } else if (rec && typeof rec === 'object') {
+                      if (rec.blob || rec instanceof Blob) return;
+                      val = rec;
+                      ['value', 'data', 'json', 'text', 'content', 'saved'].forEach(function (k) {
+                        if (typeof rec[k] === 'string' && rec[k].length > 1) {
+                          try {
+                            var p = JSON.parse(rec[k]);
+                            if (p && typeof p === 'object') val = p;
+                          } catch (e) { }
+                        }
+                      });
+                    }
+                    if (val) walkWorks(app, val, name + '/' + st, out, 0, { n: 0 });
+                  });
+                }, function () { });
+              });
+            });
+            return c.then(function () { try { db.close(); } catch (e) { } });
+          }, function () { });
+        });
+      });
+      return chain.then(function () { return out; });
+    }, function () { return []; });
+  }
+
   function renderWorks() {
     var board = $('#board');
     $('#filterBar').hidden = true;
@@ -2623,7 +2668,7 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
           '<span class="dot" style="background:' + w.app.color + '">' + icon(w.app.icon) + '</span>' + esc(w.app.name) + '<span class="n">' + w.count + '</span></button>';
       }).join('') + '</div>';
 
-    var head = '<div class="sec-head"><h2>작업물 목록</h2><p>Flux Docs·Sheets·Slides·Memo·Calendar·Builder 등 이 브라우저에 저장된 작업</p>' +
+    var head = '<div class="sec-head"><h2>작업물 목록</h2><p>Flux Docs·Notes·Sheets·Slides·Memo·Calendar·Builder 등 이 브라우저에 저장된 작업</p>' +
       '<span class="grow"></span>' +
       '<button class="pill" data-wact="rescan">' + icon('i-scan') + '다시 찾기</button>' +
       '<button class="pill" data-wact="backup">' + icon('i-download') + 'JSON 백업</button></div>';
