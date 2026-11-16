@@ -58,6 +58,13 @@
       opacity: 0.22;
       filter: blur(110px);
     }
+    .ambient-wrap {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+    }
     .orb-azure-1 {
       width: 500px;
       height: 500px;
@@ -164,8 +171,10 @@
 <body class="bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-screen flex flex-col relative selection:bg-azure-500 selection:text-white pb-20 md:pb-8">
 
   <!-- Ambient Glowing Orbs -->
-  <div class="ambient-orb orb-azure-1"></div>
-  <div class="ambient-orb orb-azure-2"></div>
+  <div class="ambient-wrap" aria-hidden="true">
+    <div class="ambient-orb orb-azure-1"></div>
+    <div class="ambient-orb orb-azure-2"></div>
+  </div>
 
   <!-- Top Global Navigation Header -->
   <header class="sticky top-0 z-40 border-b border-neutral-200/80 dark:border-neutral-800/80 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-xl transition-colors">
@@ -186,7 +195,7 @@
           <div class="flex flex-col">
             <div class="flex items-center space-x-1.5">
               <span class="font-extrabold text-base tracking-tight text-neutral-900 dark:text-white">FLUX News</span>
-              <span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-azure-100 dark:bg-azure-950/80 text-azure-600 dark:text-azure-400 font-semibold border border-azure-200 dark:border-azure-800/50">MULTI-MEDIA</span>
+              <span class="hidden sm:inline text-[9px] font-mono px-1.5 py-0.2 rounded bg-azure-100 dark:bg-azure-950/80 text-azure-600 dark:text-azure-400 font-semibold border border-azure-200 dark:border-azure-800/50">MULTI-MEDIA</span>
             </div>
             <span class="text-[10px] text-neutral-400 hidden sm:inline">다양한 언론사 종합 뉴스 피드 & 라이브 스포츠·날씨 미디어 허브</span>
           </div>
@@ -270,7 +279,7 @@
         <!-- Developer Hub Link -->
         <a 
           href="index.html" 
-          class="px-2.5 py-1.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-100 text-xs font-bold transition flex items-center space-x-1"
+          class="hidden sm:flex px-2.5 py-1.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-100 text-xs font-bold transition items-center space-x-1"
           title="Lemon soft & FLUX 개발자 허브로 이동"
         >
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
@@ -1432,7 +1441,7 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data && Array.isArray(data.articles) && data.articles.length > 0) {
-          ARTICLES_DATA = data.articles;
+          ARTICLES_DATA = data.articles.map(tidyArticle);
           liveNewsLastUpdated = data.updatedAtDisplay || '오늘 실시간';
           if (liveStatusText) {
             liveStatusText.textContent = `실시간 연동 (${liveNewsLastUpdated})`;
@@ -1448,6 +1457,38 @@
         }
       }
       return false;
+    }
+
+    // 잘린 엔티티 조각(&#… 등)과 이중 인코딩된 엔티티를 정리한다
+    function cleanText(input) {
+      return decodeEntities(input)
+        .replace(/&[#a-zA-Z0-9]{0,8}\u2026/g, '\u2026')
+        .replace(/\s+$/g, '');
+    }
+    function tidyArticle(a) {
+      if (!a || typeof a !== 'object') return a;
+      if (a.title) a.title = cleanText(a.title);
+      if (a.summary) a.summary = cleanText(a.summary);
+      if (a.caption) a.caption = cleanText(a.caption);
+      if (Array.isArray(a.body)) a.body = a.body.map(cleanText);
+      return a;
+    }
+
+    // RSS 설명문에 이중 인코딩된 HTML 엔티티(&#9650; 등)를 실제 문자로 되돌린다
+    function decodeEntities(input) {
+      var out = String(input == null ? '' : input);
+      for (var pass = 0; pass < 2; pass++) {
+        out = out
+          .replace(/&#x([0-9a-f]+);/gi, function (m, h) { return String.fromCharCode(parseInt(h, 16)); })
+          .replace(/&#(\d+);/g, function (m, d) { return String.fromCharCode(parseInt(d, 10)); })
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&quot;/gi, '"')
+          .replace(/&apos;/gi, "'")
+          .replace(/&lt;/gi, '<')
+          .replace(/&gt;/gi, '>')
+          .replace(/&amp;/gi, '&');
+      }
+      return out;
     }
 
     async function fetchLiveBreakingRss() {
@@ -1472,11 +1513,11 @@
           let addedCount = 0;
 
           for (const item of items.slice(0, 5)) {
-            const title = (item.querySelector('title')?.textContent || '').trim();
+            const title = decodeEntities((item.querySelector('title')?.textContent || '').trim());
             if (!title || ARTICLES_DATA.some(a => a.title === title)) continue;
 
             const link = (item.querySelector('link')?.textContent || '').trim();
-            const desc = (item.querySelector('description')?.textContent || '').replace(/<[^>]*>/g, '').trim();
+            const desc = decodeEntities((item.querySelector('description')?.textContent || '').replace(/<[^>]*>/g, '')).trim();
             const pubDate = (item.querySelector('pubDate')?.textContent || '').trim();
             let img = item.querySelector('enclosure[type*="image"]')?.getAttribute('url') || '';
             if (!img) {

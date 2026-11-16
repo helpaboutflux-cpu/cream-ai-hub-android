@@ -477,8 +477,12 @@
   });
 
   /* ---------------- haptics ---------------- */
+  var _acted = false;
+  ['pointerdown', 'touchstart', 'keydown'].forEach(function (t) {
+    doc.addEventListener(t, function () { _acted = true; }, { once: true, passive: true });
+  });
   function hap(ms) {
-    try { if (navigator.vibrate) navigator.vibrate(ms || 12); } catch (e) { }
+    try { if (_acted && navigator.vibrate) navigator.vibrate(ms || 12); } catch (e) { }
   }
 
   /* ---------------- toast ---------------- */
