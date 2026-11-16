@@ -907,6 +907,25 @@
     }), 11000).then(function (r) { return normRandom(r, 'random'); });
   }
 
+  /* action API가 막혔을 때를 위한 REST random/summary 폴백 */
+  function fetchRestRandom(l, n) {
+    var jobs = [];
+    for (var i = 0; i < n; i++) {
+      jobs.push(getJSON('https://' + l + '.wikipedia.org/api/rest_v1/page/random/summary', 9000).then(function (d) {
+        if (!d || !d.title) return null;
+        return {
+          title: titleOf(d.title),
+          extract: String(d.extract || '').trim(),
+          desc: d.description || '',
+          image: imgOK(upsize((d.thumbnail && d.thumbnail.source) || '')),
+          url: (d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page) || ('https://' + l + '.wikipedia.org/wiki/' + encodeURIComponent(d.title)),
+          lang: l, source: 'random', meta: ''
+        };
+      }).catch(function () { return null; }));
+    }
+    return Promise.all(jobs).then(function (list) { return list.filter(Boolean).filter(quality); });
+  }
+
   function fetchSummary(l, title) {
     var url = 'https://' + l + '.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(titleOf(title));
     return getJSON(url, 10000).then(function (d) {
@@ -1121,6 +1140,8 @@
           arr.concat(a2).forEach(function (d) { map[d.title] = d; });
           return Object.keys(map).map(function (k) { return map[k]; });
         });
+      }).catch(function () {
+        return fetchRestRandom(l, 8);
       });
     }
     return p.then(function (arr) {
