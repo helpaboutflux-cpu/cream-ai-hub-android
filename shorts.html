@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Shorts — 숏폼 뉴스 피드</title>
+<meta name="description" content="한 화면에 한 기사씩, 스와이프로 넘겨 읽는 숏폼 뉴스. 주요 헤드라인부터 정치·경제·IT·세계·스포츠까지 카테고리 칩으로 골라 보고, 좋아요·스크랩·한국어 음성 브리핑·자동 넘김으로 이어서 소비합니다. 서버 없이 브라우저에서만 동작합니다.">
+<meta name="theme-color" content="#FF3B5C">
+<meta property="og:title" content="Lemon Shorts — 숏폼 뉴스 피드">
+<meta property="og:description" content="밑으로 넘기면 뉴스가 다음 장으로. 풀스크린 카드, 카테고리 필터, 음성 브리핑, 스크랩 저장함까지.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23FF3B5C'/%3E%3Crect x='7' y='6' width='18' height='20' rx='4' fill='none' stroke='%23fff' stroke-width='1.9'/%3E%3Cpath d='M15.4 12.4v7.2l6-3.6z' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<style>
+  /* ===== tokens ===== */
+  :root {
+    --accent: #FF3B5C;
+    --accent-rgb: 255, 59, 92;
+    --cobalt: #2F5BFF;
+    --paper: #f7f5f2;
+    --paper-2: #efece7;
+    --sheet: #fffdf9;
+    --ink: #12121a;
+    --ink2: #5f5f6d;
+    --ink3: #8b8b99;
+    --line: rgba(18, 18, 26, .13);
+    --line2: rgba(18, 18, 26, .07);
+    --glass: rgba(255, 255, 255, .74);
+    --glassbd: rgba(18, 18, 26, .10);
+    --shadow: 0 30px 80px -42px rgba(15, 12, 20, .55);
+    --top: 52px;
+    --chips: 46px;
+    --bartrack: 3px;
+    --railw: 58px;
+  }
+  html.dark {
+    --paper: #08080b;
+    --paper-2: #101014;
+    --sheet: #0c0c10;
+    --ink: #f4f4f7;
+    --ink2: #9b9baa;
+    --ink3: #6d6d7b;
+    --line: rgba(255, 255, 255, .15);
+    --line2: rgba(255, 255, 255, .07);
+    --glass: rgba(20, 20, 25, .66);
+    --glassbd: rgba(255, 255, 255, .12);
+    --shadow: 0 40px 100px -50px rgba(0, 0, 0, .9);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, "SF Mono", monospace; }
+  .app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ===== top bar ===== */
+  .topbar {
+    flex: 0 0 var(--top);
+    height: var(--top);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 0 12px;
+    border-bottom: 1px solid var(--line2);
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    position: relative; z-index: 20;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; text-decoration: none; color: inherit; }
+  .mark {
+    width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
+    background: linear-gradient(140deg, var(--accent) 0%, #ff7a3d 100%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 20px -10px rgba(var(--accent-rgb), .9);
+  }
+  .mark svg { width: 16px; height: 16px; color: #fff; }
+  .brand-txt { min-width: 0; overflow: hidden; }
+  .brand-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 900; letter-spacing: -0.035em; line-height: 1.1; white-space: nowrap; }
+  .brand-tag {
+    font-size: 8px; font-weight: 800; letter-spacing: .14em; padding: 2px 5px; border-radius: 4px;
+    border: 1px solid rgba(var(--accent-rgb), .42); color: var(--accent); background: rgba(var(--accent-rgb), .08);
+  }
+  .brand-sub { font-size: 9.5px; color: var(--ink3); letter-spacing: .02em; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .top-actions { display: flex; align-items: center; gap: 6px; }
+  .tbtn {
+    width: 34px; height: 34px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--glassbd); background: var(--glass); color: var(--ink2);
+    transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), color .2s, border-color .2s, background-color .2s;
+    position: relative; flex-shrink: 0;
+  }
+  .tbtn svg { width: 17px; height: 17px; }
+  .tbtn:hover { color: var(--accent); border-color: rgba(var(--accent-rgb), .45); }
+  .tbtn:active { transform: scale(.9); }
+  .tbtn .ic-sun { display: none; }
+  .dark .tbtn .ic-sun { display: block; }
+  .dark .tbtn .ic-moon { display: none; }
+  .tbtn .bdg {
+    position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px; background: var(--accent); color: #fff; font-size: 9px; font-weight: 800;
+    display: none; align-items: center; justify-content: center; line-height: 1;
+    box-shadow: 0 2px 8px -2px rgba(var(--accent-rgb), .9);
+  }
+  .tbtn .bdg.on { display: inline-flex; }
+  .tbtn.spinning svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .kbhint { display: none; align-items: center; gap: 4px; font-size: 9.5px; color: var(--ink3); margin-right: 2px; }
+  .kbhint i {
+    font-style: normal; font-family: ui-monospace, Menlo, monospace; font-size: 9px; padding: 2px 5px;
+    border-radius: 5px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink2);
+  }
+
+  @media (max-width: 412px) {
+    .brand-tag { display: none; }
+    .topbar { padding: 0 10px; }
+    .top-actions { gap: 5px; }
+    .tbtn { width: 32px; height: 32px; border-radius: 10px; }
+  }
+  @media (max-width: 360px) {
+    .brand-name { font-size: 13px; }
+    .brand-sub { font-size: 9px; }
+  }
+
+  /* ===== category chips ===== */
+  .chipsrow {
+    flex: 0 0 var(--chips); height: var(--chips);
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 12px; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; -ms-overflow-style: none;
+    border-bottom: 1px solid var(--line2);
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    position: relative; z-index: 19;
+  }
+  .chipsrow::-webkit-scrollbar { display: none; }
+  .cat {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 11px; border-radius: 999px;
+    border: 1px solid var(--line); background: transparent; color: var(--ink2);
+    font-size: 11.5px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap;
+    transition: background-color .18s, color .18s, border-color .18s, transform .12s;
+  }
+  .cat i { width: 6px; height: 6px; border-radius: 50%; background: var(--catc, currentColor); opacity: .7; font-style: normal; }
+  .cat:hover { border-color: var(--ink3); color: var(--ink); }
+  .cat:active { transform: scale(.96); }
+  .cat.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .cat.on i { background: var(--catc, var(--accent)); opacity: 1; }
+  .cat .num { font-size: 9px; font-family: ui-monospace, Menlo, monospace; opacity: .7; }
+  .chips-tail { margin-left: auto; }
+
+  /* ===== progress ===== */
+  .prog { flex: 0 0 var(--bartrack); height: var(--bartrack); background: var(--line2); position: relative; z-index: 19; overflow: hidden; }
+  .prog > i {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent) 0%, #ff7a3d 55%, var(--accent) 100%);
+    background-size: 200% 100%;
+    transition: width .34s cubic-bezier(.22, 1, .36, 1);
+    animation: barflow 4s linear infinite;
+  }
+  @keyframes barflow { to { background-position: -200% 0; } }
+
+  /* ===== stage ===== */
+  .stagewrap {
+    flex: 1 1 auto; min-height: 0; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; overflow: hidden;
+  }
+  .stage {
+    position: relative; width: 100%; height: 100%; overflow: hidden;
+    background: var(--sheet); isolation: isolate;
+  }
+  .feed {
+    position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden;
+    scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain;
+  }
+  .feed::-webkit-scrollbar { display: none; }
+  .grain {
+    position: absolute; inset: 0; z-index: 15; pointer-events: none; opacity: .05; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  }
+
+  /* ===== reel ===== */
+  .reel {
+    position: relative; height: 100%; width: 100%;
+    scroll-snap-align: start; scroll-snap-stop: always;
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--sheet);
+  }
+  [data-cat="headlines"] { --cat: #FF3B5C; --cat-rgb: 255, 59, 92; }
+  [data-cat="politics"] { --cat: #2F5BFF; --cat-rgb: 47, 91, 255; }
+  [data-cat="economy"] { --cat: #0E9C74; --cat-rgb: 14, 156, 116; }
+  [data-cat="tech"] { --cat: #7C4DFF; --cat-rgb: 124, 77, 255; }
+  [data-cat="sports"] { --cat: #FF7A29; --cat-rgb: 255, 122, 41; }
+  [data-cat="entertainment"] { --cat: #E0399B; --cat-rgb: 224, 57, 155; }
+  [data-cat="world"] { --cat: #0E7FA8; --cat-rgb: 14, 127, 168; }
+  html.dark [data-cat="headlines"] { --cat: #FF6079; --cat-rgb: 255, 96, 121; }
+  html.dark [data-cat="politics"] { --cat: #6E8DFF; --cat-rgb: 110, 141, 255; }
+  html.dark [data-cat="economy"] { --cat: #2CC79C; --cat-rgb: 44, 199, 156; }
+  html.dark [data-cat="tech"] { --cat: #A489FF; --cat-rgb: 164, 137, 255; }
+  html.dark [data-cat="sports"] { --cat: #FF9A55; --cat-rgb: 255, 154, 85; }
+  html.dark [data-cat="entertainment"] { --cat: #FF6BBF; --cat-rgb: 255, 107, 191; }
+  html.dark [data-cat="world"] { --cat: #4BB8DA; --cat-rgb: 75, 184, 218; }
+
+  .catbar {
+    position: absolute; top: 0; left: 0; height: 3px; width: 14%; z-index: 6;
+    background: var(--cat); transition: width .7s cubic-bezier(.16, 1, .3, 1);
+  }
+  .reel.is-on .catbar { width: 100%; }
+
+  .reel-media { position: relative; flex: 0 0 46%; min-height: 0; overflow: hidden; background: var(--paper-2); }
+  .pattern {
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(120% 96% at 12% -6%, rgba(var(--cat-rgb), .55) 0%, rgba(var(--cat-rgb), 0) 62%),
+      radial-gradient(90% 70% at 92% 92%, rgba(var(--cat-rgb), .30) 0%, rgba(var(--cat-rgb), 0) 58%),
+      repeating-linear-gradient(122deg, rgba(var(--cat-rgb), .16) 0 1.5px, rgba(0, 0, 0, 0) 1.5px 22px);
+    background-color: var(--paper-2);
+  }
+  html.dark .pattern {
+    background-image:
+      radial-gradient(120% 96% at 12% -6%, rgba(var(--cat-rgb), .40) 0%, rgba(var(--cat-rgb), 0) 60%),
+      radial-gradient(90% 70% at 92% 92%, rgba(var(--cat-rgb), .22) 0%, rgba(var(--cat-rgb), 0) 58%),
+      repeating-linear-gradient(122deg, rgba(var(--cat-rgb), .12) 0 1.5px, rgba(0, 0, 0, 0) 1.5px 22px);
+    background-color: #0e0e12;
+  }
+  .photo {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    opacity: 0; transition: opacity .55s ease, transform 7s linear; transform: scale(1.02);
+    will-change: transform, opacity;
+  }
+  .photo.ok { opacity: 1; }
+  .reel.is-on .photo.ok { transform: scale(1.075); }
+  .veil { position: absolute; inset: 0; }
+  .reel.has-photo .veil {
+    background:
+      linear-gradient(180deg, rgba(6, 6, 10, .46) 0%, rgba(6, 6, 10, .06) 26%, rgba(6, 6, 10, 0) 46%),
+      linear-gradient(0deg, var(--sheet) 0%, rgba(0, 0, 0, 0) 32%);
+  }
+  .reel:not(.has-photo) .veil { background: linear-gradient(0deg, var(--sheet) 0%, rgba(0, 0, 0, 0) 30%); }
+  .reel:not(.has-photo) .reel-media { flex: 0 0 34%; }
+  .reel:not(.has-photo) .pattern {
+    background-image:
+      radial-gradient(120% 96% at 12% -6%, rgba(var(--cat-rgb), .68) 0%, rgba(var(--cat-rgb), 0) 58%),
+      radial-gradient(90% 70% at 92% 92%, rgba(var(--cat-rgb), .34) 0%, rgba(var(--cat-rgb), 0) 56%),
+      repeating-linear-gradient(122deg, rgba(var(--cat-rgb), .22) 0 2px, rgba(0, 0, 0, 0) 2px 26px);
+  }
+
+  .catglyph {
+    position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%);
+    width: 28%; max-width: 168px; height: auto; opacity: .17; color: var(--cat);
+    stroke-width: 1.15; pointer-events: none;
+  }
+
+  .media-foot {
+    position: absolute; left: 14px; right: 14px; bottom: 10px; z-index: 3;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .src {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 6px; background: var(--cat); color: #fff;
+    font-size: 10px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap;
+    box-shadow: 0 6px 16px -10px rgba(var(--cat-rgb), 1);
+  }
+  .src b { font-weight: 900; }
+  .when { font-size: 10px; font-weight: 700; color: var(--ink2); white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
+  .pos {
+    margin-left: auto; display: inline-flex; align-items: baseline; gap: 3px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 9px; color: var(--ink3); letter-spacing: .04em;
+  }
+  .pos b { font-size: 12.5px; color: var(--ink); font-weight: 800; }
+  .pos i { font-style: normal; opacity: .6; }
+
+  .reel-body {
+    position: relative; flex: 1 1 auto; min-height: 0;
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); padding-right: calc(var(--railw) + 4px);
+    display: flex; flex-direction: column; gap: 8px;
+    background: var(--sheet);
+  }
+  .kicker {
+    position: relative; z-index: 1;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--cat);
+  }
+  .kicker .dash { width: 16px; height: 2px; background: var(--cat); display: block; }
+  .kicker .live {
+    font-size: 8px; padding: 1px 4px; border-radius: 3px; background: var(--accent); color: #fff;
+    letter-spacing: .1em;
+  }
+  .headline {
+    position: relative; z-index: 1; flex: 0 0 auto; margin: 0;
+    font-size: clamp(20px, 5.3vw, 30px); line-height: 1.22; font-weight: 900; letter-spacing: -0.038em;
+    color: var(--ink); text-wrap: balance;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .summary {
+    position: relative; z-index: 1; flex: 0 0 auto; margin: 0;
+    font-size: clamp(13px, 3.4vw, 15px); line-height: 1.62; color: var(--ink2); letter-spacing: -0.005em;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .more {
+    position: relative; z-index: 1; margin-top: auto; display: flex; flex-direction: column; gap: 9px;
+    flex: 1 1 auto; min-height: 0; overflow: hidden; padding-bottom: 2px;
+  }
+  .rellist, .nextlist {
+    display: flex; flex-direction: column; gap: 3px;
+    padding-top: 7px; border-top: 1px solid var(--line2); min-height: 0; overflow: hidden;
+  }
+  .nextlist button {
+    display: flex; align-items: baseline; gap: 6px; text-align: left; width: 100%; padding: 1px 0;
+    color: var(--ink2); font-size: 11px; line-height: 1.45;
+  }
+  .nextlist button:hover { color: var(--ink); }
+  .nextlist .nc {
+    flex-shrink: 0; font-size: 8px; font-weight: 800; color: var(--cat); letter-spacing: -.01em;
+    padding: 1px 4px; border-radius: 4px; background: rgba(var(--cat-rgb), .12);
+  }
+  .nextlist .nt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rellist .rh, .nextlist .rh {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 8.5px; font-weight: 800; letter-spacing: .14em; color: var(--ink3); text-transform: uppercase;
+  }
+  .rellist .rh i, .nextlist .rh i { font-style: normal; font-family: ui-monospace, Menlo, monospace; color: var(--cat); }
+  .rellist a {
+    display: flex; align-items: baseline; gap: 6px; text-decoration: none; color: var(--ink2);
+    font-size: 11px; line-height: 1.45; letter-spacing: -.01em; padding: 1px 0;
+  }
+  .rellist a:hover { color: var(--ink); }
+  .rellist a .rp { flex-shrink: 0; font-size: 8.5px; font-weight: 800; color: var(--cat); opacity: .9; }
+  .rellist a .rt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reel-foot {
+    position: relative; z-index: 1; flex: 0 0 auto; margin-top: 10px; padding-top: 7px;
+    display: flex; align-items: center; gap: 10px;
+    border-top: 1px solid var(--line2);
+  }
+  .srclink {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 800; letter-spacing: .04em; color: var(--ink);
+    text-decoration: none; padding: 3px 0;
+  }
+  .srclink svg { width: 12px; height: 12px; transition: transform .2s; color: var(--cat); }
+  .srclink:hover svg { transform: translate(2px, -2px); }
+  .rel { font-size: 9.5px; color: var(--ink3); font-family: ui-monospace, Menlo, monospace; }
+
+  /* kinetic entrance */
+  .reel .headline, .reel .summary, .reel .reel-foot, .reel .kicker { opacity: 0; transform: translateY(14px); }
+  .reel.is-on .kicker { animation: rise .42s cubic-bezier(.16, 1, .3, 1) .04s forwards; }
+  .reel.is-on .headline { animation: rise .52s cubic-bezier(.16, 1, .3, 1) .09s forwards; }
+  .reel.is-on .summary { animation: rise .55s cubic-bezier(.16, 1, .3, 1) .16s forwards; }
+  .reel.is-on .reel-foot { animation: rise .55s cubic-bezier(.16, 1, .3, 1) .23s forwards; }
+  @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+
+  /* ===== rail ===== */
+  .rail {
+    position: absolute; right: 8px; bottom: 16px; z-index: 8;
+    display: flex; flex-direction: column; align-items: center; gap: 11px;
+  }
+  .rbtn {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    width: var(--railw); padding: 0;
+  }
+  .ricon {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--glassbd); background: var(--glass);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    color: var(--ink2);
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), color .2s, background-color .2s, border-color .2s;
+    position: relative;
+  }
+  .ricon svg { width: 19px; height: 19px; }
+  .rbtn:hover .ricon { color: var(--ink); border-color: var(--line); }
+  .rbtn:active .ricon { transform: scale(.88); }
+  .rbtn.on .ricon { color: var(--accent); border-color: rgba(var(--accent-rgb), .5); background: rgba(var(--accent-rgb), .12); }
+  .rbtn.on .ricon svg { fill: rgba(var(--accent-rgb), .18); }
+  .rbtn .rlab {
+    font-size: 8.5px; font-weight: 800; color: var(--ink3); letter-spacing: .01em;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .rbtn.on .rlab { color: var(--accent); }
+  .rbtn.pop .ricon { animation: pop .38s cubic-bezier(.34, 1.56, .64, 1); }
+  @keyframes pop { 0% { transform: scale(1); } 38% { transform: scale(1.24); } 100% { transform: scale(1); } }
+  .burst { position: absolute; inset: 0; pointer-events: none; }
+  .burst i {
+    position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent); opacity: 0;
+  }
+  .rbtn.pop .burst i { animation: burst .6s ease-out forwards; }
+  @keyframes burst {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(.6); }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.2); }
+  }
+  .ttson .ricon { color: var(--accent); border-color: rgba(var(--accent-rgb), .55); }
+  .ttson .ricon::after {
+    content: ""; position: absolute; inset: -1px; border-radius: 50%;
+    border: 2px solid rgba(var(--accent-rgb), .55); animation: pulse 1.5s ease-out infinite;
+  }
+  @keyframes pulse { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.5); opacity: 0; } }
+
+  /* ===== jump controls ===== */
+  .navpair {
+    position: absolute; top: 12px; right: 10px; z-index: 9;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .navbtn {
+    width: 32px; height: 32px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--glassbd); background: var(--glass); color: var(--ink2);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    transition: transform .15s, color .2s, opacity .2s;
+  }
+  .navbtn svg { width: 15px; height: 15px; }
+  .navbtn:hover { color: var(--ink); }
+  .navbtn:active { transform: scale(.9); }
+  .navbtn[disabled] { opacity: .28; pointer-events: none; }
+  .sidebtn { display: none; }
+
+  /* ===== TTS bar ===== */
+  .ttsbar {
+    position: absolute; top: 12px; left: 10px; right: 50px; z-index: 10;
+    display: none; align-items: center; gap: 8px;
+    padding: 7px 8px 7px 10px; border-radius: 12px;
+    background: var(--glass); border: 1px solid rgba(var(--accent-rgb), .38);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 14px 34px -22px rgba(0, 0, 0, .6);
+  }
+  .ttsbar.on { display: flex; animation: rise2 .32s cubic-bezier(.16, 1, .3, 1); }
+  @keyframes rise2 { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  .wave { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; flex-shrink: 0; }
+  .wave i {
+    width: 2px; background: var(--accent); border-radius: 1px; height: 5px;
+    animation: wave 1s ease-in-out infinite;
+  }
+  .wave i:nth-child(2) { animation-delay: .16s; }
+  .wave i:nth-child(3) { animation-delay: .32s; }
+  .wave i:nth-child(4) { animation-delay: .48s; }
+  @keyframes wave { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+  .ttstxt {
+    flex: 1; min-width: 0; font-size: 10px; font-weight: 700; color: var(--ink2);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ttsauto {
+    flex-shrink: 0; font-size: 9px; font-weight: 800; padding: 4px 8px; border-radius: 7px;
+    border: 1px solid var(--line); color: var(--ink3); letter-spacing: -.01em;
+  }
+  .ttsauto.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ttsx { flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink2); }
+  .ttsx svg { width: 13px; height: 13px; }
+
+  /* ===== empty ===== */
+  .empty {
+    height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 32px; text-align: center; scroll-snap-align: start;
+  }
+  .empty svg { width: 42px; height: 42px; color: var(--ink3); }
+  .empty h3 { margin: 0; font-size: 16px; font-weight: 900; letter-spacing: -.03em; }
+  .empty p { margin: 0; font-size: 12.5px; color: var(--ink2); line-height: 1.6; }
+  .empty button {
+    margin-top: 4px; padding: 9px 16px; border-radius: 11px; background: var(--ink); color: var(--paper);
+    font-size: 12px; font-weight: 800;
+  }
+
+  /* ===== overlay / panels ===== */
+  .ovl {
+    position: fixed; inset: 0; z-index: 60; display: none;
+    background: rgba(6, 6, 10, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    align-items: flex-end; justify-content: center;
+  }
+  .ovl.on { display: flex; animation: fadein .2s ease; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .sht {
+    width: 100%; max-width: 560px; max-height: 84vh; display: flex; flex-direction: column;
+    background: var(--paper); border: 1px solid var(--line); border-bottom: 0;
+    border-radius: 22px 22px 0 0; box-shadow: var(--shadow);
+    animation: sheet .3s cubic-bezier(.16, 1, .3, 1);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  @keyframes sheet { from { transform: translateY(28px); opacity: .6; } to { transform: none; opacity: 1; } }
+  @media (min-width: 760px) {
+    .ovl { align-items: center; }
+    .sht { border-radius: 20px; border-bottom: 1px solid var(--line); max-height: 78vh; }
+  }
+  .phead {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--line2); flex-shrink: 0;
+  }
+  .phead h2 { margin: 0; font-size: 15px; font-weight: 900; letter-spacing: -.035em; }
+  .phead .cnt { font-size: 10px; font-family: ui-monospace, Menlo, monospace; color: var(--ink3); }
+  .phead .x {
+    margin-left: auto; width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line2);
+    display: inline-flex; align-items: center; justify-content: center; color: var(--ink2);
+  }
+  .phead .x svg { width: 14px; height: 14px; }
+  .ptabs { display: flex; gap: 4px; padding: 10px 14px 0; flex-shrink: 0; }
+  .ptab {
+    padding: 6px 11px; border-radius: 9px; font-size: 11.5px; font-weight: 800; color: var(--ink3);
+    border: 1px solid transparent;
+  }
+  .ptab.on { background: var(--paper-2); color: var(--ink); border-color: var(--line2); }
+  .plist { overflow-y: auto; padding: 10px 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .prow {
+    display: flex; gap: 10px; align-items: flex-start; padding: 10px 11px; border-radius: 13px;
+    border: 1px solid var(--line2); background: color-mix(in srgb, var(--paper-2) 62%, transparent);
+    text-align: left; width: 100%;
+  }
+  .prow:hover { border-color: var(--line); }
+  .prow .dot { width: 4px; height: 26px; border-radius: 3px; background: var(--cat, var(--accent)); flex-shrink: 0; margin-top: 2px; }
+  .prow .tx { min-width: 0; flex: 1; }
+  .prow .tt {
+    font-size: 12.5px; font-weight: 800; line-height: 1.4; letter-spacing: -.02em; color: var(--ink);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .prow .mt { font-size: 9.5px; color: var(--ink3); margin-top: 3px; font-family: ui-monospace, Menlo, monospace; }
+  .prow .rm {
+    flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink3); border: 1px solid var(--line2);
+  }
+  .prow .rm svg { width: 12px; height: 12px; }
+  .pempty { padding: 30px 10px; text-align: center; color: var(--ink3); font-size: 12px; line-height: 1.7; }
+
+  .searchbox { padding: 12px 14px 8px; display: flex; gap: 8px; flex-shrink: 0; }
+  .sinput {
+    flex: 1; display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-radius: 11px;
+    border: 1px solid var(--line); background: var(--paper-2);
+  }
+  .sinput svg { width: 14px; height: 14px; color: var(--ink3); flex-shrink: 0; }
+  .sinput input {
+    flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--ink);
+    font: inherit; font-size: 12.5px;
+  }
+  .sinput input::placeholder { color: var(--ink3); }
+  .ssel {
+    border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); border-radius: 11px;
+    font-size: 11.5px; font-weight: 700; padding: 0 8px; max-width: 116px;
+  }
+  .sfoot { padding: 8px 14px 14px; font-size: 9.5px; color: var(--ink3); font-family: ui-monospace, Menlo, monospace; flex-shrink: 0; }
+
+  /* ===== responsive ===== */
+  @media (min-width: 760px) {
+    :root { --railw: 62px; }
+    .kbhint { display: inline-flex; }
+    .stage {
+      width: auto; height: calc(100% - 24px); aspect-ratio: 9 / 16;
+      border-radius: 26px; border: 1px solid var(--line);
+      box-shadow: var(--shadow); max-width: 440px; max-height: 848px;
+    }
+    .stagewrap::before {
+      content: ""; position: absolute; inset: 0;
+      background:
+        radial-gradient(60% 54% at 50% 0%, rgba(var(--accent-rgb), .10) 0%, rgba(0, 0, 0, 0) 70%),
+        radial-gradient(46% 40% at 84% 88%, rgba(47, 91, 255, .09) 0%, rgba(0, 0, 0, 0) 72%);
+      pointer-events: none;
+    }
+    .reel-body { padding: 18px 20px 20px; padding-right: calc(var(--railw) + 10px); gap: 10px; }
+    .reel-media { flex: 0 0 47%; }
+    .rail { right: 10px; bottom: 20px; gap: 13px; }
+    .navpair { display: none; }
+    .sidebtn {
+      display: inline-flex; align-items: center; justify-content: center;
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 1px solid var(--line); background: var(--glass); color: var(--ink2);
+      box-shadow: 0 10px 26px -18px rgba(0, 0, 0, .8);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      z-index: 12; transition: transform .2s, color .2s, opacity .2s;
+    }
+    .sidebtn svg { width: 18px; height: 18px; }
+    .sidebtn:hover { color: var(--accent); }
+    .sidebtn:active { transform: translateY(-50%) scale(.92); }
+    .sidebtn[disabled] { opacity: .3; pointer-events: none; }
+    .sidebtn.prev { left: max(16px, calc(50% - 260px)); }
+    .sidebtn.next { right: max(16px, calc(50% - 260px)); }
+    .ttsbar { top: 14px; left: 12px; right: 12px; }
+    .headline { font-size: 26px; }
+    .summary { font-size: 13.5px; -webkit-line-clamp: 3; }
+  }
+  @media (max-height: 700px) {
+    .nextlist { display: none; }
+  }
+  @media (max-height: 620px) {
+    .rellist { display: none; }
+  }
+  @media (max-height: 680px) {
+    .reel-media { flex: 0 0 40%; }
+    .headline { -webkit-line-clamp: 3; }
+    .summary { -webkit-line-clamp: 2; }
+    .rail { gap: 7px; bottom: 10px; }
+    .ricon { width: 36px; height: 36px; }
+    .rbtn .rlab { font-size: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001s !important; transition-duration: .001s !important; }
+    .reel.is-on .photo.ok { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="index.html" title="Lemon soft 허브로">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3.5" width="12" height="17" rx="3"></rect><path d="M10.6 9.2v6.2l5-3.1z" fill="currentColor" stroke="none"></path></svg>
+      </span>
+      <span class="brand-txt">
+        <span class="brand-name">Lemon Shorts <span class="brand-tag">SHORTS</span></span>
+        <span class="brand-sub">한 장씩 넘기는 숏폼 뉴스</span>
+      </span>
+    </a>
+    <div class="top-actions">
+      <span class="kbhint" aria-hidden="true"><i>↑</i><i>↓</i><span>이동</span><i>Space</i><span>다음</span></span>
+      <button class="tbtn" id="btnRefresh" title="실시간 RSS 새로고침" aria-label="실시간 뉴스 새로고침">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"></path><path d="M20.6 4v5.2h-5.2"></path></svg>
+      </button>
+      <button class="tbtn" id="btnSearch" title="뉴스 검색" aria-label="뉴스 검색">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+      </button>
+      <button class="tbtn" id="btnSaved" title="저장함" aria-label="저장함 열기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2L5.5 20.5v-16a1 1 0 0 1 1-1z"></path></svg>
+        <span class="bdg" id="saveBadge">0</span>
+      </button>
+      <button class="tbtn" id="btnTheme" title="라이트·다크 전환" aria-label="테마 전환">
+        <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+        <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.4"></circle><path d="M12 2.2v2M12 19.8v2M4.4 4.4l1.4 1.4M18.2 18.2l1.4 1.4M2.2 12h2M19.8 12h2M4.4 19.6l1.4-1.4M18.2 5.8l1.4-1.4"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <nav class="chipsrow" id="chips" aria-label="카테고리 필터"></nav>
+
+  <div class="prog" aria-hidden="true"><i id="progFill"></i></div>
+
+  <main class="stagewrap">
+    <button class="sidebtn prev" id="sidePrev" aria-label="이전 기사">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 6-6 6 6"></path></svg>
+    </button>
+    <div class="stage" id="stage">
+      <div class="feed" id="feed" tabindex="0" aria-label="숏폼 뉴스 피드"></div>
+      <div class="grain" aria-hidden="true"></div>
+
+      <div class="ttsbar" id="ttsbar">
+        <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="ttstxt" id="ttsTitle">브리핑 준비 중</span>
+        <button class="ttsauto" id="btnAuto" aria-pressed="false">자동 넘김</button>
+        <button class="ttsx" id="btnTtsStop" aria-label="브리핑 중지">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg>
+        </button>
+      </div>
+
+      <div class="navpair">
+        <button class="navbtn" id="jumpPrev" aria-label="이전 기사">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 6-6 6 6"></path></svg>
+        </button>
+        <button class="navbtn" id="jumpNext" aria-label="다음 기사">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 10-6 6-6-6"></path></svg>
+        </button>
+      </div>
+
+      <div class="rail" id="rail">
+        <button class="rbtn" id="rLike" aria-pressed="false" aria-label="좋아요">
+          <span class="ricon">
+            <span class="burst" aria-hidden="true"><i style="--dx:-15px;--dy:-11px"></i><i style="--dx:15px;--dy:-13px"></i><i style="--dx:-17px;--dy:9px"></i><i style="--dx:13px;--dy:15px"></i><i style="--dx:0;--dy:-19px"></i></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.3 4.9 13.4a4.7 4.7 0 0 1 0-6.7 4.8 4.8 0 0 1 6.8 0l.3.3.3-.3a4.8 4.8 0 0 1 6.8 0 4.7 4.7 0 0 1 0 6.7z"></path></svg>
+          </span>
+          <span class="rlab" id="likeN">0</span>
+        </button>
+        <button class="rbtn" id="rSave" aria-pressed="false" aria-label="스크랩 저장">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2L5.5 20.5v-16a1 1 0 0 1 1-1z"></path></svg>
+          </span>
+          <span class="rlab" id="saveN">0</span>
+        </button>
+        <button class="rbtn" id="rTts" aria-pressed="false" aria-label="음성 브리핑">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"></path><path d="M15.5 9.2a4 4 0 0 1 0 5.6"></path><path d="M18.2 6.6a7.5 7.5 0 0 1 0 10.8"></path></svg>
+          </span>
+          <span class="rlab">브리핑</span>
+        </button>
+        <button class="rbtn" id="rShare" aria-label="기사 공유">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v10"></path><path d="m8.2 7.3 3.8-3.8 3.8 3.8"></path><path d="M5 13.5v5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-5"></path></svg>
+          </span>
+          <span class="rlab">공유</span>
+        </button>
+        <button class="rbtn" id="rOpen" aria-label="원문 열기">
+          <span class="ricon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.5h5.5V10"></path><path d="M19.2 4.8 11 13"></path><path d="M18 15v3.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H9"></path></svg>
+          </span>
+          <span class="rlab">원문</span>
+        </button>
+      </div>
+    </div>
+    <button class="sidebtn next" id="sideNext" aria-label="다음 기사">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 10 6 6 6-6"></path></svg>
+    </button>
+  </main>
+</div>
+
+<!-- 저장함 -->
+<div class="ovl" id="ovlSaved" role="dialog" aria-modal="true" aria-label="저장함">
+  <div class="sht">
+    <div class="phead">
+      <h2>저장함</h2>
+      <span class="cnt" id="savedCnt">0건</span>
+      <button class="x" id="closeSaved" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg></button>
+    </div>
+    <div class="ptabs" role="tablist">
+      <button class="ptab on" data-ptab="save" role="tab" aria-selected="true">스크랩</button>
+      <button class="ptab" data-ptab="like" role="tab" aria-selected="false">좋아요</button>
+      <button class="ptab" data-ptab="clear" style="margin-left:auto;color:var(--ink3)">비우기</button>
+    </div>
+    <div class="plist" id="savedList"></div>
+  </div>
+</div>
+
+<!-- 검색 -->
+<div class="ovl" id="ovlSearch" role="dialog" aria-modal="true" aria-label="뉴스 검색">
+  <div class="sht">
+    <div class="phead">
+      <h2>뉴스 검색</h2>
+      <button class="x" id="closeSearch" aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg></button>
+    </div>
+    <div class="searchbox">
+      <label class="sinput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+        <input id="q" type="search" placeholder="키워드·헤드라인 검색" autocomplete="off" aria-label="검색어">
+      </label>
+      <select class="ssel" id="pubSel" aria-label="언론사 필터"><option value="all">모든 언론사</option></select>
+    </div>
+    <div class="plist" id="searchList"></div>
+    <div class="sfoot" id="searchFoot">결과를 고르면 그 기사로 바로 이동합니다.</div>
+  </div>
+</div>
+
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var doc = document;
+  var feed = doc.getElementById('feed');
+  var chipsEl = doc.getElementById('chips');
+  var progFill = doc.getElementById('progFill');
+
+  var KEY_LIKE = 'cream_shorts_likes_v1';
+  var KEY_SAVE = 'cream_shorts_saved_v1';
+  var KEY_AUTO = 'cream_shorts_auto_v1';
+
+  var store = (window.Lemon && window.Lemon.store) ? window.Lemon.store : {
+    get: function (k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  };
+  function toast(msg, type) {
+    if (window.Lemon && Lemon.toast) { Lemon.toast(msg, type || 'info'); return; }
+    console.log('[toast]', msg);
+  }
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ---------------- state ---------------- */
+  var ALL = [];
+  var VIEW = [];
+  var idx = 0;
+  var cat = 'all';
+  var likes = {};
+  var saved = [];
+  var autoNext = false;
+  var speakToken = 0;
+  var lockUntil = 0;
+  var wheelAcc = 0;
+  var updatedAt = '';
+
+  (function loadState() {
+    var l = store.get(KEY_LIKE, {});
+    if (l && typeof l === 'object') likes = l;
+    var s = store.get(KEY_SAVE, []);
+    if (Array.isArray(s)) saved = s;
+    autoNext = store.get(KEY_AUTO, false) === true;
+  })();
+
+  function persistLikes() { store.set(KEY_LIKE, likes); }
+  function persistSaved() { store.set(KEY_SAVE, saved); }
+
+  var CATS = [
+    { k: 'all', n: '전체' },
+    { k: 'headlines', n: '주요' },
+    { k: 'politics', n: '정치·사회' },
+    { k: 'economy', n: '경제·금융' },
+    { k: 'tech', n: 'IT·AI·과학' },
+    { k: 'world', n: '세계' },
+    { k: 'sports', n: '스포츠' },
+    { k: 'entertainment', n: '연예·문화' }
+  ];
+  var CAT_COLOR = {
+    headlines: '#FF3B5C', politics: '#2F5BFF', economy: '#0E9C74', tech: '#7C4DFF',
+    world: '#0E7FA8', sports: '#FF7A29', entertainment: '#E0399B'
+  };
+  var ICONS = {
+    headlines: '<path d="M13.4 2.5 4.6 14.2h5.6l-1 7.3 9-12h-5.7z"></path>',
+    politics: '<path d="M3 21h18M5.5 21V10M10 21V10M14 21V10M18.5 21V10M2.6 10h18.8L12 3.4z"></path>',
+    economy: '<path d="M4 20.5V12M9.3 20.5V6.5M14.7 20.5v-5.5M20 20.5V3.5"></path><path d="M2.5 20.5h19"></path>',
+    tech: '<rect x="7.5" y="7.5" width="9" height="9" rx="2"></rect><path d="M10.5 3.5v4M13.5 3.5v4M10.5 16.5v4M13.5 16.5v4M3.5 10.5h4M3.5 13.5h4M16.5 10.5h4M16.5 13.5h4"></path>',
+    world: '<circle cx="12" cy="12" r="8.6"></circle><path d="M3.5 12h17M12 3.4c2.4 2.4 3.6 5.4 3.6 8.6S14.4 18.2 12 20.6C9.6 18.2 8.4 15.2 8.4 12S9.6 5.8 12 3.4z"></path>',
+    sports: '<path d="M7.5 4h9v4.4a4.5 4.5 0 0 1-9 0z"></path><path d="M7.5 5.2H4.6v1.6A3.2 3.2 0 0 0 7.8 10M16.5 5.2h2.9v1.6A3.2 3.2 0 0 1 16.2 10"></path><path d="M12 12.9V16M8.6 20h6.8M10 20l.7-4M14 20l-.7-4"></path>',
+    entertainment: '<rect x="3.4" y="5.4" width="17.2" height="13.2" rx="2.4"></rect><path d="M8.2 5.4v13.2M15.8 5.4v13.2M3.4 9.6h4.8M3.4 14.4h4.8M15.8 9.6h4.8M15.8 14.4h4.8"></path>'
+  };
+
+  /* ---------------- data load ---------------- */
+  var FALLBACK = [
+    { id: 'fb-1', category: 'headlines', categoryName: '주요 헤드라인', title: '뉴스 데이터를 불러오지 못했습니다', publisher: 'Lemon Shorts', time: '방금 전', summary: 'news-data.json을 읽을 수 없어 임시 화면을 보여주고 있습니다. 새로고침 버튼을 누르면 실시간 RSS로 다시 시도합니다.', link: 'news.html', isBreaking: true, relatedMedia: [] },
+    { id: 'fb-2', category: 'tech', categoryName: 'IT·AI·과학', title: '허브의 뉴스 서비스로 이동', publisher: 'Lemon soft', time: '안내', summary: '전체 기사 피드는 FLUX News에서도 볼 수 있습니다. 이 페이지는 한 장씩 넘기는 숏폼 보기 전용입니다.', link: 'news.html', relatedMedia: [] }
+  ];
+
+  function loadData() {
+    return fetch('news-data.json?t=' + Date.now())
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        var list = (d && Array.isArray(d.articles)) ? d.articles : [];
+        if (!list.length) throw new Error('empty');
+        ALL = list.filter(function (a) { return a && a.title; });
+        updatedAt = d.updatedAtDisplay || '';
+        return true;
+      })
+      .catch(function (e) {
+        console.warn('[shorts] news-data.json load failed:', e && e.message);
+        ALL = FALLBACK.slice();
+        return false;
+      });
+  }
+
+  /* ---------------- render ---------------- */
+  function reelHTML(a, i, total) {
+    var c = a.category || 'headlines';
+    var num = String(i + 1).padStart(2, '0');
+    var hasPhoto = !!a.image;
+    var icon = ICONS[c] || ICONS.headlines;
+    var kicker = a.isBreaking
+      ? '<span class="kicker"><span class="dash"></span>속보<span class="live">LIVE</span></span>'
+      : '<span class="kicker"><span class="dash"></span>' + esc(a.categoryName || '') + '</span>';
+    var rel = a.subCategory ? a.subCategory : '';
+    return '<article class="reel' + (hasPhoto ? ' has-photo' : '') + '" data-cat="' + esc(c) + '" data-id="' + esc(a.id || ('i' + i)) + '" data-i="' + i + '">' +
+      '<span class="catbar" aria-hidden="true"></span>' +
+      '<div class="reel-media">' +
+        '<div class="pattern" aria-hidden="true"></div>' +
+        (hasPhoto ? '<img class="photo" src="' + esc(a.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : '') +
+        '<div class="veil" aria-hidden="true"></div>' +
+        '<svg class="catglyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icon + '</svg>' +
+        '<div class="media-foot">' +
+          '<span class="src"><b>' + esc(a.publisher || '뉴스') + '</b></span>' +
+          '<span class="when">' + esc(a.time || '') + '</span>' +
+          '<span class="pos"><b>' + num + '</b><i>/</i>' + total + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="reel-body">' +
+        kicker +
+        '<h2 class="headline">' + esc(a.title) + '</h2>' +
+        '<p class="summary">' + esc(a.summary || '') + '</p>' +
+        moreBlock(a, i) +
+        '<div class="reel-foot">' +
+          '<a class="srclink" href="' + esc(a.link || '#') + '" target="_blank" rel="noopener">원문 보기<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 16 16 8M9.5 8H16v6.5"></path></svg></a>' +
+          '<span class="rel">' + rel + '</span>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }
+
+  function moreBlock(a, i) {
+    var rel = a.relatedMedia || [];
+    var parts = '';
+    if (rel.length) {
+      var rows = rel.slice(0, 3).map(function (r) {
+        return '<a href="' + esc(r.link || '#') + '" target="_blank" rel="noopener">' +
+          '<span class="rp">' + esc(r.pub || '') + '</span>' +
+          '<span class="rt">' + esc(r.title || '') + '</span></a>';
+      }).join('');
+      parts += '<div class="rellist"><div class="rh">관련 보도 <i>' + rel.length + '</i></div>' + rows + '</div>';
+    }
+    var nx = [];
+    for (var k = 1; k <= 2 && (i + k) < VIEW.length; k++) nx.push({ a: VIEW[i + k], i: i + k });
+    if (nx.length) {
+      parts += '<div class="nextlist"><div class="rh">다음 기사 <i>DOWN</i></div>' + nx.map(function (o) {
+        return '<button type="button" data-jump="' + o.i + '">' +
+          '<span class="nc">' + esc(o.a.categoryName || '') + '</span>' +
+          '<span class="nt">' + esc(o.a.title) + '</span></button>';
+      }).join('') + '</div>';
+    }
+    return parts ? '<div class="more">' + parts + '</div>' : '';
+  }
+
+  function buildChips() {
+    var counts = {};
+    ALL.forEach(function (a) { counts[a.category] = (counts[a.category] || 0) + 1; });
+    chipsEl.innerHTML = CATS.map(function (c) {
+      var n = c.k === 'all' ? ALL.length : (counts[c.k] || 0);
+      var col = c.k === 'all' ? 'var(--accent)' : (CAT_COLOR[c.k] || 'var(--accent)');
+      return '<button class="cat' + (c.k === cat ? ' on' : '') + '" data-cat="' + c.k + '" style="--catc:' + col + '" aria-pressed="' + (c.k === cat) + '">' +
+        '<i></i>' + esc(c.n) + '<span class="num">' + n + '</span></button>';
+    }).join('');
+  }
+
+  function render(keep) {
+    VIEW = cat === 'all' ? ALL.slice() : ALL.filter(function (a) { return a.category === cat; });
+    if (!VIEW.length) {
+      feed.innerHTML = '<div class="empty">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M7.5 9.5h9M7.5 13h6.5M7.5 16.5h4"></path></svg>' +
+        '<h3>이 카테고리에 기사가 없습니다</h3>' +
+        '<p>실시간 새로고침을 누르거나 전체 피드로 돌아가 보세요.</p>' +
+        '<button type="button" id="btnAll">전체 피드 보기</button></div>';
+      var b = doc.getElementById('btnAll');
+      if (b) b.addEventListener('click', function () { setCat('all'); });
+      progFill.style.width = '0%';
+      updateCounter();
+      setRailState(null);
+      return;
+    }
+    feed.innerHTML = VIEW.map(function (a, i) { return reelHTML(a, i, VIEW.length); }).join('');
+    feed.scrollTop = 0;
+    idx = keep && keep < VIEW.length ? keep : 0;
+    if (idx) feed.scrollTop = idx * feed.clientHeight;
+    markActive(true);
+  }
+
+  function setCat(k) {
+    cat = k;
+    Array.prototype.forEach.call(chipsEl.children, function (ch) {
+      var on = ch.getAttribute('data-cat') === k;
+      ch.classList.toggle('on', on);
+      ch.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    render(0);
+  }
+
+  /* ---------------- active tracking ---------------- */
+  var activeEl = null;
+  function markActive(force) {
+    var h = feed.clientHeight || 1;
+    var i = Math.round(feed.scrollTop / h);
+    i = Math.max(0, Math.min(VIEW.length - 1, i));
+    if (!force && i === idx) return;
+    idx = i;
+    var cards = feed.children;
+    if (activeEl) activeEl.classList.remove('is-on');
+    activeEl = cards[i] || null;
+    if (activeEl) activeEl.classList.add('is-on');
+    fitMore(activeEl);
+    updateCounter();
+    setRailState(VIEW[i] || null);
+    var dv = doc.getElementById('sidePrev'), dn = doc.getElementById('sideNext');
+    var jp = doc.getElementById('jumpPrev'), jn = doc.getElementById('jumpNext');
+    if (dv) dv.disabled = i <= 0;
+    if (dn) dn.disabled = i >= VIEW.length - 1;
+    if (jp) jp.disabled = i <= 0;
+    if (jn) jn.disabled = i >= VIEW.length - 1;
+  }
+
+  /* 카드 높이에 맞춰 '관련 보도·다음 기사' 줄을 잘라 낸다 (넘칠 때만) */
+  function fitMore(card) {
+    if (!card) return;
+    var more = card.querySelector('.more');
+    if (!more) return;
+    var nl = more.querySelector('.nextlist');
+    var rl = more.querySelector('.rellist');
+    var nBtns = nl ? Array.prototype.slice.call(nl.querySelectorAll('button')) : [];
+    var rLinks = rl ? Array.prototype.slice.call(rl.querySelectorAll('a')) : [];
+    nBtns.forEach(function (b) { b.style.display = ''; });
+    rLinks.forEach(function (a) { a.style.display = ''; });
+    if (nl) nl.style.display = '';
+    if (rl) rl.style.display = '';
+    var over = function () { return more.scrollHeight > more.clientHeight + 1; };
+    var guard = 0;
+    while (over() && nBtns.length && guard++ < 8) {
+      nBtns.pop().style.display = 'none';
+      if (!nBtns.some(function (b) { return b.style.display !== 'none'; })) { nl.style.display = 'none'; }
+    }
+    guard = 0;
+    while (over() && rLinks.length && guard++ < 8) {
+      rLinks.pop().style.display = 'none';
+      if (!rLinks.some(function (a) { return a.style.display !== 'none'; })) { rl.style.display = 'none'; }
+    }
+  }
+
+  function updateCounter() {
+    var total = VIEW.length || 0;
+    var pct = total ? ((idx + 1) / total) * 100 : 0;
+    progFill.style.width = Math.max(total ? 1 : 0, pct).toFixed(2) + '%';
+    var p = activeEl ? activeEl.querySelector('.pos b') : null;
+    if (p) { p.textContent = String(idx + 1).padStart(2, '0'); }
+  }
+
+  function hashN(s) {
+    var h = 0, i;
+    s = String(s || '');
+    for (i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    return Math.abs(h);
+  }
+  function likeCount(a) {
+    if (!a) return 0;
+    return 128 + (hashN(a.id || a.title) % 860) + (likes[a.id] ? 1 : 0);
+  }
+
+  /* ---------------- rail ---------------- */
+  var rLike = doc.getElementById('rLike');
+  var rSave = doc.getElementById('rSave');
+  var rTts = doc.getElementById('rTts');
+  var rShare = doc.getElementById('rShare');
+  var rOpen = doc.getElementById('rOpen');
+
+  function setRailState(a) {
+    if (!a) {
+      rLike.disabled = true; rSave.disabled = true;
+      return;
+    }
+    rLike.disabled = false; rSave.disabled = false;
+    var liked = !!likes[a.id];
+    rLike.classList.toggle('on', liked);
+    rLike.setAttribute('aria-pressed', liked ? 'true' : 'false');
+    doc.getElementById('likeN').textContent = String(likeCount(a));
+    var isSaved = saved.some(function (s) { return s.id === a.id; });
+    rSave.classList.toggle('on', isSaved);
+    rSave.setAttribute('aria-pressed', isSaved ? 'true' : 'false');
+    doc.getElementById('saveN').textContent = saved.length ? String(saved.length) : '저장';
+    rTts.classList.toggle('on', speaking && speaking.id === a.id);
+    var sb = doc.getElementById('saveBadge');
+    if (saved.length) { sb.classList.add('on'); sb.textContent = saved.length > 99 ? '99+' : String(saved.length); }
+    else sb.classList.remove('on');
+    if (speaking && speaking.id !== a.id) stopSpeech(true);
+  }
+
+  function pop(el) {
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
+    setTimeout(function () { el.classList.remove('pop'); }, 640);
+  }
+
+  rLike.addEventListener('click', function () {
+    var a = VIEW[idx]; if (!a) return;
+    if (likes[a.id]) { delete likes[a.id]; } else { likes[a.id] = Date.now(); pop(rLike); }
+    persistLikes();
+    rLike.classList.toggle('on', !!likes[a.id]);
+    rLike.setAttribute('aria-pressed', likes[a.id] ? 'true' : 'false');
+    doc.getElementById('likeN').textContent = String(likeCount(a));
+  });
+
+  rSave.addEventListener('click', function () {
+    var a = VIEW[idx]; if (!a) return;
+    var i = -1;
+    saved.forEach(function (s, k) { if (s.id === a.id) i = k; });
+    if (i >= 0) { saved.splice(i, 1); toast('저장함에서 뺐습니다', 'info'); }
+    else {
+      saved.unshift({
+        id: a.id, title: a.title, publisher: a.publisher, link: a.link,
+        category: a.category, categoryName: a.categoryName, time: a.time, savedAt: Date.now()
+      });
+      toast('저장함에 담았습니다', 'ok');
+      pop(rSave);
+    }
+    persistSaved();
+    setRailState(a);
+  });
+
+  rShare.addEventListener('click', function () {
+    var a = VIEW[idx]; if (!a) return;
+    var url = a.link || location.href;
+    if (navigator.share) {
+      navigator.share({ title: a.title, text: a.title, url: url }).catch(function () { });
+      return;
+    }
+    if (window.Lemon && Lemon.copy) { Lemon.copy(url, '기사 링크를 복사했습니다'); return; }
+    try { navigator.clipboard.writeText(url); toast('기사 링크를 복사했습니다', 'ok'); } catch (e) { toast('복사에 실패했습니다', 'err'); }
+  });
+
+  rOpen.addEventListener('click', function () {
+    var a = VIEW[idx]; if (!a) return;
+    window.open(a.link || 'news.html', '_blank', 'noopener');
+  });
+
+  /* ---------------- TTS ---------------- */
+  var speaking = null;
+  var ttsBar = doc.getElementById('ttsbar');
+  var ttsTitle = doc.getElementById('ttsTitle');
+  var btnAuto = doc.getElementById('btnAuto');
+  var synth = window.speechSynthesis || null;
+  var KO_VOICE = null;
+
+  function pickVoice() {
+    if (!synth) return null;
+    var vs = synth.getVoices() || [];
+    for (var i = 0; i < vs.length; i++) { if (/^ko/i.test(vs[i].lang)) return vs[i]; }
+    return null;
+  }
+  if (synth) {
+    KO_VOICE = pickVoice();
+    if (synth.addEventListener) synth.addEventListener('voiceschanged', function () { KO_VOICE = pickVoice(); });
+  }
+
+  function setAuto(v) {
+    autoNext = !!v;
+    store.set(KEY_AUTO, autoNext);
+    btnAuto.classList.toggle('on', autoNext);
+    btnAuto.setAttribute('aria-pressed', autoNext ? 'true' : 'false');
+    toast(autoNext ? '브리핑이 끝나면 다음 기사로 넘어갑니다' : '자동 넘김을 껐습니다', 'info');
+  }
+
+  function stopSpeech(silent) {
+    speakToken++;
+    speaking = null;
+    if (synth) { try { synth.cancel(); } catch (e) { } }
+    ttsBar.classList.remove('on');
+    rTts.classList.remove('on', 'ttson');
+    rTts.setAttribute('aria-pressed', 'false');
+    if (!silent) toast('브리핑을 멈췄습니다', 'info');
+  }
+
+  function speakAt(i) {
+    var a = VIEW[i];
+    if (!a) { stopSpeech(true); return; }
+    var token = ++speakToken;
+    if (synth) { try { synth.cancel(); } catch (e) { } }
+    speaking = a;
+    ttsBar.classList.add('on');
+    rTts.classList.add('on', 'ttson');
+    rTts.setAttribute('aria-pressed', 'true');
+    ttsTitle.textContent = (a.publisher ? a.publisher + ' · ' : '') + a.title;
+
+    var text = a.title + '. ' + (a.summary || '');
+    if (!synth || typeof SpeechSynthesisUtterance === 'undefined') {
+      toast('이 브라우저는 음성 낭독을 지원하지 않습니다', 'err');
+      stopSpeech(true);
+      return;
+    }
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ko-KR';
+    if (KO_VOICE) { try { u.voice = KO_VOICE; } catch (e) { } }
+    u.rate = 1.03;
+    u.pitch = 1;
+    u.onend = function () {
+      if (token !== speakToken) return;
+      if (autoNext && idx < VIEW.length - 1) {
+        var keep = token;
+        speaking = null;   /* 카드가 바뀌어도 낭독을 끊지 않도록 잠시 비운다 */
+        go(1);
+        setTimeout(function () { if (keep === speakToken) speakAt(idx); }, 420);
+      } else {
+        stopSpeech(true);
+        rTts.classList.remove('on', 'ttson');
+      }
+    };
+    u.onerror = function () { if (token === speakToken) stopSpeech(true); };
+    synth.speak(u);
+  }
+
+  rTts.addEventListener('click', function () {
+    if (speaking) { stopSpeech(); return; }
+    speakAt(idx);
+  });
+  btnAuto.addEventListener('click', function () { setAuto(!autoNext); });
+  doc.getElementById('btnTtsStop').addEventListener('click', function () { stopSpeech(); });
+
+  /* ---------------- navigation ---------------- */
+  function go(step) {
+    var next = Math.max(0, Math.min(VIEW.length - 1, idx + step));
+    if (next === idx) return;
+    lockUntil = Date.now() + 420;
+    var h = feed.clientHeight || 1;
+    feed.scrollTo({ top: next * h, behavior: 'smooth' });
+    idx = next;
+    markActive(false);
+  }
+
+  feed.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-jump]') : null;
+    if (!b) return;
+    e.preventDefault();
+    var t = parseInt(b.getAttribute('data-jump'), 10);
+    if (!isNaN(t)) { go(t - idx); }
+  });
+
+  feed.addEventListener('scroll', function () {
+    if (feed._raf) return;
+    feed._raf = requestAnimationFrame(function () { feed._raf = null; markActive(false); });
+  }, { passive: true });
+
+  feed.addEventListener('wheel', function (e) {
+    if (e.ctrlKey) return;
+    e.preventDefault();
+    if (Date.now() < lockUntil) { wheelAcc = 0; return; }
+    wheelAcc += e.deltaY;
+    if (Math.abs(wheelAcc) > 26) {
+      go(wheelAcc > 0 ? 1 : -1);
+      wheelAcc = 0;
+    }
+  }, { passive: false });
+
+  feed.addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (k === 'ArrowDown' || k === 'PageDown' || k === ' ') { e.preventDefault(); go(1); }
+    else if (k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); go(-1); }
+    else if (k === 'Home') { e.preventDefault(); feed.scrollTo({ top: 0, behavior: 'smooth' }); idx = 0; markActive(true); }
+    else if (k === 'End') { e.preventDefault(); var l = VIEW.length - 1; feed.scrollTo({ top: l * feed.clientHeight, behavior: 'smooth' }); idx = l; markActive(true); }
+  });
+
+  doc.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+    if (doc.querySelector('.ovl.on')) { if (e.key === 'Escape') closeAll(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === ' ' || e.key === 'PageDown' || e.key === 'PageUp') {
+      if (t === feed) return;
+      e.preventDefault();
+      go(e.key === 'ArrowUp' || e.key === 'PageUp' ? -1 : 1);
+    }
+  });
+
+  ['jumpPrev', 'sidePrev'].forEach(function (id) {
+    doc.getElementById(id).addEventListener('click', function () { go(-1); });
+  });
+  ['jumpNext', 'sideNext'].forEach(function (id) {
+    doc.getElementById(id).addEventListener('click', function () { go(1); });
+  });
+
+  /* ---------------- chips ---------------- */
+  chipsEl.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.cat') : null;
+    if (!b) return;
+    stopSpeech(true);
+    setCat(b.getAttribute('data-cat'));
+  });
+
+  /* ---------------- saved panel ---------------- */
+  var ovlSaved = doc.getElementById('ovlSaved');
+  var savedList = doc.getElementById('savedList');
+  var ptab = 'save';
+
+  function catVar(c) { return CAT_COLOR[c] || '#FF3B5C'; }
+
+  function renderSaved() {
+    var list = ptab === 'save' ? saved : ALL.filter(function (a) { return likes[a.id]; });
+    doc.getElementById('savedCnt').textContent = list.length + '건';
+    if (!list.length) {
+      savedList.innerHTML = '<div class="pempty">' + (ptab === 'save'
+        ? '아직 스크랩한 기사가 없습니다.<br>카드 오른쪽 저장 버튼으로 모아 두세요.'
+        : '좋아요한 기사가 없습니다.<br>마음에 드는 기사에 하트를 눌러 보세요.') + '</div>';
+      return;
+    }
+    savedList.innerHTML = list.map(function (a, i) {
+      return '<div class="prow" style="--cat:' + catVar(a.category) + '">' +
+        '<span class="dot" aria-hidden="true"></span>' +
+        '<button class="tx" type="button" data-open="' + esc(a.id) + '" style="text-align:left;background:none;border:0;padding:0;color:inherit">' +
+          '<div class="tt">' + esc(a.title) + '</div>' +
+          '<div class="mt">' + esc(a.publisher || '') + ' · ' + esc(a.time || '') + '</div>' +
+        '</button>' +
+        '<button class="rm" type="button" data-rm="' + esc(a.id) + '" aria-label="목록에서 빼기">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"></path></svg>' +
+        '</button></div>';
+    }).join('');
+  }
+
+  savedList.addEventListener('click', function (e) {
+    var rm = e.target.closest ? e.target.closest('[data-rm]') : null;
+    if (rm) {
+      var id = rm.getAttribute('data-rm');
+      if (ptab === 'save') {
+        saved = saved.filter(function (s) { return s.id !== id; });
+        persistSaved();
+        setRailState(VIEW[idx] || null);
+      } else {
+        delete likes[id];
+        persistLikes();
+        setRailState(VIEW[idx] || null);
+      }
+      renderSaved();
+      return;
+    }
+    var op = e.target.closest ? e.target.closest('[data-open]') : null;
+    if (op) { jumpTo(op.getAttribute('data-open')); }
+  });
+
+  Array.prototype.forEach.call(doc.querySelectorAll('.ptab[data-ptab]'), function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-ptab');
+      if (k === 'clear') {
+        if (ptab === 'save') { saved = []; persistSaved(); }
+        else { likes = {}; persistLikes(); }
+        setRailState(VIEW[idx] || null);
+        renderSaved();
+        toast('목록을 비웠습니다', 'info');
+        return;
+      }
+      ptab = k;
+      Array.prototype.forEach.call(doc.querySelectorAll('.ptab[data-ptab]'), function (x) {
+        var on = x.getAttribute('data-ptab') === k;
+        x.classList.toggle('on', on);
+        x.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      renderSaved();
+    });
+  });
+
+  function openSheet(el) { el.classList.add('on'); }
+  function closeAll() { ovlSaved.classList.remove('on'); ovlSearch.classList.remove('on'); }
+  doc.getElementById('btnSaved').addEventListener('click', function () { ptab = 'save'; renderSaved(); openSheet(ovlSaved); });
+  doc.getElementById('closeSaved').addEventListener('click', closeAll);
+  ovlSaved.addEventListener('click', function (e) { if (e.target === ovlSaved) closeAll(); });
+
+  /* ---------------- search ---------------- */
+  var ovlSearch = doc.getElementById('ovlSearch');
+  var qEl = doc.getElementById('q');
+  var pubSel = doc.getElementById('pubSel');
+  var searchList = doc.getElementById('searchList');
+  var searchFoot = doc.getElementById('searchFoot');
+
+  function fillPubs() {
+    var pubs = {};
+    ALL.forEach(function (a) { if (a.publisher) pubs[a.publisher] = 1; });
+    var opts = Object.keys(pubs).sort();
+    pubSel.innerHTML = '<option value="all">모든 언론사</option>' + opts.map(function (p) {
+      return '<option value="' + esc(p) + '">' + esc(p) + '</option>';
+    }).join('');
+  }
+
+  function runSearch() {
+    var q = (qEl.value || '').trim().toLowerCase();
+    var pub = pubSel.value;
+    var res = ALL.filter(function (a) {
+      if (pub !== 'all' && a.publisher !== pub) return false;
+      if (!q) return true;
+      return (a.title || '').toLowerCase().indexOf(q) > -1 ||
+        (a.summary || '').toLowerCase().indexOf(q) > -1 ||
+        (a.categoryName || '').toLowerCase().indexOf(q) > -1;
+    });
+    searchFoot.textContent = res.length + '건 · 결과를 고르면 그 기사로 바로 이동합니다.';
+    var show = res.slice(0, 60);
+    if (!show.length) {
+      searchList.innerHTML = '<div class="pempty">검색 결과가 없습니다.<br>다른 키워드나 언론사로 시도해 보세요.</div>';
+      return;
+    }
+    searchList.innerHTML = show.map(function (a) {
+      return '<div class="prow" style="--cat:' + catVar(a.category) + '">' +
+        '<span class="dot" aria-hidden="true"></span>' +
+        '<button class="tx" type="button" data-open="' + esc(a.id) + '" style="text-align:left;background:none;border:0;padding:0;color:inherit">' +
+          '<div class="tt">' + esc(a.title) + '</div>' +
+          '<div class="mt">' + esc(a.publisher || '') + ' · ' + esc(a.categoryName || '') + ' · ' + esc(a.time || '') + '</div>' +
+        '</button></div>';
+    }).join('');
+  }
+
+  searchList.addEventListener('click', function (e) {
+    var op = e.target.closest ? e.target.closest('[data-open]') : null;
+    if (op) jumpTo(op.getAttribute('data-open'));
+  });
+  qEl.addEventListener('input', runSearch);
+  pubSel.addEventListener('change', runSearch);
+  doc.getElementById('btnSearch').addEventListener('click', function () {
+    if (pubSel.options.length <= 1) fillPubs();
+    runSearch();
+    openSheet(ovlSearch);
+    setTimeout(function () { qEl.focus(); }, 60);
+  });
+  doc.getElementById('closeSearch').addEventListener('click', closeAll);
+  ovlSearch.addEventListener('click', function (e) { if (e.target === ovlSearch) closeAll(); });
+
+  function jumpTo(id) {
+    closeAll();
+    var i = -1;
+    VIEW.forEach(function (a, k) { if (a.id === id) i = k; });
+    if (i < 0) {
+      // 다른 카테고리에 있는 기사 → 전체로 전환 후 이동
+      var j = -1;
+      ALL.forEach(function (a, k) { if (a.id === id) j = k; });
+      if (j < 0) { toast('기사를 찾을 수 없습니다', 'err'); return; }
+      setCat('all');
+      i = j;
+    }
+    idx = i;
+    feed.scrollTo({ top: i * feed.clientHeight, behavior: 'smooth' });
+    markActive(true);
+  }
+
+  /* ---------------- live refresh ---------------- */
+  var PROXIES = [
+    function (u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+    function (u) { return 'https://proxy.cors.dev/' + u; },
+    function (u) { return 'https://corsproxy.io/?' + encodeURIComponent(u); }
+  ];
+  var LIVE_FEEDS = [
+    { url: 'https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=01&plink=RSSREADER', pub: 'SBS', cat: 'headlines', name: '주요 헤드라인' },
+    { url: 'https://rss.donga.com/total.xml', pub: '동아일보', cat: 'headlines', name: '주요 헤드라인' },
+    { url: 'https://www.hankyung.com/feed/all-news', pub: '한국경제', cat: 'economy', name: '경제·금융' }
+  ];
+
+  function fetchXml(url) {
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { ctrl.abort(); }, 7000);
+    return fetch(url, { credentials: 'omit', signal: ctrl.signal, cache: 'no-store' })
+      .then(function (r) { clearTimeout(t); if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .catch(function (e) { clearTimeout(t); throw e; });
+  }
+
+  function parseFeed(text, meta) {
+    var xml = new DOMParser().parseFromString(text, 'application/xml');
+    if (xml.querySelector('parsererror')) return [];
+    var items = [].slice.call(xml.querySelectorAll('item')).slice(0, 8);
+    return items.map(function (it) {
+      var get = function (s) { var n = it.querySelector(s); return n ? (n.textContent || '').trim() : ''; };
+      var title = get('title');
+      var link = get('link');
+      var desc = get('description').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      var pd = get('pubDate');
+      var img = '';
+      var enc = it.querySelector('enclosure');
+      if (enc) img = enc.getAttribute('url') || '';
+      if (!img) {
+        var m = (it.querySelector('description') || { textContent: '' }).textContent.match(/src=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp))/i);
+        if (m) img = m[1];
+      }
+      if (!title || !link) return null;
+      return {
+        id: 'live-' + hashN(link),
+        category: meta.cat,
+        categoryName: meta.name,
+        subCategory: '실시간',
+        title: title,
+        publisher: meta.pub,
+        time: '방금 전',
+        pubDate: pd,
+        image: img,
+        caption: '',
+        isBreaking: true,
+        summary: desc.slice(0, 220) || title,
+        body: [desc],
+        link: link,
+        relatedMedia: []
+      };
+    }).filter(Boolean);
+  }
+
+  var btnRefresh = doc.getElementById('btnRefresh');
+  var refreshing = false;
+  btnRefresh.addEventListener('click', function () {
+    if (refreshing) return;
+    refreshing = true;
+    btnRefresh.classList.add('spinning');
+    toast('실시간 RSS를 확인하는 중입니다', 'info');
+    var found = [];
+    var chain = Promise.resolve();
+    LIVE_FEEDS.forEach(function (fd) {
+      chain = chain.then(function () {
+        var tries = PROXIES.map(function (p) { return function () { return fetchXml(p(fd.url)); }; });
+        var run = function (n) {
+          if (n >= tries.length) return Promise.resolve();
+          return tries[n]().then(function (text) {
+            found = found.concat(parseFeed(text, fd));
+          }).catch(function () { return run(n + 1); });
+        };
+        return run(0);
+      });
+    });
+    chain.then(function () {
+      var seen = {};
+      ALL.forEach(function (a) { seen[a.title] = 1; });
+      var fresh = found.filter(function (a) { if (seen[a.title]) return false; seen[a.title] = 1; return true; });
+      if (fresh.length) {
+        ALL = fresh.concat(ALL);
+        buildChips();
+        render(0);
+        toast('새 기사 ' + fresh.length + '건을 받았습니다', 'ok');
+      } else {
+        toast(found.length ? '이미 반영된 기사입니다' : '실시간 연결이 지연되고 있습니다. 잠시 후 다시 시도하세요', 'err');
+      }
+    }).catch(function () {
+      toast('실시간 새로고침에 실패했습니다', 'err');
+    }).then(function () {
+      refreshing = false;
+      btnRefresh.classList.remove('spinning');
+    });
+  });
+
+  /* ---------------- theme ---------------- */
+  doc.getElementById('btnTheme').addEventListener('click', function () {
+    var dark = !doc.documentElement.classList.contains('dark');
+    if (window.Lemon && Lemon.setTheme) { Lemon.setTheme(dark ? 'dark' : 'light'); }
+    else {
+      doc.documentElement.classList.toggle('dark', dark);
+      try { localStorage.setItem('cream_theme', dark ? 'dark' : 'light'); } catch (e) { }
+    }
+    var meta = doc.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', dark ? '#08080b' : '#FF3B5C');
+  });
+
+  /* ---------------- image fallback ---------------- */
+  feed.addEventListener('error', function (e) {
+    var t = e.target;
+    if (!t || t.tagName !== 'IMG') return;
+    var reel = t.closest ? t.closest('.reel') : null;
+    t.remove();
+    if (reel) { reel.classList.remove('has-photo'); var v = reel.querySelector('.catglyph'); if (v) v.style.opacity = ''; }
+  }, true);
+  feed.addEventListener('load', function (e) {
+    var t = e.target;
+    if (t && t.tagName === 'IMG') t.classList.add('ok');
+  }, true);
+
+  /* ---------------- layout ---------------- */
+  var rzT = 0;
+  window.addEventListener('resize', function () {
+    clearTimeout(rzT);
+    rzT = setTimeout(function () {
+      var pos = idx;
+      var h = feed.clientHeight || 1;
+      feed.scrollTop = pos * h;
+      markActive(true);
+    }, 160);
+  });
+
+  /* ---------------- boot ---------------- */
+  loadData().then(function (ok) {
+    if (!ok) toast('내장 데이터로 표시 중입니다', 'info');
+    buildChips();
+    render(0);
+    if (autoNext) { btnAuto.classList.add('on'); btnAuto.setAttribute('aria-pressed', 'true'); }
+    if (updatedAt) {
+      var sub = doc.querySelector('.brand-sub');
+      if (sub) sub.textContent = '숏폼 뉴스 · ' + updatedAt;
+    }
+    setTimeout(function () { feed.focus({ preventScroll: true }); }, 300);
+  });
+})();
+</script>
+</body>
+</html>
