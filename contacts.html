@@ -1,0 +1,3752 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Flux Contacts — 초성 인덱스·중복 병합·QR 명함 연락처</title>
+<meta name="description" content="Flux Contacts는 Google 주소록처럼 쓰는 스마트 연락처입니다. 한글 초성과 알파벳 인덱스, 실시간 통합 검색, 라벨과 즐겨찾기, 중복 연락처 자동 탐지와 1클릭 병합, vCard QR 디지털 명함과 공유 링크, vCard(.vcf)·CSV·JSON 가져오기와 내보내기, 휴지통 복원까지 로그인 없이 이 브라우저에만 저장합니다.">
+<meta name="theme-color" content="#eef3f2">
+<meta property="og:title" content="Flux Contacts — 흩어진 연락처를 한곳에">
+<meta property="og:description" content="초성 인덱스와 실시간 검색, 중복 연락처 원클릭 병합, QR 디지털 명함, vCard·CSV·JSON 백업. 서버 없이 내 브라우저에만 저장되는 Flux Contacts.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230f7b6c'/%3E%3Ccircle cx='16' cy='12.4' r='4.4' fill='none' stroke='%23fff' stroke-width='2.1'/%3E%3Cpath d='M7.6 25.2c1.2-4.4 4.5-6.6 8.4-6.6s7.2 2.2 8.4 6.6' fill='none' stroke='%23fff' stroke-width='2.1' stroke-linecap='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem('cream_theme');
+    document.documentElement.classList.toggle('dark', t ? t === 'dark' : false);
+  } catch (e) { }
+  try {
+    var m = localStorage.getItem('lemon_anim_mode') || 'full';
+    if (m !== 'full' && m !== 'reduced' && m !== 'off') m = 'full';
+    document.documentElement.setAttribute('data-anim', m);
+  } catch (e) { document.documentElement.setAttribute('data-anim', 'full'); }
+  if (location.search.indexOf('debug') > -1) {
+    window.__contactsErrs = [];
+    addEventListener('error', function (e) { window.__contactsErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__contactsErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<link rel="stylesheet" href="anim-mode.css">
+<style>
+/* ============================================================
+   Flux Contacts · smart address book
+   brand: jade teal (#0f7b6c) — mist paper / deep forest dark
+   ============================================================ */
+:root {
+  --brand: #0f7b6c;
+  --brand-2: #43b7a4;
+  --brand-deep: #0a5a4f;
+  --brand-rgb: 15, 123, 108;
+
+  --bg: #eef3f2;
+  --bg-2: #e6eeec;
+  --card: #ffffff;
+  --card-2: #f7faf9;
+  --rail: #f4f8f7;
+  --ink: #15201e;
+  --ink-2: #47534f;
+  --ink-3: #87938f;
+  --line: rgba(21, 32, 30, .12);
+  --line-2: rgba(21, 32, 30, .06);
+  --chip: rgba(21, 32, 30, .045);
+  --glass: rgba(255, 255, 255, .84);
+  --shadow: 0 20px 46px -34px rgba(10, 40, 36, .42);
+  --shadow-hi: 0 30px 64px -28px rgba(10, 40, 36, .34);
+  --star: #dfa10c;
+  --ok: #2f7d5b;
+  --warn: #b2601f;
+  --danger: #bf4040;
+  --r: 15px;
+  --rail-w: 254px;
+  --detail-w: 394px;
+  --top-h: 58px;
+  --ease: cubic-bezier(.22, .68, .26, 1);
+  --spring: cubic-bezier(.2, 1.28, .36, 1);
+}
+html.dark {
+  --brand: #5fd3be;
+  --brand-2: #2f9c8b;
+  --brand-deep: #a7ecdf;
+  --brand-rgb: 95, 211, 190;
+
+  --bg: #070b0a;
+  --bg-2: #0b100f;
+  --card: #111715;
+  --card-2: #161d1b;
+  --rail: #0c1211;
+  --ink: #eef2f0;
+  --ink-2: #a8b3af;
+  --ink-3: #74817d;
+  --line: rgba(255, 255, 255, .13);
+  --line-2: rgba(255, 255, 255, .07);
+  --chip: rgba(255, 255, 255, .065);
+  --glass: rgba(9, 14, 13, .86);
+  --shadow: 0 24px 60px -36px rgba(0, 0, 0, .95);
+  --shadow-hi: 0 30px 68px -30px rgba(0, 0, 0, .9);
+  --star: #f2c14e;
+  --ok: #66b992;
+  --warn: #e0a061;
+  --danger: #f08080;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: -.01em;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button { border: 0; background: none; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+b, strong { font-weight: 700; }
+h1, h2, h3, h4, p { margin: 0; }
+kbd {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink-3);
+}
+.i { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.i-sm { width: 16px; height: 16px; stroke-width: 1.8; }
+.i-xs { width: 13px; height: 13px; stroke-width: 1.9; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---------------- shell ---------------- */
+.app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.top {
+  height: var(--top-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px 0 16px;
+  background: linear-gradient(100deg, var(--card) 0%, color-mix(in srgb, var(--brand) 12%, var(--card)) 58%, color-mix(in srgb, var(--brand) 26%, var(--card)) 100%);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 30;
+}
+html.dark .top { background: linear-gradient(100deg, var(--card) 0%, color-mix(in srgb, var(--brand) 16%, #0b1110) 62%, color-mix(in srgb, var(--brand) 30%, #0b1110) 100%); }
+.brand { display: flex; align-items: center; gap: 9px; flex: none; }
+.brand-mark {
+  width: 32px; height: 32px; border-radius: 10px;
+  display: grid; place-items: center;
+  background: linear-gradient(150deg, var(--brand), var(--brand-2) 140%);
+  color: #fff;
+  box-shadow: 0 8px 20px -12px rgba(var(--brand-rgb), .9);
+  transition: transform .4s var(--spring);
+}
+.brand:hover .brand-mark { transform: rotate(-8deg) scale(1.05); }
+.brand-mark .i { width: 19px; height: 19px; stroke-width: 1.9; color: #fff; }
+.brand-txt { display: flex; flex-direction: column; line-height: 1.1; }
+.brand-txt b { font-size: 15px; letter-spacing: -.02em; }
+.brand-txt i { font-style: normal; font-size: 9px; letter-spacing: .16em; color: var(--brand); font-weight: 700; }
+.top-search {
+  flex: 1 1 auto; max-width: 560px; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+  height: 38px; padding: 0 10px 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+  transition: border-color .2s, box-shadow .3s, background .2s;
+}
+.top-search:focus-within { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px rgba(var(--brand-rgb), .13); background: var(--card); }
+.top-search .i { color: var(--ink-3); }
+.top-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 13px; }
+.top-search input::placeholder { color: var(--ink-3); }
+.top-search .clear { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-3); }
+.top-search .clear:hover { background: var(--chip); color: var(--ink); }
+.top-right { display: flex; align-items: center; gap: 6px; flex: none; margin-left: auto; }
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 11px;
+  display: inline-grid; place-items: center;
+  color: var(--ink-2);
+  transition: background .18s, color .18s, transform .3s var(--spring);
+}
+.icon-btn:hover { background: var(--chip); color: var(--ink); transform: translateY(-1px); }
+.icon-btn:active { transform: scale(.94); }
+.icon-btn.on { color: var(--brand); background: rgba(var(--brand-rgb), .12); }
+.tb-hub {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 12px;
+  border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); font-size: 12px; font-weight: 600; color: var(--ink-2);
+  white-space: nowrap;
+  transition: all .2s var(--ease);
+}
+.tb-hub:hover { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); transform: translateY(-1px); box-shadow: var(--shadow); }
+.pill {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; padding: 0 14px; border-radius: 11px;
+  border: 1px solid var(--line); background: var(--card);
+  font-size: 12.5px; font-weight: 650; color: var(--ink-2);
+  transition: all .2s var(--ease);
+  white-space: nowrap;
+}
+.pill:hover { border-color: color-mix(in srgb, var(--brand) 45%, transparent); color: var(--brand); transform: translateY(-1px); }
+.pill:active { transform: scale(.97); }
+.pill.primary {
+  background: linear-gradient(140deg, var(--brand), color-mix(in srgb, var(--brand-2) 75%, var(--brand)));
+  border-color: transparent; color: #fff;
+  box-shadow: 0 10px 24px -16px rgba(var(--brand-rgb), .95);
+}
+.pill.primary:hover { color: #fff; filter: brightness(1.06); }
+.pill.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.pill.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: var(--danger); }
+.pill.ghost { background: transparent; }
+.pill[disabled] { opacity: .45; pointer-events: none; }
+
+.body { flex: 1; display: flex; min-height: 0; position: relative; }
+
+/* ---------------- left rail ---------------- */
+.rail {
+  width: var(--rail-w); flex: none;
+  display: flex; flex-direction: column;
+  background: var(--rail);
+  border-right: 1px solid var(--line);
+  padding: 12px 12px 10px;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+.new-btn {
+  width: 100%; height: 44px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 13px;
+  background: linear-gradient(140deg, var(--brand), color-mix(in srgb, var(--brand-2) 80%, var(--brand)));
+  color: #fff; font-weight: 700; font-size: 13.5px;
+  box-shadow: 0 14px 28px -20px rgba(var(--brand-rgb), 1);
+  transition: transform .3s var(--spring), filter .2s;
+  position: relative; overflow: hidden;
+}
+.new-btn:hover { transform: translateY(-2px); filter: brightness(1.05); }
+.new-btn:active { transform: scale(.98); }
+.new-btn .i { width: 18px; height: 18px; stroke-width: 2.1; }
+
+.my-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; border-radius: 13px;
+  border: 1px dashed color-mix(in srgb, var(--brand) 32%, var(--line));
+  background: color-mix(in srgb, var(--brand) 6%, var(--card));
+  text-align: left; width: 100%;
+  transition: border-color .2s, transform .3s var(--spring), background .2s;
+}
+.my-card:hover { border-color: var(--brand); transform: translateY(-1px); background: color-mix(in srgb, var(--brand) 10%, var(--card)); }
+.my-card .ava { width: 38px; height: 38px; font-size: 13px; }
+.my-card-txt { min-width: 0; display: flex; flex-direction: column; }
+.my-card-txt b { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.my-card-txt span { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.my-card .qr-mini { margin-left: auto; color: var(--brand); flex: none; }
+
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  height: 36px; padding: 0 10px; border-radius: 10px;
+  color: var(--ink-2); font-size: 13px; font-weight: 550;
+  text-align: left; width: 100%;
+  position: relative;
+  transition: background .16s, color .16s, padding-left .25s var(--ease);
+}
+.nav-item .i { color: var(--ink-3); transition: color .18s, transform .3s var(--spring); }
+.nav-item:hover { background: var(--chip); color: var(--ink); }
+.nav-item:hover .i { transform: scale(1.1); }
+.nav-item.on { background: rgba(var(--brand-rgb), .13); color: var(--brand-deep); font-weight: 700; }
+html.dark .nav-item.on { color: var(--brand); }
+.nav-item.on .i { color: var(--brand); }
+.nav-item.on::before {
+  content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px;
+  border-radius: 3px; background: var(--brand);
+}
+.nav-item span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-item b { font-size: 11px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.nav-item b.warn { color: var(--warn); }
+
+.rail-sec { border-top: 1px solid var(--line-2); padding-top: 10px; }
+.rail-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 4px; }
+.rail-head h3 { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; }
+.mini {
+  width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+  color: var(--ink-3); transition: background .18s, color .18s, transform .3s var(--spring);
+}
+.mini:hover { background: var(--chip); color: var(--brand); transform: rotate(90deg); }
+.group-list { display: flex; flex-direction: column; gap: 1px; }
+.group-item {
+  display: flex; align-items: center; gap: 9px; height: 32px;
+  padding: 0 10px; border-radius: 9px; font-size: 12.5px; color: var(--ink-2);
+  width: 100%; text-align: left;
+  transition: background .16s, color .16s;
+}
+.group-item:hover { background: var(--chip); color: var(--ink); }
+.group-item.on { background: rgba(var(--brand-rgb), .12); color: var(--brand-deep); font-weight: 650; }
+html.dark .group-item.on { color: var(--brand); }
+.group-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 0%, transparent); }
+.group-item > span:not(.group-dot):not(.g-edit) { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-item .group-dot { flex: 0 0 9px; width: 9px; height: 9px; }
+.group-item b { font-size: 10.5px; color: var(--ink-3); font-weight: 600; }
+.group-item .g-edit { opacity: 0; color: var(--ink-3); display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; }
+.group-item:hover .g-edit { opacity: 1; }
+.group-item .g-edit:hover { background: var(--chip); color: var(--brand); }
+.group-empty { font-size: 11.5px; color: var(--ink-3); padding: 4px 10px 8px; line-height: 1.5; }
+
+.side-link {
+  display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 9px; border-radius: 9px;
+  font-size: 12px; color: var(--ink-2); width: 100%; text-align: left;
+  transition: background .16s, color .16s;
+}
+.side-link:hover { background: var(--chip); color: var(--brand); }
+.side-link .i { color: var(--ink-3); }
+.side-link:hover .i { color: var(--brand); }
+.rail-foot { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 1px; }
+.rail-foot .hub { margin-top: 4px; }
+
+/* ---------------- list column ---------------- */
+.listcol {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--card);
+  position: relative;
+  min-height: 0;
+}
+.list-head {
+  flex: none; display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;
+  padding: 14px 18px 10px;
+}
+.lh-title { min-width: 0; display: flex; align-items: baseline; gap: 9px; }
+.lh-title h1 { font-size: 19px; letter-spacing: -.03em; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.count { font-size: 11.5px; color: var(--ink-3); font-weight: 600; white-space: nowrap; }
+.lh-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.seg { display: flex; padding: 2px; border-radius: 10px; border: 1px solid var(--line); background: var(--card-2); }
+.seg-btn { width: 30px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--ink-3); transition: all .2s var(--ease); }
+.seg-btn:hover { color: var(--ink); }
+.seg-btn.on { background: var(--card); color: var(--brand); box-shadow: 0 3px 8px -4px rgba(0, 0, 0, .3); }
+.seg-btn .i { width: 15px; height: 15px; }
+
+.search-wrap {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  margin: 0 18px 8px; height: 38px; padding: 0 10px 0 12px;
+  border-radius: 11px; border: 1px solid var(--line); background: var(--card-2);
+  transition: border-color .2s, box-shadow .25s, background .2s;
+}
+.search-wrap:focus-within { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px rgba(var(--brand-rgb), .12); background: var(--card); }
+.search-wrap .i { color: var(--ink-3); }
+.search-wrap input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 13px; }
+.search-wrap input::placeholder { color: var(--ink-3); }
+.search-wrap .clear { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-3); }
+.search-wrap .clear:hover { background: var(--chip); color: var(--ink); }
+
+.idx {
+  position: absolute; right: 6px; top: 116px; bottom: 8px;
+  width: 20px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0; z-index: 5;
+  opacity: .92;
+  pointer-events: none;
+}
+.idx button {
+  font-size: 8.5px; line-height: 1; font-weight: 700; letter-spacing: 0;
+  color: var(--ink-3); padding: 1.8px 0; width: 100%; border-radius: 4px;
+  pointer-events: auto;
+  transition: color .15s, background .15s, transform .2s var(--spring);
+}
+.idx button.has { color: var(--brand); }
+.idx button:hover { background: rgba(var(--brand-rgb), .14); transform: scale(1.35); }
+.idx button.dim { opacity: .34; pointer-events: none; }
+.idx-h { display: none; }
+
+.list-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 26px 26px 18px; scroll-behavior: smooth; scrollbar-width: thin; }
+.list-scroll::-webkit-scrollbar, .rail::-webkit-scrollbar, .detail::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 9px; }
+.list-scroll::-webkit-scrollbar-thumb, .rail::-webkit-scrollbar-thumb, .detail::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9px; border: 2px solid transparent; background-clip: padding-box; }
+
+.sec-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 4px 6px;
+  position: sticky; top: 0; z-index: 3;
+  background: linear-gradient(var(--card) 68%, color-mix(in srgb, var(--card) 0%, transparent));
+}
+.sec-head b { font-size: 11.5px; color: var(--brand); font-weight: 800; letter-spacing: .02em; }
+.sec-head i { flex: 1; height: 1px; background: var(--line-2); font-style: normal; }
+.sec-head span { font-size: 10px; color: var(--ink-3); font-weight: 600; }
+
+.rows { display: flex; flex-direction: column; gap: 2px; }
+.row {
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center; gap: 11px;
+  padding: 9px 10px; border-radius: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background .16s, border-color .16s, transform .3s var(--spring), box-shadow .25s;
+  animation: rowIn .46s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 26ms);
+}
+@keyframes rowIn { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+.row:hover { background: var(--card-2); border-color: var(--line-2); transform: translateX(2px); }
+.row.sel { background: rgba(var(--brand-rgb), .1); border-color: color-mix(in srgb, var(--brand) 32%, transparent); }
+.row.sel .row-name { color: var(--brand-deep); }
+html.dark .row.sel .row-name { color: var(--brand); }
+.ava {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center; flex: none;
+  font-size: 13.5px; font-weight: 750; letter-spacing: -.03em;
+  color: #fff; background: var(--brand);
+  overflow: hidden; position: relative;
+  transition: transform .38s var(--spring), box-shadow .3s;
+  user-select: none;
+}
+.row:hover .ava, .gcard:hover .ava { transform: scale(1.07) rotate(-3deg); box-shadow: 0 10px 20px -12px rgba(0, 0, 0, .5); }
+.ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ava.lg { width: 84px; height: 84px; font-size: 27px; border-radius: 26px; }
+.ava.sm { width: 28px; height: 28px; font-size: 10px; }
+.row-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.row-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 650; color: var(--ink); white-space: nowrap; overflow: hidden; }
+.row-name .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-name .star-mini { color: var(--star); flex: none; }
+.row-sub { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; }
+.row-sub .dot { width: 2px; height: 2px; border-radius: 50%; background: currentColor; flex: none; opacity: .6; }
+.row-acts { display: flex; align-items: center; gap: 1px; opacity: 0; transition: opacity .2s; }
+.row:hover .row-acts, .row.sel .row-acts { opacity: 1; }
+.row-acts .icon-btn { width: 28px; height: 28px; border-radius: 8px; }
+.row-acts .icon-btn .i { width: 15px; height: 15px; }
+.row-acts .star-btn.on { color: var(--star); background: transparent; }
+.row-acts .star-btn.on:hover { background: color-mix(in srgb, var(--star) 16%, transparent); }
+.star-btn.on .i { fill: var(--star); stroke: var(--star); }
+.star-btn.bounce .i { animation: starPop .62s var(--spring); }
+@keyframes starPop {
+  0% { transform: scale(1) rotate(0); }
+  30% { transform: scale(1.55) rotate(14deg); }
+  55% { transform: scale(.86) rotate(-8deg); }
+  78% { transform: scale(1.14) rotate(3deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* grid layout */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 10px; padding-top: 4px; }
+.gcard {
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card); padding: 15px 13px 13px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: transform .35s var(--spring), box-shadow .3s, border-color .2s, background .2s;
+  animation: cardIn .5s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+@keyframes cardIn { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+.gcard::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(var(--brand-rgb), .12), transparent 62%);
+  opacity: 0; transition: opacity .3s;
+}
+.gcard:hover { transform: translateY(-4px); box-shadow: var(--shadow-hi); border-color: color-mix(in srgb, var(--brand) 34%, var(--line)); }
+.gcard:hover::after { opacity: 1; }
+.gcard.sel { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(var(--brand-rgb), .22); }
+.gcard .ava { width: 58px; height: 58px; font-size: 19px; border-radius: 20px; }
+.gcard b { font-size: 13px; font-weight: 700; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gcard small { font-size: 11px; color: var(--ink-3); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 15px; }
+.gcard .g-tags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; max-height: 18px; overflow: hidden; }
+.gcard .g-star { position: absolute; top: 8px; right: 8px; color: var(--star); }
+
+/* ---------------- detail panel ---------------- */
+.detail {
+  width: var(--detail-w); flex: none;
+  border-left: 1px solid var(--line);
+  background: var(--card-2);
+  overflow-y: auto; overflow-x: hidden;
+  position: relative;
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+.detail.open { animation: none; }
+.d-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 30px 26px; text-align: center; color: var(--ink-3);
+}
+.d-empty .art {
+  width: 74px; height: 74px; border-radius: 24px; display: grid; place-items: center;
+  background: var(--chip); color: var(--brand); margin-bottom: 4px;
+}
+.d-empty .art .i { width: 34px; height: 34px; stroke-width: 1.3; }
+.d-empty b { font-size: 14px; color: var(--ink); font-weight: 700; }
+.d-empty p { font-size: 12px; line-height: 1.65; max-width: 260px; }
+.d-wrap { padding: 18px 18px 26px; display: flex; flex-direction: column; gap: 16px; animation: panelIn .44s var(--spring) both; }
+@keyframes panelIn { from { opacity: 0; transform: translateX(26px) scale(.985); } to { opacity: 1; transform: none; } }
+.d-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 8px 0 2px; }
+.d-hero .ava.lg { box-shadow: 0 18px 34px -22px rgba(0, 0, 0, .65); }
+.d-hero h2 { font-size: 20px; letter-spacing: -.03em; font-weight: 780; word-break: keep-all; }
+.d-hero p { font-size: 12.5px; color: var(--ink-2); word-break: keep-all; }
+.d-hero .chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+.d-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.dact {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 9px 2px 8px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--card);
+  font-size: 10.5px; color: var(--ink-2); font-weight: 600;
+  transition: all .22s var(--ease);
+}
+.dact .i { width: 18px; height: 18px; color: var(--brand); transition: transform .3s var(--spring); }
+.dact:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); transform: translateY(-2px); box-shadow: var(--shadow); color: var(--ink); }
+.dact:hover .i { transform: scale(1.12) translateY(-1px); }
+.dact.warn .i { color: var(--danger); }
+.d-sec { display: flex; flex-direction: column; gap: 2px; }
+.d-sec h3 { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; padding: 0 2px 4px; }
+.d-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 9px; border-radius: 11px;
+  transition: background .16s;
+}
+.d-row:hover { background: var(--card); }
+.d-row .ic {
+  width: 30px; height: 30px; border-radius: 9px; flex: none;
+  display: grid; place-items: center;
+  background: rgba(var(--brand-rgb), .1); color: var(--brand);
+}
+.d-row .ic .i { width: 15px; height: 15px; }
+.d-row .txt { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.d-row .txt b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-row .txt span { font-size: 10.5px; color: var(--ink-3); }
+.d-row .cop {
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  color: var(--ink-3); opacity: 0; transition: opacity .18s, background .18s, color .18s;
+}
+.d-row:hover .cop { opacity: 1; }
+.d-row .cop:hover { background: var(--chip); color: var(--brand); }
+.d-note {
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.7; white-space: pre-wrap;
+  background: var(--card); border: 1px solid var(--line-2); border-radius: 12px; padding: 11px 12px;
+  word-break: break-word;
+}
+.d-meta { font-size: 10.5px; color: var(--ink-3); display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.d-foot { display: flex; gap: 7px; }
+.d-foot .pill { flex: 1; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 8px; border-radius: 7px;
+  font-size: 10.5px; font-weight: 650;
+  background: var(--chip); color: var(--ink-2);
+  max-width: 100%;
+}
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.chip.brand { background: rgba(var(--brand-rgb), .13); color: var(--brand-deep); }
+html.dark .chip.brand { color: var(--brand); }
+.chip.star { background: color-mix(in srgb, var(--star) 18%, transparent); color: color-mix(in srgb, var(--star) 75%, var(--ink)); }
+
+/* duplicate review */
+.dup-list { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.dup-card {
+  border: 1px solid var(--line); border-radius: 15px; background: var(--card);
+  padding: 13px 14px; display: flex; flex-direction: column; gap: 10px;
+  animation: rowIn .45s var(--ease) both; animation-delay: calc(var(--i, 0) * 34ms);
+  transition: border-color .2s, box-shadow .25s, transform .3s var(--spring);
+}
+.dup-card:hover { border-color: color-mix(in srgb, var(--brand) 30%, var(--line)); box-shadow: var(--shadow); transform: translateY(-1px); }
+.dup-card .dc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dup-card .dc-head b { font-size: 13px; font-weight: 700; }
+.dup-card .dc-why { display: flex; gap: 4px; flex-wrap: wrap; }
+.dup-faces { display: flex; flex-direction: column; gap: 6px; }
+.dup-face { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 10px; background: var(--card-2); }
+.dup-face .txt { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.dup-face .txt b { font-size: 12.5px; }
+.dup-face .txt span { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dup-face .best { font-size: 9.5px; font-weight: 700; color: var(--brand); border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent); border-radius: 6px; padding: 1px 5px; }
+.dc-foot { display: flex; gap: 6px; justify-content: flex-end; }
+.dc-foot .pill { height: 30px; font-size: 11.5px; }
+
+/* merge panel */
+.merge-wrap { padding: 16px 16px 26px; display: flex; flex-direction: column; gap: 13px; animation: panelIn .4s var(--spring) both; }
+.merge-wrap h2 { font-size: 16.5px; font-weight: 760; letter-spacing: -.02em; }
+.merge-wrap > p { font-size: 12px; color: var(--ink-3); line-height: 1.6; }
+.pick-group { border: 1px solid var(--line); border-radius: 13px; overflow: hidden; background: var(--card); }
+.pick-group > header {
+  font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 700;
+  padding: 8px 11px 4px;
+}
+.pick-opt {
+  display: flex; align-items: center; gap: 9px; padding: 8px 11px;
+  border-top: 1px solid var(--line-2); cursor: pointer;
+  transition: background .15s;
+}
+.pick-opt:hover { background: var(--card-2); }
+.pick-opt input { appearance: none; width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line); flex: none; position: relative; transition: border-color .2s; }
+.pick-opt input:checked { border-color: var(--brand); border-width: 4.5px; }
+.pick-opt input[type="checkbox"] { appearance: auto; width: 15px; height: 15px; accent-color: var(--brand); border: 0; border-radius: 3px; }
+.pick-opt .pv { font-size: 12.5px; min-width: 0; word-break: break-all; }
+.pick-opt .from { font-size: 10px; color: var(--ink-3); margin-left: auto; flex: none; }
+.pick-opt.keep-all { border-top: 1px solid var(--line-2); background: color-mix(in srgb, var(--brand) 4%, transparent); }
+
+/* ---------------- empty state ---------------- */
+.empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 13px; padding: 46px 20px 30px;
+  animation: fadeUp .6s var(--ease) both;
+}
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.empty-art {
+  width: 104px; height: 104px; border-radius: 32px;
+  display: grid; place-items: center;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--brand) 16%, var(--card)), color-mix(in srgb, var(--brand-2) 22%, var(--card)));
+  color: var(--brand);
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--line));
+  box-shadow: 0 22px 44px -30px rgba(var(--brand-rgb), .7);
+  position: relative;
+  animation: floaty 6s ease-in-out infinite;
+}
+@keyframes floaty { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-7px) rotate(1.4deg); } }
+.empty-art .i { width: 46px; height: 46px; stroke-width: 1.25; }
+.empty h2 { font-size: 20px; letter-spacing: -.03em; font-weight: 780; word-break: keep-all; }
+.empty p { font-size: 12.8px; color: var(--ink-2); line-height: 1.7; max-width: 430px; word-break: keep-all; }
+.empty-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
+.empty-feats { display: grid; grid-template-columns: repeat(auto-fit, minmax(226px, 1fr)); gap: 9px; margin-top: 22px; width: 100%; max-width: 560px; }
+.empty-feat {
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+  padding: 12px 12px 13px; text-align: left;
+  transition: transform .3s var(--spring), box-shadow .3s, border-color .2s;
+}
+.empty-feat:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--brand) 32%, var(--line)); }
+.empty-feat .ico { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(var(--brand-rgb), .1); color: var(--brand); margin-bottom: 7px; }
+.empty-feat .ico .i { width: 16px; height: 16px; }
+.empty-feat b { display: block; font-size: 12.5px; margin-bottom: 2px; }
+.empty-feat span { font-size: 11px; color: var(--ink-3); line-height: 1.55; display: block; }
+
+/* ---------------- modal / sheet ---------------- */
+.scrim {
+  position: fixed; inset: 0; background: rgba(6, 14, 12, .42);
+  backdrop-filter: blur(3px);
+  opacity: 0; pointer-events: none; transition: opacity .26s var(--ease);
+  z-index: 40;
+}
+.scrim.show { opacity: 1; pointer-events: auto; }
+.modal-root {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  pointer-events: none;
+}
+.modal {
+  width: min(560px, 100%); max-height: min(88vh, 900px);
+  background: var(--card); border-radius: 20px;
+  border: 1px solid var(--line);
+  box-shadow: 0 40px 90px -40px rgba(0, 0, 0, .6);
+  display: flex; flex-direction: column;
+  pointer-events: auto;
+  animation: modalIn .42s var(--spring) both;
+  overflow: hidden;
+}
+@keyframes modalIn { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+.modal.wide { width: min(760px, 100%); }
+.modal.narrow { width: min(420px, 100%); }
+.modal-head {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 15px 16px 12px 20px; border-bottom: 1px solid var(--line-2);
+}
+.modal-head h2 { font-size: 15.5px; font-weight: 750; letter-spacing: -.02em; flex: 1; min-width: 0; }
+.modal-head .sub { font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+.modal-body { flex: 1; overflow-y: auto; padding: 16px 20px 6px; min-height: 0; }
+.modal-foot {
+  flex: none; display: flex; align-items: center; gap: 7px; justify-content: flex-end;
+  padding: 12px 16px 14px 20px; border-top: 1px solid var(--line-2);
+  background: linear-gradient(var(--card-2), var(--card));
+}
+.modal-foot .left { margin-right: auto; display: flex; gap: 7px; }
+
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; }
+.field > label { font-size: 11px; font-weight: 700; color: var(--ink-3); letter-spacing: .04em; }
+.field input, .field textarea, .field select {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card-2); padding: 9px 11px; font-size: 13px; outline: 0;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+}
+.field input:focus, .field textarea:focus, .field select:focus {
+  border-color: color-mix(in srgb, var(--brand) 58%, transparent);
+  box-shadow: 0 0 0 3px rgba(var(--brand-rgb), .12); background: var(--card);
+}
+.field textarea { resize: vertical; min-height: 70px; line-height: 1.6; }
+.field input::placeholder, .field textarea::placeholder { color: var(--ink-3); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form-grid .field { margin-bottom: 10px; }
+.multi-list { display: flex; flex-direction: column; gap: 7px; }
+.multi-row { display: flex; gap: 6px; align-items: center; }
+.multi-row select { width: 96px; flex: none; }
+.multi-row input { flex: 1; min-width: 0; }
+.multi-row .del {
+  width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+  color: var(--ink-3); flex: none; transition: background .16s, color .16s;
+}
+.multi-row .del:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.add-row {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;
+  font-size: 11.5px; font-weight: 650; color: var(--brand);
+  padding: 5px 8px; border-radius: 8px;
+}
+.add-row:hover { background: rgba(var(--brand-rgb), .1); }
+.photo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.photo-row .ava { width: 66px; height: 66px; font-size: 20px; border-radius: 20px; }
+.photo-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.photo-btns .pill { height: 30px; font-size: 11.5px; padding: 0 10px; }
+.hint { font-size: 10.8px; color: var(--ink-3); line-height: 1.55; }
+.gpick { display: flex; flex-wrap: wrap; gap: 5px; }
+.gpick label {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 10px; border-radius: 8px;
+  border: 1px solid var(--line); font-size: 11.5px; cursor: pointer;
+  transition: all .18s var(--ease);
+}
+.gpick input { display: none; }
+.gpick label.on { border-color: var(--brand); background: rgba(var(--brand-rgb), .12); color: var(--brand-deep); font-weight: 650; }
+html.dark .gpick label.on { color: var(--brand); }
+.gpick .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+/* import / export */
+.tabs { display: flex; gap: 3px; padding: 3px; border-radius: 11px; background: var(--card-2); border: 1px solid var(--line-2); margin-bottom: 14px; }
+.tab { flex: 1; height: 31px; border-radius: 8px; font-size: 12px; font-weight: 650; color: var(--ink-3); transition: all .2s var(--ease); }
+.tab:hover { color: var(--ink); }
+.tab.on { background: var(--card); color: var(--brand); box-shadow: 0 3px 10px -6px rgba(0, 0, 0, .4); }
+.dropzone {
+  border: 1.5px dashed var(--line); border-radius: 14px;
+  padding: 22px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  transition: border-color .2s, background .2s, transform .25s var(--ease);
+  cursor: pointer;
+}
+.dropzone:hover, .dropzone.over { border-color: var(--brand); background: rgba(var(--brand-rgb), .06); transform: translateY(-1px); }
+.dropzone .ico { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; background: rgba(var(--brand-rgb), .1); color: var(--brand); }
+.dropzone b { font-size: 12.5px; }
+.dropzone span { font-size: 11px; color: var(--ink-3); }
+.dropzone input[type=file] { display: none; }
+.or { display: flex; align-items: center; gap: 10px; font-size: 10.5px; color: var(--ink-3); margin: 12px 0; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line-2); }
+.import-preview {
+  margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  max-height: 190px; overflow-y: auto;
+}
+.import-preview .ip-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--line-2); font-size: 12px; }
+.import-preview .ip-row:last-child { border-bottom: 0; }
+.import-preview .ip-row .ava { width: 26px; height: 26px; font-size: 9.5px; }
+.import-preview .ip-row .meta { color: var(--ink-3); font-size: 10.5px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.check-line { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); margin-top: 10px; cursor: pointer; }
+.check-line input { width: 15px; height: 15px; accent-color: var(--brand); }
+.export-list { display: flex; flex-direction: column; gap: 7px; }
+.export-item {
+  display: flex; align-items: center; gap: 11px; padding: 11px 12px;
+  border: 1px solid var(--line); border-radius: 12px; text-align: left; width: 100%;
+  transition: all .2s var(--ease);
+}
+.export-item:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--line)); background: var(--card-2); transform: translateY(-1px); }
+.export-item .ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: rgba(var(--brand-rgb), .1); color: var(--brand); flex: none; }
+.export-item .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.export-item .txt b { font-size: 12.5px; }
+.export-item .txt span { font-size: 10.8px; color: var(--ink-3); }
+
+/* share / QR */
+.share-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+.qr-box {
+  border: 1px solid var(--line); border-radius: 16px; background: #fff; padding: 12px;
+  display: grid; place-items: center; position: relative; overflow: hidden;
+  box-shadow: 0 14px 34px -26px rgba(0, 0, 0, .5);
+}
+.qr-box svg { width: 100%; height: auto; display: block; }
+.qr-box .qr-cap { position: absolute; bottom: 6px; font-size: 9px; color: #4a5654; letter-spacing: .1em; font-weight: 700; }
+.link-row { display: flex; gap: 6px; margin-top: 8px; }
+.link-row input { flex: 1; min-width: 0; font-size: 11px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--card-2); outline: 0; color: var(--ink-2); }
+.share-card { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.share-card .ava { width: 46px; height: 46px; font-size: 15px; border-radius: 15px; }
+.share-card .txt { min-width: 0; display: flex; flex-direction: column; }
+.share-card .txt b { font-size: 14.5px; }
+.share-card .txt span { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.incoming { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 6px 0 4px; }
+.incoming .ava { width: 74px; height: 74px; font-size: 25px; border-radius: 24px; }
+.incoming h3 { font-size: 18px; font-weight: 760; }
+.incoming .meta { font-size: 12px; color: var(--ink-2); display: flex; flex-direction: column; gap: 2px; }
+
+/* toast host for our own quick notes */
+.hint-bar {
+  position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 14px);
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 8px 14px; font-size: 12px; color: var(--ink-2);
+  box-shadow: var(--shadow-hi); opacity: 0; pointer-events: none;
+  transition: all .3s var(--ease); z-index: 40;
+}
+.hint-bar.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* selection / misc */
+.kbd-hint { font-size: 10px; color: var(--ink-3); display: flex; gap: 4px; align-items: center; }
+.section-title { font-size: 12px; font-weight: 750; letter-spacing: -.01em; }
+.muted { color: var(--ink-3); }
+.right { margin-left: auto; }
+.stack { display: flex; flex-direction: column; gap: 6px; }
+.rowline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.confirm-text { font-size: 12.8px; color: var(--ink-2); line-height: 1.65; }
+.confirm-text b { color: var(--ink); }
+
+
+/* modal layers */
+.m-layer {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; pointer-events: none;
+}
+.m-layer > .modal { pointer-events: auto; }
+.quiet .row, .quiet .gcard { animation: none !important; }
+.merge-body { display: flex; flex-direction: column; gap: 9px; }
+.d-row .txt b { word-break: keep-all; }
+.d-row .txt.wrap b { white-space: normal; word-break: break-all; line-height: 1.45; }
+.d-note, .confirm-text, .empty p, .empty h2, .incoming h3 { word-break: keep-all; }
+.sec-head.flash b { animation: secFlash .8s var(--ease); }
+@keyframes secFlash { 0% { transform: scale(1); } 35% { transform: scale(1.5); color: var(--brand); } 100% { transform: scale(1); } }
+.gcard .row-acts { display: none; }
+.idx button.has { position: relative; }
+.idx button.has::after { content: ""; position: absolute; width: 2px; height: 2px; border-radius: 50%; background: currentColor; left: 50%; bottom: 0; transform: translateX(-50%); opacity: .55; }
+@media (max-width: 720px) {
+  .m-layer { padding: 0; align-items: flex-end; }
+}
+
+/* ---------------- responsive ---------------- */
+@media (max-width: 1180px) {
+  :root { --rail-w: 226px; }
+  .detail {
+    position: fixed; top: var(--top-h); right: 0; bottom: 0;
+    width: min(var(--detail-w), 94vw); z-index: 46;
+    transform: translateX(102%); transition: transform .4s var(--spring);
+    box-shadow: -24px 0 60px -40px rgba(0, 0, 0, .6);
+    border-left: 1px solid var(--line);
+    background: var(--card);
+  }
+  .detail.open { transform: none; }
+  .detail .close-detail { display: grid; }
+}
+.close-detail { display: none; position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 10px; place-items: center; color: var(--ink-2); background: var(--card); border: 1px solid var(--line); z-index: 3; }
+.close-detail:hover { color: var(--brand); }
+.d-star {
+  position: absolute; top: 12px; left: 12px; z-index: 3;
+  width: 32px; height: 32px; border-radius: 10px;
+  display: grid; place-items: center;
+  color: var(--ink-3); background: var(--card); border: 1px solid var(--line);
+  transition: color .18s, transform .3s var(--spring), background .18s;
+}
+.d-star:hover { color: var(--star); transform: translateY(-1px); }
+.d-star.on { color: var(--star); background: color-mix(in srgb, var(--star) 14%, var(--card)); border-color: color-mix(in srgb, var(--star) 40%, transparent); }
+.d-star.on .i { fill: var(--star); }
+.d-star .i { width: 16px; height: 16px; }
+.d-star.bounce .i { animation: starPop .62s var(--spring); }
+
+@media (max-width: 900px) {
+  :root { --top-h: 56px; }
+  .rail {
+    position: fixed; top: var(--top-h); bottom: 0; left: 0; z-index: 48;
+    width: min(300px, 84vw);
+    transform: translateX(-104%); transition: transform .38s var(--spring);
+    box-shadow: 24px 0 60px -40px rgba(0, 0, 0, .55);
+    background: var(--rail);
+  }
+  .rail.open { transform: none; }
+  .only-narrow { display: inline-grid !important; }
+  .tb-hub span { display: none; }
+  .tb-hub { width: 36px; padding: 0; justify-content: center; }
+  .idx { display: none; }
+  .idx-h {
+    display: flex; gap: 1px; overflow-x: auto; flex: none;
+    padding: 0 12px 7px 12px; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .idx-h::-webkit-scrollbar { display: none; }
+  .idx-h button {
+    flex: none; min-width: 23px; height: 23px; padding: 0 4px;
+    font-size: 10px; font-weight: 700; color: var(--ink-3); border-radius: 6px;
+  }
+  .idx-h button.has { color: var(--brand); background: rgba(var(--brand-rgb), .1); }
+  .idx-h button.dim { opacity: .35; }
+  .list-scroll { padding-left: 14px; padding-right: 14px; }
+}
+.only-narrow { display: none; }
+
+@media (max-width: 720px) {
+  .top { padding: 0 10px; gap: 8px; flex-wrap: wrap; height: auto; min-height: var(--top-h); padding-top: 8px; padding-bottom: 8px; }
+  .search-wrap { display: none; }
+  .detail { top: 0; border-radius: 0; width: 100%; }
+  .close-detail { top: calc(12px + env(safe-area-inset-top)); }
+  .top-search { order: 5; flex: 1 1 100%; max-width: none; height: 36px; }
+  .top-search kbd { display: none; }
+  .tb-hub { display: none; }
+  .list-head { padding: 12px 14px 8px; }
+  .lh-title h1 { font-size: 17px; }
+  .search-wrap { margin: 0 14px 8px; }
+  .empty { padding: 30px 14px 24px; gap: 11px; }
+  .empty h2 { font-size: 18px; }
+  .empty-art { width: 88px; height: 88px; border-radius: 26px; }
+  .empty-art .i { width: 38px; height: 38px; }
+  .empty-feats { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+  .empty-feat { padding: 10px; }
+  .empty-feat span { font-size: 10.4px; }
+  .row { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; padding: 8px; }
+  .row .ava { width: 40px; height: 40px; }
+  .row-acts { opacity: 1; }
+  .row-acts .icon-btn:not(.star-btn) { display: none; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(146px, 1fr)); gap: 8px; }
+  .d-hero h2 { font-size: 18px; }
+  .modal-root { padding: 0; align-items: flex-end; }
+  .modal { width: 100%; max-height: 92vh; border-radius: 20px 20px 0 0; }
+  .modal.wide, .modal.narrow { width: 100%; }
+  .modal-head { padding: 14px 14px 10px 16px; }
+  .modal-body { padding: 14px 16px 4px; }
+  .modal-foot { padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); }
+  .form-grid { grid-template-columns: 1fr; gap: 0; }
+  .share-grid { grid-template-columns: 1fr; }
+  .qr-box { max-width: 220px; margin: 0 auto; }
+  .detail .close-detail { display: grid; }
+  .d-actions { grid-template-columns: repeat(4, 1fr); }
+  .listcol { padding-bottom: 0; }
+}
+@media (max-width: 420px) {
+  .brand-txt b { font-size: 14px; }
+  .empty-feats { grid-template-columns: 1fr; }
+  .d-wrap { padding: 16px 14px 24px; }
+  .dup-card { padding: 11px 11px; }
+  .dc-foot .pill { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-logo" viewBox="0 0 24 24"><circle cx="12" cy="8.6" r="3.7"/><path d="M4.8 20c.9-3.9 3.7-5.9 7.2-5.9s6.3 2 7.2 5.9"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.4" r="3.4"/><path d="M2.8 19.4c.7-3.4 3.2-5.2 6.2-5.2s5.5 1.8 6.2 5.2"/><path d="M16.2 5.4a3.2 3.2 0 010 6.1"/><path d="M17.6 14.4c2.1.5 3.4 2.2 3.8 4.6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.8"/><path d="M4.6 20c.8-3.7 3.7-5.6 7.4-5.6s6.6 1.9 7.4 5.6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.6" cy="10.6" r="6.4"/><path d="M15.4 15.4L20.5 20.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4.8v14.4M4.8 12h14.4"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.9l2.55 5.2 5.75.85-4.16 4.05.98 5.72L12 17l-5.12 2.72.98-5.72L3.7 9.95l5.75-.85z"/></symbol>
+  <symbol id="i-star-fill" viewBox="0 0 24 24"><path d="M12 3.9l2.55 5.2 5.75.85-4.16 4.05.98 5.72L12 17l-5.12 2.72.98-5.72L3.7 9.95l5.75-.85z" fill="currentColor"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.4 3.8h3l1.6 4-2 1.4a11.4 11.4 0 005.8 5.8l1.4-2 4 1.6v3a2 2 0 01-2.2 2A17.8 17.8 0 014.4 6a2 2 0 012-2.2z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.8" y="5.2" width="18.4" height="13.6" rx="2.2"/><path d="M3.6 6.6l8.4 6 8.4-6"/></symbol>
+  <symbol id="i-sms" viewBox="0 0 24 24"><path d="M20.5 11.4c0 4-3.8 7.2-8.5 7.2a10 10 0 01-2.6-.34L4.4 20l1.1-3.6A6.9 6.9 0 013.5 11.4c0-4 3.8-7.2 8.5-7.2s8.5 3.2 8.5 7.2z"/><path d="M8.5 11.4h.01M12 11.4h.01M15.5 11.4h.01"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.2"/><path d="M15.5 5.5A2 2 0 0013.5 3.5H6A2.5 2.5 0 003.5 6v7.5a2 2 0 002 2"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.2" height="6.2" rx="1.2"/><rect x="14.3" y="3.5" width="6.2" height="6.2" rx="1.2"/><rect x="3.5" y="14.3" width="6.2" height="6.2" rx="1.2"/><path d="M14.3 14.3h2.6v2.6h-2.6zM18 18h2.5v2.5H18zM14.3 20.5h1.4M20.5 14.3v1.9"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="17.2" cy="5.8" r="2.6"/><circle cx="6.4" cy="12" r="2.6"/><circle cx="17.2" cy="18.2" r="2.6"/><path d="M8.7 10.7l5.9-3.3M8.7 13.3l5.9 3.3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 6.8h15"/><path d="M9.2 6.8V4.9a1.4 1.4 0 011.4-1.4h2.8a1.4 1.4 0 011.4 1.4v1.9"/><path d="M6.4 6.8l.9 12.3a1.9 1.9 0 001.9 1.7h5.6a1.9 1.9 0 001.9-1.7l.9-12.3"/><path d="M10.2 10.6v6.2M13.8 10.6v6.2"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4.2l9.6-9.6a2.3 2.3 0 000-3.2l-.9-.9a2.3 2.3 0 00-3.2 0L4 15.8z"/><path d="M13.4 6.9l3.7 3.7"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.6" height="6.6" rx="1.6"/><rect x="13.4" y="4" width="6.6" height="6.6" rx="1.6"/><rect x="4" y="13.4" width="6.6" height="6.6" rx="1.6"/><rect x="13.4" y="13.4" width="6.6" height="6.6" rx="1.6"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.5 6.5h12M8.5 12h12M8.5 17.5h12"/><circle cx="4.4" cy="6.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="4.4" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="4.4" cy="17.5" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M20 12H4"/><path d="M10 6l-6 6 6 6"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 14.5v4a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h4"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M11.2 3.8H20v8.8l-8.6 8.6a1.6 1.6 0 01-2.3 0l-6.5-6.5a1.6 1.6 0 010-2.3z"/><circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16.5V4.5"/><path d="M7.4 9l4.6-4.6L16.6 9"/><path d="M4.5 15.5v2.6a1.9 1.9 0 001.9 1.9h11.2a1.9 1.9 0 001.9-1.9v-2.6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5v12"/><path d="M7.4 12l4.6 4.6L16.6 12"/><path d="M4.5 15.5v2.6a1.9 1.9 0 001.9 1.9h11.2a1.9 1.9 0 001.9-1.9v-2.6"/></symbol>
+  <symbol id="i-merge" viewBox="0 0 24 24"><circle cx="7.2" cy="6" r="2.6"/><circle cx="7.2" cy="18" r="2.6"/><circle cx="17.4" cy="12" r="2.6"/><path d="M9.8 6.9c2.4.7 4.1 2.4 5 5.1M9.8 17.1c2.4-.7 4.1-2.4 5-5.1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.8 12.6l4.6 4.6L19.4 7"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.4A8.4 8.4 0 019.6 4a8.6 8.6 0 106.9 14.1A8.4 8.4 0 0120 14.4z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4.5 8.4h3l1.4-2.1h6.2l1.4 2.1h3A1.5 1.5 0 0121 9.9v8a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 17.9v-8a1.5 1.5 0 011.5-1.5z"/><circle cx="12" cy="13.6" r="3.5"/></symbol>
+  <symbol id="i-cake" viewBox="0 0 24 24"><path d="M4.5 20.5h15v-6a1.8 1.8 0 00-1.8-1.8H6.3a1.8 1.8 0 00-1.8 1.8z"/><path d="M4.5 16.4c1.6 0 1.6 1.3 3.2 1.3s1.6-1.3 3.2-1.3 1.6 1.3 3.2 1.3 1.6-1.3 3.2-1.3 1.6 1.3 3.2 1.3"/><path d="M12 9.6V6.4M12 3.6v.4"/><path d="M8.4 6.4v3.2M15.6 6.4v3.2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s6.4-6.1 6.4-11A6.4 6.4 0 005.6 10c0 4.9 6.4 11 6.4 11z"/><circle cx="12" cy="9.8" r="2.4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M3.6 12h16.8"/><path d="M12 3.4c2.4 2.4 3.6 5.3 3.6 8.6s-1.2 6.2-3.6 8.6c-2.4-2.4-3.6-5.3-3.6-8.6S9.6 5.8 12 3.4z"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 3.8h9.2l4 4V20a1.2 1.2 0 01-1.2 1.2H6a1.2 1.2 0 01-1.2-1.2V5a1.2 1.2 0 011.2-1.2z"/><path d="M15 3.8V8h4.2"/><path d="M8 12h8M8 15.6h5.4"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4.5v15M7 19.5l-3.2-3.2M7 19.5l3.2-3.2"/><path d="M13.4 7h6.4M13.4 12h4.6M13.4 17h3"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><circle cx="12" cy="7.9" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.4l1.9 5.1 5.1 1.9-5.1 1.9L12 17.4l-1.9-5.1L5 10.4l5.1-1.9z"/><path d="M18.4 15.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.5" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4.4 10.4A8.2 8.2 0 1112 20.4a8.2 8.2 0 01-7.6-5"/><path d="M3.6 4.8v5.6h5.6"/></symbol>
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M4.6 20.4V5.2a1.4 1.4 0 011.4-1.4h7a1.4 1.4 0 011.4 1.4v15.2"/><path d="M14.4 9.6h4a1.4 1.4 0 011.4 1.4v9.4"/><path d="M3.4 20.4h17.2"/><path d="M7.6 7.6h1.6M11 7.6h1.6M7.6 11h1.6M11 11h1.6M7.6 14.4h1.6M11 14.4h1.6"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.6a3.6 3.6 0 010-5.1l2.8-2.8a3.6 3.6 0 015.1 5.1l-1.3 1.3"/><path d="M14 10.4a3.6 3.6 0 010 5.1l-2.8 2.8a3.6 3.6 0 01-5.1-5.1l1.3-1.3"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.3l7.2 2.6v6c0 4.4-3 8-7.2 9.4-4.2-1.4-7.2-5-7.2-9.4v-6z"/><path d="M8.8 11.8l2.3 2.3 4.1-4.3"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <button class="icon-btn only-narrow" id="menuBtn" aria-label="메뉴 열기"><svg class="i"><use href="#i-menu"></use></svg></button>
+    <a class="brand" href="index.html" title="Soft Hub">
+      <span class="brand-mark"><svg class="i"><use href="#i-logo"></use></svg></span>
+      <span class="brand-txt"><b>Flux Contacts</b><i>FLUX</i></span>
+    </a>
+    <div class="top-search">
+      <svg class="i i-sm"><use href="#i-search"></use></svg>
+      <input id="qTop" type="search" placeholder="이름, 전화번호, 이메일, 회사, 메모로 검색" autocomplete="off" aria-label="연락처 검색">
+      <button class="clear" id="qTopClear" aria-label="검색 지우기" hidden><svg class="i i-xs"><use href="#i-close"></use></svg></button>
+      <kbd>Ctrl K</kbd>
+    </div>
+    <div class="top-right">
+      <a class="tb-hub" href="index.html" title="Soft Hub"><svg class="i i-sm"><use href="#i-grid"></use></svg><span>Soft Hub</span></a>
+      <button class="icon-btn only-narrow" id="topNewBtn" aria-label="새 연락처"><svg class="i"><use href="#i-plus"></use></svg></button>
+      <button class="icon-btn" id="themeBtn" data-theme-toggle title="라이트/다크 전환" aria-label="라이트/다크 전환"><svg class="i"><use href="#i-moon"></use></svg></button>
+      <button class="icon-btn" id="moreBtn" aria-label="도구 메뉴"><svg class="i"><use href="#i-more"></use></svg></button>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="rail" id="rail" aria-label="Flux Contacts 메뉴">
+      <button class="new-btn ripple" id="newBtn"><svg class="i"><use href="#i-plus"></use></svg><span>새 연락처</span></button>
+
+      <button class="my-card" id="myCardBtn" title="내 명함 QR로 건네기">
+        <span class="ava" id="meAva" style="background:var(--brand)">나</span>
+        <span class="my-card-txt"><b id="meName">내 명함</b><span id="meSub">탭해서 QR 명함 만들기</span></span>
+        <svg class="i i-sm qr-mini"><use href="#i-qr"></use></svg>
+      </button>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item on" data-view="all"><svg class="i i-sm"><use href="#i-users"></use></svg><span>모든 연락처</span><b id="cAll">0</b></button>
+        <button class="nav-item" data-view="starred"><svg class="i i-sm"><use href="#i-star"></use></svg><span>즐겨찾기</span><b id="cStar">0</b></button>
+        <button class="nav-item" data-view="dup"><svg class="i i-sm"><use href="#i-merge"></use></svg><span>중복 정리</span><b id="cDup">0</b></button>
+        <button class="nav-item" data-view="trash"><svg class="i i-sm"><use href="#i-trash"></use></svg><span>휴지통</span><b id="cTrash">0</b></button>
+      </nav>
+
+      <section class="rail-sec">
+        <div class="rail-head">
+          <h3>라벨</h3>
+          <button class="mini" id="addGroupBtn" aria-label="새 라벨" title="새 라벨"><svg class="i i-xs"><use href="#i-plus"></use></svg></button>
+        </div>
+        <div class="group-list" id="groupList"></div>
+      </section>
+
+      <div class="rail-foot">
+        <button class="side-link" id="importBtn"><svg class="i i-sm"><use href="#i-upload"></use></svg><span>가져오기</span></button>
+        <button class="side-link" id="exportBtn"><svg class="i i-sm"><use href="#i-download"></use></svg><span>내보내기</span></button>
+        <button class="side-link" id="sampleBtn"><svg class="i i-sm"><use href="#i-spark"></use></svg><span>예시 연락처 체험</span></button>
+        <a class="side-link hub" href="index.html"><svg class="i i-sm"><use href="#i-grid"></use></svg><span>Soft Hub</span></a>
+      </div>
+    </aside>
+
+    <main class="listcol" id="listCol">
+      <div class="list-head">
+        <div class="lh-title">
+          <h1 id="viewTitle">모든 연락처</h1>
+          <span class="count" id="viewCount">0명</span>
+        </div>
+        <div class="lh-tools">
+          <select id="sortSel" class="sr-only" aria-label="정렬 방식">
+            <option value="name">이름순</option>
+            <option value="recent">최근 수정순</option>
+            <option value="added">최근 추가순</option>
+          </select>
+          <button class="icon-btn" id="sortBtn" title="이름순 정렬" aria-label="정렬 방식 바꾸기"><svg class="i i-sm"><use href="#i-sort"></use></svg></button>
+          <div class="seg" role="group" aria-label="보기 방식">
+            <button class="seg-btn on" data-layout="list" title="목록 보기" aria-label="목록 보기"><svg class="i"><use href="#i-list"></use></svg></button>
+            <button class="seg-btn" data-layout="grid" title="카드 보기" aria-label="카드 보기"><svg class="i"><use href="#i-grid"></use></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <svg class="i i-sm"><use href="#i-search"></use></svg>
+        <input id="q" type="search" placeholder="이름·전화번호·이메일·라벨 검색" autocomplete="off" aria-label="연락처 검색">
+        <button class="clear" id="qClear" aria-label="검색 지우기" hidden><svg class="i i-xs"><use href="#i-close"></use></svg></button>
+      </div>
+
+      <div class="idx" id="idx" aria-label="초성·알파벳 인덱스"></div>
+      <div class="idx-h" id="idxH" aria-label="초성·알파벳 인덱스"></div>
+
+      <div class="list-scroll" id="listScroll">
+        <div id="listInner"></div>
+      </div>
+    </main>
+
+    <aside class="detail" id="detail" aria-label="연락처 상세"></aside>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="modal-root" id="modalRoot" hidden></div>
+<div class="hint-bar" id="hintBar" role="status" aria-live="polite"></div>
+<input type="file" id="fileInput" hidden>
+
+<script src="vendor/lz-string.min.js"></script>
+<script src="vendor/qrcode.min.js"></script>
+<script src="lemon-ui.js"></script>
+<script src="anim-mode.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     Flux Contacts · 스마트 연락처
+     IndexedDB flux_contacts_v1 (contacts · meta)
+     ============================================================ */
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var doc = document;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+  function uid(prefix) {
+    return (prefix || 'c') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function toast(msg, type) { try { Lemon.toast(msg, type || 'ok'); } catch (e) { } }
+  function escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  /* ---------------- icons ---------------- */
+  function icon(id, cls) { return '<svg class="i ' + (cls || '') + '" aria-hidden="true"><use href="#' + id + '"></use></svg>'; }
+
+  /* ---------------- IndexedDB store ---------------- */
+  var DB_NAME = 'flux_contacts_v1';
+  var dbPromise = null;
+  var memoryOnly = false;
+
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      var req;
+      try { req = indexedDB.open(DB_NAME, 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains('contacts')) db.createObjectStore('contacts', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'key' });
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('idb')); };
+    });
+    return dbPromise;
+  }
+  function idbGetAll(store) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readonly');
+        var rq = tx.objectStore(store).getAll();
+        rq.onsuccess = function () { resolve(rq.result || []); };
+        rq.onerror = function () { reject(rq.error); };
+      });
+    });
+  }
+  function idbPut(store, val) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(val);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function idbDel(store, key) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+
+  /* localStorage fallback (IndexedDB를 못 쓰는 브라우저) */
+  var FALLBACK_KEY = 'flux_contacts_fallback_v1';
+  function fallbackRead() {
+    try { return JSON.parse(localStorage.getItem(FALLBACK_KEY) || '{"contacts":[],"meta":{}}'); }
+    catch (e) { return { contacts: [], meta: {} }; }
+  }
+  function fallbackWrite(obj) {
+    try { localStorage.setItem(FALLBACK_KEY, JSON.stringify(obj)); return true; }
+    catch (e) { toast('저장 공간이 부족해 저장하지 못했어요', 'err'); return false; }
+  }
+
+  /* ---------------- state ---------------- */
+  var S = {
+    contacts: [],
+    groups: [],
+    settings: {},
+    view: 'all',
+    groupId: null,
+    query: '',
+    layout: 'list',
+    sort: 'name',
+    selId: null,
+    ready: false,
+    quiet: false,
+    meAva: ''
+  };
+
+  var PALETTE = ['#0f7b6c', '#2f6f9f', '#6b5aa6', '#9a5b3d', '#3f7a4f', '#8a4a62', '#4c6b8a', '#7a6a2f', '#2d6f6f', '#5c5f8a'];
+  var GROUP_COLORS = ['#0f7b6c', '#2f6f9f', '#6b5aa6', '#b2601f', '#3f7a4f', '#a03a5c', '#7a6a2f', '#4c6b8a'];
+
+  function colorFor(str) {
+    var h = 0, s = String(str || '');
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
+    return PALETTE[h % PALETTE.length];
+  }
+  function initials(name) {
+    var n = String(name || '').trim();
+    if (!n) return '?';
+    if (/[가-힣]/.test(n)) return n.replace(/\s+/g, '').slice(0, 2);
+    var parts = n.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return n.slice(0, 2).toUpperCase();
+  }
+  function avatarHTML(c, cls) {
+    var name = c && c.name ? c.name : '?';
+    var style = 'background:' + (c && c.photo ? '#dfe7e5' : colorFor(name));
+    var inner = c && c.photo
+      ? '<img src="' + esc(c.photo) + '" alt="">'
+      : esc(initials(name));
+    return '<span class="ava ' + (cls || '') + '" style="' + style + '">' + inner + '</span>';
+  }
+
+  /* ---------------- 한글 초성 ---------------- */
+  var CHO = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+  var CHO_FOLD = { 'ㄲ': 'ㄱ', 'ㄸ': 'ㄷ', 'ㅃ': 'ㅂ', 'ㅆ': 'ㅅ', 'ㅉ': 'ㅈ' };
+  var KO_KEYS = ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+  var EN_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  var INDEX_KEYS = KO_KEYS.concat(EN_KEYS).concat(['#']);
+
+  function choseong(ch) {
+    var code = ch.charCodeAt(0);
+    if (code >= 0xAC00 && code <= 0xD7A3) {
+      var idx = Math.floor((code - 0xAC00) / 588);
+      var c = CHO[idx] || 'ㅇ';
+      return CHO_FOLD[c] || c;
+    }
+    return null;
+  }
+  function indexKey(name) {
+    var n = String(name || '').trim();
+    if (!n) return '#';
+    var ch = n[0];
+    var ko = choseong(ch);
+    if (ko) return ko;
+    if (/[a-zA-Z]/.test(ch)) return ch.toUpperCase();
+    if (/[0-9]/.test(ch)) return '#';
+    return '#';
+  }
+  function indexRank(k) {
+    var i = INDEX_KEYS.indexOf(k);
+    return i < 0 ? INDEX_KEYS.length : i;
+  }
+
+  /* ---------------- helpers ---------------- */
+  function liveContacts() { return S.contacts.filter(function (c) { return !c.deletedAt; }); }
+  function trashContacts() { return S.contacts.filter(function (c) { return !!c.deletedAt; }); }
+  function getContact(id) {
+    for (var i = 0; i < S.contacts.length; i++) if (S.contacts[i].id === id) return S.contacts[i];
+    return null;
+  }
+  function getGroup(id) {
+    for (var i = 0; i < S.groups.length; i++) if (S.groups[i].id === id) return S.groups[i];
+    return null;
+  }
+  function groupNames(c) {
+    return (c.groups || []).map(function (g) { var x = getGroup(g); return x ? x.name : null; }).filter(Boolean);
+  }
+  function primaryPhone(c) {
+    if (!c.phones || !c.phones.length) return '';
+    for (var i = 0; i < c.phones.length; i++) if (c.phones[i].value) return c.phones[i].value;
+    return '';
+  }
+  function primaryEmail(c) {
+    if (!c.emails || !c.emails.length) return '';
+    for (var i = 0; i < c.emails.length; i++) if (c.emails[i].value) return c.emails[i].value;
+    return '';
+  }
+  function contactSummary(c) {
+    var bits = [];
+    if (c.org) bits.push(c.org + (c.title ? ' · ' + c.title : ''));
+    var ph = primaryPhone(c);
+    if (ph) bits.push(ph);
+    else if (primaryEmail(c)) bits.push(primaryEmail(c));
+    return bits.join(' · ');
+  }
+  function sortByName(a, b) {
+    return String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+  }
+  function normPhone(v) { return String(v || '').replace(/\D/g, ''); }
+  function normName(v) { return String(v || '').replace(/\s+/g, '').toLowerCase(); }
+  function digitsTail(v, n) { var d = normPhone(v); return d.length > n ? d.slice(-n) : d; }
+
+  function bdayParts(str) {
+    if (!str) return null;
+    var s = String(str).trim();
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) return { y: +m[1], m: +m[2], d: +m[3] };
+    m = /^(?:--)?(\d{2})-(\d{2})$/.exec(s);
+    if (m) return { y: 0, m: +m[1], d: +m[2] };
+    m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+    if (m) return { y: +m[3], m: +m[1], d: +m[2] };
+    m = /^(\d{4})(\d{2})(\d{2})$/.exec(s);
+    if (m) return { y: +m[1], m: +m[2], d: +m[3] };
+    return null;
+  }
+  function daysUntil(str) {
+    var p = bdayParts(str);
+    if (!p) return null;
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var target = new Date(today.getFullYear(), p.m - 1, p.d);
+    if (target < today) target = new Date(today.getFullYear() + 1, p.m - 1, p.d);
+    return Math.round((target - today) / 86400000);
+  }
+  function bdayLabel(str) {
+    var p = bdayParts(str);
+    if (!p) return '';
+    var s = p.m + '월 ' + p.d + '일';
+    if (p.y && p.y > 1900) s = p.y + '년 ' + s;
+    return s;
+  }
+  function relTime(ts) {
+    if (!ts) return '';
+    var diff = Date.now() - ts;
+    if (diff < 60000) return '방금';
+    if (diff < 3600000) return Math.floor(diff / 60000) + '분 전';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + '시간 전';
+    if (diff < 86400000 * 7) return Math.floor(diff / 86400000) + '일 전';
+    var d = new Date(ts);
+    return d.getFullYear() + '. ' + pad2(d.getMonth() + 1) + '. ' + pad2(d.getDate()) + '.';
+  }
+
+  /* ---------------- persistence ---------------- */
+  function snapshot() {
+    try {
+      Lemon.store.set('flux_contacts_v1_snapshot', {
+        v: 1,
+        count: liveContacts().length,
+        groups: S.groups.length,
+        updatedAt: Date.now()
+      });
+      Lemon.store.set('flux_contacts_v1_meta', {
+        name: (S.settings.me && S.settings.me.name) || '',
+        count: liveContacts().length,
+        updatedAt: Date.now()
+      });
+    } catch (e) { }
+  }
+  function saveContact(c, opts) {
+    c.updatedAt = Date.now();
+    if (!c.createdAt) c.createdAt = c.updatedAt;
+    var i = -1;
+    for (var k = 0; k < S.contacts.length; k++) if (S.contacts[k].id === c.id) { i = k; break; }
+    if (i > -1) S.contacts[i] = c; else S.contacts.push(c);
+    snapshot();
+    if (memoryOnly) {
+      var fb = fallbackRead();
+      fb.contacts = S.contacts; fb.meta = { groups: S.groups, settings: S.settings };
+      fallbackWrite(fb);
+      if (!opts || !opts.silent) toast('브라우저 저장소를 쓸 수 없어 임시로 저장했어요', 'err');
+      return Promise.resolve(true);
+    }
+    return idbPut('contacts', c).catch(function (err) {
+      memoryOnly = true;
+      toast('저장에 문제가 있어 로컬 백업으로 보관했어요', 'err');
+      var fb = fallbackRead(); fb.contacts = S.contacts; fb.meta = { groups: S.groups, settings: S.settings };
+      fallbackWrite(fb);
+    });
+  }
+  function removeContactRecord(id) {
+    S.contacts = S.contacts.filter(function (c) { return c.id !== id; });
+    snapshot();
+    if (memoryOnly) {
+      var fb = fallbackRead(); fb.contacts = S.contacts; fallbackWrite(fb);
+      return Promise.resolve(true);
+    }
+    return idbDel('contacts', id).catch(function () { });
+  }
+  function saveMeta() {
+    snapshot();
+    if (memoryOnly) {
+      var fb = fallbackRead(); fb.meta = { groups: S.groups, settings: S.settings }; fb.contacts = S.contacts;
+      fallbackWrite(fb);
+      return Promise.resolve(true);
+    }
+    return idbPut('meta', { key: 'state', groups: S.groups, settings: S.settings }).catch(function () { });
+  }
+  function savePrefs() {
+    try {
+      localStorage.setItem('flux_contacts_prefs', JSON.stringify({ layout: S.layout, sort: S.sort }));
+    } catch (e) { }
+  }
+
+  /* ---------------- load ---------------- */
+  function normalizeContact(c) {
+    c.id = c.id || uid();
+    c.name = String(c.name || '').trim() || '이름 없음';
+    c.phones = Array.isArray(c.phones) ? c.phones : [];
+    c.emails = Array.isArray(c.emails) ? c.emails : [];
+    c.sites = Array.isArray(c.sites) ? c.sites : [];
+    c.groups = Array.isArray(c.groups) ? c.groups : [];
+    c.starred = !!c.starred;
+    c.deletedAt = c.deletedAt || null;
+    c.createdAt = c.createdAt || Date.now();
+    c.updatedAt = c.updatedAt || c.createdAt;
+    return c;
+  }
+  function load() {
+    return Promise.all([idbGetAll('contacts'), idbGetAll('meta')]).then(function (res) {
+      S.contacts = (res[0] || []).map(normalizeContact);
+      var meta = null;
+      (res[1] || []).forEach(function (m) { if (m && m.key === 'state') meta = m; });
+      if (meta) {
+        S.groups = Array.isArray(meta.groups) ? meta.groups : [];
+        S.settings = meta.settings && typeof meta.settings === 'object' ? meta.settings : {};
+      }
+    }).catch(function () {
+      memoryOnly = true;
+      var fb = fallbackRead();
+      S.contacts = (fb.contacts || []).map(normalizeContact);
+      S.groups = (fb.meta && fb.meta.groups) || [];
+      S.settings = (fb.meta && fb.meta.settings) || {};
+    });
+  }
+
+  /* ---------------- rendering: nav & groups ---------------- */
+  function renderNav() {
+    var live = liveContacts();
+    $('#cAll').textContent = live.length;
+    $('#cStar').textContent = live.filter(function (c) { return c.starred; }).length;
+    $('#cTrash').textContent = trashContacts().length;
+    var dups = duplicateClusters(live);
+    var dupCount = dups.reduce(function (n, cl) { return n + cl.members.length - 1; }, 0);
+    var cDup = $('#cDup');
+    cDup.textContent = dupCount;
+    cDup.className = dupCount ? 'warn' : '';
+    cDup.style.color = dupCount ? 'var(--warn)' : '';
+
+    $$('#nav .nav-item').forEach(function (b) {
+      var v = b.getAttribute('data-view');
+      b.classList.toggle('on', S.view === v);
+    });
+    renderGroups();
+    renderMe();
+  }
+  function renderGroups() {
+    var live = liveContacts();
+    var box = $('#groupList');
+    if (!S.groups.length) {
+      box.innerHTML = '<p class="group-empty">라벨로 가족, 학교, 거래처를 나눠 보세요. 연락처 편집 화면에서 바로 붙일 수 있습니다.</p>';
+      return;
+    }
+    var html = S.groups.map(function (g) {
+      var n = live.filter(function (c) { return (c.groups || []).indexOf(g.id) > -1; }).length;
+      return '<button class="group-item' + (S.view === 'group' && S.groupId === g.id ? ' on' : '') + '" data-gid="' + esc(g.id) + '">' +
+        '<span class="group-dot" style="background:' + esc(g.color || '#0f7b6c') + '"></span>' +
+        '<span>' + esc(g.name) + '</span><b>' + n + '</b>' +
+        '<span class="g-edit" data-gedit="' + esc(g.id) + '" role="button" aria-label="라벨 편집">' + icon('i-edit', 'i-xs') + '</span>' +
+        '</button>';
+    }).join('');
+    box.innerHTML = html;
+  }
+  function renderMe() {
+    var me = S.settings.me || {};
+    var name = me.name || '내 명함';
+    $('#meName').textContent = name;
+    $('#meSub').textContent = me.title || me.org || '탭해서 QR 명함 만들기';
+    var ava = $('#meAva');
+    if (me.photo) {
+      ava.innerHTML = '<img src="' + esc(me.photo) + '" alt="">';
+      ava.style.background = '#dfe7e5';
+    } else {
+      ava.textContent = initials(name === '내 명함' ? '나' : name);
+      ava.style.background = colorFor(name);
+    }
+  }
+
+  /* ---------------- rendering: list ---------------- */
+  function viewBase() {
+    if (S.view === 'trash') return trashContacts();
+    var arr = liveContacts();
+    if (S.view === 'starred') arr = arr.filter(function (c) { return c.starred; });
+    if (S.view === 'group') arr = arr.filter(function (c) { return (c.groups || []).indexOf(S.groupId) > -1; });
+    return arr;
+  }
+  function sorted(arr) {
+    var out = arr.slice();
+    if (S.sort === 'recent') out.sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+    else if (S.sort === 'added') out.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    else out.sort(sortByName);
+    return out;
+  }
+  function haystack(c) {
+    var parts = [c.name, c.org, c.title, c.memo, c.address, (c.birthday || '')];
+    (c.phones || []).forEach(function (p) { parts.push(p.value, p.label); });
+    (c.emails || []).forEach(function (e) { parts.push(e.value, e.label); });
+    (c.sites || []).forEach(function (s) { parts.push(s.value, s.label); });
+    groupNames(c).forEach(function (g) { parts.push(g); });
+    return parts.join(' \u0001 ').toLowerCase();
+  }
+  function searchList(arr, q) {
+    var tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return sorted(arr);
+    var scored = [];
+    arr.forEach(function (c) {
+      var hay = haystack(c);
+      var plain = normPhone(hay);
+      var ok = tokens.every(function (t) {
+        if (hay.indexOf(t) > -1) return true;
+        var d = normPhone(t);
+        return d.length >= 3 && plain.indexOf(d) > -1;
+      });
+      if (!ok) return;
+      var score = 0;
+      var nm = String(c.name || '').toLowerCase();
+      tokens.forEach(function (t) {
+        if (nm === t) score += 60;
+        else if (nm.indexOf(t) === 0) score += 40;
+        else if (nm.indexOf(t) > -1) score += 25;
+        else score += 5;
+      });
+      if (c.starred) score += 3;
+      scored.push({ c: c, s: score });
+    });
+    scored.sort(function (a, b) { return b.s - a.s || sortByName(a.c, b.c); });
+    return scored.map(function (x) { return x.c; });
+  }
+
+  function rowHTML(c, i) {
+    var sub = contactSummary(c);
+    return '<div class="row' + (S.selId === c.id ? ' sel' : '') + '" data-id="' + esc(c.id) + '" style="--i:' + Math.min(i, 22) + '" role="button" tabindex="0">' +
+      avatarHTML(c) +
+      '<span class="row-main">' +
+        '<span class="row-name"><span class="nm">' + esc(c.name) + '</span>' +
+          (c.starred ? icon('i-star-fill', 'i-xs star-mini') : '') +
+        '</span>' +
+        '<span class="row-sub">' + (sub ? esc(sub) : '<span class="muted">연락처 정보 없음</span>') + '</span>' +
+      '</span>' +
+      '<span class="row-acts">' +
+        '<button class="icon-btn star-btn' + (c.starred ? ' on' : '') + '" data-act="star" data-id="' + esc(c.id) + '" title="즐겨찾기" aria-label="즐겨찾기" aria-pressed="' + (c.starred ? 'true' : 'false') + '">' + icon(c.starred ? 'i-star-fill' : 'i-star', 'i-sm') + '</button>' +
+        (primaryPhone(c) ? '<button class="icon-btn" data-act="call" data-id="' + esc(c.id) + '" title="전화 걸기" aria-label="전화 걸기">' + icon('i-phone', 'i-sm') + '</button>' : '') +
+      '</span>' +
+    '</div>';
+  }
+  function cardHTML(c, i) {
+    var tags = groupNames(c).slice(0, 2).map(function (n) { return '<span class="chip">' + esc(n) + '</span>'; }).join('');
+    return '<div class="gcard' + (S.selId === c.id ? ' sel' : '') + '" data-id="' + esc(c.id) + '" style="--i:' + Math.min(i, 22) + '" role="button" tabindex="0">' +
+      (c.starred ? '<span class="g-star">' + icon('i-star-fill', 'i-xs') + '</span>' : '') +
+      avatarHTML(c) + '<b>' + esc(c.name) + '</b>' +
+      '<small>' + esc(c.org || primaryPhone(c) || '') + '</small>' +
+      '<span class="g-tags">' + tags + '</span>' +
+    '</div>';
+  }
+
+  function renderIndex(list) {
+    var present = {};
+    list.forEach(function (c) { present[indexKey(c.name)] = true; });
+    var vHtml = INDEX_KEYS.map(function (k) {
+      return '<button data-jump="' + esc(k) + '" class="' + (present[k] ? 'has' : 'dim') + '" tabindex="-1">' + esc(k) + '</button>';
+    }).join('');
+    $('#idx').innerHTML = vHtml;
+    $('#idxH').innerHTML = vHtml;
+  }
+
+  function emptyHTML() {
+    return '<div class="empty">' +
+      '<div class="empty-art">' + icon('i-users') + '</div>' +
+      '<h2>흩어진 연락처를 한곳에</h2>' +
+      '<p>전화번호와 이메일을 이름 아래 모으고, 초성 인덱스와 검색으로 바로 찾습니다. 명함은 QR로 건네고, 겹친 연락처는 한 번에 병합하세요. 로그인 없이 이 브라우저에만 저장됩니다.</p>' +
+      '<div class="empty-actions">' +
+        '<button class="pill primary ripple" data-empty="new">' + icon('i-plus', 'i-sm') + '<span>첫 연락처 만들기</span></button>' +
+        '<button class="pill" data-empty="sample">' + icon('i-spark', 'i-sm') + '<span>예시 연락처 체험</span></button>' +
+        '<button class="pill ghost" data-empty="import">' + icon('i-upload', 'i-sm') + '<span>가져오기</span></button>' +
+      '</div>' +
+      '<div class="empty-feats">' +
+        '<div class="empty-feat"><div class="ico">' + icon('i-search') + '</div><b>초성 인덱스·통합 검색</b><span>ㄱ부터 ㅎ, A부터 Z까지 바로 뛰고 이름·번호·메모까지 한 번에 찾습니다.</span></div>' +
+        '<div class="empty-feat"><div class="ico">' + icon('i-merge') + '</div><b>중복 자동 병합</b><span>같은 번호·메일·이름을 찾아 한 번의 확인으로 하나로 합칩니다.</span></div>' +
+        '<div class="empty-feat"><div class="ico">' + icon('i-qr') + '</div><b>QR 디지털 명함</b><span>vCard QR과 링크로 건네면 받은 사람이 바로 저장합니다.</span></div>' +
+        '<div class="empty-feat"><div class="ico">' + icon('i-download') + '</div><b>vCard·CSV 백업</b><span>아이폰·안드로이드·구글 주소록과 주고받고 JSON으로 통째 보관합니다.</span></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderList() {
+    var box = $('#listInner');
+    var q = S.query.trim();
+    var base = viewBase();
+    var noContacts = !S.contacts.length;
+
+    /* header */
+    var title = '모든 연락처';
+    if (S.view === 'starred') title = '즐겨찾기';
+    else if (S.view === 'trash') title = '휴지통';
+    else if (S.view === 'dup') title = '중복 정리';
+    else if (S.view === 'group') { var g = getGroup(S.groupId); title = g ? g.name : '라벨'; }
+    $('#viewTitle').textContent = title;
+
+    if (S.view === 'dup') {
+      $('#viewCount').textContent = '';
+      renderDup();
+      return;
+    }
+
+    var list = q ? searchList(base, q) : sorted(base);
+    $('#viewCount').textContent = S.view === 'trash' ? list.length + '명 보관됨' : list.length + '명';
+    renderIndex(list);
+
+    if (noContacts && S.view === 'all' && !q) {
+      box.innerHTML = emptyHTML();
+      return;
+    }
+    if (!list.length) {
+      var msg = q ? '검색 결과가 없어요' : (S.view === 'trash' ? '휴지통이 비어 있어요' : S.view === 'starred' ? '즐겨찾기한 연락처가 없어요' : S.view === 'group' ? '이 라벨에 연락처가 없어요' : '연락처가 없어요');
+      var sub = q ? '"' + esc(q) + '"와 맞는 이름·번호·메모를 찾지 못했습니다. 다른 낱말로 찾아보세요.' : '연락처를 추가하거나 라벨을 붙이면 여기에 모입니다.';
+      box.innerHTML = '<div class="empty" style="padding:52px 16px">' +
+        '<div class="empty-art" style="width:78px;height:78px;border-radius:24px">' + icon(q ? 'i-search' : (S.view === 'trash' ? 'i-trash' : 'i-tag')) + '</div>' +
+        '<h2 style="font-size:17px">' + msg + '</h2><p>' + sub + '</p>' +
+        '<div class="empty-actions"><button class="pill primary" data-empty="new">' + icon('i-plus', 'i-sm') + '<span>연락처 추가</span></button></div>' +
+        '</div>';
+      return;
+    }
+
+    box.className = S.quiet ? 'quiet' : '';
+
+    if (q) {
+      box.innerHTML = '<div class="sec-head"><b>검색 결과 ' + list.length + '</b><i></i><span>' + esc(q) + '</span></div>' +
+        (S.layout === 'grid' ? '<div class="grid">' + list.map(cardHTML).join('') + '</div>' : '<div class="rows">' + list.map(rowHTML).join('') + '</div>');
+      return;
+    }
+
+    if (S.layout === 'grid') {
+      box.innerHTML = '<div class="grid">' + list.map(cardHTML).join('') + '</div>';
+      return;
+    }
+
+    var groups = [], cur = null, n = 0;
+    list.forEach(function (c) {
+      var k = indexKey(c.name);
+      if (k !== cur) { cur = k; groups.push({ key: k, list: [] }); }
+      groups[groups.length - 1].list.push(c);
+    });
+    box.innerHTML = groups.map(function (g) {
+      return '<div class="sec-head" id="sec-' + esc(g.key === '#' ? 'hash' : g.key) + '"><b>' + esc(g.key) + '</b><i></i><span>' + g.list.length + '</span></div>' +
+        '<div class="rows">' + g.list.map(function (c) { return rowHTML(c, n++); }).join('') + '</div>';
+    }).join('');
+  }
+
+  /* ---------------- detail panel ---------------- */
+  function detailEmptyHTML() {
+    return '<div class="d-empty">' +
+      '<div class="art">' + icon('i-user') + '</div>' +
+      '<b>연락처를 선택하세요</b>' +
+      '<p>이름을 누르면 전화·메일·주소·기념일과 메모가 한 화면에 펼쳐집니다. 명함은 QR로 바로 건넬 수 있어요.</p>' +
+      '</div>';
+  }
+  function detailRow(ic, title, sub, actHTML, href, extra, wrap) {
+    var inner = '<span class="ic">' + icon(ic) + '</span><span class="txt' + (wrap ? ' wrap' : '') + '"><b>' + esc(title) + '</b>' +
+      (sub ? '<span>' + esc(sub) + '</span>' : '') + '</span>' + (extra || '') + (actHTML || '');
+    if (href) return '<a class="d-row" href="' + esc(href) + '"' + (href.indexOf('http') === 0 ? ' target="_blank" rel="noopener"' : '') + '>' + inner + '</a>';
+    return '<div class="d-row">' + inner + '</div>';
+  }
+  function copyBtn(value, label) {
+    return '<button class="cop" data-copy="' + esc(value) + '" title="' + esc(label || '복사') + '" aria-label="' + esc(label || '복사') + '">' + icon('i-copy', 'i-xs') + '</button>';
+  }
+  function renderDetail() {
+    var panel = $('#detail');
+    var c = S.selId ? getContact(S.selId) : null;
+    if (!c) { panel.innerHTML = '<div class="d-empty">' + '<div class="art">' + icon('i-user') + '</div><b>연락처를 선택하세요</b><p>이름을 누르면 전화·메일·주소·기념일과 메모가 한 화면에 펼쳐집니다.</p></div>'; return; }
+
+    var html = '<button class="close-detail" data-close="detail" aria-label="상세 닫기">' + icon('i-close', 'i-sm') + '</button>';
+    html += '<button class="d-star star-btn' + (c.starred ? ' on' : '') + '" data-act="star-detail" data-id="' + esc(c.id) + '" title="즐겨찾기" aria-label="즐겨찾기" aria-pressed="' + (c.starred ? 'true' : 'false') + '">' + icon(c.starred ? 'i-star-fill' : 'i-star') + '</button>';
+    html += '<div class="d-wrap">';
+    html += '<div class="d-hero">' + avatarHTML(c, 'lg') +
+      '<div><h2>' + esc(c.name) + '</h2>' +
+      (c.org || c.title ? '<p>' + esc([c.org, c.title].filter(Boolean).join(' · ')) + '</p>' : '') + '</div>' +
+      '<div class="chips">' +
+        (c.starred ? '<span class="chip star">' + icon('i-star-fill', 'i-xs') + ' 즐겨찾기</span>' : '') +
+        groupNames(c).map(function (g) { var gg = S.groups.filter(function (x) { return x.name === g; })[0]; return '<span class="chip brand"><span class="dot" style="background:' + esc(gg ? gg.color : '#0f7b6c') + '"></span>' + esc(g) + '</span>'; }).join('') +
+      '</div></div>';
+
+    var ph = primaryPhone(c), em = primaryEmail(c);
+    html += '<div class="d-actions">' +
+      '<a class="dact' + (ph ? '' : ' muted') + '"' + (ph ? ' href="tel:' + esc(normPhone(ph) || ph) + '"' : ' aria-disabled="true"') + '>' + icon('i-phone') + '전화</a>' +
+      '<a class="dact' + (ph ? '' : ' muted') + '"' + (ph ? ' href="sms:' + esc(normPhone(ph) || ph) + '"' : ' aria-disabled="true"') + '>' + icon('i-sms') + '문자</a>' +
+      '<a class="dact' + (em ? '' : ' muted') + '"' + (em ? ' href="mailto:' + esc(em) + '"' : ' aria-disabled="true"') + '>' + icon('i-mail') + '메일</a>' +
+      '<button class="dact" data-act="share" data-id="' + esc(c.id) + '">' + icon('i-qr') + 'QR 공유</button>' +
+      '</div>';
+
+    if (c.deletedAt) {
+      html += '<div class="d-sec"><div class="d-note" style="border-color:color-mix(in srgb,var(--danger) 28%,transparent)">' +
+        '휴지통에 있는 연락처입니다. ' + esc(relTime(c.deletedAt)) + ' 삭제됨. 복원하면 원래 자리로 돌아옵니다.</div></div>';
+    }
+
+    var info = '';
+    (c.phones || []).forEach(function (p) {
+      if (!p.value) return;
+      info += detailRow('i-phone', p.value, p.label || '전화', copyBtn(p.value), 'tel:' + (normPhone(p.value) || p.value));
+    });
+    if (info) html += '<div class="d-sec"><h3>전화</h3>' + info + '</div>';
+
+    info = '';
+    (c.emails || []).forEach(function (e) {
+      if (!e.value) return;
+      info += detailRow('i-mail', e.value, e.label || '이메일', copyBtn(e.value), 'mailto:' + e.value, '', true);
+    });
+    if (info) html += '<div class="d-sec"><h3>이메일</h3>' + info + '</div>';
+
+    info = '';
+    if (c.birthday) {
+      var d = daysUntil(c.birthday);
+      var dLabel = d === 0 ? '오늘이 생일이에요' : (d == null ? '' : d + '일 남음');
+      info += detailRow('i-cake', bdayLabel(c.birthday), ['생일', dLabel].filter(Boolean).join(' · '), '');
+    }
+    if (c.anniversary && c.anniversary.date) {
+      var ad = daysUntil(c.anniversary.date);
+      info += detailRow('i-spark', bdayLabel(c.anniversary.date), [c.anniversary.label || '기념일', ad == null ? '' : (ad === 0 ? '오늘' : ad + '일 남음')].filter(Boolean).join(' · '), '');
+    }
+    if (info) html += '<div class="d-sec"><h3>기념일</h3>' + info + '</div>';
+
+    if (c.address) {
+      html += '<div class="d-sec"><h3>주소</h3>' +
+        detailRow('i-pin', c.address, '', copyBtn(c.address), 'https://map.naver.com/p/search/' + encodeURIComponent(c.address)) + '</div>';
+    }
+
+    info = '';
+    (c.sites || []).forEach(function (s) {
+      if (!s.value) return;
+      var v = s.value;
+      var href = /^https?:\/\//i.test(v) ? v : (/^@/.test(v) ? 'https://www.instagram.com/' + v.slice(1) : 'https://' + v);
+      info += detailRow('i-globe', v.replace(/^https?:\/\//, ''), s.label || '웹사이트', copyBtn(v), href, '', true);
+    });
+    if (info) html += '<div class="d-sec"><h3>웹사이트·SNS</h3>' + info + '</div>';
+
+    if (c.memo) html += '<div class="d-sec"><h3>메모</h3><div class="d-note">' + esc(c.memo) + '</div></div>';
+
+    html += '<div class="d-meta"><span>추가 ' + esc(relTime(c.createdAt)) + '</span><span>수정 ' + esc(relTime(c.updatedAt)) + '</span></div>';
+
+    html += '<div class="d-foot">' +
+      '<button class="pill primary" data-act="edit" data-id="' + esc(c.id) + '">' + icon('i-edit', 'i-sm') + '<span>편집</span></button>' +
+      (c.deletedAt
+        ? '<button class="pill" data-act="restore" data-id="' + esc(c.id) + '">' + icon('i-restore', 'i-sm') + '<span>복원</span></button>' +
+          '<button class="pill danger" data-act="purge" data-id="' + esc(c.id) + '">' + icon('i-trash', 'i-sm') + '<span>영구 삭제</span></button>'
+        : '<button class="pill" data-act="vcf" data-id="' + esc(c.id) + '" title="vCard로 내보내기">' + icon('i-download', 'i-sm') + '<span>vCard</span></button>' +
+          '<button class="pill danger" data-act="trash" data-id="' + esc(c.id) + '">' + icon('i-trash', 'i-sm') + '<span>삭제</span></button>') +
+      '</div></div>';
+    panel.innerHTML = html;
+    panel.scrollTop = 0;
+  }
+
+  function selectContact(id, opts) {
+    S.selId = id;
+    if (S.view === 'dup') { S.mergeCtx = null; }
+    $$('#listInner .row, #listInner .gcard').forEach(function (el) {
+      el.classList.toggle('sel', el.getAttribute('data-id') === id);
+    });
+    renderDetail();
+    if (window.innerWidth <= 1180) {
+      $('#detail').classList.add('open');
+      updateScrim();
+    }
+    if (opts && opts.push) { try { history.replaceState(null, '', '#' + (id || '')); } catch (e) { } }
+  }
+  function deselect() {
+    S.selId = null;
+    $('#detail').classList.remove('open');
+    renderDetail();
+    updateScrim();
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+  }
+
+  /* ---------------- duplicates ---------------- */
+  function pairKey(a, b) { return [a, b].sort().join('|'); }
+  function ignoredPairs() {
+    var m = {};
+    (S.settings.dupIgnore || []).forEach(function (k) { m[k] = true; });
+    return m;
+  }
+  function duplicateClusters(list) {
+    var parent = {};
+    function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    function union(a, b) { var ra = find(a), rb = find(b); if (ra !== rb) parent[rb] = ra; }
+    list.forEach(function (c) { parent[c.id] = c.id; });
+
+    var byPhone = {}, byEmail = {}, byName = {};
+    list.forEach(function (c) {
+      (c.phones || []).forEach(function (p) {
+        var k = digitsTail(p.value, 9);
+        if (k.length >= 7) { if (byPhone[k]) union(c.id, byPhone[k]); else byPhone[k] = c.id; }
+      });
+      (c.emails || []).forEach(function (e) {
+        var k = String(e.value || '').trim().toLowerCase();
+        if (k.indexOf('@') > 0) { if (byEmail[k]) union(c.id, byEmail[k]); else byEmail[k] = c.id; }
+      });
+      var nk = normName(c.name);
+      if (nk.length >= 2) { if (byName[nk]) union(c.id, byName[nk]); else byName[nk] = c.id; }
+    });
+
+    var buckets = {};
+    list.forEach(function (c) {
+      var r = find(c.id);
+      (buckets[r] = buckets[r] || []).push(c);
+    });
+
+    var ign = ignoredPairs();
+    var out = [];
+    Object.keys(buckets).forEach(function (r) {
+      var members = buckets[r];
+      if (members.length < 2) return;
+      var reasons = {}, pairs = 0, openPairs = 0;
+      for (var i = 0; i < members.length; i++) {
+        for (var j = i + 1; j < members.length; j++) {
+          var A = members[i], B = members[j], why = [];
+          var ap = (A.phones || []).map(function (p) { return digitsTail(p.value, 9); }).filter(function (x) { return x.length >= 7; });
+          var bp = (B.phones || []).map(function (p) { return digitsTail(p.value, 9); }).filter(function (x) { return x.length >= 7; });
+          if (ap.some(function (x) { return bp.indexOf(x) > -1; })) why.push('전화번호 일치');
+          var ae = (A.emails || []).map(function (e) { return String(e.value || '').trim().toLowerCase(); }).filter(Boolean);
+          var be = (B.emails || []).map(function (e) { return String(e.value || '').trim().toLowerCase(); }).filter(Boolean);
+          if (ae.some(function (x) { return be.indexOf(x) > -1; })) why.push('이메일 일치');
+          if (normName(A.name) === normName(B.name)) why.push('이름 일치');
+          if (!why.length) continue;
+          pairs++;
+          why.forEach(function (w) { reasons[w] = true; });
+          if (!ign[pairKey(A.id, B.id)]) openPairs++;
+        }
+      }
+      if (!pairs || !openPairs) return;
+      members.sort(function (a, b) { return completeness(b) - completeness(a); });
+      out.push({ id: r, members: members, reasons: Object.keys(reasons) });
+    });
+    out.sort(function (a, b) { return b.members.length - a.members.length; });
+    return out;
+  }
+  function completeness(c) {
+    var n = 1;
+    if (c.photo) n += 2;
+    if (c.org) n += 1;
+    if (c.title) n += 1;
+    if (c.birthday) n += 1;
+    if (c.address) n += 1;
+    if (c.memo) n += 1;
+    n += (c.phones || []).filter(function (p) { return p.value; }).length;
+    n += (c.emails || []).filter(function (e) { return e.value; }).length;
+    n += (c.sites || []).filter(function (s) { return s.value; }).length;
+    return n;
+  }
+  function renderDup() {
+    var box = $('#listInner');
+    var clusters = duplicateClusters(liveContacts());
+    if (!clusters.length) {
+      box.innerHTML = '<div class="empty" style="padding:52px 16px">' +
+        '<div class="empty-art" style="width:78px;height:78px;border-radius:24px">' + icon('i-check') + '</div>' +
+        '<h2 style="font-size:17px">겹치는 연락처가 없어요</h2>' +
+        '<p>이름·전화번호·이메일이 겹치는 연락처를 찾으면 여기에서 한 번에 합칠 수 있습니다.</p>' +
+        '</div>';
+      renderDetail();
+      return;
+    }
+    box.className = S.quiet ? 'quiet' : '';
+    box.innerHTML = '<div class="sec-head"><b>같은 사람일 수 있는 ' + clusters.length + '묶음</b><i></i><span>' +
+      clusters.reduce(function (n, c) { return n + c.members.length - 1; }, 0) + '건 정리 가능</span></div>' +
+      '<div class="dup-list">' + clusters.map(function (cl, i) {
+        return '<div class="dup-card" style="--i:' + i + '">' +
+          '<div class="dc-head"><b>' + esc(cl.members[0].name) + '</b><span class="muted" style="font-size:11px">' + cl.members.length + '개 연락처</span>' +
+          '<span class="dc-why right">' + cl.reasons.map(function (r) { return '<span class="chip">' + esc(r) + '</span>'; }).join('') + '</span></div>' +
+          '<div class="dup-faces">' + cl.members.map(function (m, k) {
+            return '<div class="dup-face">' + avatarHTML(m, 'sm') +
+              '<span class="txt"><b>' + esc(m.name) + '</b><span>' + esc(contactSummary(m) || '추가 정보 없음') + '</span></span>' +
+              (k === 0 ? '<span class="best">가장 완전함</span>' : '') +
+              '<button class="icon-btn" data-act="peek" data-id="' + esc(m.id) + '" title="상세 보기" aria-label="상세 보기">' + icon('i-chev-right', 'i-sm') + '</button>' +
+              '</div>';
+          }).join('') + '</div>' +
+          '<div class="dc-foot">' +
+            '<button class="pill ghost" data-act="ignore-dup" data-cid="' + esc(cl.id) + '"><span>같은 사람 아님</span></button>' +
+            '<button class="pill primary" data-act="merge-dup" data-cid="' + esc(cl.id) + '">' + icon('i-merge', 'i-sm') + '<span>병합하기</span></button>' +
+          '</div></div>';
+      }).join('') + '</div>';
+    renderDetail();
+  }
+
+  function mergeFieldSet(members, key) {
+    var seen = {}, out = [];
+    members.forEach(function (m) {
+      var v = key === 'address' ? m.address : key === 'memo' ? m.memo : key === 'birthday' ? m.birthday : (m[key] || '');
+      if (!v) return;
+      if (seen[v]) { seen[v].ids.push(m.id); return; }
+      seen[v] = { v: v, ids: [m.id] };
+      out.push(seen[v]);
+    });
+    return out;
+  }
+  function openMerge(clusterId) {
+    var clusters = duplicateClusters(liveContacts());
+    var cl = clusters.filter(function (x) { return x.id === clusterId; })[0];
+    if (!cl) { toast('이미 정리된 묶음이에요', 'info'); renderList(); return; }
+    var members = cl.members;
+    var primary = members[0];
+
+    function radioGroup(label, key, fmt) {
+      var opts = mergeFieldSet(members, key);
+      if (!opts.length) return '';
+      opts.sort(function (a, b) { return (b.ids.length - a.ids.length); });
+      return '<div class="pick-group"><header>' + esc(label) + '</header>' + opts.map(function (o, i) {
+        var owner = members.filter(function (m) { return o.ids.indexOf(m.id) > -1; })[0];
+        return '<label class="pick-opt"><input type="radio" name="m-' + key + '" value="' + esc(o.v) + '"' + (i === 0 ? ' checked' : '') + '>' +
+          '<span class="pv">' + esc(fmt ? fmt(o.v) : o.v) + '</span><span class="from">' + esc(owner ? owner.name : '') + '</span></label>';
+      }).join('') + '</div>';
+    }
+    function checkGroup(label, key, fmt) {
+      var rows = [];
+      var seen = {};
+      members.forEach(function (m) {
+        (m[key] || []).forEach(function (item) {
+          var v = item.value;
+          if (!v) return;
+          var k = v.toLowerCase();
+          if (seen[k]) return;
+          seen[k] = true;
+          rows.push({ v: v, label: item.label || '', from: m.name });
+        });
+      });
+      if (!rows.length) return '';
+      return '<div class="pick-group"><header>' + esc(label) + ' · 모두 유지</header>' + rows.map(function (r) {
+        return '<label class="pick-opt"><input type="checkbox" name="m-' + key + '" value="' + esc(r.v) + '" data-label="' + esc(r.label) + '" checked>' +
+          '<span class="pv">' + esc(fmt ? fmt(r) : r.v) + '</span><span class="from">' + esc(r.from) + '</span></label>';
+      }).join('') + '</div>';
+    }
+
+    var nameOpts = mergeFieldSet(members, 'name');
+    var body = '<div class="merge-body">' +
+      '<p class="hint" style="margin-bottom:12px">남길 값을 고르세요. 고르지 않은 정보는 사라지지 않고, 합쳐진 연락처 하나에 모두 담깁니다. 병합된 나머지는 휴지통으로 옮겨 복원할 수 있습니다.</p>' +
+      '<div class="pick-group"><header>대표 이름</header>' + nameOpts.map(function (o, i) {
+        return '<label class="pick-opt"><input type="radio" name="m-name" value="' + esc(o.v) + '"' + (i === 0 ? ' checked' : '') + '>' +
+          '<span class="pv">' + esc(o.v) + '</span><span class="from">' + esc((members.filter(function (m) { return o.ids.indexOf(m.id) > -1; })[0] || {}).name || '') + '</span></label>';
+      }).join('') + '</div>' +
+      radioGroup('소속', 'org') +
+      radioGroup('직함', 'title') +
+      radioGroup('생일', 'birthday', bdayLabel) +
+      checkGroup('전화번호', 'phones', function (r) { return r.v + (r.label ? ' · ' + r.label : ''); }) +
+      checkGroup('이메일', 'emails', function (r) { return r.v + (r.label ? ' · ' + r.label : ''); }) +
+      checkGroup('웹사이트·SNS', 'sites', function (r) { return r.v; }) +
+      radioGroup('주소', 'address') +
+      '</div>';
+
+    var groupRows = S.groups.map(function (g) {
+      var on = members.some(function (m) { return (m.groups || []).indexOf(g.id) > -1; });
+      return '<label class="' + (on ? 'on' : '') + '"><input type="checkbox" name="m-groups" value="' + esc(g.id) + '"' + (on ? ' checked' : '') + '><span class="dot" style="background:' + esc(g.color) + '"></span>' + esc(g.name) + '</label>';
+    }).join('');
+
+    openModal({
+      title: '중복 연락처 병합',
+      sub: cl.members.length + '개를 하나로',
+      size: 'wide',
+      body: body + (groupRows ? '<div class="field" style="margin-top:12px"><label>라벨</label><div class="gpick">' + groupRows + '</div></div>' : ''),
+      foot: '<button class="pill ghost" data-close="modal"><span>취소</span></button>' +
+        '<button class="pill primary" id="doMerge">' + icon('i-merge', 'i-sm') + '<span>이 내용으로 병합</span></button>',
+      onMount: function (layer) {
+        $$('.gpick label', layer).forEach(function (lb) {
+          var inp = lb.querySelector('input');
+          lb.classList.toggle('on', inp.checked);
+          inp.addEventListener('change', function () { lb.classList.toggle('on', inp.checked); });
+        });
+        $('#doMerge', layer).addEventListener('click', function () {
+          applyMerge(members, layer);
+        });
+      }
+    });
+  }
+  function applyMerge(members, layer) {
+    var primary = members[0];
+    function radioVal(key, dflt) {
+      var el = layer.querySelector('input[name="m-' + key + '"]:checked');
+      return el ? el.value : dflt;
+    }
+    var merged = normalizeContact({
+      id: primary.id,
+      name: radioVal('name', primary.name),
+      org: radioVal('org', ''),
+      title: radioVal('title', ''),
+      birthday: radioVal('birthday', ''),
+      address: radioVal('address', ''),
+      memo: members.map(function (m) { return m.memo; }).filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('\n'),
+      anniversary: primary.anniversary || null,
+      photo: primary.photo || (members.filter(function (m) { return m.photo; })[0] || {}).photo || '',
+      starred: members.some(function (m) { return m.starred; }),
+      createdAt: Math.min.apply(null, members.map(function (m) { return m.createdAt || Date.now(); })),
+      deletedAt: null
+    });
+    merged.phones = pickList(layer, 'phones', members, 'phones');
+    merged.emails = pickList(layer, 'emails', members, 'emails');
+    merged.sites = pickList(layer, 'sites', members, 'sites');
+    var gsel = $$('input[name="m-groups"]:checked', layer).map(function (i) { return i.value; });
+    var gAll = {};
+    members.forEach(function (m) { (m.groups || []).forEach(function (g) { gAll[g] = true; }); });
+    merged.groups = Object.keys(gAll).filter(function (g) { return gsel.indexOf(g) > -1; });
+    if (!merged.groups.length) merged.groups = Object.keys(gAll);
+
+    saveContact(merged, { silent: true });
+    members.slice(1).forEach(function (m) {
+      m.deletedAt = Date.now();
+      m.updatedAt = Date.now();
+      saveContact(m, { silent: true });
+    });
+    closeModal();
+    S.selId = merged.id;
+    renderNav();
+    S.view = 'dup';
+    renderList();
+    renderDetail();
+    toast(members.length + '개 연락처를 하나로 병합했어요');
+  }
+  function pickList(layer, key, members, itemKey) {
+    var picked = $$('input[name="m-' + key + '"]:checked', layer);
+    var out = [];
+    picked.forEach(function (inp) {
+      var label = inp.getAttribute('data-label') || '';
+      var src = null;
+      members.forEach(function (m) {
+        if (src) return;
+        (m[itemKey] || []).forEach(function (it) { if (!src && it.value === inp.value) src = it; });
+      });
+      out.push({ label: (src && src.label) || label || '', value: inp.value });
+    });
+    return out;
+  }
+  function ignoreCluster(clusterId) {
+    var clusters = duplicateClusters(liveContacts());
+    var cl = clusters.filter(function (x) { return x.id === clusterId; })[0];
+    if (!cl) return;
+    S.settings.dupIgnore = S.settings.dupIgnore || [];
+    for (var i = 0; i < cl.members.length; i++) {
+      for (var j = i + 1; j < cl.members.length; j++) {
+        var k = pairKey(cl.members[i].id, cl.members[j].id);
+        if (S.settings.dupIgnore.indexOf(k) < 0) S.settings.dupIgnore.push(k);
+      }
+    }
+    saveMeta();
+    renderNav();
+    renderList();
+    toast('같은 사람이 아니라고 표시했어요', 'info');
+  }
+
+  /* ---------------- modal system ---------------- */
+  var layerStack = [];
+  function openModal(opts) {
+    var root = $('#modalRoot');
+    root.hidden = false;
+    $('#rail').classList.remove('open');
+    var layer = doc.createElement('div');
+    layer.className = 'm-layer';
+    var sizeCls = opts.size === 'wide' ? ' wide' : opts.size === 'narrow' ? ' narrow' : '';
+    layer.innerHTML = '<div class="modal' + sizeCls + '" role="dialog" aria-modal="true" aria-label="' + esc(opts.title || '대화상자') + '">' +
+      '<div class="modal-head"><h2>' + esc(opts.title || '') + '</h2>' +
+      (opts.sub ? '<span class="sub">' + esc(opts.sub) + '</span>' : '') +
+      (opts.dismissible === false ? '' : '<button class="icon-btn" data-close="modal" aria-label="닫기">' + icon('i-close', 'i-sm') + '</button>') +
+      '</div>' +
+      '<div class="modal-body">' + (opts.body || '') + '</div>' +
+      (opts.foot ? '<div class="modal-foot">' + opts.foot + '</div>' : '') +
+      '</div>';
+    root.appendChild(layer);
+    layerStack.push({ el: layer, opts: opts });
+    if (opts.onMount) { try { opts.onMount(layer, opts); } catch (e) { console.error(e); } }
+    updateScrim();
+    setTimeout(function () {
+      var f = layer.querySelector('input:not([type=hidden]), textarea, select, button.pill.primary');
+      if (f && !('ontouchstart' in window)) { try { f.focus({ preventScroll: true }); } catch (e) { } }
+    }, 80);
+    return layer;
+  }
+  function closeModal() {
+    var top = layerStack.pop();
+    if (!top) return;
+    if (top.opts && top.opts.onClose) { try { top.opts.onClose(); } catch (e) { } }
+    top.el.remove();
+    if (!layerStack.length) { $('#modalRoot').hidden = true; $('#modalRoot').innerHTML = ''; }
+    updateScrim();
+  }
+  function closeAllModals() {
+    while (layerStack.length) closeModal();
+  }
+  function confirmModal(title, bodyHTML, okLabel, onOk, opts) {
+    opts = opts || {};
+    return openModal({
+      title: title,
+      size: 'narrow',
+      body: '<p class="confirm-text">' + bodyHTML + '</p>',
+      foot: '<button class="pill ghost" data-close="modal"><span>취소</span></button>' +
+        '<button class="pill ' + (opts.danger ? 'danger' : 'primary') + '" id="cfOk"><span>' + esc(okLabel || '확인') + '</span></button>',
+      onMount: function (layer) {
+        $('#cfOk', layer).addEventListener('click', function () {
+          closeModal();
+          try { onOk(); } catch (e) { console.error(e); }
+        });
+      }
+    });
+  }
+  function updateScrim() {
+    var need = layerStack.length > 0 || $('#rail').classList.contains('open') || $('#detail').classList.contains('open');
+    $('#scrim').classList.toggle('show', !!need);
+  }
+  function toggleRail(open) {
+    $('#rail').classList.toggle('open', open);
+    updateScrim();
+  }
+
+  /* ---------------- editor ---------------- */
+  var PHONE_LABELS = ['휴대폰', '직장', '집', '팩스', '기타'];
+  var EMAIL_LABELS = ['개인', '직장', '학교', '기타'];
+  var SITE_LABELS = ['웹사이트', '인스타그램', 'X', '링크드인', '블로그', '기타'];
+
+  function selectOptions(list, val) {
+    return list.map(function (l) {
+      return '<option value="' + esc(l) + '"' + (l === val ? ' selected' : '') + '>' + esc(l) + '</option>';
+    }).join('');
+  }
+  function multiRowHTML(kind, item, labels) {
+    return '<div class="multi-row" data-kind="' + kind + '">' +
+      '<select class="ml" aria-label="' + (kind === 'phone' ? '전화 종류' : kind === 'email' ? '이메일 종류' : '사이트 종류') + '">' + selectOptions(labels, (item && item.label) || labels[0]) + '</select>' +
+      '<input class="mv" type="' + (kind === 'email' ? 'email' : kind === 'phone' ? 'tel' : 'text') + '" value="' + esc((item && item.value) || '') + '" placeholder="' +
+        (kind === 'phone' ? '010-0000-0000' : kind === 'email' ? 'name@example.com' : 'https:// 또는 @계정') + '" aria-label="' +
+        (kind === 'phone' ? '전화번호' : kind === 'email' ? '이메일 주소' : '웹사이트 주소') + '">' +
+      '<button class="del" data-delrow="1" aria-label="이 항목 삭제" type="button">' + icon('i-close', 'i-xs') + '</button>' +
+      '</div>';
+  }
+  function rowsHTML(kind, arr, labels) {
+    var list = (arr && arr.length) ? arr : [null];
+    return list.map(function (it) { return multiRowHTML(kind, it, labels); }).join('');
+  }
+  function readImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) { reject(new Error('image')); return; }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var size = 224, cv = doc.createElement('canvas');
+            var ratio = Math.min(size / img.width, size / img.height, 1);
+            cv.width = Math.max(1, Math.round(img.width * ratio));
+            cv.height = Math.max(1, Math.round(img.height * ratio));
+            var ctx = cv.getContext('2d');
+            ctx.drawImage(img, 0, 0, cv.width, cv.height);
+            resolve(cv.toDataURL('image/jpeg', 0.86));
+          } catch (e) { resolve(fr.result); }
+        };
+        img.onerror = function () { resolve(fr.result); };
+        img.src = fr.result;
+      };
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+  }
+  function pickFile(accept, cb) {
+    var inp = $('#fileInput');
+    inp.value = '';
+    inp.accept = accept;
+    inp.onchange = function () {
+      var f = inp.files && inp.files[0];
+      inp.onchange = null;
+      if (f) cb(f);
+    };
+    inp.click();
+  }
+
+  function openEditor(id) {
+    var existing = id ? getContact(id) : null;
+    var draft = existing ? JSON.parse(JSON.stringify(existing)) : normalizeContact({ id: uid(), name: '' });
+    var photo = draft.photo || '';
+    var isNew = !existing;
+
+    function bodyHTML() {
+      var gs = S.groups.map(function (g) {
+        var on = (draft.groups || []).indexOf(g.id) > -1;
+        return '<label class="' + (on ? 'on' : '') + '"><input type="checkbox" name="eg" value="' + esc(g.id) + '"' + (on ? ' checked' : '') + '>' +
+          '<span class="dot" style="background:' + esc(g.color) + '"></span>' + esc(g.name) + '</label>';
+      }).join('');
+      var ann = draft.anniversary || {};
+      return '<div class="photo-row">' +
+          '<span class="ava" id="edAva" style="background:' + (photo ? '#dfe7e5' : colorFor(draft.name || '?')) + '">' +
+          (photo ? '<img src="' + esc(photo) + '" alt="">' : esc(draft.name && draft.name !== '이름 없음' ? initials(draft.name) : '?')) + '</span>' +
+          '<div class="stack"><div class="photo-btns">' +
+            '<button class="pill" type="button" id="pickPhoto">' + icon('i-camera', 'i-sm') + '<span>사진 선택</span></button>' +
+            '<button class="pill ghost" type="button" id="clearPhoto"' + (photo ? '' : ' hidden') + '><span>사진 지우기</span></button>' +
+          '</div><span class="hint">사진은 이 브라우저에만 저장됩니다.</span></div>' +
+        '</div>' +
+        '<div class="field"><label for="edName">이름 *</label><input id="edName" value="' + esc(draft.name === '이름 없음' ? '' : draft.name) + '" placeholder="홍길동" maxlength="60" autocomplete="off"></div>' +
+        '<div class="form-grid">' +
+          '<div class="field"><label for="edOrg">소속·회사</label><input id="edOrg" value="' + esc(draft.org || '') + '" placeholder="플럭스상회" maxlength="80"></div>' +
+          '<div class="field"><label for="edTitle">직함</label><input id="edTitle" value="' + esc(draft.title || '') + '" placeholder="기획 팀장" maxlength="60"></div>' +
+        '</div>' +
+        '<div class="field"><label>전화번호</label><div class="multi-list" id="phonesList">' + rowsHTML('phone', draft.phones, PHONE_LABELS) + '</div>' +
+          '<button class="add-row" type="button" data-addrow="phone">' + icon('i-plus', 'i-xs') + '<span>전화번호 추가</span></button></div>' +
+        '<div class="field"><label>이메일</label><div class="multi-list" id="emailsList">' + rowsHTML('email', draft.emails, EMAIL_LABELS) + '</div>' +
+          '<button class="add-row" type="button" data-addrow="email">' + icon('i-plus', 'i-xs') + '<span>이메일 추가</span></button></div>' +
+        '<div class="form-grid">' +
+          '<div class="field"><label for="edBday">생일</label><input id="edBday" type="date" value="' + esc(/^\d{4}-\d{2}-\d{2}$/.test(draft.birthday || '') ? draft.birthday : '') + '"></div>' +
+          '<div class="field"><label for="edAnn">기념일</label><input id="edAnn" type="date" value="' + esc(/^\d{4}-\d{2}-\d{2}$/.test(ann.date || '') ? ann.date : '') + '"></div>' +
+        '</div>' +
+        '<div class="field"><label for="edAnnLabel">기념일 이름</label><input id="edAnnLabel" value="' + esc(ann.label || '') + '" placeholder="결혼기념일, 첫 만남" maxlength="40"></div>' +
+        '<div class="field"><label for="edAddr">주소</label><input id="edAddr" value="' + esc(draft.address || '') + '" placeholder="서울시 중구 세종대로 00" maxlength="160"></div>' +
+        '<div class="field"><label>웹사이트·SNS</label><div class="multi-list" id="sitesList">' + rowsHTML('site', draft.sites, SITE_LABELS) + '</div>' +
+          '<button class="add-row" type="button" data-addrow="site">' + icon('i-plus', 'i-xs') + '<span>링크 추가</span></button></div>' +
+        '<div class="field"><label>라벨</label><div class="gpick" id="edGroups">' + (gs || '<span class="hint">라벨이 없습니다. 아래에서 새로 만들 수 있어요.</span>') + '</div>' +
+          '<div class="rowline" style="margin-top:7px"><input id="newGroupName" placeholder="새 라벨 이름" maxlength="24" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:6px 9px;background:var(--card-2);font-size:12px">' +
+          '<button class="pill" type="button" id="addGroupInline" style="height:30px;font-size:11.5px;padding:0 10px"><span>라벨 만들기</span></button></div></div>' +
+        '<div class="field"><label for="edMemo">메모</label><textarea id="edMemo" placeholder="만난 곳, 함께 한 일, 기억할 것">' + esc(draft.memo || '') + '</textarea></div>' +
+        '<label class="check-line"><input type="checkbox" id="edStar"' + (draft.starred ? ' checked' : '') + '><span>즐겨찾기에 고정</span></label>';
+    }
+
+    var layer = openModal({
+      title: isNew ? '새 연락처' : '연락처 편집',
+      sub: isNew ? '' : draft.name,
+      body: bodyHTML(),
+      foot: (isNew ? '' : '<div class="left"><button class="pill danger" id="edDelete" type="button">' + icon('i-trash', 'i-sm') + '<span>삭제</span></button></div>') +
+        '<button class="pill ghost" data-close="modal"><span>취소</span></button>' +
+        '<button class="pill primary" id="edSave">' + icon('i-check', 'i-sm') + '<span>' + (isNew ? '추가' : '저장') + '</span></button>',
+      onMount: function (root) {
+        function refreshAva() {
+          var name = $('#edName', root).value.trim();
+          var el = $('#edAva', root);
+          el.style.background = photo ? '#dfe7e5' : colorFor(name || '?');
+          el.innerHTML = photo ? '<img src="' + esc(photo) + '" alt="">' : esc(initials(name || '?'));
+        }
+        $('#edName', root).addEventListener('input', refreshAva);
+        $('#pickPhoto', root).addEventListener('click', function () {
+          pickFile('image/*', function (file) {
+            readImage(file).then(function (data) {
+              photo = data;
+              refreshAva();
+              $('#clearPhoto', root).hidden = false;
+            }).catch(function () { toast('이미지 파일만 올릴 수 있어요', 'err'); });
+          });
+        });
+        $('#clearPhoto', root).addEventListener('click', function () {
+          photo = '';
+          refreshAva();
+          this.hidden = true;
+        });
+        $$('.gpick label', root).forEach(function (lb) {
+          var inp = lb.querySelector('input');
+          if (!inp) return;
+          inp.addEventListener('change', function () { lb.classList.toggle('on', inp.checked); });
+        });
+        $$('[data-addrow]', root).forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var kind = btn.getAttribute('data-addrow');
+            var host = kind === 'phone' ? $('#phonesList', root) : kind === 'email' ? $('#emailsList', root) : $('#sitesList', root);
+            var labels = kind === 'phone' ? PHONE_LABELS : kind === 'email' ? EMAIL_LABELS : SITE_LABELS;
+            var wrap = doc.createElement('div');
+            wrap.innerHTML = multiRowHTML(kind, null, labels);
+            host.appendChild(wrap.firstChild);
+            var inp = host.lastElementChild.querySelector('.mv');
+            if (inp) inp.focus();
+          });
+        });
+        root.addEventListener('click', function (e) {
+          var del = e.target.closest('[data-delrow]');
+          if (!del) return;
+          var row = del.closest('.multi-row');
+          var host = row.parentNode;
+          if (host.querySelectorAll('.multi-row').length > 1) row.remove();
+          else { row.querySelector('.mv').value = ''; }
+        });
+        $('#addGroupInline', root).addEventListener('click', function () {
+          var name = $('#newGroupName', root).value.trim();
+          if (!name) { toast('라벨 이름을 적어 주세요', 'err'); return; }
+          var g = { id: uid('g'), name: name, color: GROUP_COLORS[S.groups.length % GROUP_COLORS.length] };
+          S.groups.push(g);
+          saveMeta();
+          renderNav();
+          var host = $('#edGroups', root);
+          if (host.querySelector('.hint')) host.innerHTML = '';
+          var lb = doc.createElement('label');
+          lb.className = 'on';
+          lb.innerHTML = '<input type="checkbox" name="eg" value="' + esc(g.id) + '" checked><span class="dot" style="background:' + esc(g.color) + '"></span>' + esc(g.name);
+          host.appendChild(lb);
+          $('#newGroupName', root).value = '';
+          toast('라벨을 만들었어요');
+        });
+        if (!isNew) {
+          $('#edDelete', root).addEventListener('click', function () {
+            confirmModal('연락처 삭제', '<b>' + esc(draft.name) + '</b> 님을 휴지통으로 옮길까요? 휴지통에서 복원할 수 있습니다.', '휴지통으로', function () {
+              closeAllModals();
+              moveToTrash(draft.id);
+            });
+          });
+        }
+        $('#edSave', root).addEventListener('click', function () {
+          var name = $('#edName', root).value.trim();
+          if (!name) { toast('이름을 적어 주세요', 'err'); $('#edName', root).focus(); return; }
+          function collect(kind) {
+            var host = kind === 'phone' ? $('#phonesList', root) : kind === 'email' ? $('#emailsList', root) : $('#sitesList', root);
+            var out = [];
+            $$('.multi-row', host).forEach(function (row) {
+              var v = row.querySelector('.mv').value.trim();
+              if (!v) return;
+              out.push({ label: row.querySelector('.ml').value, value: v });
+            });
+            return out;
+          }
+          var out = existing ? getContact(draft.id) : null;
+          var data = normalizeContact({
+            id: draft.id,
+            name: name,
+            org: $('#edOrg', root).value.trim(),
+            title: $('#edTitle', root).value.trim(),
+            phones: collect('phone'),
+            emails: collect('email'),
+            sites: collect('site'),
+            birthday: $('#edBday', root).value || '',
+            anniversary: ($('#edAnn', root).value || $('#edAnnLabel', root).value.trim())
+              ? { label: $('#edAnnLabel', root).value.trim(), date: $('#edAnn', root).value || '' } : null,
+            address: $('#edAddr', root).value.trim(),
+            groups: $$('input[name="eg"]:checked', root).map(function (i) { return i.value; }),
+            memo: $('#edMemo', root).value.trim(),
+            photo: photo,
+            starred: $('#edStar', root).checked,
+            createdAt: draft.createdAt,
+            updatedAt: Date.now(),
+            deletedAt: existing ? existing.deletedAt : null
+          });
+          saveContact(data, { silent: true }).then(function () {
+            closeAllModals();
+            S.selId = data.id;
+            if (S.view === 'trash' && !data.deletedAt) S.view = 'all';
+            renderNav();
+            renderList();
+            renderDetail();
+            if (window.innerWidth <= 1180) { $('#detail').classList.add('open'); }
+            updateScrim();
+            toast(isNew ? '연락처를 추가했어요' : '연락처를 저장했어요');
+          });
+        });
+      }
+    });
+    return layer;
+  }
+
+  /* ---------------- groups ---------------- */
+  function openGroupEditor(gid) {
+    var g = gid ? getGroup(gid) : null;
+    var color = g ? g.color : GROUP_COLORS[S.groups.length % GROUP_COLORS.length];
+    var swatches = GROUP_COLORS.map(function (c) {
+      return '<button type="button" class="swatch" data-color="' + esc(c) + '" style="width:26px;height:26px;border-radius:9px;border:2px solid ' + (c === color ? 'var(--ink)' : 'transparent') + ';background:' + c + '" aria-label="' + esc(c) + '"></button>';
+    }).join('');
+    openModal({
+      title: g ? '라벨 편집' : '새 라벨',
+      size: 'narrow',
+      body: '<div class="field"><label for="gName">라벨 이름</label><input id="gName" value="' + esc(g ? g.name : '') + '" placeholder="가족, 학교, 거래처" maxlength="24"></div>' +
+        '<div class="field"><label>색상</label><div style="display:flex;gap:6px;flex-wrap:wrap" id="gColors">' + swatches + '</div></div>',
+      foot: (g ? '<div class="left"><button class="pill danger" id="gDelete"><span>라벨 삭제</span></button></div>' : '') +
+        '<button class="pill ghost" data-close="modal"><span>취소</span></button>' +
+        '<button class="pill primary" id="gSave"><span>' + (g ? '저장' : '만들기') + '</span></button>',
+      onMount: function (root) {
+        $$('.swatch', root).forEach(function (sw) {
+          sw.addEventListener('click', function () {
+            color = sw.getAttribute('data-color');
+            $$('.swatch', root).forEach(function (x) {
+              x.style.borderColor = x.getAttribute('data-color') === color ? 'var(--ink)' : 'transparent';
+            });
+          });
+        });
+        $('#gSave', root).addEventListener('click', function () {
+          var name = $('#gName', root).value.trim();
+          if (!name) { toast('라벨 이름을 적어 주세요', 'err'); return; }
+          if (g) { g.name = name; g.color = color; }
+          else S.groups.push({ id: uid('g'), name: name, color: color });
+          saveMeta();
+          closeModal();
+          renderNav();
+          renderList();
+          if (S.selId) renderDetail();
+          toast(g ? '라벨을 저장했어요' : '라벨을 만들었어요');
+        });
+        if (g) {
+          $('#gDelete', root).addEventListener('click', function () {
+            confirmModal('라벨 삭제', '<b>' + esc(g.name) + '</b> 라벨을 지울까요? 연락처는 그대로 남고 이 라벨만 떨어집니다.', '삭제', function () {
+              S.groups = S.groups.filter(function (x) { return x.id !== g.id; });
+              S.contacts.forEach(function (c) {
+                if ((c.groups || []).indexOf(g.id) > -1) {
+                  c.groups = c.groups.filter(function (x) { return x !== g.id; });
+                  saveContact(c, { silent: true });
+                }
+              });
+              if (S.view === 'group' && S.groupId === g.id) { S.view = 'all'; S.groupId = null; }
+              saveMeta();
+              closeAllModals();
+              renderNav(); renderList(); renderDetail();
+              toast('라벨을 삭제했어요');
+            });
+          });
+        }
+      }
+    });
+  }
+
+  /* ---------------- trash ---------------- */
+  function moveToTrash(id) {
+    var c = getContact(id);
+    if (!c) return;
+    c.deletedAt = Date.now();
+    c.updatedAt = c.deletedAt;
+    saveContact(c, { silent: true }).then(function () {
+      if (S.selId === id) { S.selId = null; }
+      renderNav(); renderList(); renderDetail();
+      toast('휴지통으로 옮겼어요');
+    });
+  }
+  function restoreContact(id) {
+    var c = getContact(id);
+    if (!c) return;
+    c.deletedAt = null;
+    c.updatedAt = Date.now();
+    saveContact(c, { silent: true }).then(function () {
+      renderNav(); renderList(); renderDetail();
+      toast('연락처를 복원했어요');
+    });
+  }
+  function purgeContact(id) {
+    var c = getContact(id);
+    if (!c) return;
+    confirmModal('영구 삭제', '<b>' + esc(c.name) + '</b> 님을 완전히 지웁니다. 되돌릴 수 없습니다.', '영구 삭제', function () {
+      removeContactRecord(id).then(function () {
+        if (S.selId === id) S.selId = null;
+        renderNav(); renderList(); renderDetail();
+        toast('영구 삭제했어요');
+      });
+    }, { danger: true });
+  }
+
+  /* ============================================================
+     vCard · CSV · JSON
+     ============================================================ */
+  function splitName(name) {
+    var n = String(name || '').trim();
+    if (!n) return { family: '', given: '' };
+    if (/[가-힣]/.test(n)) return { family: n[0], given: n.slice(1) };
+    var parts = n.split(/\s+/);
+    if (parts.length === 1) return { family: parts[0], given: '' };
+    return { family: parts[parts.length - 1], given: parts.slice(0, -1).join(' ') };
+  }
+  function vEsc(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+  }
+  function unvEsc(s) {
+    return String(s == null ? '' : s).replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+  }
+  function telType(label) {
+    return ({ '휴대폰': 'CELL', '직장': 'WORK', '집': 'HOME', '팩스': 'FAX' })[label] || 'VOICE';
+  }
+  function emailType(label) {
+    return ({ '개인': 'HOME', '직장': 'WORK', '학교': 'WORK' })[label] || 'INTERNET';
+  }
+  function byteLen(str) {
+    try { return new TextEncoder().encode(str).length; } catch (e) { return unescape(encodeURIComponent(str)).length; }
+  }
+  function foldLine(line) {
+    if (byteLen(line) <= 75) return line;
+    var out = [], cur = '', bytes = 0;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i], b = byteLen(ch);
+      if (bytes + b > 74) { out.push(cur); cur = ' '; bytes = 1; }
+      cur += ch; bytes += b;
+    }
+    if (cur) out.push(cur);
+    return out.join('\r\n');
+  }
+  function toVCard(c) {
+    var nm = splitName(c.name);
+    var L = ['BEGIN:VCARD', 'VERSION:3.0',
+      'N:' + vEsc(nm.family) + ';' + vEsc(nm.given) + ';;;',
+      'FN:' + vEsc(c.name)];
+    if (c.org) L.push('ORG:' + vEsc(c.org));
+    if (c.title) L.push('TITLE:' + vEsc(c.title));
+    (c.phones || []).forEach(function (p) { if (p.value) L.push('TEL;TYPE=' + telType(p.label) + ':' + vEsc(p.value)); });
+    (c.emails || []).forEach(function (e) { if (e.value) L.push('EMAIL;TYPE=' + emailType(e.label) + ':' + vEsc(e.value)); });
+    if (c.birthday) L.push('BDAY:' + c.birthday.replace(/-/g, ''));
+    if (c.anniversary && c.anniversary.date) L.push('X-FLUX-ANNIVERSARY:' + vEsc((c.anniversary.label || '') + '|' + c.anniversary.date));
+    if (c.address) L.push('ADR;TYPE=HOME:;;' + vEsc(c.address) + ';;;;');
+    (c.sites || []).forEach(function (s) { if (s.value) L.push('URL;TYPE=' + (s.label || 'WEBSITE') + ':' + vEsc(s.value)); });
+    if (c.memo) L.push('NOTE:' + vEsc(c.memo));
+    var gn = groupNames(c);
+    if (gn.length) L.push('CATEGORIES:' + gn.map(vEsc).join(','));
+    if (c.starred) L.push('X-FLUX-STARRED:1');
+    if (c.photo && /^data:image\//.test(c.photo) && c.photo.length < 240000) {
+      var m = /^data:image\/([a-z]+);base64,(.*)$/i.exec(c.photo);
+      if (m) L.push('PHOTO;ENCODING=b;TYPE=' + m[1].toUpperCase() + ':' + m[2]);
+    }
+    L.push('REV:' + new Date(c.updatedAt || Date.now()).toISOString());
+    L.push('END:VCARD');
+    return L.map(foldLine).join('\r\n') + '\r\n';
+  }
+  function qpDecode(str, charset) {
+    var bytes = [];
+    for (var i = 0; i < str.length; i++) {
+      var ch = str[i];
+      if (ch === '=') {
+        var hex = str.substr(i + 1, 2);
+        if (/^[0-9A-Fa-f]{2}$/.test(hex)) { bytes.push(parseInt(hex, 16)); i += 2; continue; }
+        if (hex === '\r\n' || hex === '\n') { i += 2; continue; }
+      }
+      var enc = unescape(encodeURIComponent(ch));
+      for (var k = 0; k < enc.length; k++) bytes.push(enc.charCodeAt(k));
+    }
+    var cs = (charset || 'utf-8').toLowerCase();
+    if (cs === 'ks_c_5601-1987' || cs === 'euc-kr' || cs === 'cp949') cs = 'euc-kr';
+    try { return new TextDecoder(cs).decode(new Uint8Array(bytes)); }
+    catch (e) {
+      try { return new TextDecoder('utf-8').decode(new Uint8Array(bytes)); }
+      catch (e2) { return str; }
+    }
+  }
+  function parseVCards(text) {
+    var t = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    var out = [];
+    var blocks = t.split(/BEGIN:VCARD/i).slice(1);
+    blocks.forEach(function (block) {
+      var b = block.split(/END:VCARD/i)[0];
+      b = b.replace(/=\n/g, '').replace(/\n[ \t]/g, '');
+      var c = { name: '', org: '', title: '', phones: [], emails: [], sites: [], groups: [], memo: '', birthday: '', address: '', anniversary: null, photo: '' };
+      var n = { family: '', given: '' };
+      b.split('\n').forEach(function (raw) {
+        if (!raw.trim()) return;
+        var idx = raw.indexOf(':');
+        if (idx < 0) return;
+        var left = raw.slice(0, idx), value = raw.slice(idx + 1);
+        var segs = left.split(';');
+        var prop = segs[0].toUpperCase();
+        if (prop.indexOf('.') > -1) prop = prop.split('.').pop();
+        var params = {};
+        segs.slice(1).forEach(function (p) {
+          var kv = p.split('=');
+          var k = kv[0].toUpperCase();
+          if (k === 'TYPE') {
+            var v = kv.slice(1).join('=').replace(/"/g, '').toUpperCase();
+            params.TYPE = (params.TYPE ? params.TYPE + ',' : '') + v;
+          } else params[k] = kv.slice(1).join('=').replace(/"/g, '').toUpperCase();
+        });
+        var enc = params.ENCODING || '';
+        if (enc.indexOf('QUOTED') > -1) value = qpDecode(value, params.CHARSET);
+        if (prop === 'PHOTO') {
+          var type = (params.TYPE || 'JPEG').split(',')[0].toLowerCase();
+          if (enc === 'B' || enc === 'BASE64' || /^[A-Za-z0-9+/=\s]{200,}$/.test(value)) {
+            var b64 = value.replace(/\s+/g, '');
+            if (b64.length < 330000) c.photo = 'data:image/' + (type === 'jpeg' ? 'jpeg' : type) + ';base64,' + b64;
+          }
+          return;
+        }
+        value = unvEsc(value).trim();
+        if (!value && prop !== 'NOTE') return;
+        switch (prop) {
+          case 'FN': c.name = value; break;
+          case 'N':
+            var np = value.split(';');
+            n.family = (np[0] || '').trim(); n.given = (np[1] || '').trim();
+            break;
+          case 'ORG': c.org = value.split(';')[0]; break;
+          case 'TITLE': c.title = value; break;
+          case 'TEL':
+            var tl = /CELL|MOBILE/.test(params.TYPE || '') ? '휴대폰' : /WORK/.test(params.TYPE || '') ? '직장' : /HOME/.test(params.TYPE || '') ? '집' : /FAX/.test(params.TYPE || '') ? '팩스' : '기타';
+            c.phones.push({ label: tl, value: value }); break;
+          case 'EMAIL':
+            var el = /WORK/.test(params.TYPE || '') ? '직장' : /HOME/.test(params.TYPE || '') ? '개인' : '기타';
+            c.emails.push({ label: el, value: value }); break;
+          case 'BDAY':
+            var m = /^(\d{4})(\d{2})(\d{2})$/.exec(value.replace(/-/g, ''));
+            if (m) c.birthday = m[1] + '-' + m[2] + '-' + m[3];
+            else if (/^--\d{2}-?\d{2}$/.test(value)) c.birthday = value.replace(/^--/, '').replace(/^(\d{2})(\d{2})$/, '$1-$2');
+            break;
+          case 'ADR':
+            var ap = value.split(';').map(function (x) { return x.trim(); }).filter(Boolean);
+            if (ap.length) c.address = ap.join(' ');
+            break;
+          case 'URL':
+            c.sites.push({ label: /INSTAGRAM/.test(params.TYPE || '') ? '인스타그램' : '웹사이트', value: value }); break;
+          case 'NOTE': c.memo = value; break;
+          case 'CATEGORIES':
+            value.split(',').forEach(function (g) { var gg = g.trim(); if (gg) c.groups.push(gg); });
+            break;
+          case 'X-FLUX-ANNIVERSARY':
+            var ap2 = value.split('|');
+            if (ap2.length === 2) c.anniversary = { label: ap2[0], date: ap2[1] };
+            break;
+          case 'X-FLUX-STARRED': c.starred = true; break;
+        }
+      });
+      if (!c.name) {
+        if (n.family || n.given) c.name = /[A-Za-z]/.test(n.family + n.given) ? (n.given + ' ' + n.family).trim() : (n.family + n.given);
+      }
+      if (c.name || c.phones.length || c.emails.length) out.push(c);
+    });
+    return out;
+  }
+
+  /* ---------------- CSV ---------------- */
+  function parseCSV(text) {
+    var t = String(text || '').replace(/^\uFEFF/, '');
+    var rows = [], row = [], cur = '', q = false;
+    for (var i = 0; i < t.length; i++) {
+      var ch = t[i];
+      if (q) {
+        if (ch === '"') {
+          if (t[i + 1] === '"') { cur += '"'; i++; }
+          else q = false;
+        } else cur += ch;
+      } else {
+        if (ch === '"') q = true;
+        else if (ch === ',') { row.push(cur); cur = ''; }
+        else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+        else if (ch === '\r') { }
+        else cur += ch;
+      }
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter(function (r) { return r.some(function (v) { return String(v).trim() !== ''; }); });
+  }
+  function csvCell(v) {
+    var s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function toCSV(list) {
+    var maxPh = 2, maxEm = 2, maxSite = 1;
+    list.forEach(function (c) {
+      maxPh = Math.max(maxPh, (c.phones || []).length);
+      maxEm = Math.max(maxEm, (c.emails || []).length);
+      maxSite = Math.max(maxSite, (c.sites || []).length);
+    });
+    var head = ['Name', 'Given Name', 'Family Name', 'Organization 1 - Name', 'Organization 1 - Title'];
+    for (var i = 1; i <= maxPh; i++) head.push('Phone ' + i + ' - Type', 'Phone ' + i + ' - Value');
+    for (var j = 1; j <= maxEm; j++) head.push('E-mail ' + j + ' - Type', 'E-mail ' + j + ' - Value');
+    for (var k = 1; k <= maxSite; k++) head.push('Website ' + k + ' - Type', 'Website ' + k + ' - Value');
+    head.push('Birthday', 'Address 1 - Formatted', 'Notes', 'Group Membership', 'Starred');
+    var lines = [head.map(csvCell).join(',')];
+    list.forEach(function (c) {
+      var nm = splitName(c.name);
+      var row = [c.name, nm.given, nm.family, c.org || '', c.title || ''];
+      for (var i = 0; i < maxPh; i++) { var p = (c.phones || [])[i]; row.push(p ? p.label : '', p ? p.value : ''); }
+      for (var j = 0; j < maxEm; j++) { var e = (c.emails || [])[j]; row.push(e ? e.label : '', e ? e.value : ''); }
+      for (var k = 0; k < maxSite; k++) { var s = (c.sites || [])[k]; row.push(s ? s.label : '', s ? s.value : ''); }
+      row.push(c.birthday || '', c.address || '', (c.memo || '').replace(/\n/g, ' '), groupNames(c).join(' ::: '), c.starred ? '1' : '');
+      lines.push(row.map(csvCell).join(','));
+    });
+    return lines.join('\r\n');
+  }
+  function csvToContacts(text) {
+    var rows = parseCSV(text);
+    if (rows.length < 2) return [];
+    var head = rows[0].map(function (h) { return String(h).trim(); });
+    function findCol(re) {
+      for (var i = 0; i < head.length; i++) if (re.test(head[i])) return i;
+      return -1;
+    }
+    function cols(re) {
+      var out = [];
+      head.forEach(function (h, i) { if (re.test(h)) out.push(i); });
+      return out;
+    }
+    var iName = findCol(/^name$|^이름$|^성명$/i);
+    var iGiven = findCol(/given name|^이름\(이\)$/i);
+    var iFamily = findCol(/family name|^성$/i);
+    var iOrg = findCol(/organization 1 - name|^회사$|^소속$|^organization$/i);
+    var iTitle = findCol(/organization 1 - title|^직함$|^title$|^직책$/i);
+    var iBday = findCol(/^birthday$|^생일$/i);
+    var iAddr = findCol(/address 1 - formatted|^주소$|^address$/i);
+    var iNote = findCol(/^notes$|^메모$|^note$/i);
+    var iGroup = findCol(/group membership|^라벨$|^그룹$|^groups$/i);
+    var iStar = findCol(/^starred$|^즐겨찾기$/i);
+    var phVals = cols(/^phone \d+ - value$|^전화번호\d*$|^휴대폰\d*$/i);
+    var phTypes = cols(/^phone \d+ - type$/i);
+    var emVals = cols(/^e-?mail \d+ - value$|^이메일\d*$|^email\d*$/i);
+    var emTypes = cols(/^e-?mail \d+ - type$/i);
+    var siteVals = cols(/^website \d+ - value$|^웹사이트\d*$/i);
+    var siteTypes = cols(/^website \d+ - type$/i);
+    var out = [];
+    rows.slice(1).forEach(function (r) {
+      function cell(i) { return i > -1 && i < r.length ? String(r[i]).trim() : ''; }
+      var name = cell(iName) || (cell(iFamily) + cell(iGiven));
+      if (!name && !phVals.length && !emVals.length) return;
+      if (!name) name = cell(phVals[0]) || cell(emVals[0]) || '이름 없음';
+      var c = { name: name, org: cell(iOrg), title: cell(iTitle), birthday: '', address: cell(iAddr), memo: cell(iNote), phones: [], emails: [], sites: [], groups: [], starred: /^(1|true|yes|y|예)$/i.test(cell(iStar)) };
+      var bd = cell(iBday);
+      if (bd) {
+        var m = /^(\d{4})[-.\/]?(\d{1,2})[-.\/]?(\d{1,2})$/.exec(bd);
+        if (m) c.birthday = m[1] + '-' + pad2(+m[2]) + '-' + pad2(+m[3]);
+      }
+      phVals.forEach(function (vi, idx) {
+        var v = cell(vi); if (!v) return;
+        var t = cell(phTypes[idx] || -1);
+        var tl = /cell|mobile|휴대/i.test(t) ? '휴대폰' : /work|직장/i.test(t) ? '직장' : /home|집/i.test(t) ? '집' : /fax|팩스/i.test(t) ? '팩스' : '기타';
+        c.phones.push({ label: tl, value: v });
+      });
+      emVals.forEach(function (vi, idx) {
+        var v = cell(vi); if (!v) return;
+        var t = cell(emTypes[idx] || -1);
+        var tl = /work|직장/i.test(t) ? '직장' : /home|개인/i.test(t) ? '개인' : '기타';
+        c.emails.push({ label: tl, value: v });
+      });
+      siteVals.forEach(function (vi, idx) {
+        var v = cell(vi); if (!v) return;
+        c.sites.push({ label: /instagram/i.test(cell(siteTypes[idx] || -1)) ? '인스타그램' : '웹사이트', value: v });
+      });
+      var gs = cell(iGroup);
+      if (gs) gs.split(/:::|\||;/).forEach(function (g) {
+        var gg = g.replace(/^\*\s*/, '').trim();
+        if (!gg || /^(내 연락처|myContacts|my contacts|연락처)$/i.test(gg)) return;
+        c.groups.push(gg);
+      });
+      out.push(c);
+    });
+    return out;
+  }
+  function downloadText(name, text, mime) {
+    try { Lemon.download(name, text, mime); toast(name + ' 파일을 내려받았어요'); }
+    catch (e) { toast('내려받기에 실패했어요', 'err'); }
+  }
+  function dateStamp() {
+    var d = new Date();
+    return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate());
+  }
+  function exportVCards(list) {
+    var text = list.map(toVCard).join('');
+    downloadText('flux-contacts-' + dateStamp() + '.vcf', text, 'text/vcard;charset=utf-8');
+  }
+  function exportCSV(list) {
+    downloadText('flux-contacts-' + dateStamp() + '.csv', '\uFEFF' + toCSV(list), 'text/csv;charset=utf-8');
+  }
+  function exportJSON() {
+    var data = { app: 'Flux Contacts', version: 1, exportedAt: new Date().toISOString(), contacts: S.contacts, groups: S.groups, settings: { me: S.settings.me || {} } };
+    downloadText('flux-contacts-backup-' + dateStamp() + '.json', JSON.stringify(data, null, 2), 'application/json');
+  }
+
+  /* ============================================================
+     가져오기
+     ============================================================ */
+  var IMP = { tab: 'vcf', items: [], text: '', fileName: '', merge: true, replace: false, json: null };
+
+  function readFileText(file) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(String(fr.result || '')); };
+      fr.onerror = reject;
+      fr.readAsText(file, 'utf-8');
+    });
+  }
+  function importPreviewHTML() {
+    if (!IMP.items.length) return '<p class="hint">아직 읽은 연락처가 없습니다. 파일을 고르거나 아래에 붙여 넣고 [읽기]를 누르세요.</p>';
+    var n = IMP.items.length;
+    return '<div class="section-title" style="margin-bottom:6px">' + n + '개 연락처를 읽었습니다</div>' +
+      '<div class="import-preview">' + IMP.items.slice(0, 40).map(function (c) {
+        return '<div class="ip-row">' + avatarHTML({ name: c.name, photo: c.photo }, 'sm') +
+          '<span>' + esc(c.name) + '</span><span class="meta">' + esc(contactSummary(c) || '추가 정보 없음') + '</span></div>';
+      }).join('') + '</div>' +
+      (n > 40 ? '<p class="hint" style="margin-top:6px">앞 40개만 미리 보여 줍니다. 모두 ' + n + '개가 들어갑니다.</p>' : '');
+  }
+  function openImport(tab) {
+    IMP.tab = tab || IMP.tab || 'vcf';
+    var accept = IMP.tab === 'vcf' ? '.vcf,text/vcard,text/x-vcard' : IMP.tab === 'csv' ? '.csv,text/csv' : '.json,application/json';
+    var titleMap = { vcf: 'vCard(.vcf)', csv: 'CSV(.csv)', json: 'JSON 백업' };
+    var body =
+      '<div class="tabs" role="tablist">' +
+        '<button class="tab' + (IMP.tab === 'vcf' ? ' on' : '') + '" data-itab="vcf" role="tab">vCard</button>' +
+        '<button class="tab' + (IMP.tab === 'csv' ? ' on' : '') + '" data-itab="csv" role="tab">CSV</button>' +
+        '<button class="tab' + (IMP.tab === 'json' ? ' on' : '') + '" data-itab="json" role="tab">JSON</button>' +
+      '</div>' +
+      '<div class="dropzone" id="dropzone">' +
+        '<div class="ico">' + icon('i-upload') + '</div>' +
+        '<b>' + titleMap[IMP.tab] + ' 파일 고르기</b>' +
+        '<span>끌어다 놓아도 됩니다 · UTF-8 기준</span>' +
+        '<input type="file" id="impFile" accept="' + accept + '">' +
+      '</div>' +
+      '<div class="or">또는 붙여 넣기</div>' +
+      '<div class="field"><textarea id="impText" placeholder="' + (IMP.tab === 'json' ? '{ "contacts": [ ... ] }' : IMP.tab === 'csv' ? 'Name,Phone 1 - Value,Notes\n...' : 'BEGIN:VCARD ... END:VCARD') + '" style="min-height:104px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px">' + esc(IMP.text || '') + '</textarea></div>' +
+      '<div class="rowline" style="justify-content:space-between;margin-bottom:6px">' +
+        '<button class="pill" id="parseBtn" type="button" style="height:32px;font-size:12px">' + icon('i-search', 'i-sm') + '<span>읽기</span></button>' +
+        '<span class="hint" id="impFileName">' + esc(IMP.fileName || '') + '</span>' +
+      '</div>' +
+      (IMP.tab === 'json'
+        ? '<label class="check-line"><input type="checkbox" id="impReplace"' + (IMP.replace ? ' checked' : '') + '><span>기존 연락처를 모두 지우고 백업으로 되돌리기</span></label>'
+        : '<label class="check-line"><input type="checkbox" id="impMerge"' + (IMP.merge ? ' checked' : '') + '><span>같은 전화번호·이메일이 있으면 기존 연락처에 합치기</span></label>') +
+      '<div id="impPreview" style="margin-top:12px">' + importPreviewHTML() + '</div>';
+
+    openModal({
+      title: '연락처 가져오기',
+      sub: titleMap[IMP.tab],
+      size: 'wide',
+      body: body,
+      foot: '<button class="pill ghost" data-close="modal"><span>취소</span></button>' +
+        '<button class="pill primary" id="doImport"' + (IMP.items.length ? '' : ' disabled') + '>' + icon('i-download', 'i-sm') + '<span>' + (IMP.items.length ? IMP.items.length + '개 가져오기' : '가져오기') + '</span></button>',
+      onMount: function (layer) {
+        $$('[data-itab]', layer).forEach(function (t) {
+          t.addEventListener('click', function () {
+            var next = t.getAttribute('data-itab');
+            if (next === IMP.tab) return;
+            IMP.tab = next; IMP.items = []; IMP.text = ''; IMP.fileName = ''; IMP.json = null;
+            closeModal();
+            openImport(next);
+          });
+        });
+        var dz = $('#dropzone', layer), fileInput = $('#impFile', layer);
+        dz.addEventListener('click', function (e) {
+          if (e.target === fileInput) return;
+          fileInput.click();
+        });
+        fileInput.addEventListener('change', function () {
+          var f = fileInput.files && fileInput.files[0];
+          if (f) handleImportFile(f, layer);
+        });
+        ['dragenter', 'dragover'].forEach(function (ev) {
+          dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('over'); });
+        });
+        ['dragleave', 'drop'].forEach(function (ev) {
+          dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('over'); });
+        });
+        dz.addEventListener('drop', function (e) {
+          var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (f) handleImportFile(f, layer);
+        });
+        $('#parseBtn', layer).addEventListener('click', function () {
+          IMP.text = $('#impText', layer).value;
+          IMP.fileName = '';
+          parseImport(layer);
+        });
+        var mergeBox = $('#impMerge', layer);
+        if (mergeBox) mergeBox.addEventListener('change', function () { IMP.merge = mergeBox.checked; });
+        var repBox = $('#impReplace', layer);
+        if (repBox) repBox.addEventListener('change', function () { IMP.replace = repBox.checked; });
+        $('#doImport', layer).addEventListener('click', commitImport);
+      }
+    });
+  }
+  function handleImportFile(file, layer) {
+    var name = file.name || 'file';
+    var lower = name.toLowerCase();
+    var tab = /\.vcf$|vcard/.test(lower) ? 'vcf' : /\.csv$/.test(lower) ? 'csv' : /\.json$/.test(lower) ? 'json' : IMP.tab;
+    if (tab !== IMP.tab) { IMP.tab = tab; IMP.items = []; IMP.json = null; closeModal(); return openImport(tab); }
+    readFileText(file).then(function (text) {
+      IMP.text = text;
+      IMP.fileName = name;
+      var ta = $('#impText', layer);
+      if (ta) ta.value = text;
+      var fn = $('#impFileName', layer);
+      if (fn) fn.textContent = name;
+      parseImport(layer);
+    }).catch(function () { toast('파일을 읽지 못했어요', 'err'); });
+  }
+  function parseImport(layer) {
+    var text = IMP.text || '';
+    IMP.items = [];
+    IMP.json = null;
+    try {
+      if (IMP.tab === 'vcf') IMP.items = parseVCards(text);
+      else if (IMP.tab === 'csv') IMP.items = csvToContacts(text);
+      else {
+        var data = JSON.parse(text);
+        if (Array.isArray(data)) data = { contacts: data };
+        IMP.json = data;
+        var rawList = (data.contacts || data.items || []);
+        IMP.items = rawList.map(function (c) {
+          return {
+            name: c.name || c.fullName || '', org: c.org || '', title: c.title || '',
+            phones: (c.phones || []).map(function (p) { return typeof p === 'string' ? { label: '휴대폰', value: p } : p; }),
+            emails: (c.emails || []).map(function (e) { return typeof e === 'string' ? { label: '개인', value: e } : e; }),
+            sites: (c.sites || []).map(function (s) { return typeof s === 'string' ? { label: '웹사이트', value: s } : s; }),
+            groups: (c.groups || []).map(function (g) { return typeof g === 'string' ? g : (g && g.name) || ''; }).filter(Boolean),
+            birthday: c.birthday || '', address: c.address || '', memo: c.memo || '', photo: c.photo || '',
+            anniversary: c.anniversary || null, starred: !!c.starred
+          };
+        });
+      }
+    } catch (e) {
+      toast('형식을 읽지 못했어요. 파일 내용을 확인해 주세요', 'err');
+    }
+    var prev = layer ? $('#impPreview', layer) : null;
+    if (prev) prev.innerHTML = importPreviewHTML();
+    var btn = layer ? $('#doImport', layer) : null;
+    if (btn) {
+      btn.disabled = !IMP.items.length;
+      btn.querySelector('span').textContent = IMP.items.length ? IMP.items.length + '개 가져오기' : '가져오기';
+    }
+    if (IMP.items.length) toast(IMP.items.length + '개 연락처를 읽었어요', 'info');
+  }
+  function resolveGroupName(name) {
+    var n = String(name || '').trim();
+    if (!n) return null;
+    for (var i = 0; i < S.groups.length; i++) if (S.groups[i].name.toLowerCase() === n.toLowerCase()) return S.groups[i].id;
+    var g = { id: uid('g'), name: n, color: GROUP_COLORS[S.groups.length % GROUP_COLORS.length] };
+    S.groups.push(g);
+    saveMeta();
+    return g.id;
+  }
+  function findExisting(c) {
+    var pl = (c.phones || []).map(function (p) { return digitsTail(p.value, 9); }).filter(function (x) { return x.length >= 7; });
+    var el = (c.emails || []).map(function (e) { return String(e.value || '').trim().toLowerCase(); }).filter(Boolean);
+    var list = liveContacts();
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i];
+      var xp = (x.phones || []).map(function (p) { return digitsTail(p.value, 9); }).filter(function (v) { return v.length >= 7; });
+      if (pl.some(function (v) { return xp.indexOf(v) > -1; })) return x;
+      var xe = (x.emails || []).map(function (e) { return String(e.value || '').trim().toLowerCase(); }).filter(Boolean);
+      if (el.some(function (v) { return xe.indexOf(v) > -1; })) return x;
+    }
+    return null;
+  }
+  function mergeInto(target, src) {
+    var changed = false;
+    if (!target.org && src.org) { target.org = src.org; changed = true; }
+    if (!target.title && src.title) { target.title = src.title; changed = true; }
+    if (!target.birthday && src.birthday) { target.birthday = src.birthday; changed = true; }
+    if (!target.address && src.address) { target.address = src.address; changed = true; }
+    if (!target.photo && src.photo) { target.photo = src.photo; changed = true; }
+    if (!target.anniversary && src.anniversary) { target.anniversary = src.anniversary; changed = true; }
+    if (src.memo) {
+      if (!target.memo) { target.memo = src.memo; changed = true; }
+      else if (target.memo.indexOf(src.memo) < 0) { target.memo += '\n' + src.memo; changed = true; }
+    }
+    ['phones', 'emails', 'sites'].forEach(function (k) {
+      target[k] = target[k] || [];
+      (src[k] || []).forEach(function (item) {
+        if (!item.value) return;
+        var exists = target[k].some(function (x) { return String(x.value).toLowerCase() === String(item.value).toLowerCase(); });
+        if (!exists) { target[k].push(item); changed = true; }
+      });
+    });
+    target.groups = target.groups || [];
+    (src.groups || []).forEach(function (g) { if (target.groups.indexOf(g) < 0) { target.groups.push(g); changed = true; } });
+    if (src.starred && !target.starred) { target.starred = true; changed = true; }
+    if (changed) saveContact(target, { silent: true });
+    return changed;
+  }
+  function idbClear(store) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).clear();
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function replaceAll(contacts, groups) {
+    S.contacts = contacts.map(normalizeContact);
+    if (Array.isArray(groups) && groups.length) S.groups = groups;
+    return idbClear('contacts').then(function () {
+      return Promise.all(S.contacts.map(function (c) { return idbPut('contacts', c); }));
+    }).then(function () { return saveMeta(); });
+  }
+  function commitImport() {
+    if (IMP.tab === 'json') {
+      var data = IMP.json;
+      if (!data) { toast('JSON을 먼저 읽어 주세요', 'err'); return; }
+      var doIt = function () {
+        var list = (data.contacts || []);
+        var groups = (data.groups || []).filter(function (g) { return g && g.id && g.name; });
+        replaceAll(list, groups).then(function () {
+          if (data.settings && data.settings.me) { S.settings.me = data.settings.me; saveMeta(); }
+          closeAllModals();
+          S.selId = null; S.view = 'all';
+          renderNav(); renderList(); renderDetail();
+          toast(list.length + '개 연락처를 복원했어요');
+        });
+      };
+      if (IMP.replace) {
+        confirmModal('백업으로 복원', '지금 있는 <b>' + liveContacts().length + '개</b> 연락처를 모두 지우고 백업의 <b>' + (data.contacts || []).length + '개</b>로 바꿉니다.', '복원', doIt, { danger: true });
+      } else {
+        // 병합 복원
+        var merged = 0, added = 0;
+        (data.contacts || []).forEach(function (raw) {
+          var c = normalizeContact({
+            id: raw.id || uid(), name: raw.name, org: raw.org, title: raw.title,
+            phones: raw.phones || [], emails: raw.emails || [], sites: raw.sites || [],
+            birthday: raw.birthday || '', address: raw.address || '', memo: raw.memo || '',
+            photo: raw.photo || '', anniversary: raw.anniversary || null, starred: !!raw.starred,
+            groups: ((raw.groups || []).map(function (g) {
+              if (typeof g !== 'string') return null;
+              var found = S.groups.filter(function (x) { return x.id === g || x.name === g; })[0];
+              return found ? found.id : resolveGroupName(g);
+            })).filter(Boolean),
+            createdAt: raw.createdAt, deletedAt: raw.deletedAt || null
+          });
+          var t = findExisting(c);
+          if (t) { mergeInto(t, c); merged++; }
+          else { S.contacts.push(c); saveContact(c, { silent: true }); added++; }
+        });
+        if (data.groups) {
+          data.groups.forEach(function (g) {
+            if (!g || !g.name) return;
+            if (!S.groups.some(function (x) { return x.name === g.name; })) S.groups.push({ id: uid('g'), name: g.name, color: g.color || '#0f7b6c' });
+          });
+          saveMeta();
+        }
+        closeAllModals();
+        renderNav(); renderList(); renderDetail();
+        toast(added + '개 추가 · ' + merged + '개 병합했어요');
+      }
+      return;
+    }
+
+    if (!IMP.items.length) { toast('가져올 연락처가 없어요', 'err'); return; }
+    var added = 0, merged = 0;
+    IMP.items.forEach(function (raw) {
+      var gids = (raw.groups || []).map(function (g) { return resolveGroupName(typeof g === 'string' ? g : g.name); }).filter(Boolean);
+      var c = normalizeContact({
+        id: uid(),
+        name: raw.name || '이름 없음',
+        org: raw.org || '', title: raw.title || '',
+        phones: (raw.phones || []).filter(function (p) { return p && p.value; }),
+        emails: (raw.emails || []).filter(function (e) { return e && e.value; }),
+        sites: (raw.sites || []).filter(function (s) { return s && s.value; }),
+        birthday: raw.birthday || '', address: raw.address || '', memo: raw.memo || '',
+        photo: raw.photo || '', anniversary: raw.anniversary || null,
+        starred: !!raw.starred, groups: gids
+      });
+      var target = IMP.merge ? findExisting(c) : null;
+      if (target) { mergeInto(target, c); merged++; }
+      else { S.contacts.push(c); saveContact(c, { silent: true }); added++; }
+    });
+    saveMeta();
+    closeAllModals();
+    S.view = 'all'; S.groupId = null;
+    renderNav(); renderList(); renderDetail();
+    toast(added + '개 추가 · ' + merged + '개 병합했어요');
+  }
+
+  /* ============================================================
+     내보내기
+     ============================================================ */
+  function openExport() {
+    var live = liveContacts();
+    var c = S.selId ? getContact(S.selId) : null;
+    openModal({
+      title: '연락처 내보내기',
+      sub: live.length + '명',
+      body:
+        '<div class="export-list">' +
+          '<button class="export-item" data-exp="vcf"><span class="ico">' + icon('i-download') + '</span><span class="txt"><b>vCard (.vcf)</b><span>아이폰·안드로이드·구글 주소록에 그대로 가져갈 수 있는 표준 형식</span></span></button>' +
+          '<button class="export-item" data-exp="csv"><span class="ico">' + icon('i-download') + '</span><span class="txt"><b>CSV (.csv)</b><span>엑셀·구글 스프레드시트에서 열어 보거나 편집할 때</span></span></button>' +
+          '<button class="export-item" data-exp="json"><span class="ico">' + icon('i-download') + '</span><span class="txt"><b>JSON 백업</b><span>라벨·사진까지 통째로 보관하고 나중에 그대로 복원</span></span></button>' +
+          (c ? '<button class="export-item" data-exp="one"><span class="ico">' + icon('i-user') + '</span><span class="txt"><b>' + esc(c.name) + ' 한 명만 vCard로</b><span>선택한 연락처만 .vcf 파일로 저장</span></span></button>' : '') +
+        '</div>' +
+        '<p class="hint" style="margin-top:12px">내보낸 파일은 이 기기의 다운로드 폴더에 저장됩니다. 서버로는 아무것도 보내지 않습니다.</p>',
+      foot: '<button class="pill ghost" data-close="modal"><span>닫기</span></button>',
+      onMount: function (layer) {
+        $$('[data-exp]', layer).forEach(function (b) {
+          b.addEventListener('click', function () {
+            var k = b.getAttribute('data-exp');
+            if (k === 'vcf') exportVCards(live);
+            else if (k === 'csv') exportCSV(live);
+            else if (k === 'json') exportJSON();
+            else if (k === 'one' && c) exportVCards([c]);
+            closeModal();
+          });
+        });
+      }
+    });
+  }
+
+  /* ============================================================
+     QR · 공유 명함
+     ============================================================ */
+  function utf8Bytes(str) {
+    try { return Array.prototype.slice.call(new TextEncoder().encode(str)); }
+    catch (e) {
+      var out = [], s = unescape(encodeURIComponent(str));
+      for (var i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
+      return out;
+    }
+  }
+  function qrModel(text) {
+    var level = (window.QRCode && QRCode.CorrectLevel) ? QRCode.CorrectLevel.M : 0;
+    var holder = doc.createElement('div');
+    var probe = new QRCode(holder, { text: 'A', width: 8, height: 8, correctLevel: level });
+    if (!probe._oQRCode) return null;
+    var proto = Object.getPrototypeOf(probe._oQRCode);
+    var bytes = utf8Bytes(text);
+    for (var t = 1; t <= 20; t++) {
+      try {
+        var model = Object.create(proto);
+        model.typeNumber = t;
+        model.errorCorrectLevel = level;
+        model.modules = null;
+        model.moduleCount = 0;
+        model.dataList = [{
+          mode: 4,
+          parsedData: bytes,
+          getLength: function () { return this.parsedData.length; },
+          write: function (buf) { for (var i = 0; i < this.parsedData.length; i++) buf.put(this.parsedData[i], 8); }
+        }];
+        model.dataCache = null;
+        model.make();
+        return model;
+      } catch (e) { /* 다음 버전 시도 */ }
+    }
+    return null;
+  }
+  function qrSvg(text) {
+    try {
+      var model = qrModel(text);
+      if (!model) return '';
+      var n = model.getModuleCount(), quiet = 3, size = n + quiet * 2;
+      var d = '';
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          if (model.isDark(r, c)) d += 'M' + (c + quiet) + ' ' + (r + quiet) + 'h1v1h-1z';
+        }
+      }
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="280" height="280" viewBox="0 0 ' + size + ' ' + size + '" shape-rendering="crispEdges" role="img" aria-label="연락처 QR 코드">' +
+        '<rect width="' + size + '" height="' + size + '" fill="#ffffff"/>' +
+        '<path d="' + d + '" fill="#0b1412"/></svg>';
+    } catch (e) { return ''; }
+  }
+  function qrVCard(c) {
+    var L = ['BEGIN:VCARD', 'VERSION:3.0', 'FN:' + (c.name || '')];
+    if (c.org) L.push('ORG:' + c.org);
+    if (c.title) L.push('TITLE:' + c.title);
+    (c.phones || []).slice(0, 2).forEach(function (p) { if (p.value) L.push('TEL;TYPE=CELL:' + p.value); });
+    (c.emails || []).slice(0, 1).forEach(function (e) { if (e.value) L.push('EMAIL:' + e.value); });
+    (c.sites || []).slice(0, 1).forEach(function (s) { if (s.value) L.push('URL:' + s.value); });
+    L.push('END:VCARD');
+    return L.join('\n');
+  }
+  function sharePayload(c) {
+    return {
+      n: c.name || '', o: c.org || '', t: c.title || '',
+      p: (c.phones || []).map(function (x) { return x.value; }).filter(Boolean),
+      e: (c.emails || []).map(function (x) { return x.value; }).filter(Boolean),
+      w: (c.sites || []).map(function (x) { return x.value; }).filter(Boolean),
+      b: c.birthday || '', m: (c.memo || '').slice(0, 240)
+    };
+  }
+  function baseURL() {
+    var clean = location.href.split('#')[0];
+    return clean;
+  }
+  function makeShareLink(c) {
+    try {
+      var packed = LZString.compressToEncodedURIComponent(JSON.stringify(sharePayload(c)));
+      return baseURL() + '#contact=' + packed;
+    } catch (e) { return baseURL(); }
+  }
+  function meAsContact() {
+    var me = S.settings.me || {};
+    return {
+      name: me.name || '내 명함', org: me.org || '', title: me.title || '',
+      phones: me.phone ? [{ label: '휴대폰', value: me.phone }] : [],
+      emails: me.email ? [{ label: '개인', value: me.email }] : [],
+      sites: me.site ? [{ label: '웹사이트', value: me.site }] : [],
+      memo: me.memo || '', birthday: ''
+    };
+  }
+  function saveQRPng(svg, name) {
+    try {
+      var blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function () {
+        var s = 640, cv = doc.createElement('canvas');
+        cv.width = s; cv.height = s;
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, s, s);
+        ctx.drawImage(img, 0, 0, s, s);
+        URL.revokeObjectURL(url);
+        cv.toBlob(function (b) {
+          var u = URL.createObjectURL(b);
+          var a = doc.createElement('a');
+          a.href = u; a.download = name;
+          doc.body.appendChild(a); a.click();
+          setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 1200);
+          toast('QR 이미지를 저장했어요');
+        }, 'image/png');
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); toast('QR 이미지를 만들지 못했어요', 'err'); };
+      img.src = url;
+    } catch (e) { toast('QR 이미지를 만들지 못했어요', 'err'); }
+  }
+
+  function openShare(id, tab) {
+    var c = id ? getContact(id) : null;
+    if (!c) { if (tab !== 'me') { toast('공유할 연락처를 먼저 고르세요', 'info'); } }
+    tab = tab || (c ? 'contact' : 'me');
+    if (tab === 'contact' && !c) tab = 'me';
+    var card = tab === 'me' ? meAsContact() : c;
+    var svg = qrSvg(qrVCard(card));
+    var link = tab === 'me' ? makeShareLink(card) : makeShareLink(c);
+    var me = S.settings.me || {};
+
+    var body = '<div class="tabs">' +
+        '<button class="tab' + (tab === 'contact' ? ' on' : '') + '" data-stab="contact"' + (c ? '' : ' disabled') + '>선택한 연락처</button>' +
+        '<button class="tab' + (tab === 'me' ? ' on' : '') + '" data-stab="me">내 명함</button>' +
+      '</div>' +
+      '<div class="share-grid">' +
+        '<div class="qr-box">' + (svg || '<p class="hint" style="color:#4a5654">QR을 만들지 못했어요</p>') + '<span class="qr-cap">FLUX CONTACTS</span></div>' +
+        '<div>' +
+          '<div class="share-card">' + avatarHTML(card) +
+            '<span class="txt"><b>' + esc(card.name) + '</b><span>' + esc([card.org, card.title].filter(Boolean).join(' · ') || '연락처 정보') + '</span></span>' +
+          '</div>' +
+          '<p class="hint">QR을 카메라로 비추면 명함이 바로 연락처로 저장됩니다. 링크를 보내면 받은 사람이 Flux Contacts에 한 번에 담을 수 있어요.</p>' +
+          '<div class="link-row"><input id="shareLink" readonly value="' + esc(link) + '"><button class="pill" id="copyLink" style="height:34px">' + icon('i-copy', 'i-sm') + '<span>복사</span></button></div>' +
+          '<div class="rowline" style="margin-top:10px">' +
+            '<button class="pill" id="saveVcf" style="height:32px;font-size:12px">' + icon('i-download', 'i-sm') + '<span>vCard 저장</span></button>' +
+            '<button class="pill" id="saveQr" style="height:32px;font-size:12px">' + icon('i-qr', 'i-sm') + '<span>QR 이미지</span></button>' +
+            (tab === 'contact' && c ? '<button class="pill" id="copyVcard" style="height:32px;font-size:12px">' + icon('i-copy', 'i-sm') + '<span>vCard 문구 복사</span></button>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      (tab === 'me'
+        ? '<div class="field" style="margin-top:16px"><label>내 명함 정보</label>' +
+            '<div class="form-grid"><div class="field"><input id="mmName" placeholder="이름" value="' + esc(me.name || '') + '" maxlength="40"></div>' +
+            '<div class="field"><input id="mmOrg" placeholder="소속·회사" value="' + esc(me.org || '') + '" maxlength="60"></div></div>' +
+            '<div class="form-grid"><div class="field"><input id="mmTitle" placeholder="직함" value="' + esc(me.title || '') + '" maxlength="40"></div>' +
+            '<div class="field"><input id="mmPhone" placeholder="전화번호" value="' + esc(me.phone || '') + '" maxlength="30"></div></div>' +
+            '<div class="form-grid"><div class="field"><input id="mmEmail" type="email" placeholder="이메일" value="' + esc(me.email || '') + '" maxlength="80"></div>' +
+            '<div class="field"><input id="mmSite" placeholder="웹사이트·SNS" value="' + esc(me.site || '') + '" maxlength="120"></div></div>' +
+            '<div class="field"><textarea id="mmMemo" placeholder="한 줄 소개" maxlength="160">' + esc(me.memo || '') + '</textarea></div>' +
+            '<button class="pill primary" id="meSave" style="height:34px;font-size:12px">' + icon('i-check', 'i-sm') + '<span>내 명함 저장</span></button>' +
+          '</div>'
+        : '');
+
+    openModal({
+      title: tab === 'me' ? '내 명함 QR' : '연락처 공유',
+      sub: tab === 'me' ? 'QR·링크로 건네기' : card.name,
+      body: body,
+      foot: '<button class="pill ghost" data-close="modal"><span>닫기</span></button>',
+      onMount: function (layer) {
+        $$('[data-stab]', layer).forEach(function (b) {
+          b.addEventListener('click', function () {
+            var next = b.getAttribute('data-stab');
+            if (next === tab) return;
+            closeModal();
+            openShare(id, next);
+          });
+        });
+        $('#copyLink', layer).addEventListener('click', function () {
+          var v = $('#shareLink', layer).value;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(v).then(function () { toast('공유 링크를 복사했어요'); },
+              function () { oldCopy(v); });
+          } else oldCopy(v);
+        });
+        function oldCopy(v) {
+          var ta = doc.createElement('textarea');
+          ta.value = v; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          doc.body.appendChild(ta); ta.select();
+          try { doc.execCommand('copy'); toast('공유 링크를 복사했어요'); } catch (e) { toast('복사하지 못했어요', 'err'); }
+          ta.remove();
+        }
+        $('#saveVcf', layer).addEventListener('click', function () {
+          exportVCards([card]);
+        });
+        $('#saveQr', layer).addEventListener('click', function () {
+          if (!svg) { toast('QR이 없어 저장할 수 없어요', 'err'); return; }
+          saveQRPng(svg, 'flux-contact-qr-' + dateStamp() + '.png');
+        });
+        var cv = $('#copyVcard', layer);
+        if (cv) cv.addEventListener('click', function () {
+          var text = toVCard(card);
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast('vCard 문구를 복사했어요'); }, function () { toast('복사하지 못했어요', 'err'); });
+        });
+        var meSave = $('#meSave', layer);
+        if (meSave) meSave.addEventListener('click', function () {
+          S.settings.me = {
+            name: $('#mmName', layer).value.trim(),
+            org: $('#mmOrg', layer).value.trim(),
+            title: $('#mmTitle', layer).value.trim(),
+            phone: $('#mmPhone', layer).value.trim(),
+            email: $('#mmEmail', layer).value.trim(),
+            site: $('#mmSite', layer).value.trim(),
+            memo: $('#mmMemo', layer).value.trim()
+          };
+          saveMeta();
+          renderMe();
+          closeModal();
+          openShare(null, 'me');
+          toast('내 명함을 저장했어요');
+        });
+      }
+    });
+  }
+
+  function incomingCard(data) {
+    var card = {
+      name: data.n || '이름 없음', org: data.o || '', title: data.t || '',
+      phones: (data.p || []).map(function (v) { return { label: '휴대폰', value: v }; }),
+      emails: (data.e || []).map(function (v) { return { label: '개인', value: v }; }),
+      sites: (data.w || []).map(function (v) { return { label: '웹사이트', value: v }; }),
+      birthday: data.b || '', memo: data.m || ''
+    };
+    return card;
+  }
+  function showIncoming(data) {
+    var card = incomingCard(data);
+    openModal({
+      title: '받은 디지털 명함',
+      size: 'narrow',
+      body: '<div class="incoming">' + avatarHTML(card, 'lg') +
+        '<h3>' + esc(card.name) + '</h3>' +
+        '<div class="meta">' +
+          (card.org || card.title ? '<span>' + esc([card.org, card.title].filter(Boolean).join(' · ')) + '</span>' : '') +
+          (card.phones[0] ? '<span>' + esc(card.phones[0].value) + '</span>' : '') +
+          (card.emails[0] ? '<span>' + esc(card.emails[0].value) + '</span>' : '') +
+        '</div>' +
+        '<p class="hint">이 명함을 내 Flux Contacts에 저장하면 바로 전화·메일을 걸 수 있습니다.</p>' +
+        '</div>',
+      foot: '<button class="pill ghost" data-close="modal" id="inClose"><span>닫기</span></button>' +
+        '<button class="pill primary" id="inSave">' + icon('i-plus', 'i-sm') + '<span>내 Flux Contacts에 저장</span></button>',
+      onMount: function (layer) {
+        $('#inSave', layer).addEventListener('click', function () {
+          var c = normalizeContact({
+            id: uid(), name: card.name, org: card.org, title: card.title,
+            phones: card.phones, emails: card.emails, sites: card.sites,
+            birthday: card.birthday, memo: card.memo
+          });
+          var target = findExisting(c);
+          var id;
+          if (target) { mergeInto(target, c); id = target.id; toast('이미 있는 연락처에 명함 정보를 더했어요'); }
+          else { saveContact(c, { silent: true }); id = c.id; toast('명함을 저장했어요'); }
+          closeAllModals();
+          S.selId = id;
+          S.view = 'all';
+          renderNav(); renderList(); renderDetail();
+          selectContact(id);
+          try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+        });
+      },
+      onClose: function () {
+        try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+      }
+    });
+  }
+  function handleHash() {
+    var h = location.hash.replace(/^#/, '');
+    if (!h) return;
+    if (h.indexOf('contact=') === 0) {
+      try {
+        var json = LZString.decompressFromEncodedURIComponent(h.slice(8));
+        if (!json) throw new Error('decode');
+        var data = JSON.parse(json);
+        showIncoming(data);
+      } catch (e) { toast('명함 정보를 읽지 못했어요', 'err'); }
+      return;
+    }
+    if (getContact(h)) selectContact(h);
+  }
+
+  /* ============================================================
+     예시 연락처 (가상 인물)
+     ============================================================ */
+  function addSample() {
+    var existingSample = (S.settings.sampleIds || []).filter(function (id) { return !!getContact(id); });
+    if (existingSample.length) { toast('예시 연락처 ' + existingSample.length + '명이 이미 들어 있어요', 'info'); return; }
+    var defs = [['가족', '#0f7b6c'], ['학교', '#2f6f9f'], ['프로젝트', '#6b5aa6'], ['거래처', '#b2601f'], ['동아리', '#3f7a4f']];
+    var g = {};
+    defs.forEach(function (d) {
+      var found = S.groups.filter(function (x) { return x.name === d[0]; })[0];
+      if (!found) { found = { id: uid('g'), name: d[0], color: d[1] }; S.groups.push(found); }
+      g[d[0]] = found.id;
+    });
+    var base = Date.now();
+    var rows = [
+      { name: '김서연', org: '우리 가족', title: '누나', phones: [['휴대폰', '010-0000-1001']], emails: [['개인', 'seoyeon.kim@example.com']], birthday: '2001-04-12', memo: '생일은 항상 4월 둘째 주. 커피는 아메리카노만 마심.', groups: ['가족'], starred: true },
+      { name: '김도현', org: '우리 가족', title: '아버지', phones: [['휴대폰', '010-0000-1002']], birthday: '1972-09-03', groups: ['가족'] },
+      { name: '박하늘', org: '한빛고등학교', title: '2학년 1반', phones: [['휴대폰', '010-0000-1003']], emails: [['학교', 'haneul.park@example.com']], birthday: '2007-12-21', groups: ['학교'], starred: true },
+      { name: '이서준', org: '한빛고등학교', title: '2학년 3반', phones: [['휴대폰', '010-0000-1004']], emails: [['개인', 'seojun.lee@example.com']], groups: ['학교'] },
+      { name: '최유진', org: '한빛고등학교', title: '사진부 부장', phones: [['휴대폰', '010-0000-1005']], emails: [['개인', 'yujin.choi@example.com']], groups: ['학교', '동아리'] },
+      { name: '정민서', org: '플럭스 프로젝트', title: '웹 기획', phones: [['휴대폰', '010-0000-1006']], emails: [['직장', 'minseo.jung@example.com']], memo: 'Flux Contacts 화면 검토 담당. 목요일 오후가 편하다고 함.', groups: ['프로젝트'] },
+      { name: '정민서', org: '플럭스 프로젝트', title: '기획', phones: [['휴대폰', '010-0000-1007']], emails: [['직장', 'minseo.jung@example.com']], groups: ['프로젝트'] },
+      { name: '한지우', org: '플럭스상회', title: '구매 담당', phones: [['직장', '02-000-0008'], ['휴대폰', '010-0000-1008']], emails: [['직장', 'jiwoo.han@example.com']], address: '서울시 중구 세종대로 00', groups: ['거래처'], starred: true },
+      { name: '오하람', org: '하람 인쇄', title: '대표', phones: [['직장', '02-000-0009']], emails: [['직장', 'haram.oh@example.com']], memo: '명함 인쇄 견적 문의했던 곳. 300매 기준.', groups: ['거래처'] },
+      { name: '서지호', org: '사진부', title: '동아리 회장', phones: [['휴대폰', '010-0000-1010']], emails: [['개인', 'jiho.seo@example.com']], sites: [['인스타그램', '@jiho.frame']], groups: ['동아리'] },
+      { name: '문가온', org: '플럭스 프로젝트', title: '디자인', phones: [['휴대폰', '010-0000-1011']], emails: [['개인', 'gaon.moon@example.com']], sites: [['웹사이트', 'https://example.com/gaon']], groups: ['프로젝트', '동아리'] },
+      { name: '윤채원', org: '한빛고등학교', title: '1학년', phones: [['휴대폰', '010-0000-1012']], groups: ['학교'] },
+      { name: '배로운', org: '한빛고등학교', title: '3학년', phones: [['휴대폰', '010-0000-1013']], birthday: '2006-03-01', memo: '기억력 카드게임 같이 하던 친구.', groups: ['학교'] }
+    ];
+    var ids = [];
+    var t = base - rows.length * 3600000;
+    rows.forEach(function (r, i) {
+      var c = normalizeContact({
+        id: uid('c'), name: r.name, org: r.org || '', title: r.title || '',
+        phones: (r.phones || []).map(function (p) { return { label: p[0], value: p[1] }; }),
+        emails: (r.emails || []).map(function (e) { return { label: e[0], value: e[1] }; }),
+        sites: (r.sites || []).map(function (s) { return { label: s[0], value: s[1] }; }),
+        birthday: r.birthday || '', address: r.address || '', memo: r.memo || '',
+        groups: (r.groups || []).map(function (n) { return g[n]; }).filter(Boolean),
+        starred: !!r.starred,
+        createdAt: t + i * 3600000,
+        updatedAt: t + i * 3600000
+      });
+      S.contacts.push(c);
+      saveContact(c, { silent: true });
+      ids.push(c.id);
+    });
+    S.settings.sampleIds = (S.settings.sampleIds || []).concat(ids);
+    saveMeta();
+    renderNav(); renderList(); renderDetail();
+    $('#listScroll').scrollTop = 0;
+    toast('가상 인물 예시 ' + rows.length + '명을 넣었어요');
+  }
+  function removeSample() {
+    var ids = S.settings.sampleIds || [];
+    if (!ids.length) { toast('넣어 둔 예시 연락처가 없어요', 'info'); return; }
+    confirmModal('예시 연락처 정리', '예시로 넣은 <b>' + ids.length + '명</b>을 지웁니다. 직접 만든 연락처는 그대로 남습니다.', '정리하기', function () {
+      ids.forEach(function (id) { removeContactRecord(id); });
+      S.settings.sampleIds = [];
+      if (ids.indexOf(S.selId) > -1) S.selId = null;
+      saveMeta();
+      closeAllModals();
+      renderNav(); renderList(); renderDetail();
+      toast('예시 연락처를 정리했어요');
+    }, { danger: true });
+  }
+
+  /* ============================================================
+     설정
+     ============================================================ */
+  function openSettings() {
+    var anim = 'full';
+    try { anim = (window.Lemon && Lemon.animMode) ? Lemon.animMode() : (localStorage.getItem('lemon_anim_mode') || 'full'); } catch (e) { }
+    var dark = doc.documentElement.classList.contains('dark');
+    var body = '<div class="field"><label>화면</label><div class="rowline">' +
+        '<button class="pill' + (dark ? '' : ' primary') + '" id="setLight">' + icon('i-sun', 'i-sm') + '<span>라이트</span></button>' +
+        '<button class="pill' + (dark ? ' primary' : '') + '" id="setDark">' + icon('i-moon', 'i-sm') + '<span>다크</span></button>' +
+      '</div></div>' +
+      '<div class="field"><label>애니메이션 (모든 Lemon soft 서비스 공통)</label><div class="seg" style="width:100%">' +
+        '<button class="seg-btn' + (anim === 'full' ? ' on' : '') + '" data-anim-set="full" style="width:auto;flex:1;font-size:11.5px">전체</button>' +
+        '<button class="seg-btn' + (anim === 'reduced' ? ' on' : '') + '" data-anim-set="reduced" style="width:auto;flex:1;font-size:11.5px">줄이기</button>' +
+        '<button class="seg-btn' + (anim === 'off' ? ' on' : '') + '" data-anim-set="off" style="width:auto;flex:1;font-size:11.5px">끄기</button>' +
+      '</div></div>' +
+      '<div class="field"><label>명함</label><div class="rowline">' +
+        '<button class="pill" id="setMe">' + icon('i-qr', 'i-sm') + '<span>내 명함 편집·QR</span></button>' +
+      '</div></div>' +
+      '<div class="field"><label>예시 데이터</label><div class="rowline">' +
+        '<button class="pill" id="setSample">' + icon('i-spark', 'i-sm') + '<span>예시 연락처 넣기</span></button>' +
+        '<button class="pill" id="setSampleDel">' + icon('i-trash', 'i-sm') + '<span>예시 정리</span></button>' +
+      '</div></div>' +
+      '<div class="field"><label>저장</label>' +
+        '<p class="hint">연락처 ' + liveContacts().length + '명 · 휴지통 ' + trashContacts().length + '명 · 라벨 ' + S.groups.length + '개<br>' +
+        '모든 내용은 이 브라우저의 IndexedDB(flux_contacts_v1)에만 저장되고 서버로 보내지 않습니다.</p>' +
+        '<div class="rowline" style="margin-top:8px">' +
+          '<button class="pill" id="setExport">' + icon('i-download', 'i-sm') + '<span>JSON 백업</span></button>' +
+          '<button class="pill" id="setImport">' + icon('i-upload', 'i-sm') + '<span>가져오기</span></button>' +
+        '</div></div>' +
+      '<div class="field"><label>위험 구역</label><div class="rowline">' +
+        '<button class="pill danger" id="setWipe">' + icon('i-trash', 'i-sm') + '<span>모든 연락처 삭제</span></button>' +
+      '</div><p class="hint">삭제 전에 JSON 백업을 받아 두면 언제든 되돌릴 수 있습니다.</p></div>';
+    openModal({
+      title: 'Flux Contacts 설정',
+      size: 'narrow',
+      body: body,
+      foot: '<button class="pill ghost" data-close="modal"><span>닫기</span></button>',
+      onMount: function (layer) {
+        $('#setLight', layer).addEventListener('click', function () { setTheme('light'); closeModal(); openSettings(); });
+        $('#setDark', layer).addEventListener('click', function () { setTheme('dark'); closeModal(); openSettings(); });
+        $$('[data-anim-set]', layer).forEach(function (b) {
+          b.addEventListener('click', function () {
+            var m = b.getAttribute('data-anim-set');
+            try { if (window.Lemon && Lemon.setAnimMode) Lemon.setAnimMode(m); else localStorage.setItem('lemon_anim_mode', m); } catch (e) { }
+            doc.documentElement.setAttribute('data-anim', m);
+            $$('[data-anim-set]', layer).forEach(function (x) { x.classList.toggle('on', x === b); });
+            toast(m === 'off' ? '애니메이션을 껐어요' : m === 'reduced' ? '애니메이션을 줄였어요' : '애니메이션을 켰어요', 'info');
+          });
+        });
+        $('#setMe', layer).addEventListener('click', function () { closeModal(); openShare(null, 'me'); });
+        $('#setSample', layer).addEventListener('click', function () { closeModal(); addSample(); });
+        $('#setSampleDel', layer).addEventListener('click', function () { removeSample(); });
+        $('#setExport', layer).addEventListener('click', function () { closeModal(); openExport(); });
+        $('#setImport', layer).addEventListener('click', function () { closeModal(); openImport('vcf'); });
+        $('#setWipe', layer).addEventListener('click', function () {
+          confirmModal('모든 연락처 삭제', '이 브라우저의 연락처 <b>' + S.contacts.length + '개</b>를 모두 지웁니다. 되돌릴 수 없습니다.', '모두 삭제', function () {
+            var ids = S.contacts.map(function (c) { return c.id; });
+            S.contacts = [];
+            S.settings.sampleIds = [];
+            S.selId = null;
+            idbClear('contacts').catch(function () { });
+            saveMeta();
+            snapshot();
+            closeAllModals();
+            S.view = 'all';
+            renderNav(); renderList(); renderDetail();
+            toast(ids.length + '개 연락처를 지웠어요');
+          }, { danger: true });
+        });
+      }
+    });
+  }
+  function setTheme(mode) {
+    try { localStorage.setItem('cream_theme', mode); } catch (e) { }
+    doc.documentElement.classList.toggle('dark', mode === 'dark');
+    var icon = mode === 'dark' ? 'i-sun' : 'i-moon';
+    var b = $('#themeBtn');
+    if (b) b.innerHTML = '<svg class="i"><use href="#' + icon + '"></use></svg>';
+  }
+
+  /* ============================================================
+     이벤트
+     ============================================================ */
+  function toggleStar(id) {
+    var c = getContact(id);
+    if (!c) return;
+    c.starred = !c.starred;
+    c.updatedAt = Date.now();
+    saveContact(c, { silent: true });
+    renderNav(); renderList();
+    if (S.selId === id) renderDetail();
+    var btn = doc.querySelector('.row [data-act="star"][data-id="' + id + '"], .gcard [data-act="star"][data-id="' + id + '"]');
+    if (btn) {
+      btn.classList.remove('bounce');
+      void btn.offsetWidth;
+      btn.classList.add('bounce');
+    }
+    toast(c.starred ? '즐겨찾기에 고정했어요' : '즐겨찾기에서 뺐어요', 'info');
+  }
+  function cycleSort() {
+    S.sort = S.sort === 'name' ? 'recent' : S.sort === 'recent' ? 'added' : 'name';
+    savePrefs();
+    applySortUI();
+    renderList();
+    toast(S.sort === 'name' ? '이름순으로 정렬' : S.sort === 'recent' ? '최근 수정순으로 정렬' : '최근 추가순으로 정렬', 'info');
+  }
+  function applySortUI() {
+    var t = S.sort === 'name' ? '이름순 정렬' : S.sort === 'recent' ? '최근 수정순 정렬' : '최근 추가순 정렬';
+    $('#sortBtn').title = t;
+    $('#sortBtn').setAttribute('aria-label', t);
+    $('#sortSel').value = S.sort;
+  }
+  function applyLayoutUI() {
+    $$('.seg-btn').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-layout') === S.layout); });
+  }
+  var quietTimer = null;
+  function setQuery(v) {
+    S.query = v;
+    $('#q').value = v;
+    $('#qTop').value = v;
+    $('#qClear').hidden = !v;
+    $('#qTopClear').hidden = !v;
+    S.quiet = true;
+    clearTimeout(quietTimer);
+    quietTimer = setTimeout(function () { S.quiet = false; }, 700);
+    renderList();
+  }
+  function syncTopH() {
+    var top = $('.top');
+    if (!top) return;
+    doc.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
+  }
+  function bindStatic() {
+    $('#newBtn').addEventListener('click', function () { toggleRail(false); openEditor(null); });
+    $('#topNewBtn').addEventListener('click', function () { openEditor(null); });
+    $('#menuBtn').addEventListener('click', function () { toggleRail(true); });
+    $('#myCardBtn').addEventListener('click', function () { openShare(null, 'me'); });
+    $('#addGroupBtn').addEventListener('click', function () { openGroupEditor(null); });
+    $('#importBtn').addEventListener('click', function () { openImport('vcf'); });
+    $('#exportBtn').addEventListener('click', function () { openExport(); });
+    $('#sampleBtn').addEventListener('click', function () { addSample(); });
+    $('#moreBtn').addEventListener('click', openSettings);
+    $('#sortBtn').addEventListener('click', cycleSort);
+    $('#sortSel').addEventListener('change', function () { S.sort = this.value; savePrefs(); renderList(); });
+
+    $$('.seg-btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        S.layout = b.getAttribute('data-layout');
+        savePrefs();
+        applyLayoutUI();
+        renderList();
+      });
+    });
+
+    ['#q', '#qTop'].forEach(function (sel) {
+      var el = $(sel);
+      el.addEventListener('input', function () { setQuery(el.value); });
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { setQuery(''); el.blur(); }
+        if (e.key === 'Enter') {
+          var first = $('#listInner .row, #listInner .gcard');
+          if (first) { selectContact(first.getAttribute('data-id')); if (window.innerWidth <= 1180) toggleRail(false); }
+        }
+      });
+    });
+    ['#qClear', '#qTopClear'].forEach(function (sel) {
+      $(sel).addEventListener('click', function () { setQuery(''); $('#q').focus(); });
+    });
+
+    ['#idx', '#idxH'].forEach(function (sel) {
+      $(sel).addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-jump]');
+        if (!b) return;
+        var k = b.getAttribute('data-jump');
+        var sec = doc.getElementById('sec-' + (k === '#' ? 'hash' : k));
+        if (!sec) return;
+        sec.scrollIntoView({ block: 'start', behavior: S.quiet ? 'auto' : 'smooth' });
+        sec.classList.remove('flash');
+        void sec.offsetWidth;
+        sec.classList.add('flash');
+      });
+    });
+
+    $('#nav').addEventListener('click', function (e) {
+      var b = e.target.closest('.nav-item');
+      if (!b) return;
+      S.view = b.getAttribute('data-view');
+      S.groupId = null;
+      S.mergeCtx = null;
+      toggleRail(false);
+      renderNav(); renderList(); renderDetail();
+      $('#listScroll').scrollTop = 0;
+    });
+    $('#groupList').addEventListener('click', function (e) {
+      var ed = e.target.closest('[data-gedit]');
+      if (ed) { e.stopPropagation(); openGroupEditor(ed.getAttribute('data-gedit')); return; }
+      var b = e.target.closest('.group-item');
+      if (!b) return;
+      S.view = 'group';
+      S.groupId = b.getAttribute('data-gid');
+      toggleRail(false);
+      renderNav(); renderList(); renderDetail();
+      $('#listScroll').scrollTop = 0;
+    });
+
+    $('#scrim').addEventListener('click', function () {
+      if (layerStack.length) { closeModal(); return; }
+      if ($('#detail').classList.contains('open')) { deselect(); return; }
+      toggleRail(false);
+    });
+
+    $('#listInner').addEventListener('click', function (e) {
+      var empty = e.target.closest('[data-empty]');
+      if (empty) {
+        var k = empty.getAttribute('data-empty');
+        if (k === 'new') openEditor(null);
+        else if (k === 'sample') addSample();
+        else if (k === 'import') openImport('vcf');
+        return;
+      }
+      var act = e.target.closest('[data-act]');
+      if (act) {
+        var a = act.getAttribute('data-act');
+        var id = act.getAttribute('data-id');
+        if (a === 'star') { toggleStar(id); return; }
+        if (a === 'call') { var cc = getContact(id); if (cc) location.href = 'tel:' + (normPhone(primaryPhone(cc)) || primaryPhone(cc)); return; }
+        if (a === 'peek') { selectContact(id); return; }
+        if (a === 'merge-dup') { openMerge(act.getAttribute('data-cid')); return; }
+        if (a === 'ignore-dup') { ignoreCluster(act.getAttribute('data-cid')); return; }
+      }
+      var row = e.target.closest('.row, .gcard');
+      if (row) selectContact(row.getAttribute('data-id'));
+    });
+    $('#listInner').addEventListener('keydown', function (e) {
+      var row = e.target.closest('.row, .gcard');
+      if (row && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        selectContact(row.getAttribute('data-id'));
+      }
+    });
+
+    $('#detail').addEventListener('click', function (e) {
+      var closeBtn = e.target.closest('[data-close="detail"]');
+      if (closeBtn) { deselect(); return; }
+      var cop = e.target.closest('[data-copy]');
+      if (cop) { e.preventDefault(); e.stopPropagation(); copyText(cop.getAttribute('data-copy')); return; }
+      var act = e.target.closest('[data-act]');
+      if (act) {
+        var a = act.getAttribute('data-act');
+        var id = act.getAttribute('data-id');
+        if (a === 'star-detail') { toggleStar(id); return; }
+        if (a === 'edit') openEditor(id);
+        else if (a === 'trash') moveToTrash(id);
+        else if (a === 'restore') restoreContact(id);
+        else if (a === 'purge') purgeContact(id);
+        else if (a === 'vcf') { var c = getContact(id); if (c) exportVCards([c]); }
+        else if (a === 'share') openShare(id);
+      }
+    });
+
+    doc.addEventListener('click', function (e) {
+      var layerBg = e.target.classList && e.target.classList.contains('m-layer') ? e.target : null;
+      if (layerBg) {
+        var top = layerStack[layerStack.length - 1];
+        if (top && top.el === layerBg && top.opts.dismissible !== false) closeModal();
+        return;
+      }
+      var cl = e.target.closest('[data-close="modal"]');
+      if (cl) { e.preventDefault(); closeModal(); }
+    });
+
+    doc.addEventListener('keydown', function (e) {
+      var meta = e.ctrlKey || e.metaKey;
+      if (meta && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        var target = window.innerWidth <= 720 ? $('#qTop') : $('#q');
+        target.focus(); target.select();
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (layerStack.length) { closeModal(); return; }
+        if ($('#detail').classList.contains('open')) { deselect(); return; }
+        if ($('#rail').classList.contains('open')) { toggleRail(false); return; }
+      }
+      if (meta && (e.key === 'n' || e.key === 'N')) {
+        if (/input|textarea|select/i.test((e.target.tagName || ''))) return;
+        e.preventDefault();
+        openEditor(null);
+      }
+    });
+
+    window.addEventListener('resize', function () {
+      syncTopH();
+      if (window.innerWidth > 1180) {
+        $('#detail').classList.remove('open');
+        $('#rail').classList.remove('open');
+        updateScrim();
+      }
+    });
+
+    window.addEventListener('dragover', function (e) { e.preventDefault(); });
+    window.addEventListener('drop', function (e) {
+      if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+      if (e.target.closest && e.target.closest('.dropzone')) return;
+      e.preventDefault();
+      var f = e.dataTransfer.files[0];
+      var lower = (f.name || '').toLowerCase();
+      var tab = /\.vcf$/.test(lower) ? 'vcf' : /\.csv$/.test(lower) ? 'csv' : /\.json$/.test(lower) ? 'json' : null;
+      if (!tab) { toast('vCard·CSV·JSON 파일만 가져올 수 있어요', 'err'); return; }
+      readFileText(f).then(function (text) {
+        IMP.tab = tab; IMP.text = text; IMP.fileName = f.name; IMP.items = []; IMP.json = null;
+        parseImport(null);
+        openImport(tab);
+      });
+    });
+  }
+  function copyText(v) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(v).then(function () { toast('복사했어요'); }, function () { fallbackCopy(v); });
+    } else fallbackCopy(v);
+  }
+  function fallbackCopy(v) {
+    var ta = doc.createElement('textarea');
+    ta.value = v; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    doc.body.appendChild(ta); ta.select();
+    try { doc.execCommand('copy'); toast('복사했어요'); } catch (e) { toast('복사하지 못했어요', 'err'); }
+    ta.remove();
+  }
+
+  /* ---------------- init ---------------- */
+  function init() {
+    try {
+      var prefs = JSON.parse(localStorage.getItem('flux_contacts_prefs') || '{}');
+      if (prefs.layout === 'grid' || prefs.layout === 'list') S.layout = prefs.layout;
+      if (prefs.sort) S.sort = prefs.sort;
+    } catch (e) { }
+    applyLayoutUI();
+    applySortUI();
+    syncTopH();
+    if (doc.documentElement.classList.contains('dark')) {
+      $('#themeBtn').innerHTML = '<svg class="i"><use href="#i-sun"></use></svg>';
+    }
+    bindStatic();
+    load().then(function () {
+      S.ready = true;
+      renderNav();
+      renderList();
+      renderDetail();
+      handleHash();
+      window.addEventListener('hashchange', handleHash);
+      if (memoryOnly) toast('브라우저 저장소를 쓸 수 없어 이번 세션에만 보관합니다', 'err');
+    });
+  }
+
+  if (window.Lemon && Lemon.ready) Lemon.ready(init); else init();
+})();
+</script>
+</body>
+</html>
