@@ -554,7 +554,7 @@ html:not(.dark) .icon-moon{ display:none; }
 
       <div class="tm-note">
         <svg class="tm-i"><use href="#i-info"/></svg>
-        <span>소요시간은 노선별 <b>표준 구간 소요시간</b>(정차·환승 도보 포함 추정치)으로 계산합니다. 실제 열차 시각표·대기시간·지연은 반영되지 않으니 여유 있게 나서 주세요. 요금은 거리 비례 기본운임(성인 교통카드) 기준 추정입니다.</span>
+        <span>소요시간은 노선별 <b>표준 구간 소요시간</b>(정차·환승 도보 포함 추정치)으로 계산합니다. 실제 열차 시각표·대기시간·지연은 반영되지 않으니 여유 있게 나서 주세요. 요금은 거리 비례 기본운임(성인 교통카드) 기준 추정에 신분당선 별도 운임을 더한 값이고, 공항철도는 별도 운임이라 실제 금액이 더 높습니다.</span>
       </div>
     </section>
 
@@ -1588,17 +1588,19 @@ html:not(.dark) .icon-moon{ display:none; }
       }
     });
     var minutes = Math.max(1, Math.round(res.sec / 60));
+    var lineIds = legs.map(function (l) { return l.line; });
     return {
-      from: res.from, to: res.to, legs: legs, transfers: transfers,
+      from: res.from, to: res.to, legs: legs, transfers: transfers, lines: lineIds,
       minutes: minutes, stops: res.stops, xfer: res.xfer,
-      km: Math.round(res.km * 10) / 10, fare: fareOf(res.km)
+      km: Math.round(res.km * 10) / 10, fare: fareOf(res.km, lineIds)
     };
   }
 
-  function fareOf(km) {
+  function fareOf(km, lines) {
     var f = 1400;
     if (km > 10) f += Math.ceil((Math.min(km, 50) - 10) / 5) * 100;
     if (km > 50) f += Math.ceil((km - 50) / 8) * 100;
+    if (lines && lines.indexOf('sb') >= 0) f += 700;
     return f;
   }
 
@@ -2252,6 +2254,9 @@ html:not(.dark) .icon-moon{ display:none; }
       else if (save > 0) tips.push('최소 환승 경로보다 <b>' + save + '분 빠릅니다.</b>');
     }
     if (route.xfer === 0) tips.push('환승 없이 <b>한 번에</b> 갈 수 있는 경로예요.');
+    var usedLines = route.legs.map(function (l) { return l.line; });
+    if (usedLines.indexOf('ar') >= 0) tips.push('<b>공항철도</b>는 거리 비례 기본운임이 아닌 별도 운임 체계라 실제 결제액이 더 높습니다.');
+    if (usedLines.indexOf('sb') >= 0) tips.push('<b>신분당선</b> 별도 운임 700원이 요금에 포함되어 있어요.');
     var longest = route.transfers.slice().sort(function (a, b) { return b.sec - a.sec; })[0];
     if (longest) tips.push('<b>' + esc(stName(longest.id)) + '</b> — ' + transferTip(longest.id));
     tips.push('도착 <b>' + esc(stName(route.to)) + '</b> · 승강장 출구 안내판에서 나갈 출구를 확인하세요.');
