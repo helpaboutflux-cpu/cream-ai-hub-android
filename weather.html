@@ -1581,16 +1581,47 @@ table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; backgr
   }
 
   function fetchForecast(c) {
-    return fetchJson(fcUrl(c), 12000).then(function (fc) {
-      return fetchJson(aqUrl(c), 10000).then(function (aq) { return aq; }, function () { return null; })
-        .then(function (aq) { return { fc: fc, aq: aq, src: 'open-meteo' }; });
-    }, function (err1) {
-      /* Open-Meteo 가 응답하지 않으면 MET Norway 로 이어서 받는다 */
-      return fetchJson(metUrl(c), 14000).then(function (raw) {
-        var fc = metToModel(raw, c);
-        return fetchJson(aqUrl(c), 9000).then(function (aq) { return aq; }, function () { return null; })
-          .then(function (aq) { return { fc: fc, aq: aq, src: 'met.no', first: err1 }; });
+    /* 두 소스를 동시에 띄우고, Open-Meteo 가 2.5초 안에 오면 그것을, 아니면 MET Norway 를 쓴다. */
+    var omP = fetchJson(fcUrl(c), 10000);
+    var metP = fetchJson(metUrl(c), 12000).then(function (raw) { return metToModel(raw, c); });
+    return new Promise(function (resolve, reject) {
+      var settled = false, omOk = null, metOk = null, omFail = null, metFail = null;
+      function finish(pack) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(headStart);
+        resolve(pack);
+      }
+      function fail(err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(headStart);
+        reject(err || new Error('no-source'));
+      }
+      var headStart = setTimeout(function () {
+        if (!settled && metOk) finish({ fc: metOk, src: 'met.no' });
+      }, 2500);
+      omP.then(function (fc) {
+        omOk = fc;
+        if (settled) return;
+        finish({ fc: fc, src: 'open-meteo' });
+      }, function (err) {
+        omFail = err;
+        if (!settled && metOk) finish({ fc: metOk, src: 'met.no' });
+        else if (!settled && metFail) fail(omFail);
       });
+      metP.then(function (fc) {
+        metOk = fc;
+        if (!settled && omFail) finish({ fc: fc, src: 'met.no' });
+      }, function (err) {
+        metFail = err;
+        if (!settled && omFail) fail(omFail);
+      });
+    }).then(function (res) {
+      return fetchJson(aqUrl(c), 9000).then(function (aq) { res.aq = aq; return res; }, function () { res.aq = null; return res; });
+    }, function (err) {
+      /* 두 소스 모두 실패: 대기질·기상 모두 없음 */
+      return Promise.reject(err);
     });
   }
 
