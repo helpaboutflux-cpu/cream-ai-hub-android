@@ -1,0 +1,2708 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lemon Weather — 실시간 날씨 · 미세먼지 · 옷차림</title>
+<meta name="description" content="기온·체감·습도·바람·강수확률과 미세먼지(PM10·PM2.5)·자외선을 한 화면에. 24시간 시간대별 그래프, 7일 예보, 옷차림 추천과 우산·세차·빨래 지수, 즐겨찾는 도시 나란히 비교까지 Open-Meteo 무료 데이터로 실시간 조회합니다.">
+<meta name="theme-color" content="#0284c7">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230284c7'/%3E%3Ccircle cx='26' cy='26' r='9' fill='%23fbe27a'/%3E%3Cpath d='M20 44a9 9 0 0 1 1-18 12 12 0 0 1 22 3 8 8 0 0 1-1 15z' fill='%23ffffff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__lemonErrs = [];
+    addEventListener('error', function (e) { window.__lemonErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__lemonErrs.push('unhandled: ' + String(e.reason)); });
+  }
+})();
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<link rel="stylesheet" href="anim-mode.css">
+<style>
+/* ============================================================
+   Lemon Weather · atmosphere design
+   하늘 그라데이션 + 유리 카드 + 듀얼 SVG 차트
+   ============================================================ */
+:root{
+  --brand:#0284c7; --brand-2:#38bdf8; --brand-deep:#075985;
+  --bg:#f4f8fc; --ink:#0b1a2b; --ink-2:#4a5a6e; --ink-3:#7b8ba0;
+  --line:rgba(11,26,43,.10); --line-2:rgba(11,26,43,.06);
+  --card:rgba(255,255,255,.88); --card-2:rgba(248,251,255,.72);
+  --shadow:0 20px 44px -34px rgba(9,30,54,.55);
+  --sun:#f6b40b; --moon:#c3d5ef; --cloud:#aebfd3; --cloud-2:#dbe7f4;
+  --rain:#2ea8e0; --snow:#d9eeff; --bolt:#f3c53f;
+  --sky-a:#dff1ff; --sky-b:#fbfdff; --sky-ink:#0b2338; --sky-ink-2:#4f6a85; --sky-line:rgba(11,35,56,.10);
+  --r-lg:26px; --r-md:18px; --r-sm:12px;
+}
+html.dark{
+  --bg:#050a10; --ink:#eaf2fa; --ink-2:#a2b2c5; --ink-3:#7c8ca0;
+  --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.06);
+  --card:rgba(13,20,29,.86); --card-2:rgba(18,26,37,.6);
+  --shadow:0 24px 54px -36px rgba(0,0,0,.95);
+  --sun:#ffcd4a; --moon:#dce8fb; --cloud:#46586e; --cloud-2:#2f4056;
+  --rain:#7dd3fc; --snow:#e6f5ff; --bolt:#ffd24a;
+  --sky-a:#0a2036; --sky-b:#050a12; --sky-ink:#eef6ff; --sky-ink-2:#a9bdd4; --sky-line:rgba(255,255,255,.12);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  margin:0; min-height:100vh; overflow-x:hidden;
+  font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color:var(--ink); background:var(--bg);
+  word-break:keep-all; overflow-wrap:anywhere; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+}
+body::before{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(900px 480px at 8% -6%, color-mix(in srgb, var(--brand) 18%, transparent) 0%, transparent 62%),
+    radial-gradient(760px 420px at 96% 2%, color-mix(in srgb, var(--brand-2) 16%, transparent) 0%, transparent 60%),
+    radial-gradient(700px 500px at 50% 108%, color-mix(in srgb, var(--brand) 10%, transparent) 0%, transparent 66%);
+}
+html.dark body::before{
+  background:
+    radial-gradient(920px 500px at 6% -8%, color-mix(in srgb, var(--brand) 26%, transparent) 0%, transparent 64%),
+    radial-gradient(760px 420px at 98% 0%, color-mix(in srgb, var(--brand-2) 18%, transparent) 0%, transparent 60%);
+}
+img,svg{display:block;max-width:100%}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+h1,h2,h3,p,ul,ol{margin:0;padding:0}
+ul,ol{list-style:none}
+:focus-visible{outline:2px solid var(--brand-2);outline-offset:2px;border-radius:8px}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+svg.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:15px;height:15px}
+
+/* ---------------- header ---------------- */
+.head{
+  position:sticky; top:0; z-index:40;
+  background:color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom:1px solid var(--line-2);
+  backdrop-filter:blur(18px) saturate(170%); -webkit-backdrop-filter:blur(18px) saturate(170%);
+}
+.head-in{
+  max-width:1180px; margin:0 auto; padding:10px 16px;
+  display:flex; align-items:center; gap:12px;
+}
+.brand{display:flex; align-items:center; gap:10px; min-width:0; flex-shrink:0}
+.brand-mark{
+  width:38px; height:38px; border-radius:13px; flex-shrink:0;
+  background:linear-gradient(140deg,var(--brand) 0%,var(--brand-2) 100%);
+  box-shadow:0 10px 22px -12px color-mix(in srgb,var(--brand) 80%,transparent);
+  display:grid; place-items:center; color:#fff;
+}
+.brand-mark svg{width:21px;height:21px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.brand-txt{display:flex; flex-direction:column; line-height:1.15; min-width:0}
+.brand-txt b{font-size:15px; font-weight:800; letter-spacing:-.02em; white-space:nowrap}
+.brand-txt i{font-style:normal; font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3)}
+.head-search{flex:1; display:flex; justify-content:center; min-width:0}
+.search-trigger{
+  display:flex; align-items:center; gap:8px; width:min(420px,100%);
+  padding:9px 14px; border-radius:14px; border:1px solid var(--line);
+  background:var(--card); color:var(--ink-3); font-size:13px; font-weight:600;
+  transition:border-color .2s, box-shadow .2s, color .2s, transform .16s;
+}
+.search-trigger:hover{border-color:color-mix(in srgb,var(--brand) 45%,transparent); color:var(--ink-2); box-shadow:0 10px 24px -20px rgba(2,132,199,.7)}
+.search-trigger:active{transform:scale(.99)}
+.search-trigger .k{margin-left:auto; font-size:10px; font-weight:800; letter-spacing:.04em; padding:2px 6px; border-radius:6px; border:1px solid var(--line); color:var(--ink-3)}
+.head-acts{display:flex; align-items:center; gap:6px; flex-shrink:0}
+.ib{
+  width:38px; height:38px; border-radius:12px; display:grid; place-items:center;
+  border:1px solid var(--line); background:var(--card); color:var(--ink-2);
+  transition:transform .16s cubic-bezier(.34,1.56,.64,1), color .2s, border-color .2s, background-color .2s;
+}
+.ib:hover{color:var(--brand); border-color:color-mix(in srgb,var(--brand) 45%,transparent)}
+.ib:active{transform:scale(.92)}
+.ib.is-on{color:#fff; background:linear-gradient(140deg,var(--brand),var(--brand-2)); border-color:transparent}
+.ib.unit{font-size:12px; font-weight:800; letter-spacing:-.02em}
+.ib.hub{color:var(--brand); border-color:color-mix(in srgb,var(--brand) 30%,transparent)}
+
+/* ---------------- shell ---------------- */
+.wrap{max-width:1180px; margin:0 auto; padding:18px 16px 8px}
+.city-bar{display:flex; align-items:center; gap:8px; margin-bottom:14px}
+.chips{display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; padding:2px 0; flex:1; min-width:0}
+.chips::-webkit-scrollbar{display:none}
+.city-chip{
+  display:inline-flex; align-items:center; gap:6px; flex-shrink:0;
+  padding:8px 13px 8px 11px; border-radius:13px; border:1px solid var(--line);
+  background:var(--card); font-size:12.5px; font-weight:700; color:var(--ink-2);
+  transition:transform .16s cubic-bezier(.34,1.56,.64,1), border-color .2s, color .2s, background-color .2s;
+}
+.city-chip:hover{border-color:color-mix(in srgb,var(--brand) 40%,transparent); color:var(--ink)}
+.city-chip:active{transform:scale(.96)}
+.city-chip b{font-weight:800; font-size:12.5px}
+.city-chip .t{font-weight:800; color:var(--ink-3); font-size:12px}
+.city-chip.on{
+  color:#fff; border-color:transparent;
+  background:linear-gradient(140deg,var(--brand) 0%,var(--brand-2) 100%);
+  box-shadow:0 12px 26px -16px color-mix(in srgb,var(--brand) 85%,transparent);
+}
+.city-chip.on .t{color:rgba(255,255,255,.82)}
+.city-chip .dot{width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.5}
+.chip-add{
+  flex-shrink:0; display:inline-flex; align-items:center; gap:5px;
+  padding:8px 12px; border-radius:13px; border:1px dashed color-mix(in srgb,var(--brand) 40%,transparent);
+  color:var(--brand); font-size:12.5px; font-weight:800; background:color-mix(in srgb,var(--brand) 7%,transparent);
+}
+.chip-add:hover{background:color-mix(in srgb,var(--brand) 13%,transparent)}
+
+/* ---------------- hero ---------------- */
+.hero{
+  position:relative; overflow:hidden; border-radius:var(--r-lg);
+  border:1px solid var(--sky-line);
+  background:linear-gradient(158deg,var(--sky-a) 0%,var(--sky-b) 72%);
+  box-shadow:var(--shadow);
+  transition:background .7s ease, border-color .4s ease;
+  min-height:298px;
+}
+.hero[data-sky="clear-day"]{--sky-a:#cfeeff; --sky-b:#fbfdff; --sky-ink:#08243a; --sky-ink-2:#4a6a86; --glow:#ffd977}
+.hero[data-sky="clear-night"]{--sky-a:#dce7fb; --sky-b:#f9fbff; --sky-ink:#122140; --sky-ink-2:#5b6b88; --glow:#dfe9ff}
+.hero[data-sky="partly-day"]{--sky-a:#dbeeff; --sky-b:#fafcff; --sky-ink:#0a2740; --sky-ink-2:#516f8b; --glow:#ffe08a}
+.hero[data-sky="partly-night"]{--sky-a:#e2ebfa; --sky-b:#fbfdff; --sky-ink:#152743; --sky-ink-2:#5d6f89; --glow:#e8efff}
+.hero[data-sky="cloudy"]{--sky-a:#e4ecf5; --sky-b:#fbfdff; --sky-ink:#14273a; --sky-ink-2:#5c7186; --glow:#e7eef7}
+.hero[data-sky="fog"]{--sky-a:#e9eef3; --sky-b:#fcfdff; --sky-ink:#1b2b38; --sky-ink-2:#687a88; --glow:#eef3f7}
+.hero[data-sky="rain"]{--sky-a:#d5e5f2; --sky-b:#f7fbff; --sky-ink:#0b2638; --sky-ink-2:#4d6b82; --glow:#bfe3f6}
+.hero[data-sky="snow"]{--sky-a:#e6f2fb; --sky-b:#ffffff; --sky-ink:#15314a; --sky-ink-2:#5d7791; --glow:#ffffff}
+.hero[data-sky="thunder"]{--sky-a:#d3dceb; --sky-b:#f6f9ff; --sky-ink:#101f36; --sky-ink-2:#546480; --glow:#e7dcab}
+html.dark .hero[data-sky="clear-day"]{--sky-a:#06263f; --sky-b:#04101b; --sky-ink:#f0f8ff; --sky-ink-2:#9fbdd4; --glow:#ffcf5e}
+html.dark .hero[data-sky="clear-night"]{--sky-a:#0a1730; --sky-b:#03060d; --sky-ink:#eef4ff; --sky-ink-2:#93a8c4; --glow:#dbe7ff}
+html.dark .hero[data-sky="partly-day"]{--sky-a:#08293f; --sky-b:#041019; --sky-ink:#f1f8ff; --sky-ink-2:#9cb8cd; --glow:#f4d27a}
+html.dark .hero[data-sky="partly-night"]{--sky-a:#0d1c33; --sky-b:#04070f; --sky-ink:#f0f5ff; --sky-ink-2:#95a8c2; --glow:#dbe7ff}
+html.dark .hero[data-sky="cloudy"]{--sky-a:#18222f; --sky-b:#070c13; --sky-ink:#eef4fb; --sky-ink-2:#9bacbf; --glow:#93a6bb}
+html.dark .hero[data-sky="fog"]{--sky-a:#1b242d; --sky-b:#080c11; --sky-ink:#eff4f8; --sky-ink-2:#a0adba; --glow:#a9b6c2}
+html.dark .hero[data-sky="rain"]{--sky-a:#0b2334; --sky-b:#03080e; --sky-ink:#eef7ff; --sky-ink-2:#93b2c9; --glow:#8fd3f4}
+html.dark .hero[data-sky="snow"]{--sky-a:#14283a; --sky-b:#050b12; --sky-ink:#f2f9ff; --sky-ink-2:#a6bccf; --glow:#eaf6ff}
+html.dark .hero[data-sky="thunder"]{--sky-a:#111b2c; --sky-b:#03060b; --sky-ink:#f2f6ff; --sky-ink-2:#a2b0c6; --glow:#ffe083}
+.hero-bg{position:absolute; inset:0; pointer-events:none; overflow:hidden}
+.hero-bg svg.scene{position:absolute; inset:0; width:100%; height:100%}
+.hero-glow{
+  position:absolute; width:340px; height:340px; border-radius:50%;
+  background:radial-gradient(circle, color-mix(in srgb,var(--glow) 62%,transparent) 0%, transparent 68%);
+  filter:blur(18px); top:-120px; right:6%; opacity:.85;
+  animation:glowPulse 9s ease-in-out infinite;
+}
+@keyframes glowPulse{0%,100%{transform:scale(1);opacity:.72}50%{transform:scale(1.1);opacity:.95}}
+.hero-in{
+  position:relative; z-index:2; padding:26px 26px 22px;
+  display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr); gap:22px;
+  color:var(--sky-ink);
+}
+.hero-loc{display:flex; align-items:center; gap:7px; flex-wrap:wrap; min-width:0}
+.hero-loc svg{color:var(--sky-ink-2)}
+.hero-loc b{font-size:17px; font-weight:800; letter-spacing:-.02em}
+.hero-loc .region{font-size:11.5px; font-weight:700; color:var(--sky-ink-2); padding:2px 7px; border-radius:8px; border:1px solid var(--sky-line)}
+.hero-loc .now{font-size:11px; font-weight:700; color:var(--sky-ink-2); margin-left:auto}
+.hero-temp{display:flex; align-items:flex-start; gap:2px; margin:2px 0 0; line-height:.98}
+.hero-temp b{font-size:clamp(62px,11vw,96px); font-weight:800; letter-spacing:-.055em}
+.hero-temp i{font-style:normal; font-size:clamp(26px,4vw,38px); font-weight:700; color:var(--sky-ink-2); margin-top:6px}
+.hero-cond{display:flex; align-items:center; gap:9px; margin-top:-2px}
+.hero-cond .wxa{width:30px; height:30px; flex-shrink:0}
+.hero-cond b{font-size:16px; font-weight:800}
+.hero-cond span{font-size:12px; font-weight:700; color:var(--sky-ink-2)}
+.hero-sub{margin-top:6px; font-size:13px; font-weight:600; color:var(--sky-ink-2); display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.hero-sub b{color:var(--sky-ink); font-weight:800}
+.hero-meta{margin-top:14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.hero-note{margin-top:10px; font-size:12px; font-weight:600; color:var(--sky-ink-2); display:flex; align-items:flex-start; gap:6px; max-width:44ch}
+.hero-note svg{flex-shrink:0; margin-top:2px; opacity:.8}
+.mini-btn{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:7px 11px; border-radius:11px; font-size:11.5px; font-weight:800;
+  border:1px solid var(--sky-line); background:color-mix(in srgb,var(--sky-b) 55%,transparent);
+  color:var(--sky-ink); transition:transform .16s cubic-bezier(.34,1.56,.64,1), background-color .2s, border-color .2s;
+}
+.mini-btn:hover{border-color:color-mix(in srgb,var(--brand) 55%,transparent); background:color-mix(in srgb,var(--brand) 12%,transparent)}
+.mini-btn:active{transform:scale(.95)}
+.mini-btn.on{color:#fff; background:linear-gradient(140deg,var(--brand),var(--brand-2)); border-color:transparent}
+.mini-btn .stamp{font-size:11px; font-weight:700; opacity:.8}
+.hero-r{display:flex; flex-direction:column; gap:12px; justify-content:space-between; min-width:0}
+.sun-arc{position:relative}
+.sun-arc svg{width:100%; height:auto}
+.sun-arc .arc-lbl{display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:var(--sky-ink-2); margin-top:-4px}
+.sun-arc .arc-lbl b{display:block; color:var(--sky-ink); font-size:12.5px; font-weight:800}
+.hero-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+.hero-stats > div{
+  padding:9px 10px; border-radius:13px;
+  border:1px solid var(--sky-line); background:color-mix(in srgb,var(--sky-b) 52%,transparent);
+}
+.hero-stats span{display:block; font-size:10.5px; font-weight:700; color:var(--sky-ink-2)}
+.hero-stats b{display:block; font-size:14px; font-weight:800; margin-top:1px; white-space:nowrap}
+
+/* particles */
+.pt-layer{position:absolute; inset:0; overflow:hidden; z-index:1}
+.pt{position:absolute; display:block; border-radius:50%}
+.pt.rain{width:1.5px; height:14px; border-radius:1px; background:linear-gradient(to bottom,transparent,currentColor); color:var(--rain); opacity:.55; animation:rainFall linear infinite}
+.pt.snow{width:5px; height:5px; background:var(--snow); opacity:.8; animation:snowFall linear infinite}
+.pt.mist{width:44%; height:26px; border-radius:60px; background:color-mix(in srgb,var(--sky-ink) 10%,transparent); filter:blur(9px); animation:mistDrift 26s ease-in-out infinite}
+@keyframes rainFall{0%{transform:translateY(-24px) translateX(0);opacity:0}12%{opacity:.6}100%{transform:translateY(340px) translateX(-16px);opacity:0}}
+@keyframes snowFall{0%{transform:translateY(-20px) translateX(0);opacity:0}14%{opacity:.9}100%{transform:translateY(330px) translateX(22px);opacity:0}}
+@keyframes mistDrift{0%,100%{transform:translateX(-4%) translateY(0)}50%{transform:translateX(6%) translateY(-8px)}}
+.flash{position:absolute; inset:0; background:radial-gradient(circle at 70% 12%,rgba(255,240,190,.55),transparent 58%); opacity:0; animation:thunderFlash 7.5s ease-out infinite}
+@keyframes thunderFlash{0%,86%,100%{opacity:0}88%{opacity:.75}90%{opacity:.06}92%{opacity:.5}95%{opacity:0}}
+.cloud-drift{animation:cloudDrift 46s linear infinite}
+.cloud-drift.d2{animation-duration:64s; animation-direction:reverse}
+@keyframes cloudDrift{0%{transform:translateX(-16px)}50%{transform:translateX(26px)}100%{transform:translateX(-16px)}}
+.sun-spin{transform-origin:center; animation:sunSpin 60s linear infinite}
+@keyframes sunSpin{to{transform:rotate(360deg)}}
+
+/* ---------------- weather art ---------------- */
+.wxa{overflow:visible}
+.wxa .c-sun{fill:var(--sun)}
+.wxa .c-ray{stroke:var(--sun); stroke-width:2.4; stroke-linecap:round}
+.wxa .c-moon{fill:var(--moon)}
+.wxa .c-cloud{fill:var(--cloud)}
+.wxa .c-cloud2{fill:var(--cloud-2)}
+.wxa .c-rain{stroke:var(--rain); stroke-width:2.6; stroke-linecap:round}
+.wxa .c-snow{fill:var(--snow); stroke:var(--snow)}
+.wxa .c-bolt{fill:var(--bolt)}
+.wxa .c-fog{stroke:var(--cloud); stroke-width:2.4; stroke-linecap:round}
+.wxa .fall{animation:wxaFall 1.8s ease-in-out infinite}
+.wxa .fall.f2{animation-delay:.5s}
+.wxa .fall.f3{animation-delay:.95s}
+@keyframes wxaFall{0%{transform:translateY(-1.5px);opacity:0}30%{opacity:1}100%{transform:translateY(4.5px);opacity:0}}
+
+/* ---------------- section shell ---------------- */
+.sec{margin-top:24px}
+.sec-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px}
+.sec-head h2{font-size:16px; font-weight:800; letter-spacing:-.02em; display:flex; align-items:center; gap:7px}
+.sec-head h2 svg{color:var(--brand)}
+.sec-head .hint{font-size:11.5px; font-weight:700; color:var(--ink-3)}
+.card{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-md);
+  box-shadow:var(--shadow); padding:16px;
+  backdrop-filter:blur(10px);
+}
+.panel{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-lg);
+  box-shadow:var(--shadow); backdrop-filter:blur(10px);
+}
+
+/* ---------------- air quality ---------------- */
+.aq-grid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px}
+.aq{
+  position:relative; overflow:hidden; padding:14px 14px 13px;
+  border-radius:var(--r-md); border:1px solid var(--line); background:var(--card);
+  box-shadow:var(--shadow); display:flex; flex-direction:column; gap:8px;
+  transition:transform .3s cubic-bezier(.22,1.2,.36,1), border-color .2s, box-shadow .3s;
+}
+.aq:hover{transform:translateY(-3px); border-color:color-mix(in srgb,var(--brand) 34%,transparent)}
+.aq-top{display:flex; align-items:center; justify-content:space-between; gap:6px}
+.aq-top span{font-size:11px; font-weight:800; color:var(--ink-3); letter-spacing:.02em}
+.aq-top svg{color:var(--ink-3)}
+.aq-val{display:flex; align-items:flex-end; gap:5px; line-height:1}
+.aq-val b{font-size:26px; font-weight:800; letter-spacing:-.04em}
+.aq-val i{font-style:normal; font-size:11px; font-weight:700; color:var(--ink-3); margin-bottom:3px}
+.aq-grade{display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:800}
+.aq-grade .dot{width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 0 3px color-mix(in srgb,currentColor 16%,transparent)}
+.aq-bar{height:5px; border-radius:99px; background:var(--line-2); overflow:hidden; margin-top:2px}
+.aq-bar i{display:block; height:100%; border-radius:99px; transition:width .9s cubic-bezier(.22,1,.36,1)}
+.aq-note{font-size:10.5px; font-weight:700; color:var(--ink-3)}
+.g-good{color:#059669} .g-mod{color:#0284c7} .g-bad{color:#ea8a1f} .g-worst{color:#e11d48}
+html.dark .g-good{color:#34d399} html.dark .g-mod{color:#38bdf8} html.dark .g-bad{color:#fbbf24} html.dark .g-worst{color:#fb7185}
+
+/* ---------------- hourly chart ---------------- */
+.chart-card{padding:18px 18px 12px; margin-top:0}
+.chart-card .sec-head{margin-bottom:6px}
+.legend{display:flex; align-items:center; gap:14px; font-size:11px; font-weight:700; color:var(--ink-3); flex-wrap:wrap}
+.legend i{display:inline-block; width:14px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle}
+.legend .l-temp i{background:linear-gradient(90deg,var(--brand),var(--brand-2))}
+.legend .l-pop i{background:color-mix(in srgb,var(--rain) 70%,transparent)}
+.chart-wrap{position:relative; margin-top:8px; touch-action:pan-y}
+#hourSvg{width:100%; display:block; overflow:visible}
+#hourSvg text{font-family:inherit; font-weight:700; fill:var(--ink-3); font-size:10.5px}
+#hourSvg .grid-line{stroke:var(--line-2); stroke-width:1}
+#hourSvg .base-line{stroke:var(--line); stroke-width:1.2}
+#hourSvg .now-line{stroke:color-mix(in srgb,var(--brand) 55%,transparent); stroke-width:1.4; stroke-dasharray:3 4}
+#hourSvg .t-line{fill:none; stroke:url(#gradTempLine); stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round}
+#hourSvg .t-area{fill:url(#gradTempArea); opacity:.9}
+#hourSvg .p-bar{fill:url(#gradPop); rx:3}
+#hourSvg .t-dot{fill:var(--card-solid,#fff); stroke:var(--brand); stroke-width:2.4}
+#hourSvg .t-val{fill:var(--ink); font-size:11px; font-weight:800}
+#hourSvg .hit{fill:transparent; cursor:crosshair}
+.chart-tip{
+  position:absolute; z-index:5; pointer-events:none; min-width:132px;
+  padding:9px 11px; border-radius:13px; font-size:11.5px; font-weight:700;
+  background:color-mix(in srgb, var(--ink) 92%, transparent); color:var(--bg);
+  box-shadow:0 16px 34px -18px rgba(0,0,0,.7);
+  opacity:0; transform:translate(-50%,-6px) scale(.96); transition:opacity .14s ease, transform .14s ease;
+  backdrop-filter:blur(8px);
+}
+html.dark .chart-tip{background:rgba(240,247,255,.96); color:#0a1626}
+.chart-tip.on{opacity:1; transform:translate(-50%,-10px) scale(1)}
+.chart-tip b{display:block; font-size:12.5px; margin-bottom:4px}
+.chart-tip .row{display:flex; align-items:center; justify-content:space-between; gap:10px; font-weight:700}
+.chart-tip .row em{font-style:normal; opacity:.72; font-weight:600}
+.chart-note{margin-top:6px; font-size:11px; font-weight:600; color:var(--ink-3); display:flex; align-items:center; gap:6px}
+
+/* ---------------- daily ---------------- */
+.daily-list{display:flex; flex-direction:column; margin-top:4px}
+.day-row{
+  display:grid; grid-template-columns:78px 30px 56px 1fr 92px; align-items:center; gap:12px;
+  padding:9px 4px; border-top:1px solid var(--line-2);
+  transition:background-color .18s;
+}
+.day-row:first-child{border-top:0}
+.day-row:hover{background:color-mix(in srgb,var(--brand) 6%,transparent)}
+.day-row .d-name{font-size:12.5px; font-weight:800}
+.day-row .d-name small{display:block; font-size:10px; font-weight:700; color:var(--ink-3)}
+.day-row .d-pop{font-size:11px; font-weight:800; color:var(--brand); text-align:center}
+.day-row .d-pop.zero{color:var(--ink-3); opacity:.55}
+.d-bar{position:relative; height:8px; border-radius:99px; background:var(--line-2); overflow:hidden}
+.d-bar i{
+  position:absolute; top:0; bottom:0; border-radius:99px;
+  background:linear-gradient(90deg,#7dd3fc 0%,#38bdf8 26%,#0284c7 52%,#f59e0b 100%);
+  transform-origin:left center;
+  transition:left .7s cubic-bezier(.22,1,.36,1), width .7s cubic-bezier(.22,1,.36,1);
+}
+.day-row .d-temp{display:flex; align-items:center; justify-content:flex-end; gap:6px; font-size:12.5px; font-weight:800}
+.day-row .d-temp .lo{color:var(--ink-3); font-weight:700}
+.week-sum{
+  margin-top:12px; padding:11px 13px; border-radius:13px;
+  background:color-mix(in srgb,var(--brand) 8%,transparent);
+  border:1px solid color-mix(in srgb,var(--brand) 18%,transparent);
+  font-size:12px; font-weight:700; color:var(--ink-2); display:flex; align-items:center; gap:8px;
+}
+.week-sum svg{color:var(--brand); flex-shrink:0}
+
+/* ---------------- life indices ---------------- */
+.life-wrap{display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1.6fr); gap:12px}
+.outfit{position:relative; overflow:hidden; padding:18px; display:flex; flex-direction:column; gap:12px}
+.outfit-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.outfit-head h3{font-size:13px; font-weight:800; color:var(--ink-3); letter-spacing:.02em}
+.outfit-body{display:flex; align-items:center; gap:14px; min-height:104px}
+.outfit-art{width:96px; height:104px; flex-shrink:0; color:var(--brand)}
+.outfit-art svg{width:100%; height:100%}
+.outfit-say{min-width:0}
+.outfit-say b{display:block; font-size:15.5px; font-weight:800; letter-spacing:-.02em; line-height:1.3}
+.outfit-say p{margin-top:5px; font-size:12px; font-weight:600; color:var(--ink-2)}
+.outfit-tags{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px}
+.tag{
+  display:inline-flex; align-items:center; gap:4px; padding:4px 9px; border-radius:99px;
+  font-size:11px; font-weight:800; border:1px solid var(--line);
+  background:var(--card-2); color:var(--ink-2);
+}
+.tag.brand{color:var(--brand); border-color:color-mix(in srgb,var(--brand) 30%,transparent); background:color-mix(in srgb,var(--brand) 9%,transparent)}
+.idx-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
+.idx{display:flex; align-items:center; gap:12px; padding:14px; border-radius:var(--r-md); border:1px solid var(--line); background:var(--card); box-shadow:var(--shadow)}
+.idx-gauge{position:relative; width:54px; height:54px; flex-shrink:0}
+.idx-gauge svg{width:54px; height:54px; transform:rotate(-90deg)}
+.idx-gauge .g-bg{stroke:var(--line); stroke-width:5; fill:none}
+.idx-gauge .g-fg{stroke:url(#gradGauge); stroke-width:5; fill:none; stroke-linecap:round; transition:stroke-dashoffset 1s cubic-bezier(.22,1,.36,1)}
+.idx-gauge b{position:absolute; inset:0; display:grid; place-items:center; font-size:12.5px; font-weight:800}
+.idx-txt{min-width:0}
+.idx-txt b{display:block; font-size:12.5px; font-weight:800}
+.idx-txt span{display:block; font-size:11px; font-weight:600; color:var(--ink-3); margin-top:2px; line-height:1.4}
+
+/* ---------------- favorites ---------------- */
+.fav-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:12px}
+.fav{
+  position:relative; overflow:hidden; text-align:left;
+  padding:14px; border-radius:var(--r-md); border:1px solid var(--line);
+  background:var(--card); box-shadow:var(--shadow);
+  transition:transform .3s cubic-bezier(.22,1.2,.36,1), border-color .2s, box-shadow .3s;
+  display:flex; flex-direction:column; gap:8px; min-height:112px;
+}
+.fav:hover{transform:translateY(-4px); border-color:color-mix(in srgb,var(--brand) 40%,transparent)}
+.fav.on{border-color:color-mix(in srgb,var(--brand) 60%,transparent); box-shadow:0 0 0 1px color-mix(in srgb,var(--brand) 40%,transparent), var(--shadow)}
+.fav-top{display:flex; align-items:flex-start; justify-content:space-between; gap:8px}
+.fav-top b{font-size:13px; font-weight:800; letter-spacing:-.02em}
+.fav-top small{display:block; font-size:10.5px; font-weight:700; color:var(--ink-3)}
+.fav .wxa{width:26px; height:26px; flex-shrink:0}
+.fav-temp{display:flex; align-items:baseline; gap:6px; line-height:1}
+.fav-temp b{font-size:24px; font-weight:800; letter-spacing:-.04em}
+.fav-temp span{font-size:10.5px; font-weight:700; color:var(--ink-3); white-space:nowrap}
+.fav-foot{display:flex; align-items:center; justify-content:space-between; gap:6px; font-size:10.5px; font-weight:800; color:var(--ink-3); margin-top:auto}
+.fav-foot .pv{color:var(--brand)}
+.fav-del{
+  position:absolute; top:8px; right:8px; width:22px; height:22px; border-radius:8px;
+  display:grid; place-items:center; color:var(--ink-3); opacity:0; transition:opacity .18s, color .18s, background-color .18s;
+}
+.fav:hover .fav-del{opacity:1}
+.fav-del:hover{color:#e11d48; background:color-mix(in srgb,#e11d48 12%,transparent)}
+@media (hover:none){ .fav-del{opacity:.75} }
+.fav-add{
+  border:1px dashed color-mix(in srgb,var(--brand) 40%,transparent);
+  background:color-mix(in srgb,var(--brand) 5%,transparent);
+  display:grid; place-items:center; min-height:112px; border-radius:var(--r-md);
+  color:var(--brand); gap:6px; font-size:12px; font-weight:800;
+  transition:background-color .2s, transform .2s;
+}
+.fav-add:hover{background:color-mix(in srgb,var(--brand) 11%,transparent); transform:translateY(-2px)}
+.compare-toggle{display:inline-flex; align-items:center; gap:6px}
+.compare-box{display:grid; place-items:center; width:18px; height:18px; border-radius:6px; border:1.6px solid var(--line); color:transparent; background:var(--card-2)}
+.fav.sel .compare-box{background:linear-gradient(140deg,var(--brand),var(--brand-2)); border-color:transparent; color:#fff}
+.cmp-table-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:12px; border-radius:14px; border:1px solid var(--line)}
+table.cmp{border-collapse:collapse; width:100%; min-width:520px; font-size:12px}
+table.cmp th,table.cmp td{padding:9px 11px; text-align:left; border-bottom:1px solid var(--line-2); white-space:nowrap}
+table.cmp thead th{position:sticky; top:0; background:color-mix(in srgb,var(--brand) 8%,var(--bg)); font-size:11.5px; font-weight:800}
+table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; background:color-mix(in srgb,var(--ink) 3%,transparent)}
+
+/* ---------------- footer ---------------- */
+.foot{margin-top:34px; border-top:1px solid var(--line-2); padding:22px 16px 34px; background:color-mix(in srgb,var(--ink) 2%,transparent)}
+.foot-in{max-width:1180px; margin:0 auto; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:14px}
+.foot-brand{display:flex; align-items:center; gap:10px; min-width:0}
+.foot-brand .brand-mark{width:32px; height:32px; border-radius:11px}
+.foot-brand .brand-mark svg{width:18px; height:18px}
+.foot-brand b{font-size:13px; font-weight:800}
+.foot-brand small{display:block; font-size:11px; font-weight:600; color:var(--ink-3)}
+.foot-links{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.foot-links a{
+  display:inline-flex; align-items:center; gap:5px; padding:7px 11px; border-radius:10px;
+  border:1px solid var(--line); background:var(--card); font-size:11.5px; font-weight:800; color:var(--ink-2);
+  transition:color .2s, border-color .2s, transform .16s;
+}
+.foot-links a:hover{color:var(--brand); border-color:color-mix(in srgb,var(--brand) 45%,transparent)}
+.foot-links a:active{transform:scale(.97)}
+.foot-note{max-width:1180px; margin:14px auto 0; font-size:10.5px; font-weight:600; color:var(--ink-3); line-height:1.7}
+
+/* ---------------- sheet / modal ---------------- */
+.sheet{
+  position:fixed; inset:0; z-index:80; display:flex; align-items:flex-end; justify-content:center;
+  padding:0; background:rgba(4,10,18,.5); backdrop-filter:blur(4px);
+  opacity:0; pointer-events:none; transition:opacity .22s ease;
+}
+.sheet.on{opacity:1; pointer-events:auto}
+.sheet[hidden]{display:none !important}
+.sheet-card{
+  width:100%; max-width:620px; max-height:88vh; overflow:hidden;
+  background:var(--bg); border:1px solid var(--line); border-bottom:0;
+  border-radius:22px 22px 0 0; box-shadow:0 -20px 60px -30px rgba(0,0,0,.6);
+  transform:translateY(24px); transition:transform .28s cubic-bezier(.22,1.1,.36,1);
+  display:flex; flex-direction:column;
+}
+.sheet.on .sheet-card{transform:none}
+.sheet-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px 10px}
+.sheet-head h3{font-size:15px; font-weight:800; letter-spacing:-.02em}
+.sheet-body{padding:0 16px 20px; overflow-y:auto; -webkit-overflow-scrolling:touch}
+.search-field{position:relative; display:flex; align-items:center; gap:9px; padding:11px 13px; border-radius:14px; border:1.6px solid color-mix(in srgb,var(--brand) 40%,transparent); background:var(--card)}
+.search-field svg{color:var(--brand); flex-shrink:0}
+.search-field input{flex:1; min-width:0; border:0; background:none; outline:none; font-size:14px; font-weight:700; color:var(--ink)}
+.search-field input::placeholder{color:var(--ink-3); font-weight:600}
+.q-hint{margin:9px 2px 0; font-size:11px; font-weight:600; color:var(--ink-3); min-height:15px}
+.res-list{margin-top:10px; display:flex; flex-direction:column; gap:6px}
+.res{
+  display:flex; align-items:center; gap:10px; padding:11px 12px; border-radius:13px;
+  border:1px solid var(--line-2); background:var(--card); text-align:left; width:100%;
+  transition:border-color .18s, background-color .18s, transform .16s;
+}
+.res:hover{border-color:color-mix(in srgb,var(--brand) 45%,transparent); background:color-mix(in srgb,var(--brand) 6%,transparent)}
+.res:active{transform:scale(.99)}
+.res .r-ico{width:30px; height:30px; border-radius:10px; display:grid; place-items:center; background:color-mix(in srgb,var(--brand) 10%,transparent); color:var(--brand); flex-shrink:0}
+.res .r-txt{min-width:0; flex:1}
+.res .r-txt b{display:block; font-size:13px; font-weight:800}
+.res .r-txt span{display:block; font-size:11px; font-weight:600; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.res .r-add{font-size:11px; font-weight:800; color:var(--brand); flex-shrink:0}
+.quick-cities{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px}
+.quick-cities button{padding:6px 10px; border-radius:99px; border:1px solid var(--line); background:var(--card); font-size:11.5px; font-weight:700; color:var(--ink-2)}
+.quick-cities button:hover{color:var(--brand); border-color:color-mix(in srgb,var(--brand) 45%,transparent)}
+.sheet-label{margin:16px 2px 8px; font-size:10.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
+.gps-row{display:flex; align-items:center; gap:10px; padding:12px; border-radius:13px; border:1px solid color-mix(in srgb,var(--brand) 26%,transparent); background:color-mix(in srgb,var(--brand) 6%,transparent); width:100%; text-align:left}
+.gps-row .r-ico{width:32px; height:32px; border-radius:10px; display:grid; place-items:center; background:linear-gradient(140deg,var(--brand),var(--brand-2)); color:#fff}
+.gps-row b{display:block; font-size:12.5px; font-weight:800}
+.gps-row span{display:block; font-size:11px; font-weight:600; color:var(--ink-3)}
+
+/* ---------------- skeleton / states ---------------- */
+.sk{position:relative; overflow:hidden; background:var(--line-2); border-radius:8px; color:transparent !important}
+.sk::after{content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--bg) 60%,#fff) 50%,transparent); transform:translateX(-100%); animation:skShine 1.5s ease-in-out infinite}
+@keyframes skShine{to{transform:translateX(100%)}}
+.err-box{
+  display:flex; align-items:center; gap:12px; padding:14px; border-radius:var(--r-md);
+  border:1px solid color-mix(in srgb,#e11d48 30%,transparent); background:color-mix(in srgb,#e11d48 7%,transparent);
+  font-size:12px; font-weight:700; color:var(--ink-2);
+}
+.err-box svg{color:#e11d48; flex-shrink:0}
+.err-box button{margin-left:auto; flex-shrink:0; padding:7px 12px; border-radius:10px; background:#e11d48; color:#fff; font-size:11.5px; font-weight:800}
+
+/* ---------------- entrance animation ---------------- */
+.spring{animation:springIn .62s cubic-bezier(.2,1.2,.3,1) both}
+.spring.d1{animation-delay:.05s} .spring.d2{animation-delay:.1s} .spring.d3{animation-delay:.15s}
+.spring.d4{animation-delay:.2s} .spring.d5{animation-delay:.25s} .spring.d6{animation-delay:.3s}
+@keyframes springIn{0%{opacity:0;transform:translateY(18px) scale(.97)}62%{opacity:1;transform:translateY(-3px) scale(1.006)}100%{opacity:1;transform:none}}
+.count{display:inline-block}
+
+/* ---------------- responsive ---------------- */
+@media (max-width:960px){
+  .hero-in{grid-template-columns:1fr; gap:16px; padding:22px 20px 18px}
+  .hero-r{flex-direction:row; align-items:center; gap:16px}
+  .sun-arc{flex:1; min-width:0}
+  .hero-stats{grid-template-columns:1fr; gap:6px; width:132px}
+  .aq-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .life-wrap{grid-template-columns:1fr}
+}
+@media (max-width:720px){
+  .head-search{display:none}
+  .head-in{padding:9px 12px; gap:8px}
+  .wrap{padding:14px 12px 6px}
+  .hero{min-height:0}
+  .hero-in{padding:18px 16px 16px}
+  .hero-r{flex-direction:column; align-items:stretch; gap:10px}
+  .hero-stats{grid-template-columns:repeat(3,1fr); width:auto}
+  .brand-txt i{display:none}
+  .sec{margin-top:20px}
+  .chart-card{padding:14px 10px 8px}
+  .day-row{grid-template-columns:54px 24px 36px 1fr 72px; gap:7px; padding:8px 0}
+  .day-row .d-name{font-size:12px}
+  .aq{padding:12px}
+  .aq-val b{font-size:23px}
+  .idx-grid{gap:10px}
+  .idx{padding:12px; gap:10px}
+  .idx-gauge,.idx-gauge svg{width:46px; height:46px}
+  .outfit-body{min-height:88px; gap:10px}
+  .outfit-art{width:76px; height:88px}
+  .fav-grid{grid-template-columns:repeat(auto-fill,minmax(146px,1fr)); gap:10px}
+  .foot{padding:18px 12px 30px}
+}
+@media (max-width:430px){
+  .head-in{padding:8px 10px; gap:7px}
+  .head-acts{gap:4px}
+  .ib{width:34px; height:34px; border-radius:11px}
+  .brand{gap:7px}
+  .brand-mark{width:34px; height:34px; border-radius:11px}
+  .brand-mark svg{width:19px; height:19px}
+  .brand-txt b{font-size:13.5px}
+}
+@media (max-width:400px){
+  .head-in{padding:8px 8px; gap:6px}
+  .head-acts{gap:3px}
+  .ib{width:32px; height:32px; border-radius:10px}
+  .brand-txt b{font-size:12.5px; letter-spacing:-.03em}
+  .hero-temp b{font-size:60px}
+  .aq-grid{grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px}
+  .idx-grid{grid-template-columns:1fr}
+  .city-bar{gap:6px}
+  .day-row{grid-template-columns:50px 22px 33px 1fr 68px; gap:5px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
+}
+</style>
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></symbol>
+  <symbol id="i-gps" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.2M12 18.8V22M2 12h3.2M18.8 12H22"/><circle cx="12" cy="12" r="7.4"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 4.5V11h-6.2"/></symbol>
+  <symbol id="i-hub" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.1 5.1l1.6 1.6M17.3 17.3l1.6 1.6M18.9 5.1l-1.6 1.6M6.7 17.3l-1.6 1.6"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13.2A8.5 8.5 0 1 1 10.8 3a6.8 6.8 0 0 0 10.2 10.2z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.9-5.2 2.9 1-5.9L3.5 9.7l5.9-.8z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M7 21h10"/><path d="M4 7h16"/><path d="M4 7l-2.2 5.2a3.2 3.2 0 0 0 4.4 0zM20 7l-2.2 5.2a3.2 3.2 0 0 0 4.4 0z" transform="translate(0 0)"/></symbol>
+  <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 8h10a3 3 0 1 0-3-3"/><path d="M3 12.5h13.5a3 3 0 1 1-3 3"/><path d="M3 17h6.5"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.2c3.4 4 5.4 6.7 5.4 9.3a5.4 5.4 0 1 1-10.8 0C6.6 9.9 8.6 7.2 12 3.2z"/></symbol>
+  <symbol id="i-umbrella" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 18 0z"/><path d="M12 12v7a2.5 2.5 0 0 0 5 0"/></symbol>
+  <symbol id="i-car" viewBox="0 0 24 24"><path d="M4 16.5V12l2-5.2h12L20 12v4.5"/><path d="M2.5 16.5h19"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/><path d="M6.2 12h11.6"/></symbol>
+  <symbol id="i-shirt" viewBox="0 0 24 24"><path d="M9 3.5 12 5l3-1.5 4.5 2.2-1.6 4-2.4-1V20H8.5V8.7l-2.4 1-1.6-4z"/></symbol>
+  <symbol id="i-sunrise" viewBox="0 0 24 24"><path d="M3 18h18M6.5 18a5.5 5.5 0 0 1 11 0"/><path d="M12 3v4M5.6 7.6l1.5 1.5M18.4 7.6l-1.5 1.5"/></symbol>
+  <symbol id="i-sunset" viewBox="0 0 24 24"><path d="M3 18h18M6.5 18a5.5 5.5 0 0 1 11 0"/><path d="M12 7V3M5.6 12.4l1.5-1.5M18.4 12.4l-1.5-1.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.2 1.9"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M12 13.5 16 9"/><circle cx="12" cy="13.5" r="1"/><path d="M4 18a9 9 0 1 1 16 0"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.4-8 5.6 5.6 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 18z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.6h5V7M6.5 7l1 13h9l1-13"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4M12 7.9v.2"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.8 21 19.5H3z"/><path d="M12 9.4v4.4M12 16.6v.2"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M20 4.2c-8 0-13 3.4-13 9.2 0 3 2.2 6 5.6 6C18 19.4 20 12 20 4.2z"/><path d="M4 21c1.5-5 5-9.5 9.5-12"/></symbol>
+</svg>
+
+<header class="head">
+  <div class="head-in">
+    <a class="brand" href="index.html" title="Soft Hub로 이동">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="9.2" cy="9.4" r="3.4"/><path d="M6.6 18.4a3.6 3.6 0 0 1 .3-7.2 5 5 0 0 1 9.4 1 3.1 3.1 0 0 1-.5 6.2z"/></svg>
+      </span>
+      <span class="brand-txt"><b>Lemon Weather</b><i>Soft Hub</i></span>
+    </a>
+    <div class="head-search">
+      <button type="button" class="search-trigger" id="searchTrigger" aria-label="도시 검색 열기">
+        <svg class="i sm"><use href="#i-search"></use></svg>
+        <span>도시 이름으로 검색</span>
+        <span class="k">Ctrl K</span>
+      </button>
+    </div>
+    <div class="head-acts">
+      <button type="button" class="ib" id="headSearchBtn" aria-label="도시 검색">
+        <svg class="i sm"><use href="#i-search"></use></svg>
+      </button>
+      <button type="button" class="ib" id="gpsBtn" aria-label="현재 위치의 날씨" title="현재 위치">
+        <svg class="i sm"><use href="#i-gps"></use></svg>
+      </button>
+      <button type="button" class="ib unit" id="unitBtn" aria-label="온도 단위 바꾸기" title="섭씨 / 화씨">°C</button>
+      <button type="button" class="ib" data-theme-toggle aria-label="테마 변경" title="라이트 / 다크">
+        <svg class="i sm" data-theme-icon="light"><use href="#i-sun"></use></svg>
+      </button>
+      <a class="ib hub" href="index.html" aria-label="Soft Hub로 이동" title="Soft Hub">
+        <svg class="i sm"><use href="#i-hub"></use></svg>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <h1 class="sr">Lemon Weather — 실시간 날씨와 미세먼지 대시보드</h1>
+
+  <div class="city-bar">
+    <div class="chips" id="cityChips" role="tablist" aria-label="저장한 도시"></div>
+    <button type="button" class="chip-add" id="addCityBtn">
+      <svg class="i sm"><use href="#i-plus"></use></svg><span>도시 추가</span>
+    </button>
+  </div>
+
+  <section class="hero" id="hero" data-sky="cloudy" aria-label="현재 날씨">
+    <div class="hero-bg" aria-hidden="true">
+      <div class="hero-glow"></div>
+      <div class="pt-layer" id="ptLayer"></div>
+    </div>
+    <div class="hero-in">
+      <div class="hero-l">
+        <div class="hero-loc">
+          <svg class="i sm"><use href="#i-pin"></use></svg>
+          <b id="heroName">서울</b>
+          <span class="region" id="heroRegion">서울특별시</span>
+        </div>
+        <div class="hero-temp"><b id="heroTemp">--</b><i>°</i></div>
+        <div class="hero-cond">
+          <span class="wxa" id="heroIcon"></span>
+          <b id="heroLabel">날씨를 불러오는 중</b>
+          <span id="heroFeels">체감 --°</span>
+        </div>
+        <div class="hero-sub">
+          <span>최고 <b id="heroHi">--°</b></span>
+          <span>·</span>
+          <span>최저 <b id="heroLo">--°</b></span>
+          <span>·</span>
+          <span>강수확률 <b id="heroPop">--%</b></span>
+        </div>
+        <div class="hero-meta">
+          <button type="button" class="mini-btn" id="refreshBtn" title="지금 새로고침">
+            <svg class="i sm"><use href="#i-refresh"></use></svg><span>새로고침</span>
+          </button>
+          <button type="button" class="mini-btn" id="pinBtn" aria-pressed="false">
+            <svg class="i sm"><use href="#i-star"></use></svg><span>즐겨찾기</span>
+          </button>
+          <span class="stamp" id="heroUpdated">--</span>
+        </div>
+        <p class="hero-note" id="heroNote"></p>
+      </div>
+      <div class="hero-r">
+        <div class="sun-arc" id="sunArc"></div>
+        <div class="hero-stats">
+          <div><span>습도</span><b id="hHum">--%</b></div>
+          <div><span>바람</span><b id="hWind">--</b></div>
+          <div><span>구름</span><b id="hCloud">--%</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" aria-label="대기질과 자외선">
+    <div class="sec-head">
+      <h2><svg class="i sm"><use href="#i-leaf"></use></svg>지금 공기</h2>
+      <span class="hint" id="aqTime">--</span>
+    </div>
+    <div class="aq-grid" id="aqGrid"></div>
+  </section>
+
+  <section class="sec chart-card panel" aria-label="24시간 예보">
+    <div class="sec-head">
+      <h2><svg class="i sm"><use href="#i-gauge"></use></svg>24시간 예보</h2>
+      <div class="legend">
+        <span class="l-temp"><i></i>기온</span>
+        <span class="l-pop"><i></i>강수확률</span>
+      </div>
+    </div>
+    <div class="chart-wrap" id="chartWrap">
+      <svg id="hourSvg" role="img" aria-label="시간대별 기온과 강수확률 그래프"></svg>
+      <div class="chart-tip" id="chartTip" role="status" aria-live="polite"></div>
+    </div>
+    <p class="chart-note"><svg class="i sm"><use href="#i-info"></use></svg>그래프를 눌러 시간대별 기온·강수확률·바람을 확인하세요.</p>
+  </section>
+
+  <section class="sec panel" style="padding:18px 18px 14px" aria-label="7일 예보">
+    <div class="sec-head">
+      <h2><svg class="i sm"><use href="#i-cloud"></use></svg>7일 예보</h2>
+      <span class="hint" id="weekRange">--</span>
+    </div>
+    <ul class="daily-list" id="dailyList"></ul>
+    <p class="week-sum" id="weekSummary"></p>
+  </section>
+
+  <section class="sec" aria-label="생활 지수">
+    <div class="sec-head">
+      <h2><svg class="i sm"><use href="#i-shirt"></use></svg>오늘의 생활 지수</h2>
+      <span class="hint">기온·일교차·바람·강수·대기질 기준</span>
+    </div>
+    <div class="life-wrap">
+      <article class="outfit card" id="outfitCard"></article>
+      <div class="idx-grid" id="idxGrid"></div>
+    </div>
+  </section>
+
+  <section class="sec panel" style="padding:18px" aria-label="즐겨찾는 도시">
+    <div class="sec-head">
+      <h2><svg class="i sm"><use href="#i-star"></use></svg>즐겨찾는 도시</h2>
+      <div class="compare-toggle">
+        <button type="button" class="mini-btn" id="compareBtn" aria-pressed="false">
+          <svg class="i sm"><use href="#i-scale"></use></svg><span>나란히 비교</span>
+        </button>
+      </div>
+    </div>
+    <div class="fav-grid" id="favGrid"></div>
+    <div id="compareWrap" hidden>
+      <div class="cmp-table-wrap"><table class="cmp" id="cmpTable"></table></div>
+      <p class="chart-note" style="margin-top:8px"><svg class="i sm"><use href="#i-info"></use></svg><span id="cmpHint">도시를 눌러 2~4곳을 골라 주세요.</span></p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-in">
+    <div class="foot-brand">
+      <span class="brand-mark" aria-hidden="true" style="background:linear-gradient(140deg,var(--brand),var(--brand-2))">
+        <svg viewBox="0 0 24 24"><circle cx="9.2" cy="9.4" r="3.4"/><path d="M6.6 18.4a3.6 3.6 0 0 1 .3-7.2 5 5 0 0 1 9.4 1 3.1 3.1 0 0 1-.5 6.2z"/></svg>
+      </span>
+      <div><b>Lemon Weather</b><small>Soft Hub의 실시간 날씨 · 대기질</small></div>
+    </div>
+    <div class="foot-links">
+      <a href="index.html"><svg class="i sm"><use href="#i-hub"></use></svg>Soft Hub</a>
+      <a href="drive.html"><svg class="i sm"><use href="#i-star"></use></svg>Flux Drive</a>
+      <a href="feed.html"><svg class="i sm"><use href="#i-cloud"></use></svg>FLUX Feed</a>
+    </div>
+  </div>
+  <p class="foot-note">
+    기상·대기질 데이터 Open-Meteo (CC BY 4.0) · 도시 검색 Open-Meteo Geocoding · 위치 변환 BigDataCloud.
+    즐겨찾는 도시와 단위 설정은 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
+  </p>
+</footer>
+
+<div class="sheet" id="searchSheet" role="dialog" aria-modal="true" aria-label="도시 검색" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <h3>도시 검색</h3>
+      <button type="button" class="ib" data-sheet-close aria-label="닫기"><svg class="i sm"><use href="#i-x"></use></svg></button>
+    </div>
+    <div class="sheet-body">
+      <label class="search-field">
+        <svg class="i sm"><use href="#i-search"></use></svg>
+        <input id="searchInput" type="search" inputmode="search" autocomplete="off" placeholder="도시 이름 (예: 서울, 부산, Tokyo)" aria-label="도시 이름">
+      </label>
+      <p class="q-hint" id="searchHint">한글 도시 이름이나 영문 이름으로 찾을 수 있어요.</p>
+      <button type="button" class="gps-row" id="gpsRow">
+        <span class="r-ico"><svg class="i sm"><use href="#i-gps"></use></svg></span>
+        <span><b>현재 위치로 찾기</b><span>GPS 좌표로 지금 있는 곳의 날씨를 봅니다.</span></span>
+      </button>
+      <p class="sheet-label">바로가기</p>
+      <div class="quick-cities" id="quickCities"></div>
+      <div id="resBlock" hidden>
+        <p class="sheet-label">검색 결과</p>
+        <div class="res-list" id="resList"></div>
+      </div>
+      <div id="recentBlock" hidden>
+        <p class="sheet-label">최근 검색</p>
+        <div class="res-list" id="recentList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="cmpSheet" role="dialog" aria-modal="true" aria-label="도시 비교" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <h3>도시 나란히 비교</h3>
+      <button type="button" class="ib" data-sheet-close aria-label="닫기"><svg class="i sm"><use href="#i-x"></use></svg></button>
+    </div>
+    <div class="sheet-body" id="cmpSheetBody"></div>
+  </div>
+</div>
+
+<script src="lemon-ui.js"></script>
+<script src="anim-mode.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     0. 기본 유틸
+     ========================================================= */
+  var doc = document;
+  function $(s, r) { return (r || doc).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || doc).querySelectorAll(s)); }
+  function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+  function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function round(v) { return Math.round(v); }
+  function toast(msg, type) {
+    if (window.Lemon && Lemon.toast) return Lemon.toast(msg, type || 'ok');
+    var t = doc.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0b1a2b;color:#fff;padding:10px 16px;border-radius:12px;font-size:12px;font-weight:700;z-index:99';
+    doc.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 2400);
+  }
+
+  /* =========================================================
+     1. 저장소 · 상태
+     ========================================================= */
+  var LS_KEY = 'lemon_weather_v1';
+  var SNAP_KEY = 'lemon_weather_v1_snapshot';
+  var CACHE_KEY = 'lemon_weather_cache_v1';
+  var IDB_NAME = 'lemon_weather_v1';
+  var IDB_STORE = 'favorites';
+
+  function rawGet(k) {
+    try {
+      if (window.Lemon && Lemon.store) return Lemon.store.raw(k, null);
+      return localStorage.getItem(k);
+    } catch (e) { return null; }
+  }
+  function rawSet(k, v) {
+    try {
+      if (window.Lemon && Lemon.store) return Lemon.store.rawSet(k, v);
+      localStorage.setItem(k, v);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  var S = {
+    v: 1,
+    cities: [],
+    currentId: '',
+    unit: 'c',
+    recent: [],
+    updatedAt: 0
+  };
+  var memCache = {};        /* id -> {fc, aq, at} */
+  var ui = { compare: false, sel: {}, view: null, busy: false, tipIdx: -1 };
+  var firstPaint = true;
+
+  /* =========================================================
+     2. 한국 도시 표 (오프라인 · 한글 검색용)
+     ========================================================= */
+  var CITY_TABLE = [
+    ['서울', '서울특별시', 37.5665, 126.9780],
+    ['부산', '부산광역시', 35.1796, 129.0756],
+    ['대구', '대구광역시', 35.8714, 128.6014],
+    ['인천', '인천광역시', 37.4563, 126.7052],
+    ['광주', '광주광역시', 35.1595, 126.8526],
+    ['대전', '대전광역시', 36.3504, 127.3845],
+    ['울산', '울산광역시', 35.5384, 129.3114],
+    ['세종', '세종특별자치시', 36.4800, 127.2890],
+    ['수원', '경기도', 37.2636, 127.0286],
+    ['성남', '경기도', 37.4200, 127.1265],
+    ['고양', '경기도', 37.6584, 126.8320],
+    ['용인', '경기도', 37.2411, 127.1776],
+    ['부천', '경기도', 37.5034, 126.7660],
+    ['안산', '경기도', 37.3219, 126.8309],
+    ['안양', '경기도', 37.3943, 126.9568],
+    ['남양주', '경기도', 37.6360, 127.2165],
+    ['화성', '경기도', 37.1995, 126.8312],
+    ['평택', '경기도', 36.9921, 127.1129],
+    ['의정부', '경기도', 37.7381, 127.0337],
+    ['시흥', '경기도', 37.3800, 126.8030],
+    ['파주', '경기도', 37.7599, 126.7800],
+    ['김포', '경기도', 37.6153, 126.7156],
+    ['광명', '경기도', 37.4786, 126.8644],
+    ['군포', '경기도', 37.3614, 126.9352],
+    ['하남', '경기도', 37.5393, 127.2148],
+    ['오산', '경기도', 37.1499, 127.0772],
+    ['이천', '경기도', 37.2720, 127.4350],
+    ['안성', '경기도', 37.0080, 127.2797],
+    ['구리', '경기도', 37.5943, 127.1296],
+    ['포천', '경기도', 37.8949, 127.2003],
+    ['양주', '경기도', 37.7853, 127.0458],
+    ['동두천', '경기도', 37.9035, 127.0606],
+    ['과천', '경기도', 37.4292, 126.9876],
+    ['여주', '경기도', 37.2983, 127.6370],
+    ['가평', '경기도', 37.8314, 127.5105],
+    ['양평', '경기도', 37.4917, 127.4874],
+    ['춘천', '강원도', 37.8813, 127.7300],
+    ['원주', '강원도', 37.3422, 127.9202],
+    ['강릉', '강원도', 37.7519, 128.8761],
+    ['속초', '강원도', 38.2070, 128.5918],
+    ['동해', '강원도', 37.5247, 129.1143],
+    ['삼척', '강원도', 37.4499, 129.1651],
+    ['태백', '강원도', 37.1640, 128.9856],
+    ['정선', '강원도', 37.3806, 128.6608],
+    ['홍천', '강원도', 37.6970, 127.8887],
+    ['횡성', '강원도', 37.4918, 127.9850],
+    ['영월', '강원도', 37.1836, 128.4616],
+    ['평창', '강원도', 37.3705, 128.3900],
+    ['인제', '강원도', 38.0697, 128.1707],
+    ['양양', '강원도', 38.0754, 128.6190],
+    ['철원', '강원도', 38.1466, 127.3134],
+    ['화천', '강원도', 38.1063, 127.7084],
+    ['청주', '충청북도', 36.6424, 127.4890],
+    ['충주', '충청북도', 36.9910, 127.9259],
+    ['제천', '충청북도', 37.1326, 128.1910],
+    ['보은', '충청북도', 36.4894, 127.7294],
+    ['옥천', '충청북도', 36.3063, 127.5714],
+    ['영동', '충청북도', 36.1749, 127.7836],
+    ['진천', '충청북도', 36.8554, 127.4357],
+    ['음성', '충청북도', 36.9400, 127.6900],
+    ['단양', '충청북도', 36.9846, 128.3657],
+    ['천안', '충청남도', 36.8151, 127.1139],
+    ['공주', '충청남도', 36.4465, 127.1190],
+    ['보령', '충청남도', 36.3333, 126.6127],
+    ['아산', '충청남도', 36.7898, 127.0018],
+    ['서산', '충청남도', 36.7845, 126.4503],
+    ['논산', '충청남도', 36.1870, 127.0988],
+    ['계룡', '충청남도', 36.2745, 127.2487],
+    ['당진', '충청남도', 36.8897, 126.6297],
+    ['부여', '충청남도', 36.2757, 126.9098],
+    ['서천', '충청남도', 36.0803, 126.6919],
+    ['홍성', '충청남도', 36.6013, 126.6609],
+    ['예산', '충청남도', 36.6824, 126.8487],
+    ['태안', '충청남도', 36.7456, 126.2980],
+    ['전주', '전라북도', 35.8242, 127.1480],
+    ['군산', '전라북도', 35.9677, 126.7369],
+    ['익산', '전라북도', 35.9483, 126.9576],
+    ['정읍', '전라북도', 35.5699, 126.8559],
+    ['남원', '전라북도', 35.4164, 127.3904],
+    ['김제', '전라북도', 35.8036, 126.8809],
+    ['완주', '전라북도', 35.9047, 127.1621],
+    ['무주', '전라북도', 36.0068, 127.6608],
+    ['임실', '전라북도', 35.6178, 127.2890],
+    ['순창', '전라북도', 35.3744, 127.1375],
+    ['고창', '전라북도', 35.4356, 126.7020],
+    ['부안', '전라북도', 35.7317, 126.7330],
+    ['목포', '전라남도', 34.8118, 126.3922],
+    ['여수', '전라남도', 34.7604, 127.6622],
+    ['순천', '전라남도', 34.9506, 127.4872],
+    ['나주', '전라남도', 35.0160, 126.7108],
+    ['광양', '전라남도', 34.9407, 127.6959],
+    ['담양', '전라남도', 35.3213, 126.9883],
+    ['구례', '전라남도', 35.2024, 127.4630],
+    ['고흥', '전라남도', 34.6113, 127.2750],
+    ['보성', '전라남도', 34.7714, 127.0800],
+    ['화순', '전라남도', 35.0646, 126.9866],
+    ['장흥', '전라남도', 34.6816, 126.9070],
+    ['강진', '전라남도', 34.6260, 126.7670],
+    ['해남', '전라남도', 34.5735, 126.5990],
+    ['영암', '전라남도', 34.8000, 126.6970],
+    ['무안', '전라남도', 34.9903, 126.4816],
+    ['함평', '전라남도', 35.0655, 126.5167],
+    ['영광', '전라남도', 35.2772, 126.5120],
+    ['장성', '전라남도', 35.3018, 126.7848],
+    ['완도', '전라남도', 34.3110, 126.7550],
+    ['진도', '전라남도', 34.4868, 126.2635],
+    ['포항', '경상북도', 36.0190, 129.3435],
+    ['경주', '경상북도', 35.8562, 129.2247],
+    ['김천', '경상북도', 36.1398, 128.1136],
+    ['안동', '경상북도', 36.5684, 128.7294],
+    ['구미', '경상북도', 36.1195, 128.3446],
+    ['영주', '경상북도', 36.8057, 128.6240],
+    ['영천', '경상북도', 36.0000, 128.9333],
+    ['상주', '경상북도', 36.4109, 128.1591],
+    ['문경', '경상북도', 36.5866, 128.1867],
+    ['경산', '경상북도', 35.8251, 128.7414],
+    ['의성', '경상북도', 36.3527, 128.6970],
+    ['청송', '경상북도', 36.4362, 129.0570],
+    ['영덕', '경상북도', 36.4150, 129.3660],
+    ['청도', '경상북도', 35.6474, 128.7340],
+    ['고령', '경상북도', 35.7255, 128.2630],
+    ['성주', '경상북도', 35.9190, 128.2820],
+    ['칠곡', '경상북도', 35.9950, 128.4010],
+    ['예천', '경상북도', 36.6576, 128.4530],
+    ['봉화', '경상북도', 36.8930, 128.7320],
+    ['울진', '경상북도', 36.9930, 129.4000],
+    ['울릉', '경상북도', 37.4844, 130.9057],
+    ['창원', '경상남도', 35.2281, 128.6811],
+    ['진주', '경상남도', 35.1800, 128.1076],
+    ['통영', '경상남도', 34.8544, 128.4330],
+    ['사천', '경상남도', 35.0038, 128.0640],
+    ['김해', '경상남도', 35.2342, 128.8811],
+    ['밀양', '경상남도', 35.5038, 128.7466],
+    ['거제', '경상남도', 34.8806, 128.6210],
+    ['양산', '경상남도', 35.3350, 129.0370],
+    ['의령', '경상남도', 35.3220, 128.2620],
+    ['함안', '경상남도', 35.2725, 128.4060],
+    ['창녕', '경상남도', 35.5446, 128.4920],
+    ['남해', '경상남도', 34.8376, 127.8926],
+    ['하동', '경상남도', 35.0673, 127.7513],
+    ['산청', '경상남도', 35.4150, 127.8730],
+    ['함양', '경상남도', 35.5200, 127.7250],
+    ['거창', '경상남도', 35.6870, 127.9090],
+    ['합천', '경상남도', 35.5666, 128.1660],
+    ['제주', '제주특별자치도', 33.4996, 126.5312],
+    ['서귀포', '제주특별자치도', 33.2541, 126.5600],
+    ['성산', '제주특별자치도', 33.4550, 126.9100],
+    ['한림', '제주특별자치도', 33.4100, 126.2600],
+    ['애월', '제주특별자치도', 33.4630, 126.3300],
+    ['강남', '서울특별시', 37.5172, 127.0473],
+    ['잠실', '서울특별시', 37.5133, 127.1000],
+    ['여의도', '서울특별시', 37.5219, 126.9245],
+    ['홍대', '서울특별시', 37.5563, 126.9236],
+    ['노원', '서울특별시', 37.6542, 127.0568],
+    ['송파', '서울특별시', 37.5145, 127.1059],
+    ['해운대', '부산광역시', 35.1631, 129.1636],
+    ['서면', '부산광역시', 35.1570, 129.0590]
+  ];
+  var QUICK = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '제주', '춘천', '전주'];
+
+  /* =========================================================
+     3. 날씨 코드 · 아이콘
+     ========================================================= */
+  function wxInfo(code, isDay) {
+    var c = num(code);
+    if (c === 0) return { k: 'clear', l: '맑음', night: '맑은 밤' };
+    if (c === 1) return { k: 'mostly', l: '대체로 맑음', night: '대체로 맑은 밤' };
+    if (c === 2) return { k: 'partly', l: '구름 조금', night: '구름 조금' };
+    if (c === 3) return { k: 'cloudy', l: '흐림' };
+    if (c === 45 || c === 48) return { k: 'fog', l: '안개' };
+    if (c >= 51 && c <= 55) return { k: 'drizzle', l: '이슬비' };
+    if (c === 56 || c === 57) return { k: 'sleet', l: '어는 이슬비' };
+    if (c === 61 || c === 63) return { k: 'rain', l: '비' };
+    if (c === 65) return { k: 'rain', l: '강한 비' };
+    if (c === 66 || c === 67) return { k: 'sleet', l: '어는 비' };
+    if (c === 71 || c === 73) return { k: 'snow', l: '눈' };
+    if (c === 75 || c === 77) return { k: 'snow', l: '많은 눈' };
+    if (c === 80 || c === 81) return { k: 'rain', l: '소나기' };
+    if (c === 82) return { k: 'rain', l: '강한 소나기' };
+    if (c === 85 || c === 86) return { k: 'snow', l: '눈 소나기' };
+    if (c === 95) return { k: 'thunder', l: '천둥번개' };
+    if (c === 96 || c === 99) return { k: 'thunder', l: '우박 동반 뇌우' };
+    return { k: 'cloudy', l: '흐림' };
+  }
+  function skyOf(kind, isDay) {
+    if (kind === 'clear' || kind === 'mostly') return isDay ? 'clear-day' : 'clear-night';
+    if (kind === 'partly') return isDay ? 'partly-day' : 'partly-night';
+    if (kind === 'rain' || kind === 'drizzle') return 'rain';
+    if (kind === 'snow' || kind === 'sleet') return 'snow';
+    if (kind === 'thunder') return 'thunder';
+    if (kind === 'fog') return 'fog';
+    return 'cloudy';
+  }
+
+  /* 날씨 아이콘 (SVG 조합) */
+  function wxArt(kind, isDay, cls) {
+    var id = 'w' + Math.random().toString(36).slice(2, 8);
+    var s = '<svg class="wxa ' + (cls || '') + '" viewBox="0 0 64 64" fill="none" aria-hidden="true">';
+    var sun = '<g class="sun-spin"><circle class="c-sun" cx="24" cy="22" r="9"/>' +
+      '<g class="c-ray">' +
+      '<path d="M24 5.5v4M24 34.5v4M7.5 22h4M36.5 22h4M12.3 10.3l2.8 2.8M33 31l2.8 2.8M35.8 10.3 33 13.1M15.1 31 12.3 33.8"/>' +
+      '</g></g>';
+    var moon = '<path class="c-moon" d="M37 12a12 12 0 1 0 9.6 17.6A13.4 13.4 0 0 1 37 12z"/>';
+    var cloudBack = '<path class="c-cloud2" d="M17 44a10 10 0 0 1 1.2-19.9 13.6 13.6 0 0 1 25.4 3A9 9 0 0 1 46 44z"/>';
+    var cloudFront = '<path class="c-cloud" d="M22 50a9 9 0 0 1 .9-17.9 12.2 12.2 0 0 1 22.7 2.7A8 8 0 0 1 50 50z"/>';
+    var cloudOnly = '<path class="c-cloud" d="M15 44a10.6 10.6 0 0 1 1.4-21 14.4 14.4 0 0 1 27 3.2A9.4 9.4 0 0 1 46 44z"/>';
+    var drops = '<g class="c-rain"><path class="fall" d="M24 52v5"/><path class="fall f2" d="M32 52v5"/><path class="fall f3" d="M40 52v5"/></g>';
+    var snows = '<g class="c-snow"><circle class="fall" cx="24" cy="55" r="2.4"/><circle class="fall f2" cx="32" cy="57" r="2.4"/><circle class="fall f3" cx="40" cy="55" r="2.4"/></g>';
+    var bolt = '<path class="c-bolt" d="m33 42-8 12h6l-2 8 10-13h-6l2-7z"/>';
+    var fog = '<g class="c-fog"><path d="M14 40h32M18 47h30M22 54h22"/></g>';
+    var drizzle = '<g class="c-rain"><path class="fall" d="M25 52v3"/><path class="fall f2" d="M32 53v3"/><path class="fall f3" d="M39 52v3"/></g>';
+    if (kind === 'clear' || kind === 'mostly') {
+      s += isDay ? sun : moon;
+    } else if (kind === 'partly') {
+      s += (isDay ? sun : moon) + cloudFront;
+    } else if (kind === 'cloudy') {
+      s += cloudBack + cloudFront;
+    } else if (kind === 'fog') {
+      s += cloudOnly + fog;
+    } else if (kind === 'drizzle') {
+      s += cloudFront + drizzle;
+    } else if (kind === 'rain') {
+      s += cloudBack + cloudFront + drops;
+    } else if (kind === 'snow') {
+      s += cloudBack + cloudFront + snows;
+    } else if (kind === 'sleet') {
+      s += cloudFront + drops + snows;
+    } else if (kind === 'thunder') {
+      s += cloudBack + cloudFront + bolt + drops;
+    } else {
+      s += cloudOnly;
+    }
+    return s + '</svg>';
+  }
+
+  /* =========================================================
+     4. 단위 변환
+     ========================================================= */
+  function tC(v) { return num(v); }
+  function fmtT(v, deg) {
+    var n = num(v);
+    if (n === null) return '--';
+    var out = S.unit === 'f' ? n * 9 / 5 + 32 : n;
+    return round(out) + (deg === false ? '' : '°');
+  }
+  function fmtT1(v) {
+    var n = num(v);
+    if (n === null) return '--';
+    var out = S.unit === 'f' ? n * 9 / 5 + 32 : n;
+    return (Math.round(out * 10) / 10) + '°';
+  }
+  function fmtWind(kmh) {
+    var n = num(kmh);
+    if (n === null) return '--';
+    return (Math.round(n / 3.6 * 10) / 10) + ' m/s';
+  }
+  function fmtWindKt(kmh) { return Math.round(num(kmh) || 0) + ' km/h'; }
+
+  /* =========================================================
+     5. 시간 도우미 (도시 현지 시각)
+     ========================================================= */
+  function cityNow(fc) {
+    if (fc && fc.current && fc.current.time) {
+      var t = new Date(fc.current.time);
+      if (!isNaN(t.getTime())) return t;
+    }
+    return new Date();
+  }
+  function hhmm(iso) {
+    if (!iso) return '--:--';
+    var m = String(iso).match(/(\d{2}):(\d{2})/);
+    return m ? (m[1] + ':' + m[2]) : '--:--';
+  }
+  function dayName(iso, idx) {
+    if (idx === 0) return '오늘';
+    if (idx === 1) return '내일';
+    var d = new Date(iso + 'T12:00:00');
+    if (isNaN(d.getTime())) return '';
+    return ['일', '월', '화', '수', '목', '금', '토'][d.getDay()] + '요일';
+  }
+  function mdLabel(iso) {
+    var p = String(iso || '').split('-');
+    return p.length === 3 ? (Number(p[1]) + '/' + Number(p[2])) : '';
+  }
+  function stamp(d) {
+    var t = d || new Date();
+    return pad2(t.getMonth() + 1) + '.' + pad2(t.getDate()) + ' ' + pad2(t.getHours()) + ':' + pad2(t.getMinutes());
+  }
+
+  /* =========================================================
+     6. 상태 저장 / 복원
+     ========================================================= */
+  function cityId(lat, lon) { return 'c' + Number(lat).toFixed(3) + '_' + Number(lon).toFixed(3); }
+
+  function defaultCity() {
+    var c = CITY_TABLE[0];
+    return { id: cityId(c[2], c[3]), name: c[0], region: c[1], country: '대한민국', lat: c[2], lon: c[3], tz: 'Asia/Seoul' };
+  }
+
+  function loadState() {
+    var txt = rawGet(LS_KEY);
+    if (!txt) return;
+    var d = null;
+    try { d = JSON.parse(txt); } catch (e) { d = null; }
+    if (!d || typeof d !== 'object') return;
+    if (Array.isArray(d.cities)) {
+      S.cities = d.cities.filter(function (c) {
+        return c && c.name && num(c.lat) !== null && num(c.lon) !== null;
+      }).map(function (c) {
+        return {
+          id: c.id || cityId(c.lat, c.lon), name: String(c.name).slice(0, 40),
+          region: c.region ? String(c.region).slice(0, 60) : '',
+          country: c.country ? String(c.country).slice(0, 40) : '',
+          lat: Number(c.lat), lon: Number(c.lon), tz: c.tz || ''
+        };
+      }).slice(0, 12);
+    }
+    if (typeof d.currentId === 'string') S.currentId = d.currentId;
+    if (d.unit === 'f') S.unit = 'f';
+    if (Array.isArray(d.recent)) S.recent = d.recent.slice(0, 6);
+    if (num(d.updatedAt)) S.updatedAt = d.updatedAt;
+  }
+
+  function saveState() {
+    S.updatedAt = Date.now();
+    var json = JSON.stringify(S);
+    rawSet(LS_KEY, json);
+    var names = S.cities.map(function (c) { return c.name; }).slice(0, 5).join(', ');
+    var snap = {
+      title: 'Lemon Weather · 즐겨찾는 도시',
+      text: (names || '서울') + ' · ' + S.cities.length + '곳 · ' + stamp(new Date(S.updatedAt)) + ' 저장',
+      updatedAt: S.updatedAt,
+      cities: S.cities.map(function (c) { return c.name; }),
+      unit: S.unit
+    };
+    rawSet(SNAP_KEY, JSON.stringify(snap));
+    saveIdb(snap, json);
+  }
+
+  /* Drive 스캔용 IndexedDB 사본 */
+  var idbDb = null;
+  function openIdb() {
+    return new Promise(function (res, rej) {
+      if (!window.indexedDB) return rej(new Error('no-idb'));
+      if (idbDb) return res(idbDb);
+      var rq;
+      try { rq = indexedDB.open(IDB_NAME, 1); } catch (e) { return rej(e); }
+      rq.onupgradeneeded = function () {
+        var db = rq.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+      };
+      rq.onsuccess = function () { idbDb = rq.result; res(idbDb); };
+      rq.onerror = function () { rej(rq.error || new Error('idb')); };
+    });
+  }
+  function saveIdb(snap, json) {
+    openIdb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put({
+          id: 'favorites', title: snap.title, text: snap.text,
+          updatedAt: snap.updatedAt, cities: snap.cities,
+          json: json.length < 200000 ? json : ''
+        });
+        tx.oncomplete = function () { res(true); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    }).catch(function () { });
+  }
+
+  /* 마지막 성공 응답 캐시 (오프라인 · API 장애 대비) */
+  function loadCache() {
+    var txt = rawGet(CACHE_KEY);
+    if (!txt) return;
+    try {
+      var d = JSON.parse(txt);
+      if (d && typeof d === 'object') memCache = d;
+    } catch (e) { }
+  }
+  var cacheTimer = null;
+  function saveCache() {
+    clearTimeout(cacheTimer);
+    cacheTimer = setTimeout(function () {
+      var out = {}, n = 0;
+      Object.keys(memCache).forEach(function (k) {
+        if (n++ < 8) out[k] = { fc: memCache[k].fc, aq: memCache[k].aq, at: memCache[k].at };
+      });
+      try { rawSet(CACHE_KEY, JSON.stringify(out)); } catch (e) { }
+    }, 900);
+  }
+
+  /* =========================================================
+     7. API
+     ========================================================= */
+  var API_FC = 'https://api.open-meteo.com/v1/forecast';
+  var API_AQ = 'https://air-quality-api.open-meteo.com/v1/air-quality';
+  var API_GEO = 'https://geocoding-api.open-meteo.com/v1/search';
+  var API_RG = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
+
+  var FC_PARAMS = [
+    'current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,snowfall,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+    'hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,apparent_temperature',
+    'daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,daylight_duration,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant',
+    'timezone=auto', 'forecast_days=8', 'hourly_forecast_days=2'
+  ].join('&');
+  var AQ_PARAMS = 'current=pm10,pm2_5,us_aqi,european_aqi,uv_index&hourly=pm10,pm2_5&timezone=auto&forecast_days=2';
+
+  function fetchJson(url, ms) {
+    if (!window.fetch) return Promise.reject(new Error('no-fetch'));
+    var ctl = null;
+    try { ctl = new AbortController(); } catch (e) { ctl = null; }
+    var timer = setTimeout(function () { if (ctl) { try { ctl.abort(); } catch (e) { } } }, ms || 11000);
+    return fetch(url, ctl ? { signal: ctl.signal, mode: 'cors' } : { mode: 'cors' }).then(function (r) {
+      clearTimeout(timer);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }, function (e) {
+      clearTimeout(timer);
+      throw e;
+    });
+  }
+
+  function fcUrl(c) {
+    return API_FC + '?latitude=' + c.lat.toFixed(4) + '&longitude=' + c.lon.toFixed(4) + '&' + FC_PARAMS;
+  }
+  function aqUrl(c) {
+    return API_AQ + '?latitude=' + c.lat.toFixed(4) + '&longitude=' + c.lon.toFixed(4) + '&' + AQ_PARAMS;
+  }
+
+  function fetchCity(c, force) {
+    var key = c.id;
+    if (!force && memCache[key] && (Date.now() - memCache[key].at) < 6 * 60 * 1000) {
+      return Promise.resolve({ data: memCache[key], cached: true });
+    }
+    return fetchJson(fcUrl(c), 12000).then(function (fc) {
+      return fetchJson(aqUrl(c), 10000).then(function (aq) {
+        return { fc: fc, aq: aq };
+      }, function () { return { fc: fc, aq: null }; });
+    }).then(function (res) {
+      var rec = { fc: res.fc, aq: res.aq, at: Date.now() };
+      memCache[key] = rec;
+      saveCache();
+      return { data: rec, cached: false };
+    }, function (err) {
+      if (memCache[key]) return { data: memCache[key], cached: true, error: err };
+      return Promise.reject(err);
+    });
+  }
+
+  /* 검색: 내장 도시 표 + Open-Meteo Geocoding */
+  var searchSeq = 0, searchTimer = null, lastQuery = '';
+  function localSearch(q) {
+    var s = String(q || '').trim().replace(/\s+/g, '');
+    if (!s) return [];
+    var out = [];
+    CITY_TABLE.forEach(function (c) {
+      var hit = c[0].indexOf(s) === 0 || c[0].indexOf(s) > -1 || c[1].indexOf(s) > -1;
+      if (hit) out.push({
+        name: c[0], region: c[1], country: '대한민국',
+        lat: c[2], lon: c[3], score: c[0] === s ? 0 : (c[0].indexOf(s) === 0 ? 1 : 2)
+      });
+    });
+    out.sort(function (a, b) { return a.score - b.score; });
+    return out.slice(0, 8);
+  }
+  function apiSearch(q) {
+    var url = API_GEO + '?name=' + encodeURIComponent(q) + '&count=10&language=ko&format=json';
+    return fetchJson(url, 9000).then(function (d) {
+      var list = (d && d.results) || [];
+      var ql = String(q).toLowerCase();
+      return list.map(function (r) {
+        var pop = num(r.population) || 0;
+        var fc = String(r.feature_code || '');
+        var bonus = fc.indexOf('PPLC') === 0 ? 3 : (fc.indexOf('PPLA') === 0 ? 1.6 : (fc.indexOf('PPL') === 0 ? .6 : 0));
+        var exact = String(r.name || '').toLowerCase() === ql ? 4 : (String(r.name || '').toLowerCase().indexOf(ql) === 0 ? 1.2 : 0);
+        return {
+          name: r.name || '', region: r.admin1 || '', country: r.country || '',
+          lat: r.latitude, lon: r.longitude, tz: r.timezone || '',
+          score: Math.log10(pop + 1) + bonus + exact
+        };
+      }).filter(function (r) { return r.name && num(r.lat) !== null; })
+        .sort(function (a, b) { return b.score - a.score; });
+    }, function () { return []; });
+  }
+  function searchCities(q) {
+    var locals = localSearch(q);
+    if (!q || q.length < 1) return Promise.resolve(locals);
+    return apiSearch(q).then(function (remote) {
+      var seen = {}, out = [];
+      locals.concat(remote).forEach(function (r) {
+        var k = r.name + '|' + Number(r.lat).toFixed(2) + '|' + Number(r.lon).toFixed(2);
+        if (seen[k]) return;
+        seen[k] = 1;
+        out.push(r);
+      });
+      return out.slice(0, 10);
+    }, function () { return locals; });
+  }
+
+  function reverseGeocode(lat, lon) {
+    var url = API_RG + '?latitude=' + lat.toFixed(4) + '&longitude=' + lon.toFixed(4) + '&localityLanguage=ko';
+    return fetchJson(url, 8000).then(function (d) {
+      var name = d && (d.city || d.locality || d.principalSubdivision);
+      var region = d && (d.principalSubdivision || d.countryName);
+      if (!name) throw new Error('no-name');
+      return { name: String(name), region: String(region || ''), country: String((d && d.countryName) || '') };
+    }, function () {
+      /* 실패하면 가장 가까운 내장 도시 이름 */
+      var best = null, bd = Infinity;
+      CITY_TABLE.forEach(function (c) {
+        var dy = c[2] - lat, dx = (c[3] - lon) * Math.cos(lat * Math.PI / 180);
+        var d2 = dy * dy + dx * dx;
+        if (d2 < bd) { bd = d2; best = c; }
+      });
+      if (best && bd < 1.2) return { name: best[0] + ' 근처', region: best[1], country: '대한민국' };
+      throw new Error('geo-fail');
+    });
+  }
+
+  /* =========================================================
+     8. 지수 · 등급 계산
+     ========================================================= */
+  function pm10Grade(v) {
+    var n = num(v);
+    if (n === null) return { g: 'mod', l: '정보 없음', r: 0 };
+    if (n <= 30) return { g: 'good', l: '좋음', r: n / 30 };
+    if (n <= 80) return { g: 'mod', l: '보통', r: (n - 30) / 50 };
+    if (n <= 150) return { g: 'bad', l: '나쁨', r: (n - 80) / 70 };
+    return { g: 'worst', l: '매우 나쁨', r: 1 };
+  }
+  function pm25Grade(v) {
+    var n = num(v);
+    if (n === null) return { g: 'mod', l: '정보 없음', r: 0 };
+    if (n <= 15) return { g: 'good', l: '좋음', r: n / 15 };
+    if (n <= 35) return { g: 'mod', l: '보통', r: (n - 15) / 20 };
+    if (n <= 75) return { g: 'bad', l: '나쁨', r: (n - 35) / 40 };
+    return { g: 'worst', l: '매우 나쁨', r: 1 };
+  }
+  function aqiGrade(v) {
+    var n = num(v);
+    if (n === null) return { g: 'mod', l: '정보 없음', r: 0 };
+    if (n <= 50) return { g: 'good', l: '좋음', r: n / 50 };
+    if (n <= 100) return { g: 'mod', l: '보통', r: (n - 50) / 50 };
+    if (n <= 150) return { g: 'bad', l: '나쁨', r: (n - 100) / 50 };
+    return { g: 'worst', l: '매우 나쁨', r: 1 };
+  }
+  function uvGrade(v) {
+    var n = num(v);
+    if (n === null) return { g: 'mod', l: '정보 없음', r: 0 };
+    if (n < 3) return { g: 'good', l: '낮음', r: n / 3 };
+    if (n < 6) return { g: 'mod', l: '보통', r: (n - 3) / 3 };
+    if (n < 8) return { g: 'bad', l: '높음', r: (n - 6) / 2 };
+    if (n < 11) return { g: 'worst', l: '매우 높음', r: (n - 8) / 3 };
+    return { g: 'worst', l: '위험', r: 1 };
+  }
+
+  function todayIdx(fc) {
+    var d = fc && fc.daily;
+    if (!d || !d.time || !d.time.length) return -1;
+    var nowKey = (fc.current && fc.current.time ? fc.current.time : new Date().toISOString()).slice(0, 10);
+    var i = d.time.indexOf(nowKey);
+    return i < 0 ? 0 : i;
+  }
+
+  function outfit(fc) {
+    var cur = fc.current || {};
+    var di = todayIdx(fc);
+    var dmax = (fc.daily && num(fc.daily.temperature_2m_max[di])) || num(cur.temperature_2m) || 15;
+    var dmin = (fc.daily && num(fc.daily.temperature_2m_min[di])) || dmax - 4;
+    var feels = num(cur.apparent_temperature) !== null ? cur.apparent_temperature : cur.temperature_2m;
+    var wind = num(cur.wind_speed_10m) || 0;
+    var pop = (fc.daily && num(fc.daily.precipitation_probability_max[di])) || 0;
+    var range = dmax - dmin;
+    var f = feels;
+
+    var outer, top, bottom, extra = [];
+    if (f >= 28) { outer = '없음'; top = '민소매·반팔'; bottom = '반바지·린넨'; }
+    else if (f >= 23) { outer = '얇은 셔츠'; top = '반팔 티'; bottom = '얇은 바지·스커트'; }
+    else if (f >= 20) { outer = '없거나 얇은 가디건'; top = '긴팔 티·셔츠'; bottom = '면바지'; }
+    else if (f >= 17) { outer = '얇은 가디건·맨투맨'; top = '긴팔 티'; bottom = '면바지·청바지'; }
+    else if (f >= 12) { outer = '자켓·가디건'; top = '니트·맨투맨'; bottom = '청바지·기모 팬츠'; }
+    else if (f >= 9) { outer = '트렌치코트·야상'; top = '두꺼운 니트'; bottom = '기모 팬츠'; }
+    else if (f >= 5) { outer = '코트·울자켓'; top = '니트 + 이너'; bottom = '기모·두꺼운 팬츠'; }
+    else if (f >= 0) { outer = '패딩·울코트'; top = '히트텍 + 니트'; bottom = '기모 팬츠'; }
+    else { outer = '두꺼운 패딩'; top = '히트텍 + 플리스'; bottom = '방한 팬츠'; }
+
+    if (range >= 8) extra.push({ icon: 'i-sun', t: '일교차 ' + Math.round(range) + '° · 겉옷 필수' });
+    if (wind >= 25) extra.push({ icon: 'i-wind', t: '바람 강함 · 바람막이' });
+    if (pop >= 50) extra.push({ icon: 'i-umbrella', t: '비 가능성 · 우산' });
+
+    var headline;
+    if (f >= 26) headline = '가볍게 입어도 괜찮아요';
+    else if (f >= 18) headline = '얇은 겉옷이면 충분해요';
+    else if (f >= 10) headline = '겉옷 챙기는 게 좋아요';
+    else if (f >= 3) headline = '울코트나 패딩이 필요해요';
+    else headline = '두꺼운 방한 준비가 필요해요';
+
+    var tips = [];
+    if (range >= 8) tips.push('아침·저녁 기온 차가 커서 벗고 입기 쉬운 겉옷이 좋습니다.');
+    if (pop >= 50) tips.push('오늘 강수확률이 높아 신발은 젖어도 되는 것으로.');
+    if (wind >= 25) tips.push('바람이 강해 체감온도가 더 낮게 느껴집니다.');
+    if (!tips.length) tips.push('기온이 무난해 평소 옷차림으로 외출하기 좋습니다.');
+
+    return {
+      headline: headline, outer: outer, top: top, bottom: bottom,
+      extra: extra, tip: tips[0], range: range, feels: f
+    };
+  }
+
+  function indices(fc, aq) {
+    var cur = fc.current || {};
+    var di = todayIdx(fc);
+    var d = fc.daily || {};
+    var dmin = num(d.temperature_2m_min && d.temperature_2m_min[di]);
+    var dmax = num(d.temperature_2m_max && d.temperature_2m_max[di]);
+    var pop = num(d.precipitation_probability_max && d.precipitation_probability_max[di]) || 0;
+    var pop2 = num(d.precipitation_probability_max && d.precipitation_probability_max[di + 1]);
+    var rain = num(d.precipitation_sum && d.precipitation_sum[di]) || 0;
+    var hum = num(cur.relative_humidity_2m);
+    var wind = num(cur.wind_speed_10m) || 0;
+    var feels = num(cur.apparent_temperature) !== null ? cur.apparent_temperature : num(cur.temperature_2m);
+    var cloud = num(cur.cloud_cover) || 0;
+    var pm10 = aq && aq.current ? num(aq.current.pm10) : null;
+    var aqi = aq && aq.current ? num(aq.current.us_aqi) : null;
+    var uv = aq && aq.current ? num(aq.current.uv_index) : (d.uv_index_max ? num(d.uv_index_max[di]) : null);
+
+    /* 우산 필요도 */
+    var umb = clamp(Math.round(pop * 0.82 + Math.min(18, rain * 4)), 0, 100);
+    var umbLabel = umb >= 70 ? '꼭 챙기세요' : umb >= 45 ? '챙기는 게 좋아요' : umb >= 25 ? '접이식이면 충분' : '필요 없어요';
+    var umbNote = umb >= 70 ? '오늘 비 가능성이 높아요 (최대 강수확률 ' + pop + '%)'
+      : umb >= 45 ? '한두 번 소나기가 지나갈 수 있어요'
+        : umb >= 25 ? '하늘을 한 번 확인해 보세요'
+          : '비 소식이 거의 없어요';
+
+    /* 세차 적합도 */
+    var car = 100;
+    car -= pop * 0.42;
+    if (pop2 !== null) car -= pop2 * 0.22;
+    car -= Math.min(30, rain * 5);
+    if (pm10 !== null) car -= pm10 > 80 ? 26 : (pm10 > 50 ? 13 : 0);
+    if (wind > 28) car -= 10;
+    car = clamp(Math.round(car), 5, 100);
+    var carLabel = car >= 72 ? '오늘 세차하기 좋아요' : car >= 45 ? '무난해요' : '미루는 게 좋아요';
+    var carNote = pm10 !== null && pm10 > 80 ? '미세먼지가 많아 금방 지저분해집니다'
+      : rain > 1 ? '오늘 비가 예상됩니다'
+        : '비 소식과 미세먼지 모두 적당합니다';
+
+    /* 빨래 건조 */
+    var dry = 62;
+    if (hum !== null) dry += (60 - hum) * 0.55;
+    dry -= pop * 0.3;
+    dry += (wind >= 8 && wind <= 28) ? 10 : (wind < 4 ? -8 : 2);
+    dry -= Math.max(0, (cloud - 60) * 0.12);
+    dry = clamp(Math.round(dry), 5, 100);
+    var dryLabel = dry >= 72 ? '잘 마르는 날' : dry >= 45 ? '보통' : '실내 건조 추천';
+    var dryNote = dry >= 72 ? '습도 ' + (hum !== null ? hum : '--') + '% · 바람이 도와줍니다'
+      : (pop >= 50 ? '야외 건조는 어려울 수 있어요' : '습도가 높아 늦게 마를 수 있어요');
+
+    /* 외출 쾌적도 */
+    var comfort = 100;
+    if (feels !== null) {
+      var dev = Math.abs(feels - 21);
+      comfort -= dev * 3.2;
+    }
+    comfort -= pop * 0.18;
+    if (aqi !== null) comfort -= clamp((aqi - 40) * 0.28, 0, 28);
+    if (uv !== null && uv > 6) comfort -= (uv - 6) * 3;
+    if (wind > 30) comfort -= 8;
+    comfort = clamp(Math.round(comfort), 5, 100);
+    var goLabel = comfort >= 76 ? '외출하기 좋아요' : comfort >= 55 ? '무난하게 다닐 만해요' : comfort >= 35 ? '짧게 다녀오세요' : '실내가 낫겠어요';
+    var goNote = (aqi !== null && aqi > 100) ? '대기질이 나빠 마스크를 챙기세요'
+      : (feels !== null && feels < 5) ? '체감이 매우 낮아 방한이 필요해요'
+        : (pop >= 60 ? '비를 피할 준비가 필요해요' : '기온과 공기 모두 괜찮은 편입니다');
+
+    return [
+      { key: 'umb', name: '우산', icon: 'i-umbrella', score: umb, label: umbLabel, note: umbNote, invert: true },
+      { key: 'go', name: '외출', icon: 'i-pin', score: comfort, label: goLabel, note: goNote, invert: false },
+      { key: 'car', name: '세차', icon: 'i-car', score: car, label: carLabel, note: carNote, invert: false },
+      { key: 'dry', name: '빨래', icon: 'i-shirt', score: dry, label: dryLabel, note: dryNote, invert: false }
+    ];
+  }
+
+  /* =========================================================
+     9. 렌더: 도시 칩 · 히어로
+     ========================================================= */
+  var current = null;   /* {city, fc, aq, cached, at, error} */
+
+  function currentCity() {
+    var id = S.currentId;
+    for (var i = 0; i < S.cities.length; i++) if (S.cities[i].id === id) return S.cities[i];
+    return S.cities[0] || null;
+  }
+
+  function renderChips() {
+    var host = $('#cityChips');
+    if (!host) return;
+    var html = '';
+    S.cities.forEach(function (c) {
+      var d = memCache[c.id];
+      var t = d && d.fc && d.fc.current ? fmtT(d.fc.current.temperature_2m) : '';
+      html += '<button type="button" class="city-chip' + (c.id === S.currentId ? ' on' : '') + '" role="tab"' +
+        ' aria-selected="' + (c.id === S.currentId ? 'true' : 'false') + '"' +
+        ' data-city="' + esc(c.id) + '">' +
+        '<b>' + esc(c.name) + '</b>' +
+        (t ? '<span class="t">' + t + '</span>' : '<span class="dot"></span>') +
+        '</button>';
+    });
+    host.innerHTML = html;
+  }
+
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, function (m) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
+    });
+  }
+
+  function renderHero() {
+    var hero = $('#hero');
+    if (!current) {
+      $('#heroName').textContent = currentCity() ? currentCity().name : '서울';
+      return;
+    }
+    var c = current.city, fc = current.fc;
+    var cur = fc.current || {};
+    var di = todayIdx(fc);
+    var d = fc.daily || {};
+    var info = wxInfo(cur.weather_code, cur.is_day !== 0);
+    var sky = skyOf(info.k, cur.is_day !== 0);
+    hero.setAttribute('data-sky', sky);
+    hero.setAttribute('data-n', info.k);
+    $('#heroName').textContent = c.name;
+    $('#heroRegion').textContent = c.region || c.country || '';
+
+    var tEl = $('#heroTemp');
+    countTo(tEl, num(cur.temperature_2m));
+
+    $('#heroIcon').innerHTML = wxArt(info.k, cur.is_day !== 0);
+    $('#heroLabel').textContent = (cur.is_day === 0 && info.night) ? info.night : info.l;
+    $('#heroFeels').textContent = '체감 ' + fmtT(cur.apparent_temperature);
+    $('#heroHi').textContent = d.temperature_2m_max ? fmtT(d.temperature_2m_max[di]) : '--';
+    $('#heroLo').textContent = d.temperature_2m_min ? fmtT(d.temperature_2m_min[di]) : '--';
+    $('#heroPop').textContent = (d.precipitation_probability_max && num(d.precipitation_probability_max[di]) !== null)
+      ? d.precipitation_probability_max[di] + '%' : '--';
+    $('#hHum').textContent = num(cur.relative_humidity_2m) !== null ? cur.relative_humidity_2m + '%' : '--';
+    $('#hWind').textContent = fmtWind(cur.wind_speed_10m);
+    $('#hCloud').textContent = num(cur.cloud_cover) !== null ? cur.cloud_cover + '%' : '--';
+    $('#heroUpdated').textContent = (current.cached ? '저장된 자료 · ' : '') + stamp(new Date(current.at || Date.now())) +
+      (cur.time ? ' · ' + hhmm(cur.time) + ' 기준' : '');
+    renderNote(fc, info);
+
+    var isFav = S.cities.some(function (x) { return x.id === c.id; });
+    var pin = $('#pinBtn');
+    pin.classList.toggle('on', isFav);
+    pin.setAttribute('aria-pressed', isFav ? 'true' : 'false');
+    pin.querySelector('span').textContent = isFav ? (S.cities.length <= 1 ? '기본 도시' : '즐겨찾는 도시') : '즐겨찾기';
+    pin.title = isFav ? '즐겨찾기에서 빼기' : '즐겨찾기에 추가';
+
+    renderSunArc(fc);
+    renderParticles(sky);
+  }
+
+  function renderNote(fc, info) {
+    var el = $('#heroNote');
+    if (!el) return;
+    var cur = fc.current || {};
+    var di = todayIdx(fc);
+    var d = fc.daily || {};
+    var pop = num(d.precipitation_probability_max && d.precipitation_probability_max[di]);
+    var wind = num(cur.wind_speed_10m) || 0;
+    var t = num(cur.temperature_2m), f = num(cur.apparent_temperature);
+    var cloud = num(cur.cloud_cover);
+    var head;
+    if (info.k === 'thunder') head = '지금 천둥번개가 치고 있어요';
+    else if (info.k === 'rain') head = '지금 비가 내리고 있어요';
+    else if (info.k === 'drizzle') head = '지금 이슬비가 내리고 있어요';
+    else if (info.k === 'snow' || info.k === 'sleet') head = '지금 눈이 내리고 있어요';
+    else if (info.k === 'fog') head = '안개가 꺼 있어 시야가 답답해요';
+    else if (pop !== null && pop >= 60) head = '오늘 비 소식이 있어요 (최대 ' + pop + '%)';
+    else if (cloud !== null && cloud >= 70) head = '하루 종일 흐린 하늘이에요';
+    else head = '맑은 하늘이 이어지고 있어요';
+    var tail = [];
+    if (t !== null && f !== null && Math.abs(f - t) >= 2) {
+      tail.push('바람 때문에 체감은 ' + Math.abs(Math.round(f - t)) + '° ' + (f < t ? '낮아요' : '높아요'));
+    }
+    if (wind >= 25) tail.push('바람이 강해요');
+    if (pop !== null && pop >= 60 && info.k !== 'rain' && info.k !== 'drizzle') tail.push('우산을 챙기세요');
+    el.innerHTML = '<svg class="i sm"><use href="#i-info"></use></svg><span>' + esc(head + (tail.length ? ' · ' + tail.join(' · ') : '')) + '</span>';
+  }
+
+  function countTo(el, value) {
+    var target = num(value);
+    if (target === null) { el.textContent = '--'; return; }
+    var shown = S.unit === 'f' ? target * 9 / 5 + 32 : target;
+    var from = parseFloat(el.getAttribute('data-v') || 'NaN');
+    el.setAttribute('data-v', String(shown));
+    if (isNaN(from) || Math.abs(from - shown) > 40 || (window.LemonAnim && LemonAnim.mode() !== 'full')) {
+      el.textContent = String(round(shown));
+      return;
+    }
+    var t0 = performance.now(), dur = 620;
+    function step(t) {
+      var p = clamp((t - t0) / dur, 0, 1);
+      var e = 1 - Math.pow(1 - p, 3);
+      el.textContent = String(round(from + (shown - from) * e));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function renderSunArc(fc) {
+    var host = $('#sunArc');
+    if (!host) return;
+    var di = todayIdx(fc);
+    var d = fc.daily || {};
+    if (!d.sunrise || !d.sunrise[di]) { host.innerHTML = ''; return; }
+    var rise = hhmm(d.sunrise[di]), set = hhmm(d.sunset[di]);
+    var nowMin = timeMin(fc.current && fc.current.time);
+    var riseMin = timeMin(d.sunrise[di]), setMin = timeMin(d.sunset[di]);
+    var span = Math.max(1, setMin - riseMin);
+    var p = clamp((nowMin - riseMin) / span, 0, 1);
+    var isDay = nowMin >= riseMin && nowMin <= setMin;
+
+    /* 2차 베지어 위 점 */
+    var x0 = 26, y0 = 92, cx = 130, cy = 6, x1 = 234, y1 = 92;
+    function bez(t) {
+      var mt = 1 - t;
+      return [mt * mt * x0 + 2 * mt * t * cx + t * t * x1, mt * mt * y0 + 2 * mt * t * cy + t * t * y1];
+    }
+    var pt = bez(p);
+    var svg = '<svg viewBox="0 0 260 104" aria-hidden="true">';
+    svg += '<defs><linearGradient id="arcG" x1="0" y1="0" x2="1" y2="0">' +
+      '<stop offset="0%" stop-color="#38bdf8"/><stop offset="52%" stop-color="#f6b40b"/><stop offset="100%" stop-color="#fb7185"/></linearGradient></defs>';
+    svg += '<path d="M' + x0 + ' ' + y0 + ' Q' + cx + ' ' + cy + ' ' + x1 + ' ' + y1 + '" fill="none" stroke="var(--sky-line)" stroke-width="2" stroke-dasharray="4 5" stroke-linecap="round"/>';
+    /* 지난 구간 강조 */
+    var seg = '';
+    for (var i = 1; i <= 24; i++) {
+      var t0 = (i - 1) / 24, t1 = i / 24;
+      if (t1 > p) break;
+      var a = bez(t0), b = bez(t1);
+      seg += 'M' + a[0].toFixed(1) + ' ' + a[1].toFixed(1) + 'L' + b[0].toFixed(1) + ' ' + b[1].toFixed(1);
+    }
+    if (seg) svg += '<path d="' + seg + '" fill="none" stroke="url(#arcG)" stroke-width="2.6" stroke-linecap="round"/>';
+    svg += '<line x1="' + x0 + '" y1="' + y0 + '" x2="' + x0 + '" y2="' + (y0 + 6) + '" stroke="var(--sky-line)" stroke-width="2" stroke-linecap="round"/>';
+    svg += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x1 + '" y2="' + (y1 + 6) + '" stroke="var(--sky-line)" stroke-width="2" stroke-linecap="round"/>';
+    if (isDay) {
+      svg += '<circle cx="' + pt[0].toFixed(1) + '" cy="' + pt[1].toFixed(1) + '" r="9" fill="color-mix(in srgb,#f6b40b 22%,transparent)"/>';
+      svg += '<circle cx="' + pt[0].toFixed(1) + '" cy="' + pt[1].toFixed(1) + '" r="4.6" fill="#f6b40b"/>';
+    } else {
+      svg += '<circle cx="' + x0 + '" cy="' + (y1 - 4) + '" r="4.2" fill="var(--moon)"/>';
+    }
+    svg += '</svg>';
+    host.innerHTML = svg +
+      '<div class="arc-lbl"><span>일출<b>' + rise + '</b></span>' +
+      '<span style="text-align:right">일몰<b>' + set + '</b></span></div>';
+  }
+  function timeMin(iso) {
+    var m = String(iso || '').match(/T(\d{2}):(\d{2})/);
+    if (!m) { var n = new Date(); return n.getHours() * 60 + n.getMinutes(); }
+    return Number(m[1]) * 60 + Number(m[2]);
+  }
+
+  var lastSky = '';
+  function renderParticles(sky) {
+    if (sky === lastSky) return;
+    lastSky = sky;
+    var host = $('#ptLayer');
+    if (!host) return;
+    host.innerHTML = '';
+    if (window.LemonAnim && LemonAnim.mode() === 'off') return;
+    var html = '';
+    var i, n;
+    if (sky === 'rain' || sky === 'thunder') {
+      n = 26;
+      for (i = 0; i < n; i++) {
+        html += '<span class="pt rain" style="left:' + (3 + Math.random() * 94).toFixed(1) + '%;top:' + (Math.random() * 40).toFixed(0) +
+          '%;animation-duration:' + (0.9 + Math.random() * 0.9).toFixed(2) + 's;animation-delay:-' + (Math.random() * 2).toFixed(2) + 's;opacity:' + (0.25 + Math.random() * 0.4).toFixed(2) + '"></span>';
+      }
+      if (sky === 'thunder') html += '<span class="flash"></span>';
+    } else if (sky === 'snow') {
+      n = 22;
+      for (i = 0; i < n; i++) {
+        html += '<span class="pt snow" style="left:' + (2 + Math.random() * 96).toFixed(1) + '%;top:' + (Math.random() * 40).toFixed(0) +
+          '%;animation-duration:' + (5 + Math.random() * 5).toFixed(1) + 's;animation-delay:-' + (Math.random() * 6).toFixed(1) + 's;width:' +
+          (3 + Math.random() * 4).toFixed(1) + 'px;height:' + (3 + Math.random() * 4).toFixed(1) + 'px;opacity:' + (0.45 + Math.random() * 0.45).toFixed(2) + '"></span>';
+      }
+    } else if (sky === 'fog') {
+      for (i = 0; i < 3; i++) {
+        html += '<span class="pt mist" style="left:' + (i * 24 + 6) + '%;top:' + (42 + i * 15) + '%;animation-delay:-' + (i * 7) + 's"></span>';
+      }
+    }
+    host.innerHTML = html;
+  }
+
+  /* =========================================================
+     10. 렌더: 대기질 카드
+     ========================================================= */
+  function renderAq() {
+    var host = $('#aqGrid');
+    if (!host) return;
+    var aq = current && current.aq;
+    var cur = (aq && aq.current) || {};
+    var pm10 = num(cur.pm10), pm25 = num(cur.pm2_5), aqi = num(cur.us_aqi), uv = num(cur.uv_index);
+    var g10 = pm10Grade(pm10), g25 = pm25Grade(pm25), ga = aqiGrade(aqi), gu = uvGrade(uv);
+
+    function card(title, icon, val, unit, grade, note, widthPct) {
+      return '<article class="aq">' +
+        '<div class="aq-top"><span>' + esc(title) + '</span><svg class="i sm"><use href="#' + icon + '"></use></svg></div>' +
+        '<div class="aq-val"><b>' + (val === null ? '--' : val) + '</b><i>' + esc(unit) + '</i></div>' +
+        '<div class="aq-grade g-' + grade.g + '"><span class="dot"></span>' + esc(grade.l) + '</div>' +
+        '<div class="aq-bar"><i style="width:' + clamp(widthPct, 3, 100).toFixed(0) + '%;background:currentColor" class="g-' + grade.g + '"></i></div>' +
+        '<div class="aq-note">' + esc(note) + '</div>' +
+        '</article>';
+    }
+    var html = '';
+    html += card('미세먼지 PM10', 'i-leaf', pm10 === null ? null : Math.round(pm10), 'μg/m³', g10,
+      pm10 === null ? '측정값 없음' : (pm10 <= 30 ? '야외 활동에 좋아요' : pm10 <= 80 ? '민감군은 주의' : '마스크를 챙기세요'),
+      (g10.r || 0.02) * 100);
+    html += card('초미세먼지 PM2.5', 'i-leaf', pm25 === null ? null : Math.round(pm25), 'μg/m³', g25,
+      pm25 === null ? '측정값 없음' : (pm25 <= 15 ? '아주 깨끗해요' : pm25 <= 35 ? '무난한 수준' : '환기은 줄이세요'),
+      (g25.r || 0.02) * 100);
+    html += card('통합 대기지수', 'i-gauge', aqi === null ? null : Math.round(aqi), 'US AQI', ga,
+      aqi === null ? '측정값 없음' : (aqi <= 50 ? '오늘 공기 좋음' : aqi <= 100 ? '보통 수준' : '외출 시 주의'),
+      (ga.r || 0.02) * 100);
+    html += card('자외선 UV', 'i-sun', uv === null ? null : Math.round(uv * 10) / 10, 'index', gu,
+      uv === null ? '측정값 없음' : (uv < 3 ? '선크림 없이도 괜찮아요' : uv < 6 ? '선크림을 발라 주세요' : '모자·양산을 챙기세요'),
+      (gu.r || 0.02) * 100);
+    host.innerHTML = html;
+    var t = current && current.aq && current.aq.current && current.aq.current.time;
+    $('#aqTime').textContent = t ? hhmm(t) + ' 기준' : '--';
+  }
+
+  /* =========================================================
+     11. 렌더: 24시간 차트
+     ========================================================= */
+  var chartData = [];
+
+  function buildHourly(fc) {
+    var h = fc.hourly || {};
+    if (!h.time || !h.time.length) return [];
+    var nowKey = (fc.current && fc.current.time) ? fc.current.time : h.time[0];
+    var nowHour = nowKey.slice(0, 13) + ':00';
+    var start = h.time.indexOf(nowHour);
+    if (start < 0) {
+      for (var i = 0; i < h.time.length; i++) { if (h.time[i] >= nowKey) { start = i; break; } }
+    }
+    if (start < 0) start = 0;
+    var out = [];
+    for (var j = start; j < Math.min(h.time.length, start + 24); j++) {
+      out.push({
+        time: h.time[j],
+        hour: Number(h.time[j].slice(11, 13)),
+        day: h.time[j].slice(0, 10),
+        temp: num(h.temperature_2m[j]),
+        pop: num(h.precipitation_probability[j]) || 0,
+        code: h.weather_code[j],
+        wind: num(h.wind_speed_10m[j]),
+        feels: num(h.apparent_temperature[j])
+      });
+    }
+    return out;
+  }
+
+  function drawHourly() {
+    var svg = $('#hourSvg');
+    var wrap = $('#chartWrap');
+    if (!svg || !wrap) return;
+    var pts = chartData;
+    if (!pts.length) { svg.innerHTML = ''; return; }
+    var W = Math.max(260, wrap.clientWidth || 600);
+    var narrow = W < 520;
+    var H = narrow ? 224 : 268;
+    var padL = narrow ? 24 : 30, padR = narrow ? 8 : 12, padT = 34, padB = 44;
+    var plotW = W - padL - padR;
+    var plotH = H - padT - padB;
+    var step = plotW / (pts.length - 1);
+
+    var temps = pts.map(function (p) { return p.temp; }).filter(function (v) { return v !== null; });
+    var tMin = Math.min.apply(null, temps), tMax = Math.max.apply(null, temps);
+    if (!isFinite(tMin)) { tMin = 0; tMax = 10; }
+    var span = Math.max(3, tMax - tMin);
+    var lo = tMin - span * 0.18, hi = tMax + span * 0.14;
+    var lineTop = padT + 8;
+    var lineBottom = padT + plotH * 0.58;
+    var barBase = padT + plotH;
+    var barMax = plotH * 0.30;
+    function ty(v) { return lineTop + (hi - v) / (hi - lo) * (lineBottom - lineTop); }
+    function px(i) { return padL + i * step; }
+
+    var uid = 'u' + Math.random().toString(36).slice(2, 7);
+    var s = '<defs>';
+    s += '<linearGradient id="gradTempLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#0284c7"/><stop offset="55%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0ea5e9"/></linearGradient>';
+    s += '<linearGradient id="gradTempArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#38bdf8" stop-opacity=".34"/><stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/></linearGradient>';
+    s += '<linearGradient id="gradPop" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7dd3fc" stop-opacity=".95"/><stop offset="100%" stop-color="#38bdf8" stop-opacity=".32"/></linearGradient>';
+    s += '</defs>';
+
+    /* 방사형 그리드 */
+    var ticks = narrow ? 3 : 4;
+    for (var gi = 0; gi <= ticks; gi++) {
+      var gy = lineTop + (lineBottom - lineTop) * (gi / ticks);
+      s += '<line class="grid-line" x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + gy.toFixed(1) + '"/>';
+      var tv = hi - (hi - lo) * (gi / ticks);
+      s += '<text x="' + (padL - 5) + '" y="' + (gy + 3).toFixed(1) + '" text-anchor="end" font-size="9.5" opacity=".72">' + round(S.unit === 'f' ? tv * 9 / 5 + 32 : tv) + '°</text>';
+    }
+
+    /* 강수확률 막대 */
+    var bw = Math.max(3, Math.min(14, step * 0.5));
+    var baseY = barBase;
+    pts.forEach(function (p, i) {
+      var hgt = Math.max(2, (p.pop / 100) * (barMax - 3));
+      var bx = clamp(px(i) - bw / 2, padL, W - padR - bw);
+      s += '<rect class="p-bar" x="' + bx.toFixed(1) + '" y="' + (baseY - hgt).toFixed(1) + '" width="' + bw.toFixed(1) +
+        '" height="' + hgt.toFixed(1) + '" rx="' + Math.min(3, bw / 2) + '" opacity="' + (0.35 + p.pop / 160).toFixed(2) + '"/>';
+    });
+
+    /* 기온선 */
+    var line = '', area = '';
+    pts.forEach(function (p, i) {
+      if (p.temp === null) return;
+      var x = px(i), y = ty(p.temp);
+      if (!line) { line += 'M' + x.toFixed(1) + ' ' + y.toFixed(1); }
+      else {
+        var prev = pts[i - 1];
+        var pxx = px(i - 1), pyy = ty(prev.temp);
+        var mx = (pxx + x) / 2;
+        line += 'C' + mx.toFixed(1) + ' ' + pyy.toFixed(1) + ',' + mx.toFixed(1) + ' ' + y.toFixed(1) + ',' + x.toFixed(1) + ' ' + y.toFixed(1);
+      }
+    });
+    if (line) {
+      var firstX = px(0), lastX = px(pts.length - 1);
+      area = line + 'L' + lastX.toFixed(1) + ' ' + (lineBottom + 4) + 'L' + firstX.toFixed(1) + ' ' + (lineBottom + 4) + 'Z';
+      s += '<path class="t-area" d="' + area + '"/>';
+      s += '<path class="t-line" d="' + line + '" pathLength="1" style="stroke-dasharray:1;stroke-dashoffset:1;animation:none"/>';
+    }
+
+    /* 지금 표시 */
+    s += '<line class="base-line" x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '"/>';
+    s += '<line class="now-line" x1="' + px(0) + '" y1="' + (padT - 6) + '" x2="' + px(0) + '" y2="' + baseY + '"/>';
+    s += '<text x="' + (px(0) + 5) + '" y="' + (padT - 10) + '" font-size="9.5" fill="var(--brand)" font-weight="800">지금</text>';
+
+    /* 점 + 값 */
+    pts.forEach(function (p, i) {
+      if (p.temp === null) return;
+      var show = (i % (narrow ? 6 : 3) === 0) || i === pts.length - 1;
+      if (show) {
+        s += '<circle class="t-dot" cx="' + px(i).toFixed(1) + '" cy="' + ty(p.temp).toFixed(1) + '" r="' + (i === 0 ? 3.6 : 2.8) + '"/>';
+        if (i > 0 && (!narrow || i % 6 === 0)) {
+          s += '<text class="t-val" x="' + px(i).toFixed(1) + '" y="' + (ty(p.temp) - 9).toFixed(1) + '" text-anchor="middle">' + fmtT(p.temp) + '</text>';
+        }
+      }
+      var xl = (i % (narrow ? 6 : 3) === 0) || i === pts.length - 1;
+      if (xl) {
+        s += '<text x="' + px(i).toFixed(1) + '" y="' + (H - 20) + '" text-anchor="middle">' + (i === 0 ? '지금' : pad2(p.hour) + '시') + '</text>';
+      }
+      if (i > 0 && p.day !== pts[i - 1].day) {
+        s += '<text x="' + px(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" fill="var(--brand)" font-weight="800">' +
+          (new Date(p.day + 'T12:00:00').getDate() + '일') + '</text>';
+      }
+    });
+
+    /* 호버 영역 */
+    s += '<rect class="hit" x="' + padL + '" y="' + (padT - 10) + '" width="' + plotW + '" height="' + (plotH + 10) + '"/>';
+    s += '<g id="hoverLayer"></g>';
+
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('height', H);
+    svg.innerHTML = s;
+
+    /* 선 그리기 애니메이션 */
+    var pathEl = svg.querySelector('.t-line');
+    if (pathEl) {
+      var full = window.LemonAnim && LemonAnim.mode() !== 'full';
+      if (full) { pathEl.style.strokeDashoffset = '0'; }
+      else {
+        pathEl.style.transition = 'stroke-dashoffset 1.15s cubic-bezier(.22,1,.36,1)';
+        requestAnimationFrame(function () { pathEl.style.strokeDashoffset = '0'; });
+      }
+    }
+    attachChartHover(svg, pts, px, ty, W, H);
+  }
+
+  function attachChartHover(svg, pts, px, ty, W, H) {
+    var hit = svg.querySelector('.hit');
+    var layer = svg.querySelector('#hoverLayer');
+    var tip = $('#chartTip');
+    var wrap = $('#chartWrap');
+    if (!hit || !tip) return;
+    var active = -1;
+
+    function place(i) {
+      if (i === active) return;
+      active = i;
+      var p = pts[i];
+      if (!p) return;
+      var x = px(i), y = ty(p.temp || 0);
+      var box = svg.getBoundingClientRect();
+      var wr = wrap.getBoundingClientRect();
+      var scale = box.width / (svg.viewBox.baseVal.width || box.width || 1);
+      var left = (box.left - wr.left) + x * scale;
+      var top = (box.top - wr.top) + y * scale;
+      if (layer) {
+        layer.innerHTML = '<line x1="' + x.toFixed(1) + '" y1="18" x2="' + x.toFixed(1) + '" y2="' + (H - 58) + '" stroke="currentColor" stroke-opacity=".28" stroke-width="1" stroke-dasharray="3 3"/>' +
+          '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="5.4" fill="var(--brand)" fill-opacity=".16"/>' +
+          '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="2.8" fill="var(--brand)"/>';
+      }
+      var hourTxt = p.day === pts[0].day ? pad2(p.hour) + '시'
+        : (new Date(p.day + 'T12:00:00').getDate() === new Date(pts[0].day + 'T12:00:00').getDate() + 1
+          ? '내일 ' + pad2(p.hour) + '시'
+          : (new Date(p.day + 'T12:00:00').getMonth() + 1) + '/' + new Date(p.day + 'T12:00:00').getDate() + ' ' + pad2(p.hour) + '시');
+      var wi = wxInfo(p.code, p.hour >= 6 && p.hour < 18);
+      tip.innerHTML = '<b>' + hourTxt + ' · ' + esc(wi.l) + '</b>' +
+        '<div class="row"><em>기온</em><span>' + fmtT(p.temp) + '</span></div>' +
+        '<div class="row"><em>체감</em><span>' + fmtT(p.feels) + '</span></div>' +
+        '<div class="row"><em>강수확률</em><span>' + (p.pop || 0) + '%</span></div>' +
+        '<div class="row"><em>바람</em><span>' + fmtWind(p.wind) + '</span></div>';
+      tip.classList.add('on');
+      var maxLeft = wr.width - 70;
+      tip.style.left = clamp(left, 72, maxLeft) + 'px';
+      tip.style.top = clamp(top - 12, 8, wr.height - 10) + 'px';
+    }
+    function clear() {
+      active = -1;
+      tip.classList.remove('on');
+      if (layer) layer.innerHTML = '';
+    }
+    hit.addEventListener('pointermove', function (e) {
+      var box = svg.getBoundingClientRect();
+      var scale = box.width / (svg.viewBox.baseVal.width || box.width || 1);
+      var x = (e.clientX - box.left) / (scale || 1);
+      var idx = clamp(Math.round((x - 10) / Math.max(1, (svg.viewBox.baseVal.width - 20) / (pts.length - 1))), 0, pts.length - 1);
+      place(idx);
+    });
+    hit.addEventListener('pointerdown', function (e) {
+      hit.dispatchEvent(new PointerEvent('pointermove', { clientX: e.clientX, clientY: e.clientY, bubbles: false }));
+    });
+    hit.addEventListener('pointerleave', clear);
+    svg.addEventListener('pointerleave', clear);
+  }
+
+  /* =========================================================
+     12. 렌더: 7일 예보
+     ========================================================= */
+  function renderDaily() {
+    var host = $('#dailyList');
+    if (!host) return;
+    var fc = current && current.fc;
+    if (!fc || !fc.daily) { host.innerHTML = ''; return; }
+    var d = fc.daily;
+    var di = todayIdx(fc);
+    var rows = [];
+    var min = Infinity, max = -Infinity;
+    for (var i = 0; i < Math.min(8, d.time.length); i++) {
+      var lo = num(d.temperature_2m_min[i]), hi = num(d.temperature_2m_max[i]);
+      if (lo === null || hi === null) continue;
+      min = Math.min(min, lo); max = Math.max(max, hi);
+      rows.push({ i: i, lo: lo, hi: hi });
+    }
+    if (!rows.length) { host.innerHTML = ''; return; }
+    var span = Math.max(1, max - min);
+    var html = '';
+    rows.forEach(function (r) {
+      if (r.i >= 7) return;
+      var code = d.weather_code[r.i];
+      var isDay = r.i > 0 || (fc.current && fc.current.is_day !== 0);
+      var wi = wxInfo(code, isDay);
+      var pop = num(d.precipitation_probability_max[r.i]);
+      var leftPct = ((r.lo - min) / span) * 100;
+      var widPct = Math.max(6, ((r.hi - r.lo) / span) * 100);
+      html += '<li class="day-row">' +
+        '<div class="d-name">' + dayName(d.time[r.i], r.i >= di ? r.i - di : r.i) + '<small>' + mdLabel(d.time[r.i]) + '</small></div>' +
+        '<span class="wxa" style="width:26px;height:26px">' + wxArt(wi.k, isDay) + '</span>' +
+        '<span class="d-pop' + (pop ? '' : ' zero') + '">' + (pop === null ? '--' : pop + '%') + '</span>' +
+        '<div class="d-bar"><i style="left:' + clamp(leftPct, 0, 96).toFixed(1) + '%;width:' + clamp(widPct, 6, 100 - leftPct).toFixed(1) + '%"></i></div>' +
+        '<div class="d-temp"><span>' + fmtT(r.hi) + '</span><span class="lo">' + fmtT(r.lo) + '</span></div>' +
+        '</li>';
+    });
+    host.innerHTML = html;
+    $('#weekRange').textContent = fmtT(min) + ' ~ ' + fmtT(max);
+
+    /* 주간 요약 */
+    var coldest = null, warmest = null, rainiest = null;
+    rows.forEach(function (r) {
+      if (r.i >= 7) return;
+      if (!coldest || r.lo < coldest.lo) coldest = r;
+      if (!warmest || r.hi > warmest.hi) warmest = r;
+      var p = num(d.precipitation_probability_max[r.i]) || 0;
+      if (!rainiest || p > rainiest.p) rainiest = { i: r.i, p: p };
+    });
+    var parts = [];
+    if (coldest) parts.push('가장 추운 날은 ' + dayName(d.time[coldest.i], coldest.i - di) + ' ' + fmtT(coldest.lo));
+    if (warmest) parts.push('가장 따뜻한 날은 ' + dayName(d.time[warmest.i], warmest.i - di) + ' ' + fmtT(warmest.hi));
+    if (rainiest && rainiest.p >= 40) parts.push('비 가능성이 가장 높은 날은 ' + dayName(d.time[rainiest.i], rainiest.i - di) + ' ' + rainiest.p + '%');
+    $('#weekSummary').innerHTML = '<svg class="i sm"><use href="#i-info"></use></svg><span>' + esc(parts.join(' · ')) + '</span>';
+  }
+
+  /* =========================================================
+     13. 렌더: 생활 지수
+     ========================================================= */
+  function renderLife() {
+    var fc = current && current.fc;
+    if (!fc) return;
+    var o = outfit(fc);
+    var card = $('#outfitCard');
+    card.innerHTML = '<div class="outfit-head"><h3>오늘의 옷차림</h3>' +
+      '<span class="tag brand">체감 ' + fmtT(o.feels) + '</span></div>' +
+      '<div class="outfit-body">' +
+      '<div class="outfit-art">' + outfitArt(o) + '</div>' +
+      '<div class="outfit-say"><b>' + esc(o.headline) + '</b><p>' + esc(o.tip) + '</p></div>' +
+      '</div>' +
+      '<div class="outfit-tags">' +
+      '<span class="tag">겉옷 · ' + esc(o.outer) + '</span>' +
+      '<span class="tag">상의 · ' + esc(o.top) + '</span>' +
+      '<span class="tag">하의 · ' + esc(o.bottom) + '</span>' +
+      o.extra.map(function (e) {
+        return '<span class="tag brand"><svg class="i sm"><use href="#' + e.icon + '"></use></svg>' + esc(e.t) + '</span>';
+      }).join('') +
+      '</div>';
+
+    var list = indices(fc, current.aq);
+    var host = $('#idxGrid');
+    host.innerHTML = list.map(function (it) {
+      var circumference = 2 * Math.PI * 22;
+      var off = circumference * (1 - clamp(it.score, 0, 100) / 100);
+      return '<article class="idx">' +
+        '<div class="idx-gauge" style="--pct:' + it.score + '">' +
+        '<svg viewBox="0 0 54 54" aria-hidden="true">' +
+        '<circle class="g-bg" cx="27" cy="27" r="22"/>' +
+        '<circle class="g-fg" cx="27" cy="27" r="22" stroke-dasharray="' + circumference.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '"/>' +
+        '</svg><b>' + it.score + '</b></div>' +
+        '<div class="idx-txt"><b>' + esc(it.name) + ' · ' + esc(it.label) + '</b><span>' + esc(it.note) + '</span></div>' +
+        '</article>';
+    }).join('');
+  }
+
+  function outfitArt(o) {
+    var warm = o.feels >= 22;
+    var cold = o.feels < 9;
+    var coatColor = cold ? '#1e3a5f' : (warm ? '#0ea5e9' : '#0284c7');
+    return '<svg viewBox="0 0 96 104" fill="none" aria-hidden="true">' +
+      '<ellipse cx="48" cy="96" rx="30" ry="5" fill="var(--line-2)"/>' +
+      (cold || !warm ?
+        '<path d="M30 34 34 20h28l4 14 8 10-7 8-4-4v38H33V48l-4 4-7-8z" fill="' + coatColor + '" fill-opacity=".14" stroke="' + coatColor + '" stroke-width="2.2" stroke-linejoin="round"/>' +
+        '<path d="M48 20v56" stroke="' + coatColor + '" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 4" opacity=".7"/>' +
+        '<circle cx="42" cy="34" r="1.6" fill="' + coatColor + '"/><circle cx="42" cy="46" r="1.6" fill="' + coatColor + '"/>'
+        :
+        '<path d="M32 32 36 22h10l2 4 2-4h10l4 10 6 6-6 6-3-3v35H35V45l-3 3-6-6z" fill="' + coatColor + '" fill-opacity=".16" stroke="' + coatColor + '" stroke-width="2.2" stroke-linejoin="round"/>' +
+        '<path d="M39 22c0 5 4 8 9 8s9-3 9-8" stroke="' + coatColor + '" stroke-width="2" stroke-linecap="round"/>'
+      ) +
+      (o.extra.some(function (e) { return e.icon === 'i-umbrella'; }) ?
+        '<path d="M70 62a10 10 0 0 1 20 0z" fill="#38bdf8" fill-opacity=".3" stroke="#0ea5e9" stroke-width="1.8"/>' +
+        '<path d="M80 62v14a3 3 0 0 0 6 0" stroke="#0ea5e9" stroke-width="1.8" stroke-linecap="round"/>' : '') +
+      '</svg>';
+  }
+
+  /* =========================================================
+     14. 렌더: 즐겨찾는 도시 · 비교
+     ========================================================= */
+  function renderFavs() {
+    var host = $('#favGrid');
+    if (!host) return;
+    var html = '';
+    S.cities.forEach(function (c) {
+      var rec = memCache[c.id];
+      var fc = rec && rec.fc;
+      var cur = (fc && fc.current) || {};
+      var di = fc ? todayIdx(fc) : 0;
+      var d = (fc && fc.daily) || {};
+      var wi = wxInfo(cur.weather_code, cur.is_day !== 0);
+      var isCur = c.id === S.currentId;
+      var sel = !!ui.sel[c.id];
+      html += '<button type="button" class="fav' + (isCur ? ' on' : '') + (sel ? ' sel' : '') + '" data-fav="' + esc(c.id) + '" aria-label="' + esc(c.name) + ' 날씨 보기">' +
+        '<span class="fav-top"><span><b>' + esc(c.name) + '</b><small>' + esc(c.region || c.country || '') + '</small></span>' +
+        '<span class="wxa" style="width:26px;height:26px">' + (fc ? wxArt(wi.k, cur.is_day !== 0) : '') + '</span></span>' +
+        '<span class="fav-temp"><b>' + (fc ? fmtT(cur.temperature_2m) : '--') + '</b>' +
+        '<span>' + (fc ? fmtT(d.temperature_2m_max ? d.temperature_2m_max[di] : null, false) + ' / ' + fmtT(d.temperature_2m_min ? d.temperature_2m_min[di] : null) : '') + '</span></span>' +
+        '<span class="fav-foot"><span>' + (fc ? esc((cur.is_day === 0 && wi.night) ? wi.night : wi.l) : '불러오는 중') + '</span>' +
+        '<span class="pv">' + (fc && d.precipitation_probability_max ? d.precipitation_probability_max[di] + '%' : '') + '</span></span>' +
+        (ui.compare ? '<span class="compare-box">' + (sel ? '<svg class="i sm" style="width:13px;height:13px;stroke:#fff"><use href="#i-check"></use></svg>' : '') + '</span>'
+          : '<span class="fav-del" data-del="' + esc(c.id) + '" role="button" aria-label="' + esc(c.name) + ' 삭제"><svg class="i sm" style="width:12px;height:12px"><use href="#i-x"></use></svg></span>') +
+        '</button>';
+    });
+    html += '<button type="button" class="fav-add" id="favAdd"><svg class="i"><use href="#i-plus"></use></svg>도시 추가</button>';
+    host.innerHTML = html;
+    renderCompare();
+  }
+
+  function renderCompare() {
+    var wrapEl = $('#compareWrap');
+    if (!wrapEl) return;
+    var selIds = Object.keys(ui.sel).filter(function (k) { return ui.sel[k]; });
+    if (!ui.compare || selIds.length < 2) {
+      wrapEl.hidden = true;
+      return;
+    }
+    wrapEl.hidden = false;
+    var cols = selIds.map(function (id) {
+      for (var i = 0; i < S.cities.length; i++) if (S.cities[i].id === id) return S.cities[i];
+      return null;
+    }).filter(Boolean);
+    if (cols.length < 2) { wrapEl.hidden = true; return; }
+
+    function cell(fn) {
+      return cols.map(function (c) {
+        var rec = memCache[c.id];
+        return '<td>' + (rec ? fn(rec) : '--') + '</td>';
+      }).join('');
+    }
+    function row(label, fn) {
+      return '<tr><th scope="row">' + label + '</th>' + cell(fn) + '</tr>';
+    }
+    var head = '<thead><tr><th scope="col">항목</th>' + cols.map(function (c) {
+      return '<th scope="col">' + esc(c.name) + '</th>';
+    }).join('') + '</tr></thead>';
+
+    var body = '';
+    body += row('현재 기온', function (r) { return '<b>' + fmtT(r.fc.current.temperature_2m) + '</b>'; });
+    body += row('체감', function (r) { return fmtT(r.fc.current.apparent_temperature); });
+    body += row('오늘 최고 / 최저', function (r) {
+      var di = todayIdx(r.fc), d = r.fc.daily;
+      return fmtT(d.temperature_2m_max[di]) + ' / ' + fmtT(d.temperature_2m_min[di]);
+    });
+    body += row('강수확률', function (r) {
+      var di = todayIdx(r.fc);
+      return (r.fc.daily.precipitation_probability_max[di] || 0) + '%';
+    });
+    body += row('습도', function (r) { return (r.fc.current.relative_humidity_2m || 0) + '%'; });
+    body += row('바람', function (r) { return fmtWind(r.fc.current.wind_speed_10m); });
+    body += row('미세먼지 PM10', function (r) {
+      var v = r.aq && r.aq.current ? num(r.aq.current.pm10) : null;
+      if (v === null) return '--';
+      var g = pm10Grade(v);
+      return '<span class="g-' + g.g + '">' + Math.round(v) + ' · ' + g.l + '</span>';
+    });
+    body += row('초미세먼지 PM2.5', function (r) {
+      var v = r.aq && r.aq.current ? num(r.aq.current.pm2_5) : null;
+      if (v === null) return '--';
+      var g = pm25Grade(v);
+      return '<span class="g-' + g.g + '">' + Math.round(v) + ' · ' + g.l + '</span>';
+    });
+    body += row('자외선 UV', function (r) {
+      var v = r.aq && r.aq.current ? num(r.aq.current.uv_index) : null;
+      return v === null ? '--' : (Math.round(v * 10) / 10) + ' · ' + uvGrade(v).l;
+    });
+    body += row('일출 / 일몰', function (r) {
+      var di = todayIdx(r.fc);
+      return hhmm(r.fc.daily.sunrise[di]) + ' / ' + hhmm(r.fc.daily.sunset[di]);
+    });
+    body += row('현지 시각', function (r) { return hhmm(r.fc.current.time); });
+
+    var table = $('#cmpTable');
+    if (table) table.innerHTML = head + '<tbody>' + body + '</tbody>';
+    $('#cmpHint').textContent = cols.length + '곳을 비교 중입니다 · 최대 4곳까지 선택할 수 있어요.' +
+      (function () {
+        var w = $('.cmp-table-wrap');
+        return (w && w.scrollWidth > w.clientWidth + 4) ? ' 표는 옆으로 밀어 볼 수 있어요.' : '';
+      })();
+  }
+
+  /* =========================================================
+     15. 로드 · 렌더 파이프라인
+     ========================================================= */
+  function selectCity(id, opts) {
+    var city = null;
+    for (var i = 0; i < S.cities.length; i++) if (S.cities[i].id === id) city = S.cities[i];
+    if (!city) return;
+    opts = opts || {};
+    S.currentId = id;
+    if (!opts.silent) saveState();
+    renderChips();
+    load(!!!opts.force);
+  }
+
+  function skeleton() {
+    $('#heroTemp').textContent = '--';
+    $('#heroLabel').textContent = '날씨를 불러오는 중';
+    $('#heroIcon').innerHTML = '<svg class="wxa" viewBox="0 0 64 64" aria-hidden="true"><path class="c-cloud" d="M15 44a10.6 10.6 0 0 1 1.4-21 14.4 14.4 0 0 1 27 3.2A9.4 9.4 0 0 1 46 44z" opacity=".5"/></svg>';
+    $('#heroFeels').textContent = '체감 --';
+    var note = doc.getElementById('heroNote');
+    if (note) note.innerHTML = '';
+    if (!$('#aqGrid').children.length) {
+      $('#aqGrid').innerHTML = ['미세먼지 PM10', '초미세먼지 PM2.5', '통합 대기지수', '자외선 UV'].map(function (t) {
+        return '<article class="aq"><div class="aq-top"><span>' + t + '</span></div>' +
+          '<div class="sk" style="height:26px;width:64%"></div><div class="sk" style="height:12px;width:40%"></div>' +
+          '<div class="aq-bar"><i style="width:20%"></i></div></article>';
+      }).join('');
+    }
+  }
+
+  function load(useCache) {
+    var city = currentCity();
+    if (!city) return;
+    ui.busy = true;
+    skeleton();
+    var token = ++loadToken;
+    fetchCity(city, !useCache).then(function (res) {
+      if (token !== loadToken) return;
+      ui.busy = false;
+      current = { city: city, fc: res.data.fc, aq: res.data.aq, cached: res.cached, at: res.data.at, error: res.error };
+      chartData = buildHourly(current.fc);
+      renderHero();
+      renderAq();
+      drawHourly();
+      renderDaily();
+      renderLife();
+      renderFavs();
+      if (res.cached && res.error) toast('네트워크가 불안해 마지막 자료를 보여 드려요.', 'warn');
+      saveState();
+      if (firstPaint) {
+        firstPaint = false;
+        var secs = $$('main .hero, main .sec');
+        secs.forEach(function (el, i) {
+          el.classList.add('spring');
+          if (i) el.classList.add('d' + Math.min(6, i));
+        });
+      }
+    }, function () {
+      if (token !== loadToken) return;
+      ui.busy = false;
+      current = null;
+      $('#heroLabel').textContent = '날씨를 불러오지 못했어요';
+      $('#heroUpdated').textContent = '연결 실패';
+      $('#aqGrid').innerHTML = '<div class="err-box" style="grid-column:1/-1">' +
+        '<svg class="i"><use href="#i-alert"></use></svg>' +
+        '<span>Open-Meteo 응답이 없습니다. 잠시 뒤 다시 시도해 주세요.</span>' +
+        '<button type="button" id="retryBtn">다시 시도</button></div>';
+      var rb = $('#retryBtn');
+      if (rb) rb.addEventListener('click', function () { load(true); });
+      var dl = $('#dailyList');
+      if (dl && !dl.children.length) dl.innerHTML = '<li class="day-row"><div class="d-name">--</div><div class="sk" style="grid-column:1/-1;height:12px"></div></li>';
+      toast('날씨를 불러오지 못했어요. 연결을 확인해 주세요.', 'err');
+    });
+  }
+  var loadToken = 0;
+
+  /* =========================================================
+     16. 도시 추가 · 삭제 · 즐겨찾기
+     ========================================================= */
+  function addCity(c, opts) {
+    opts = opts || {};
+    var id = cityId(c.lat, c.lon);
+    var exists = null;
+    S.cities.forEach(function (x) {
+      if (x.id === id || (x.name === c.name && Math.abs(x.lat - c.lat) < 0.02 && Math.abs(x.lon - c.lon) < 0.02)) exists = x;
+    });
+    if (exists) {
+      if (!opts.quiet) toast(exists.name + '은(는) 이미 있습니다.', 'warn');
+      selectCity(exists.id, { force: !!opts.force });
+      return exists;
+    }
+    var city = { id: id, name: String(c.name || '도시').slice(0, 40), region: c.region || '', country: c.country || '', lat: Number(c.lat), lon: Number(c.lon), tz: c.tz || '' };
+    S.cities.push(city);
+    if (S.cities.length > 12) S.cities.splice(1, 1);
+    S.recent = [{ name: city.name, region: city.region, lat: city.lat, lon: city.lon, country: city.country }]
+      .concat(S.recent.filter(function (r) { return !(r.name === city.name && Math.abs(r.lat - city.lat) < 0.02); })).slice(0, 6);
+    S.currentId = city.id;
+    saveState();
+    closeSheets();
+    renderChips();
+    renderFavs();
+    load(true);
+    if (!opts.quiet) toast(city.name + ' 날씨를 불러옵니다.', 'ok');
+    return city;
+  }
+
+  function removeCity(id) {
+    if (S.cities.length <= 1) { toast('도시가 하나뿐이라 지울 수 없어요.', 'warn'); return; }
+    var name = '';
+    S.cities = S.cities.filter(function (c) { if (c.id === id) { name = c.name; return false; } return true; });
+    delete ui.sel[id];
+    if (S.currentId === id) S.currentId = S.cities[0].id;
+    saveState();
+    renderChips();
+    renderFavs();
+    load(false);
+    toast(name + '을(를) 즐겨찾기에서 뺐습니다.', 'ok');
+  }
+
+  /* =========================================================
+     17. 시트(모달) · 검색 UI
+     ========================================================= */
+  function openSheet(el) {
+    if (!el) return;
+    el.hidden = false;
+    requestAnimationFrame(function () { el.classList.add('on'); });
+    doc.body.style.overflow = 'hidden';
+  }
+  function closeSheets() {
+    $$('.sheet').forEach(function (s) {
+      s.classList.remove('on');
+      setTimeout(function () { s.hidden = true; }, 220);
+    });
+    doc.body.style.overflow = '';
+  }
+
+  function renderQuick() {
+    var host = $('#quickCities');
+    if (!host) return;
+    host.innerHTML = QUICK.map(function (n) {
+      return '<button type="button" data-quick="' + esc(n) + '">' + esc(n) + '</button>';
+    }).join('');
+  }
+  function renderRecent() {
+    var block = $('#recentBlock'), host = $('#recentList');
+    if (!block || !host) return;
+    if (!S.recent.length) { block.hidden = true; return; }
+    block.hidden = false;
+    host.innerHTML = S.recent.map(function (r, i) {
+      return '<button type="button" class="res" data-recent="' + i + '">' +
+        '<span class="r-ico"><svg class="i sm"><use href="#i-clock"></use></svg></span>' +
+        '<span class="r-txt"><b>' + esc(r.name) + '</b><span>' + esc([r.region, r.country].filter(Boolean).join(' · ')) + '</span></span>' +
+        '<span class="r-add">보기</span></button>';
+    }).join('');
+  }
+  function renderResults(list, q) {
+    var block = $('#resBlock'), host = $('#resList'), hint = $('#searchHint');
+    if (!block || !host) return;
+    if (!q) { block.hidden = true; hint.textContent = '한글 도시 이름이나 영문 이름으로 찾을 수 있어요.'; return; }
+    if (!list.length) {
+      block.hidden = false;
+      host.innerHTML = '<div class="res" style="cursor:default"><span class="r-ico"><svg class="i sm"><use href="#i-info"></use></svg></span>' +
+        '<span class="r-txt"><b>결과가 없어요</b><span>다른 이름으로 찾아보세요. (예: 서울, Busan, Tokyo)</span></span></div>';
+      hint.textContent = '"' + q + '" 검색 결과가 없습니다.';
+      return;
+    }
+    block.hidden = false;
+    hint.textContent = list.length + '곳을 찾았어요. 누르면 바로 날씨를 불러옵니다.';
+    host.innerHTML = list.map(function (r, i) {
+      return '<button type="button" class="res" data-res="' + i + '">' +
+        '<span class="r-ico"><svg class="i sm"><use href="#i-pin"></use></svg></span>' +
+        '<span class="r-txt"><b>' + esc(r.name) + '</b><span>' + esc([r.region, r.country].filter(Boolean).join(' · ')) + '</span></span>' +
+        '<span class="r-add">추가</span></button>';
+    }).join('');
+    host.setAttribute('data-q', q);
+    searchResults = list;
+  }
+  var searchResults = [];
+
+  function doSearch(q) {
+    var seq = ++searchSeq;
+    searchTimer = null;
+    $('#searchHint').textContent = '찾는 중…';
+    searchCities(q).then(function (list) {
+      if (seq !== searchSeq) return;
+      renderResults(list, q);
+    });
+  }
+
+  /* =========================================================
+     18. GPS
+     ========================================================= */
+  function useGps() {
+    if (!navigator.geolocation) {
+      toast('이 브라우저에서는 위치를 쓸 수 없어요. 도시를 검색해 주세요.', 'err');
+      openSearch();
+      return;
+    }
+    toast('현재 위치를 확인하는 중…', 'ok');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+      reverseGeocode(lat, lon).then(function (g) {
+        addCity({ name: g.name, region: g.region, country: g.country || '현재 위치', lat: lat, lon: lon }, { quiet: false });
+      }, function () {
+        addCity({ name: '현재 위치', region: lat.toFixed(2) + ', ' + lon.toFixed(2), country: '', lat: lat, lon: lon }, { quiet: false });
+      });
+    }, function (e) {
+      var msg = '위치를 가져오지 못했어요.';
+      if (e && e.code === 1) msg = '위치 권한이 거부되었어요. 도시를 검색해 추가해 주세요.';
+      else if (e && e.code === 3) msg = '위치 확인이 오래 걸려요. 도시를 검색해 주세요.';
+      toast(msg, 'warn');
+      openSearch();
+    }, { enableHighAccuracy: false, timeout: 9000, maximumAge: 60000 });
+  }
+
+  function openSearch() {
+    var s = $('#searchSheet');
+    openSheet(s);
+    renderQuick();
+    renderRecent();
+    var input = $('#searchInput');
+    if (input) {
+      input.value = '';
+      setTimeout(function () { try { input.focus(); } catch (e) { } }, 260);
+    }
+    $('#resBlock').hidden = true;
+    $('#searchHint').textContent = '한글 도시 이름이나 영문 이름으로 찾을 수 있어요.';
+  }
+
+  /* =========================================================
+     19. 이벤트 연결
+     ========================================================= */
+  function bind() {
+    $('#searchTrigger').addEventListener('click', openSearch);
+    $('#headSearchBtn').addEventListener('click', openSearch);
+    $('#addCityBtn').addEventListener('click', openSearch);
+    $('#gpsBtn').addEventListener('click', useGps);
+    $('#gpsRow').addEventListener('click', function () { closeSheets(); setTimeout(useGps, 220); });
+
+    $('#refreshBtn').addEventListener('click', function () {
+      var b = this;
+      b.disabled = true;
+      b.querySelector('span').textContent = '새로고침 중';
+      load(true);
+      setTimeout(function () {
+        b.disabled = false;
+        b.querySelector('span').textContent = '새로고침';
+      }, 1400);
+      toast('최신 날씨로 갱신합니다.', 'ok');
+    });
+
+    $('#pinBtn').addEventListener('click', function () {
+      if (!current) return;
+      var c = current.city, id = c.id;
+      var idx = -1;
+      S.cities.forEach(function (x, i) { if (x.id === id) idx = i; });
+      if (idx < 0) {
+        addCity(c, { quiet: true, force: true });
+        return;
+      }
+      if (S.cities.length <= 1) {
+        toast('도시가 하나뿐이라 즐겨찾기에서 뺄 수 없어요.', 'warn');
+        return;
+      }
+      removeCity(id);
+    });
+
+    $('#unitBtn').addEventListener('click', function () {
+      S.unit = S.unit === 'c' ? 'f' : 'c';
+      this.textContent = S.unit === 'c' ? '°C' : '°F';
+      saveState();
+      if (current) {
+        $('#heroTemp').removeAttribute('data-v');
+        renderHero();
+        drawHourly();
+        renderDaily();
+        renderLife();
+      }
+      toast(S.unit === 'c' ? '섭씨(°C)로 표시합니다.' : '화씨(°F)로 표시합니다.', 'ok');
+    });
+
+    $('#cityChips').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-city]');
+      if (!b) return;
+      selectCity(b.getAttribute('data-city'));
+    });
+
+    $('#favGrid').addEventListener('click', function (e) {
+      var del = e.target.closest('[data-del]');
+      if (del) {
+        e.stopPropagation();
+        removeCity(del.getAttribute('data-del'));
+        return;
+      }
+      var add = e.target.closest('#favAdd');
+      if (add) { openSearch(); return; }
+      var f = e.target.closest('[data-fav]');
+      if (!f) return;
+      var id = f.getAttribute('data-fav');
+      if (ui.compare) {
+        var sel = Object.keys(ui.sel).filter(function (k) { return ui.sel[k]; });
+        if (ui.sel[id]) { ui.sel[id] = false; }
+        else {
+          if (sel.length >= 4) { toast('최대 4곳까지 비교할 수 있어요.', 'warn'); return; }
+          ui.sel[id] = true;
+        }
+        renderFavs();
+        return;
+      }
+      selectCity(id);
+    });
+
+    $('#compareBtn').addEventListener('click', function () {
+      ui.compare = !ui.compare;
+      this.classList.toggle('on', ui.compare);
+      this.setAttribute('aria-pressed', ui.compare ? 'true' : 'false');
+      this.querySelector('span').textContent = ui.compare ? '비교 끝내기' : '나란히 비교';
+      if (!ui.compare) { ui.sel = {}; }
+      else {
+        ui.sel = {};
+        var ids = S.cities.slice(0, 2).map(function (c) { return c.id; });
+        ids.forEach(function (id) { ui.sel[id] = true; });
+        toast('비교할 도시를 눌러 2~4곳을 골라 주세요.', 'ok');
+      }
+      renderFavs();
+      if (ui.compare) {
+        var w = $('#compareWrap');
+        if (w && !w.hidden) w.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+
+    $('#searchInput').addEventListener('input', function () {
+      var q = this.value.trim();
+      if (searchTimer) clearTimeout(searchTimer);
+      if (!q) { renderResults([], ''); return; }
+      searchTimer = setTimeout(function () { doSearch(q); }, 260);
+    });
+    $('#searchInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var list = searchResults;
+        if (list && list.length) { addCity(list[0]); }
+        else doSearch(this.value.trim());
+      }
+      if (e.key === 'Escape') closeSheets();
+    });
+
+    $('#resList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-res]');
+      if (!b) return;
+      var idx = Number(b.getAttribute('data-res'));
+      var r = searchResults[idx];
+      if (r) addCity(r);
+    });
+    $('#recentList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-recent]');
+      if (!b) return;
+      var r = S.recent[Number(b.getAttribute('data-recent'))];
+      if (r) addCity(r);
+    });
+    $('#quickCities').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-quick]');
+      if (!b) return;
+      var name = b.getAttribute('data-quick');
+      var hit = localSearch(name)[0];
+      if (hit) addCity(hit);
+    });
+
+    $$('[data-sheet-close]').forEach(function (b) {
+      b.addEventListener('click', closeSheets);
+    });
+    $$('.sheet').forEach(function (s) {
+      s.addEventListener('click', function (e) {
+        if (e.target === s) closeSheets();
+      });
+    });
+    doc.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeSheets();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openSearch();
+      }
+    });
+
+    doc.addEventListener('lemon:theme', function () {
+      if (current) { renderDaily(); renderLife(); drawHourly(); }
+    });
+
+    var rt = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(drawHourly, 140);
+    });
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(function () {
+        clearTimeout(rt);
+        rt = setTimeout(drawHourly, 160);
+      });
+      var w = $('#chartWrap');
+      if (w) ro.observe(w);
+    }
+
+    /* 탭 복귀 시 자동 갱신 */
+    doc.addEventListener('visibilitychange', function () {
+      if (doc.visibilityState === 'visible' && current && (Date.now() - (current.at || 0)) > 10 * 60 * 1000) {
+        load(true);
+      }
+    });
+  }
+
+  /* =========================================================
+     20. 시작
+     ========================================================= */
+  function start() {
+    loadState();
+    loadCache();
+    if (!S.cities.length) S.cities = [defaultCity()];
+    if (!S.currentId || !S.cities.some(function (c) { return c.id === S.currentId; })) S.currentId = S.cities[0].id;
+    $('#unitBtn').textContent = S.unit === 'c' ? '°C' : '°F';
+    saveState();
+    renderChips();
+    renderQuick();
+    renderRecent();
+    bind();
+
+    /* 저장된 캐시로 먼저 그려 즉시 보여 주고, 이어서 새로 받는다 */
+    var city = currentCity();
+    var rec = memCache[city.id];
+    if (rec && rec.fc) {
+      current = { city: city, fc: rec.fc, aq: rec.aq, cached: true, at: rec.at };
+      chartData = buildHourly(current.fc);
+      renderHero();
+      renderAq();
+      drawHourly();
+      renderDaily();
+      renderLife();
+      renderFavs();
+    }
+    load(false);
+
+    /* 다른 도시 카드의 온도를 채워 두면 칩과 즐겨찾기가 더 유용하다 */
+    S.cities.forEach(function (c) {
+      if (c.id === city.id || memCache[c.id]) return;
+      fetchCity(c, false).then(function (res) {
+        memCache[c.id] = res.data;
+        renderChips();
+        renderFavs();
+      }, function () { });
+    });
+  }
+
+  if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start);
+  else start();
+
+  if (location.search.indexOf('debug') > -1) {
+    window.__wx = { state: S, cache: function () { return memCache; }, current: function () { return current; }, load: load, fetchCity: fetchCity };
+  }
+})();
+</script>
+</body>
+</html>
