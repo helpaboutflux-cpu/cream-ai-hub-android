@@ -779,7 +779,7 @@ table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; backgr
     </div>
   </div>
   <p class="foot-note">
-    기상·대기질 데이터 Open-Meteo (CC BY 4.0) · 도시 검색 Open-Meteo Geocoding · 위치 변환 BigDataCloud.
+    기상·대기질 데이터 Open-Meteo (CC BY 4.0) · Open-Meteo 응답이 없을 때는 MET Norway 예보로 이어서 보여 줍니다. 도시 검색 Open-Meteo Geocoding · 위치 변환 BigDataCloud.
     즐겨찾는 도시와 단위 설정은 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
   </p>
 </footer>
@@ -1317,23 +1317,280 @@ table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; backgr
     return API_AQ + '?latitude=' + c.lat.toFixed(4) + '&longitude=' + c.lon.toFixed(4) + '&' + AQ_PARAMS;
   }
 
+  /* =========================================================
+     7-b. 2차 소스 (MET Norway) — Open-Meteo 가 응답하지 않을 때
+     ========================================================= */
+  var API_MET = 'https://api.met.no/weatherapi/locationforecast/2.0/compact';
+
+  function tzOffsetMin(date, tz) {
+    try {
+      var dtf = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+      var p = {};
+      dtf.formatToParts(date).forEach(function (x) { p[x.type] = x.value; });
+      var hh = p.hour === '24' ? '00' : p.hour;
+      var asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +hh, +p.minute, +p.second);
+      return Math.round((asUTC - date.getTime()) / 60000);
+    } catch (e) { return null; }
+  }
+  function cityOffset(c) {
+    var tz = c.tz;
+    if (!tz && (/대한민국|South Korea|Korea/i.test(c.country || '') || (c.lat > 33 && c.lat < 39 && c.lon > 124 && c.lon < 132))) tz = 'Asia/Seoul';
+    if (tz) {
+      var o = tzOffsetMin(new Date(), tz);
+      if (o !== null) return o;
+    }
+    return Math.round(c.lon / 15 * 60);
+  }
+  function shiftParts(ms, offMin) {
+    var d = new Date(ms + offMin * 60000);
+    return {
+      y: d.getUTCFullYear(), mo: d.getUTCMonth() + 1, d: d.getUTCDate(),
+      h: d.getUTCHours(), mi: d.getUTCMinutes(),
+      date: d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()),
+      hm: pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()),
+      iso: d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) + 'T' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes())
+    };
+  }
+  function doy(y, m, d) {
+    var start = Date.UTC(y, 0, 0), cur = Date.UTC(y, m - 1, d);
+    return Math.round((cur - start) / 86400000);
+  }
+  /* NOAA 태양 위치 근사 → {rise, set} (현지 분 단위) */
+  function sunTimes(c, dateKey) {
+    var p = String(dateKey).split('-');
+    var y = +p[0], mo = +p[1], dd = +p[2];
+    var rad = Math.PI / 180;
+    var N = doy(y, mo, dd);
+    var lngHour = c.lon / 15;
+    var off = cityOffset(c);
+    function calc(isRise) {
+      var t = N + ((isRise ? 6 : 18) - lngHour) / 24;
+      var M = (0.9856 * t) - 3.289;
+      var L = M + (1.916 * Math.sin(M * rad)) + (0.020 * Math.sin(2 * M * rad)) + 282.634;
+      L = (L + 360) % 360;
+      var RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+      RA = (RA + 360) % 360;
+      var Lq = Math.floor(L / 90) * 90, RAq = Math.floor(RA / 90) * 90;
+      RA = (RA + (Lq - RAq)) / 15;
+      var sinDec = 0.39782 * Math.sin(L * rad);
+      var cosDec = Math.cos(Math.asin(sinDec));
+      var cosH = (Math.cos(90.833 * rad) - (sinDec * Math.sin(c.lat * rad))) / (cosDec * Math.cos(c.lat * rad));
+      if (cosH > 1 || cosH < -1) return null;
+      var H = isRise ? (360 - Math.acos(cosH) / rad) : (Math.acos(cosH) / rad);
+      H = H / 15;
+      var T = H + RA - (0.06571 * t) - 6.622;
+      var UT = (T - lngHour + 48) % 24;
+      return UT * 60 + off;
+    }
+    var rise = calc(true), set = calc(false);
+    function fmt(min) {
+      if (min === null) return null;
+      var total = Math.round(min);
+      total = ((total % 1440) + 1440) % 1440;
+      return dateKey + 'T' + pad2(Math.floor(total / 60)) + ':' + pad2(total % 60);
+    }
+    return { rise: fmt(rise), set: fmt(set) };
+  }
+  function codeFromSymbol(sym) {
+    var s = String(sym || '').replace(/_(day|night|polartwilight)$/, '');
+    if (s === 'clearsky') return 0;
+    if (s === 'fair') return 1;
+    if (s === 'partlycloudy') return 2;
+    if (s === 'cloudy') return 3;
+    if (s === 'fog') return 45;
+    if (s.indexOf('thunder') > -1) return 95;
+    if (s.indexOf('heavyrain') > -1) return 65;
+    if (s.indexOf('sleet') > -1) return 66;
+    if (s.indexOf('snow') > -1) return 71;
+    if (s.indexOf('drizzle') > -1) return 51;
+    if (s.indexOf('rain') > -1) return 61;
+    return 3;
+  }
+  function popFromSymbol(sym) {
+    var s = String(sym || '').replace(/_(day|night|polartwilight)$/, '');
+    if (s.indexOf('heavyrain') > -1) return 88;
+    if (s === 'rain') return 80;
+    if (s.indexOf('rainshowers') > -1) return 66;
+    if (s.indexOf('lightrain') > -1) return 52;
+    if (s.indexOf('drizzle') > -1) return 46;
+    if (s.indexOf('sleet') > -1 || s.indexOf('snow') > -1) return 58;
+    if (s.indexOf('thunder') > -1) return 72;
+    if (s === 'cloudy') return 22;
+    if (s === 'partlycloudy') return 12;
+    if (s === 'fair') return 6;
+    return 3;
+  }
+  function feelsLike(t, rh, windMs) {
+    if (t === null) return null;
+    if (t >= 27 && rh !== null) {
+      var T = t * 9 / 5 + 32;
+      var hi = -42.379 + 2.04901523 * T + 10.14333127 * rh - 0.22475541 * T * rh
+        - 0.00683783 * T * T - 0.05481717 * rh * rh + 0.00122874 * T * T * rh
+        + 0.00085282 * T * rh * rh - 0.00000199 * T * T * rh * rh;
+      return Math.round(((hi - 32) * 5 / 9) * 10) / 10;
+    }
+    if (t <= 10 && windMs !== null) {
+      var v = Math.pow(windMs * 3.6, 0.16);
+      return Math.round((13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v) * 10) / 10;
+    }
+    return t;
+  }
+
+  function metToModel(raw, c) {
+    var ts = (raw && raw.properties && raw.properties.timeseries) || [];
+    if (!ts.length) throw new Error('met-empty');
+    var off = cityOffset(c);
+    var nowMs = Date.now();
+    var entries = ts.map(function (e) {
+      var ms = Date.parse(e.time);
+      var inst = (e.data && e.data.instant && e.data.instant.details) || {};
+      var n1 = (e.data && e.data.next_1_hours) || null;
+      var n6 = (e.data && e.data.next_6_hours) || null;
+      var sym = (n1 && n1.summary && n1.summary.symbol_code) || (n6 && n6.summary && n6.summary.symbol_code) || '';
+      var amt = (n1 && n1.details && num(n1.details.precipitation_amount)) || 0;
+      return {
+        ms: ms, sym: sym, amt: amt,
+        t: num(inst.air_temperature), rh: num(inst.relative_humidity),
+        wind: num(inst.wind_speed), dir: num(inst.wind_from_direction),
+        cloud: num(inst.cloud_area_fraction), pres: num(inst.air_pressure_at_sea_level)
+      };
+    }).filter(function (e) { return isFinite(e.ms); });
+    if (!entries.length) throw new Error('met-empty');
+
+    /* 현재 */
+    var curE = entries[0];
+    for (var i = 0; i < entries.length; i++) { if (entries[i].ms <= nowMs) curE = entries[i]; else break; }
+    var curLocal = shiftParts(curE.ms, off);
+    var riseSetToday = sunTimes(c, curLocal.date);
+    var nowMin = curLocal.h * 60 + curLocal.mi;
+    var riseMin = riseSetToday.rise ? (+riseSetToday.rise.slice(11, 13) * 60 + +riseSetToday.rise.slice(14, 16)) : 390;
+    var setMin = riseSetToday.set ? (+riseSetToday.set.slice(11, 13) * 60 + +riseSetToday.set.slice(14, 16)) : 1140;
+    var isDay = (nowMin >= riseMin && nowMin <= setMin) ? 1 : 0;
+    var curWindKmh = curE.wind === null ? null : Math.round(curE.wind * 3.6 * 10) / 10;
+
+    /* 시간별: 지금부터 24칸 */
+    var startIdx = 0;
+    for (var k = 0; k < entries.length; k++) { if (entries[k].ms >= nowMs - 1800000) { startIdx = k; break; } }
+    var hourly = { time: [], temperature_2m: [], precipitation_probability: [], weather_code: [], wind_speed_10m: [], apparent_temperature: [] };
+    var hourlyEntries = entries.slice(startIdx, startIdx + 25);
+    for (var m = 0; m < hourlyEntries.length; m++) {
+      var e = hourlyEntries[m];
+      var lp = shiftParts(e.ms, off);
+      var wkmh = e.wind === null ? null : Math.round(e.wind * 3.6 * 10) / 10;
+      hourly.time.push(lp.iso);
+      hourly.temperature_2m.push(e.t === null ? null : Math.round(e.t * 10) / 10);
+      hourly.precipitation_probability.push(popFromSymbol(e.sym));
+      hourly.weather_code.push(codeFromSymbol(e.sym));
+      hourly.wind_speed_10m.push(wkmh);
+      hourly.apparent_temperature.push(feelsLike(e.t, e.rh, e.wind));
+    }
+
+    /* 일별: 현지 날짜로 묶기 */
+    var days = {};
+    entries.forEach(function (e) {
+      var lp = shiftParts(e.ms, off);
+      var key = lp.date;
+      if (!days[key]) days[key] = { min: null, max: null, pop: 0, amt: 0, syms: [], wind: null, code: 3 };
+      var g = days[key];
+      if (e.t !== null) {
+        g.min = g.min === null ? e.t : Math.min(g.min, e.t);
+        g.max = g.max === null ? e.t : Math.max(g.max, e.t);
+      }
+      g.pop = Math.max(g.pop, popFromSymbol(e.sym));
+      g.amt += e.amt || 0;
+      if (e.wind !== null) g.wind = g.wind === null ? e.wind : Math.max(g.wind, e.wind);
+      var lh = lp.h;
+      if (e.sym && lh >= 10 && lh <= 15) g.syms.push(e.sym);
+    });
+    var keys = Object.keys(days).sort();
+    if (!keys.length) throw new Error('met-days');
+    var daily = {
+      time: [], weather_code: [], temperature_2m_max: [], temperature_2m_min: [],
+      apparent_temperature_max: [], apparent_temperature_min: [],
+      sunrise: [], sunset: [], daylight_duration: [], uv_index_max: [],
+      precipitation_sum: [], precipitation_probability_max: [],
+      wind_speed_10m_max: [], wind_direction_10m_dominant: []
+    };
+    var todayKey = shiftParts(nowMs, off).date;
+    if (keys.indexOf(todayKey) < 0) keys.unshift(todayKey);
+    keys.slice(0, 9).forEach(function (key) {
+      var g = days[key] || { min: null, max: null, pop: 0, amt: 0, syms: [], wind: null };
+      var st = sunTimes(c, key);
+      var code = g.syms.length ? codeFromSymbol(g.syms[Math.floor(g.syms.length / 2)]) : (g.min !== null ? 3 : 3);
+      daily.time.push(key);
+      daily.weather_code.push(code);
+      daily.temperature_2m_max.push(g.max === null ? null : Math.round(g.max * 10) / 10);
+      daily.temperature_2m_min.push(g.min === null ? null : Math.round(g.min * 10) / 10);
+      daily.apparent_temperature_max.push(g.max === null ? null : Math.round(g.max * 10) / 10);
+      daily.apparent_temperature_min.push(g.min === null ? null : Math.round(g.min * 10) / 10);
+      daily.sunrise.push(st.rise);
+      daily.sunset.push(st.set);
+      daily.daylight_duration.push(st.rise && st.set
+        ? (timeMin(st.set) - timeMin(st.rise)) * 60 : null);
+      daily.uv_index_max.push(null);
+      daily.precipitation_sum.push(Math.round(g.amt * 10) / 10);
+      daily.precipitation_probability_max.push(g.pop || 0);
+      daily.wind_speed_10m_max.push(g.wind === null ? null : Math.round(g.wind * 3.6 * 10) / 10);
+      daily.wind_direction_10m_dominant.push(null);
+    });
+
+    return {
+      latitude: c.lat, longitude: c.lon, timezone: c.tz || '', source: 'MET Norway',
+      current: {
+        time: curLocal.iso,
+        temperature_2m: curE.t === null ? null : Math.round(curE.t * 10) / 10,
+        apparent_temperature: feelsLike(curE.t, curE.rh, curE.wind),
+        relative_humidity_2m: curE.rh === null ? null : Math.round(curE.rh),
+        precipitation: curE.amt || 0,
+        rain: curE.amt || 0,
+        snowfall: 0,
+        weather_code: codeFromSymbol(curE.sym),
+        cloud_cover: curE.cloud === null ? null : Math.round(curE.cloud),
+        pressure_msl: curE.pres,
+        wind_speed_10m: curWindKmh,
+        wind_direction_10m: curE.dir === null ? null : Math.round(curE.dir),
+        wind_gusts_10m: curWindKmh === null ? null : Math.round(curWindKmh * 1.4 * 10) / 10,
+        is_day: isDay
+      },
+      hourly: hourly,
+      daily: daily
+    };
+  }
+
+  function metUrl(c) {
+    return API_MET + '?lat=' + c.lat.toFixed(4) + '&lon=' + c.lon.toFixed(4);
+  }
+
   function fetchCity(c, force) {
     var key = c.id;
     if (!force && memCache[key] && (Date.now() - memCache[key].at) < 6 * 60 * 1000) {
       return Promise.resolve({ data: memCache[key], cached: true });
     }
-    return fetchJson(fcUrl(c), 12000).then(function (fc) {
-      return fetchJson(aqUrl(c), 10000).then(function (aq) {
-        return { fc: fc, aq: aq };
-      }, function () { return { fc: fc, aq: null }; });
-    }).then(function (res) {
-      var rec = { fc: res.fc, aq: res.aq, at: Date.now() };
+    return fetchForecast(c).then(function (pack) {
+      var rec = { fc: pack.fc, aq: pack.aq, at: Date.now(), src: pack.src };
       memCache[key] = rec;
       saveCache();
-      return { data: rec, cached: false };
+      return { data: rec, cached: false, src: pack.src };
     }, function (err) {
       if (memCache[key]) return { data: memCache[key], cached: true, error: err };
       return Promise.reject(err);
+    });
+  }
+
+  function fetchForecast(c) {
+    return fetchJson(fcUrl(c), 12000).then(function (fc) {
+      return fetchJson(aqUrl(c), 10000).then(function (aq) { return aq; }, function () { return null; })
+        .then(function (aq) { return { fc: fc, aq: aq, src: 'open-meteo' }; });
+    }, function (err1) {
+      /* Open-Meteo 가 응답하지 않으면 MET Norway 로 이어서 받는다 */
+      return fetchJson(metUrl(c), 14000).then(function (raw) {
+        var fc = metToModel(raw, c);
+        return fetchJson(aqUrl(c), 9000).then(function (aq) { return aq; }, function () { return null; })
+          .then(function (aq) { return { fc: fc, aq: aq, src: 'met.no', first: err1 }; });
+      });
     });
   }
 
@@ -1347,7 +1604,7 @@ table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; backgr
       var hit = c[0].indexOf(s) === 0 || c[0].indexOf(s) > -1 || c[1].indexOf(s) > -1;
       if (hit) out.push({
         name: c[0], region: c[1], country: '대한민국',
-        lat: c[2], lon: c[3], score: c[0] === s ? 0 : (c[0].indexOf(s) === 0 ? 1 : 2)
+        lat: c[2], lon: c[3], tz: 'Asia/Seoul', score: c[0] === s ? 0 : (c[0].indexOf(s) === 0 ? 1 : 2)
       });
     });
     out.sort(function (a, b) { return a.score - b.score; });
@@ -1635,7 +1892,8 @@ table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; backgr
     $('#hWind').textContent = fmtWind(cur.wind_speed_10m);
     $('#hCloud').textContent = num(cur.cloud_cover) !== null ? cur.cloud_cover + '%' : '--';
     $('#heroUpdated').textContent = (current.cached ? '저장된 자료 · ' : '') + stamp(new Date(current.at || Date.now())) +
-      (cur.time ? ' · ' + hhmm(cur.time) + ' 기준' : '');
+      (cur.time ? ' · ' + hhmm(cur.time) + ' 기준' : '') +
+      (current.src === 'met.no' ? ' · MET Norway' : '');
     renderNote(fc, info);
 
     var isFav = S.cities.some(function (x) { return x.id === c.id; });
@@ -2284,7 +2542,7 @@ table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; backgr
     fetchCity(city, !useCache).then(function (res) {
       if (token !== loadToken) return;
       ui.busy = false;
-      current = { city: city, fc: res.data.fc, aq: res.data.aq, cached: res.cached, at: res.data.at, error: res.error };
+      current = { city: city, fc: res.data.fc, aq: res.data.aq, cached: res.cached, at: res.data.at, error: res.error, src: res.data.src || (res.data.fc && res.data.fc.source === 'MET Norway' ? 'met.no' : 'open-meteo') };
       chartData = buildHourly(current.fc);
       renderHero();
       renderAq();
@@ -2674,7 +2932,7 @@ table.cmp tbody th{font-weight:700; color:var(--ink-3); font-size:11.5px; backgr
     var city = currentCity();
     var rec = memCache[city.id];
     if (rec && rec.fc) {
-      current = { city: city, fc: rec.fc, aq: rec.aq, cached: true, at: rec.at };
+      current = { city: city, fc: rec.fc, aq: rec.aq, cached: true, at: rec.at, src: rec.src };
       chartData = buildHourly(current.fc);
       renderHero();
       renderAq();
