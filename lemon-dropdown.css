@@ -1,0 +1,444 @@
+/* ============================================================
+   Lemon soft · 자체 구현 커스텀 드롭다운  (lemon-dropdown.css)
+   <select> 를 대체하는 팝오버 / 바텀시트 선택 UI.
+   모든 클래스는 .ldd- 접두사로만 격리되어 페이지 스타일과
+   서로 영향을 주지 않는다. (lemon-dropdown.js 가 함께 사용)
+   ============================================================ */
+
+/* ---------- 원본 select 를 담는 자리 ----------
+   display:contents — 감싸는 상자가 레이아웃에 끼어들지 않아
+   flex·grid 안에서도 원래 select 가 있던 자리에 그대로 놓인다. */
+.ldd-field { display: contents; }
+
+/* ---------- 원본 <select> 숨김 ----------
+   값·이벤트·폼 전송은 DOM 그대로 살리고 화면에서만 1px 로 접는다.
+   인라인 style 은 절대 건드리지 않는다(페이지가 준 width·height·padding 을
+   트리거로 옮겨 그려야 하므로). width/height/opacity 만 덮어쓰고
+   border·padding·min-height 같은 시각 속성은 페이지 값을 그대로 둬서
+   자바스크립트가 읽어 트리거에 복사할 수 있게 한다. */
+.ldd-src {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  z-index: -1 !important;
+}
+
+/* ---------- 트리거(원래 select 자리) ----------
+   :where() = 특이도 0 → 페이지 클래스/인라인 스타일이 언제나 이긴다.
+   (페이지마다 다른 .sel · .lemon-select · Tailwind 유틸을 그대로 살린다) */
+:where(.ldd-trigger) {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  letter-spacing: inherit;
+  line-height: normal;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+.ldd-trigger {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+.ldd-trigger.is-dis,
+.ldd-trigger:disabled { cursor: not-allowed; opacity: .55; }
+.ldd-trigger:focus { outline: none; }
+.ldd-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand, #7c3aed) 42%, transparent);
+}
+
+/* 값 텍스트 */
+.ldd-trigger .ldd-val {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: var(--ldd-vp, 0px);
+}
+.ldd-trigger .ldd-txt { display: inline; }
+.ldd-trigger.is-placeholder .ldd-txt { opacity: .55; }
+
+/* 화살표 */
+.ldd-trigger .ldd-caret {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  pointer-events: none;
+  opacity: .5;
+  transition: transform .2s cubic-bezier(.22, 1, .36, 1), opacity .16s ease;
+}
+.ldd-trigger .ldd-caret svg { display: block; width: 100%; height: 100%; }
+.ldd-trigger[aria-expanded="true"] .ldd-caret { transform: rotate(180deg); opacity: .85; }
+.ldd-trigger:hover .ldd-caret { opacity: .75; }
+
+/* ============================================================
+   오버레이
+   ============================================================ */
+.ldd-root {
+  --ldd-panel: #ffffff;
+  --ldd-fg: #18181b;
+  --ldd-muted: #71717a;
+  --ldd-line: rgba(9, 9, 11, .09);
+  --ldd-line-2: rgba(9, 9, 11, .14);
+  --ldd-surf: #f4f4f5;
+  --ldd-surf-2: #ececef;
+  --ldd-brand: #7c3aed;
+  --ldd-shadow: 0 24px 60px -20px rgba(9, 9, 11, .34), 0 8px 22px -12px rgba(9, 9, 11, .26), 0 0 0 1px rgba(9, 9, 11, .05);
+  --ldd-r: 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 2147482960;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard",
+    "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans KR", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ldd-fg);
+}
+
+.ldd-root[data-theme="dark"] {
+  --ldd-panel: #15151a;
+  --ldd-fg: #f2f2f5;
+  --ldd-muted: #9a9aa4;
+  --ldd-line: rgba(255, 255, 255, .09);
+  --ldd-line-2: rgba(255, 255, 255, .16);
+  --ldd-surf: #1e1e24;
+  --ldd-surf-2: #26262e;
+  --ldd-shadow: 0 28px 64px -18px rgba(0, 0, 0, .78), 0 10px 26px -14px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .06);
+}
+
+.ldd-root *, .ldd-root *::before, .ldd-root *::after { box-sizing: border-box; }
+.ldd-root button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ldd-root svg { display: block; }
+
+/* 스크림 — 팝오버 모드에서는 투명, 바텀시트에서는 흐려짐 */
+.ldd-scrim {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  opacity: 1;
+}
+.ldd-root[data-mode="sheet"] .ldd-scrim {
+  background: rgba(9, 9, 11, .38);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity .22s ease;
+}
+.ldd-root[data-mode="sheet"].ldd-on .ldd-scrim { opacity: 1; }
+
+/* ---------- 패널 ---------- */
+.ldd-panel {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: calc(100vh - 20px);
+  border-radius: var(--ldd-r);
+  background: var(--ldd-panel);
+  color: var(--ldd-fg);
+  box-shadow: var(--ldd-shadow);
+  border: 1px solid var(--ldd-line);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px) scale(.98);
+  transform-origin: var(--ldd-origin, 50% 0%);
+  transition: opacity .16s ease, transform .2s cubic-bezier(.22, 1.1, .36, 1);
+  will-change: transform, opacity;
+  overscroll-behavior: contain;
+}
+.ldd-root.ldd-on .ldd-panel { opacity: 1; transform: none; }
+.ldd-root[data-place="above"] .ldd-panel { transform: translateY(4px) scale(.98); }
+.ldd-root[data-place="center"] .ldd-panel { transform: scale(.97); }
+
+/* 바텀시트 */
+.ldd-root[data-mode="sheet"] .ldd-panel {
+  left: 0 !important;
+  right: 0;
+  top: auto !important;
+  bottom: 0;
+  width: auto !important;
+  max-width: 560px;
+  margin: 0 auto;
+  max-height: 82vh;
+  border-radius: 22px 22px 0 0;
+  border-bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transform: translateY(16px);
+  transform-origin: 50% 100%;
+}
+.ldd-root[data-mode="sheet"].ldd-on .ldd-panel { transform: none; }
+
+/* 그랩 핸들 (시트에서만) */
+.ldd-grab { display: none; }
+.ldd-root[data-mode="sheet"] .ldd-grab {
+  display: block;
+  width: 38px;
+  height: 4px;
+  flex: none;
+  margin: 8px auto 0;
+  border-radius: 999px;
+  background: var(--ldd-line-2);
+}
+
+/* ---------- 헤더 ---------- */
+.ldd-head { display: none; }
+.ldd-root[data-mode="sheet"] .ldd-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 12px 14px 8px;
+}
+.ldd-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: var(--ldd-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldd-x {
+  display: none;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ldd-muted);
+  transition: background-color .14s ease, color .14s ease;
+}
+.ldd-root[data-mode="sheet"] .ldd-x { display: inline-flex; }
+.ldd-x svg { width: 14px; height: 14px; }
+.ldd-x:hover { background: var(--ldd-surf); color: var(--ldd-fg); }
+
+/* ---------- 검색 ---------- */
+.ldd-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  margin: 8px 10px 4px;
+  padding: 0 9px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--ldd-surf);
+  border: 1px solid transparent;
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+.ldd-root[data-mode="sheet"] .ldd-search { margin: 4px 14px 6px; height: 38px; }
+.ldd-search[hidden] { display: none; }
+.ldd-search:focus-within {
+  border-color: color-mix(in srgb, var(--ldd-brand) 46%, transparent);
+  background: var(--ldd-panel);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ldd-brand) 12%, transparent);
+}
+.ldd-search-i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ldd-muted);
+}
+.ldd-search-i svg { width: 100%; height: 100%; }
+.ldd-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ldd-fg);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 0;
+}
+.ldd-search-input::placeholder { color: var(--ldd-muted); font-weight: 500; }
+.ldd-clear {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ldd-muted);
+}
+.ldd-clear svg { width: 11px; height: 11px; }
+.ldd-clear:hover { background: var(--ldd-surf-2); color: var(--ldd-fg); }
+.ldd-clear[hidden] { display: none; }
+
+/* ---------- 목록 ---------- */
+.ldd-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ldd-line-2) transparent;
+  outline: none;
+}
+.ldd-root[data-mode="sheet"] .ldd-list { padding: 4px 10px 10px; }
+.ldd-list::-webkit-scrollbar { width: 9px; }
+.ldd-list::-webkit-scrollbar-track { background: transparent; }
+.ldd-list::-webkit-scrollbar-thumb {
+  background: var(--ldd-line-2);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.ldd-group {
+  padding: 9px 9px 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ldd-muted);
+}
+
+.ldd-opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  text-align: left;
+  color: var(--ldd-fg);
+  transition: background-color .12s ease, color .12s ease;
+}
+.ldd-root[data-mode="sheet"] .ldd-opt { min-height: 42px; padding: 10px 11px; border-radius: 11px; }
+.ldd-opt.is-active { background: var(--ldd-surf); }
+.ldd-opt.is-sel { background: color-mix(in srgb, var(--ldd-brand) 11%, transparent); }
+.ldd-opt.is-sel.is-active { background: color-mix(in srgb, var(--ldd-brand) 17%, transparent); }
+.ldd-opt.is-empty .ldd-lab { color: var(--ldd-muted); }
+.ldd-opt.is-dis { opacity: .42; cursor: not-allowed; }
+
+.ldd-lab {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldd-root[data-mode="sheet"] .ldd-lab { font-size: 13.5px; }
+.ldd-opt.is-sel .ldd-lab { font-weight: 800; }
+
+.ldd-ico { flex: none; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.ldd-ico svg { width: 100%; height: 100%; }
+.ldd-ico-t { font-size: 13px; line-height: 1; }
+
+.ldd-mark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ldd-brand);
+  opacity: 0;
+  transform: scale(.7);
+  transition: opacity .14s ease, transform .16s cubic-bezier(.22, 1.3, .36, 1);
+}
+.ldd-mark svg { width: 100%; height: 100%; }
+.ldd-opt.is-sel .ldd-mark { opacity: 1; transform: none; }
+
+.ldd-empty {
+  display: none;
+  padding: 22px 12px 26px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ldd-muted);
+}
+
+/* ---------- 시트 하단 ---------- */
+.ldd-foot { display: none; }
+.ldd-root[data-mode="sheet"] .ldd-foot {
+  display: flex;
+  gap: 8px;
+  flex: none;
+  padding: 8px 14px 14px;
+  border-top: 1px solid var(--ldd-line);
+}
+.ldd-btn {
+  flex: 1;
+  height: 42px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  transition: background-color .14s ease, transform .12s ease;
+}
+.ldd-btn:active { transform: scale(.985); }
+.ldd-btn-ghost { background: var(--ldd-surf); color: var(--ldd-fg); }
+.ldd-btn-ghost:hover { background: var(--ldd-surf-2); }
+
+/* ---------- 모션 모드 ---------- */
+.ldd-root[data-anim="off"] .ldd-panel,
+.ldd-root[data-anim="off"] .ldd-scrim,
+.ldd-root[data-anim="off"] .ldd-mark,
+.ldd-root[data-anim="off"] .ldd-caret {
+  transition: none !important;
+}
+.ldd-root[data-anim="off"] .ldd-panel { transform: none !important; }
+
+.ldd-root[data-anim="reduced"] .ldd-panel {
+  transform: none;
+  transition: opacity .12s ease;
+}
+.ldd-root[data-anim="reduced"][data-mode="sheet"] .ldd-panel { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ldd-panel, .ldd-scrim, .ldd-mark, .ldd-trigger .ldd-caret { transition: none !important; }
+  .ldd-root .ldd-panel { transform: none !important; }
+}
+
+/* 터치 기기에서 호버 잔상 방지 */
+@media (hover: none) {
+  .ldd-opt.is-active { background: transparent; }
+  .ldd-opt.is-sel, .ldd-opt.is-sel.is-active {
+    background: color-mix(in srgb, var(--ldd-brand) 13%, transparent);
+  }
+}
+
+/* 인쇄에서는 숨김 */
+@media print {
+  .ldd-root { display: none !important; }
+}

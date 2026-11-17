@@ -73,5 +73,46 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchPicker);
   else watchPicker();
 
+  /* ---- 커스텀 드랍다운 연결 ----
+     <select> 가 있는 페이지에서만 lemon-dropdown.js/.css 를
+     불러와 브라우저 기본 드랍다운 대신 자체 선택 UI 를 쓴다. */
+  function loadDropdown() {
+    if (window.__lddLoad) return;
+    window.__lddLoad = 1;
+    var base = pickerBase();
+    try {
+      if (!document.querySelector('link[href$="lemon-dropdown.css"]')) {
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = base + 'lemon-dropdown.css';
+        document.head.appendChild(l);
+      }
+      if (!window.LemonDropdown) {
+        var s = document.createElement('script');
+        s.src = base + 'lemon-dropdown.js';
+        s.async = true;
+        document.head.appendChild(s);
+      }
+    } catch (e) { }
+  }
+  function watchDropdown() {
+    if (window.LemonDropdown) { window.LemonDropdown.enhanceAll(document); return; }
+    if (document.querySelector('select')) { loadDropdown(); return; }
+    if (!window.MutationObserver || !document.body) return;
+    var timer = 0;
+    var mo = new MutationObserver(function () {
+      if (timer) return;
+      timer = setTimeout(function () {
+        timer = 0;
+        if (!document.querySelector('select')) return;
+        mo.disconnect();
+        loadDropdown();
+      }, 250);
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchDropdown);
+  else watchDropdown();
+
   window.LemonAnim = { mode: read, setMode: setMode };
 })();

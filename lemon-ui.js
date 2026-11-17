@@ -950,6 +950,50 @@
     mo.observe(doc.body, { childList: true, subtree: true });
   }
 
+  /* ---------------- custom dropdown (select) ----------------
+     모든 Soft Hub 서비스의 <select> 는 브라우저 기본 드롭다운 대신
+     자체 구현 선택 UI(lemon-dropdown.js / .css)를 쓴다.
+     필요한 페이지에서만 지연 로드하고, 나중에 동적으로 생기는
+     select(모달 재렌더링 등)도 런타임이 스스로 감지한다. */
+  function dropdownBase() {
+    return pickerBase();
+  }
+  function loadDropdown() {
+    if (window.__lddLoad) return;
+    window.__lddLoad = 1;
+    var base = dropdownBase();
+    try {
+      if (!doc.querySelector('link[href$="lemon-dropdown.css"]')) {
+        var l = doc.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = base + 'lemon-dropdown.css';
+        (doc.head || root).appendChild(l);
+      }
+      if (!window.LemonDropdown) {
+        var s = doc.createElement('script');
+        s.src = base + 'lemon-dropdown.js';
+        s.async = true;
+        (doc.head || root).appendChild(s);
+      }
+    } catch (e) { }
+  }
+  function watchDropdown() {
+    if (window.LemonDropdown) { window.LemonDropdown.enhanceAll(doc); return; }
+    if (doc.querySelector('select')) { loadDropdown(); return; }
+    if (!window.MutationObserver || !doc.body) return;
+    var timer = 0;
+    var mo = new MutationObserver(function () {
+      if (timer) return;
+      timer = setTimeout(function () {
+        timer = 0;
+        if (!doc.querySelector('select')) return;
+        mo.disconnect();
+        loadDropdown();
+      }, 250);
+    });
+    mo.observe(doc.body, { childList: true, subtree: true });
+  }
+
   /* ---------------- boot ---------------- */
   /* IndexedDB 복원은 페이지가 그려지기 전에 시작해 둔다. sessionStorage 미러는 먼저 동기적으로 읽는다. */
   sessSeed();
@@ -963,6 +1007,7 @@
     bindRanges();
     reveal();
     watchPicker();
+    watchDropdown();
   });
 
   window.Lemon = {
@@ -1002,6 +1047,10 @@
     upgradeColorPickers: function (scope) {
       loadPicker();
       if (window.LemonColorPicker) window.LemonColorPicker.enhanceAll(scope || doc);
+    },
+    upgradeDropdowns: function (scope) {
+      loadDropdown();
+      if (window.LemonDropdown) window.LemonDropdown.enhanceAll(scope || doc);
     }
   };
 
