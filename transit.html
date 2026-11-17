@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Lemon Transit — 수도권 지하철 노선도 · 최단시간·최소환승 경로</title>
-<meta name="description" content="수도권 22개 노선과 300여 개 역을 담은 인터랙티브 지하철 노선도. 출발역과 도착역을 고르면 최단 시간 경로와 최소 환승 경로를 나란히 계산해 소요시간·정거장 수·환승 횟수·예상 요금까지 보여 줍니다.">
+<meta name="description" content="수도권 19개 노선과 564개 역을 담은 인터랙티브 지하철 노선도. 출발역과 도착역을 고르면 최단 시간 경로와 최소 환승 경로를 나란히 계산해 소요시간·정거장 수·환승 횟수·예상 요금까지 보여 줍니다.">
 <meta name="theme-color" content="#0d9488">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230d9488'/%3E%3Cpath d='M9 22V12a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v10' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3Cpath d='M8 22h16' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3Ccircle cx='12.5' cy='17' r='1.4' fill='%23fff'/%3E%3Ccircle cx='19.5' cy='17' r='1.4' fill='%23fff'/%3E%3C/svg%3E">
 <script>
@@ -272,7 +272,8 @@ html.dark .tm-rc-badge.alt{ background:linear-gradient(120deg,#64748b,#334155); 
 .tm-svg text{ font-family:inherit; letter-spacing:-.02em; user-select:none; }
 .tm-line{ fill:none; stroke-linecap:round; stroke-linejoin:round; transition:opacity .3s, stroke-width .3s; }
 .tm-line.dim{ opacity:.13; }
-.tm-line.fade{ opacity:.3; }
+.tm-line.fade{ opacity:.22; }
+.tm-line.used{ opacity:.6; }
 .tm-line.hot{ filter:drop-shadow(0 0 5px currentColor); }
 .tm-st{ fill:var(--tm-card); stroke-width:1.6; transition:opacity .3s, r .2s; cursor:pointer; }
 .tm-st.hub{ stroke-width:2.4; }
@@ -579,6 +580,9 @@ html:not(.dark) .icon-moon{ display:none; }
         <i><b style="background:linear-gradient(90deg,var(--brand),var(--brand-2))"></b>내 경로</i>
         <i><b style="background:#94a3b8"></b>환승역 큰 원</i>
         <span id="netSummary" style="margin-left:auto"></span>
+        <button type="button" class="tm-chip" id="btnFitAll" title="수도권 전체 노선 보기">
+          <i style="background:linear-gradient(120deg,#0d9488,#2563eb)"></i>수도권 전체
+        </button>
       </div>
       <div class="tm-note" id="firstTip" style="margin-top:12px">
         <svg class="tm-i"><use href="#i-bulb"/></svg>
@@ -1717,20 +1721,34 @@ html:not(.dark) .icon-moon{ display:none; }
     labelEls = {};
     var k = unitK();
     var FS = Math.max(2, 10.5 * k);
-    var pad = 5.4 * k;
+    var pad = 6 * k;
     var placed = [];
+    var dots = {};
     ST_IDS.forEach(function (id) {
-      var c = POS[id], r = 4.4 * k;
-      placed.push({ x: c[0] - r, y: c[1] - r, w: r * 2, h: r * 2 });
+      var c = POS[id], r = 3.2 * k;
+      dots[id] = { x: c[0] - r, y: c[1] - r, w: r * 2, h: r * 2 };
     });
+    function boxHit(b, skipId) {
+      for (var j = 0; j < placed.length; j++) {
+        var p2 = placed[j];
+        if (b.x < p2.x + p2.w && b.x + b.w > p2.x && b.y < p2.y + p2.h && b.y + b.h > p2.y) return true;
+      }
+      for (var did in dots) {
+        if (did === skipId) continue;
+        var d2 = dots[did];
+        if (b.x < d2.x + d2.w && b.x + b.w > d2.x && b.y < d2.y + d2.h && b.y + b.h > d2.y) return true;
+      }
+      return false;
+    }
     var showAll = vb.w < 260;
     var list = [];
     ST_IDS.forEach(function (id) {
       var s = STATION[id];
       var pr = 0;
-      if (s.lines.length > 1) pr = 3;
-      if (state.filter && s.lines.indexOf(state.filter) >= 0) pr = Math.max(pr, 2);
-      if (routeNodes.indexOf(id) >= 0) pr = Math.max(pr, 4);
+      if (s.lines.length > 2) pr = 5;
+      else if (s.lines.length > 1) pr = 3;
+      if (state.filter && s.lines.indexOf(state.filter) >= 0) pr = Math.max(pr, 4);
+      if (routeNodes.indexOf(id) >= 0) pr = Math.max(pr, 6);
       if (showAll) pr = Math.max(pr, 1);
       list.push({ id: id, pr: pr });
     });
@@ -1753,12 +1771,7 @@ html:not(.dark) .icon-moon{ display:none; }
         var cd = cands[i];
         var x0 = cd.anchor === 'start' ? cd.x : cd.anchor === 'end' ? cd.x - tw : cd.x - tw / 2;
         var box = { x: x0 - 2 * k, y: cd.y - FS * 0.92, w: tw + 4 * k, h: FS * 1.24 + 2 * k };
-        var hit = false;
-        for (var j = 0; j < placed.length; j++) {
-          var p2 = placed[j];
-          if (box.x < p2.x + p2.w && box.x + box.w > p2.x && box.y < p2.y + p2.h && box.y + box.h > p2.y) { hit = true; break; }
-        }
-        if (hit) continue;
+        if (boxHit(box, it.id)) continue;
         placed.push(box);
         var t = el('text', {
           x: cd.x, y: cd.y, class: 'tm-lbl' + (it.pr >= 3 ? ' hub' : ''), 'font-size': FS,
@@ -1784,7 +1797,8 @@ html:not(.dark) .icon-moon{ display:none; }
       var on = !f || lid === f;
       p.classList.toggle('dim', !on);
       p.classList.toggle('hot', !!f && on);
-      p.classList.toggle('fade', !!(anyUsed && !used[lid]));
+      p.classList.toggle('fade', !!anyUsed);
+      p.classList.toggle('used', !!(anyUsed && used[lid]));
       p.setAttribute('stroke-width', (!!f && on) ? '6.4' : (anyUsed && used[lid] ? '5.2' : '4.4'));
     });
     Array.prototype.forEach.call(gStations.children, function (c) {
@@ -1978,7 +1992,7 @@ html:not(.dark) .icon-moon{ display:none; }
 
     $('btnZoomIn').addEventListener('click', function () { zoomBy(1.4); hap(6); });
     $('btnZoomOut').addEventListener('click', function () { zoomBy(1 / 1.4); hap(6); });
-    $('btnZoomReset').addEventListener('click', function () { resetView(); toast('노선도를 처음 크기로 되돌렸어요'); });
+    $('btnZoomReset').addEventListener('click', function () { resetView(); toast('서울 중심으로 되돌렸어요'); });
   })();
 
   /* ----- 노선 필터 ----- */
@@ -2414,6 +2428,12 @@ html:not(.dark) .icon-moon{ display:none; }
     var r = recents[+b.getAttribute('data-recent')];
     if (!r) return;
     state.from = r.from; state.to = r.to; syncFields(); go('route'); findRoute(true);
+  });
+
+  $('btnFitAll').addEventListener('click', function () {
+    fitAll();
+    toast('수도권 전체 노선을 한눈에 담았어요');
+    hap(6);
   });
 
   $('btnAddFav').addEventListener('click', addFav);
