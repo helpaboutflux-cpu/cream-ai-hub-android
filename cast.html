@@ -1,0 +1,2465 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Flux Cast — RSS 팟캐스트 플레이어 & RSS 찾는 법 가이드</title>
+<meta name="description" content="RSS 주소만 있으면 어떤 팟캐스트든 광고 없이, 계정 없이 듣는 무료 팟캐스트 플레이어. 팟캐스트 이름 검색, Apple Podcasts 링크 자동 변환, RSS 주소 직접 등록, OPML 가져오기까지. 배속·구간 반복·수면 타이머·타임스탬프 북마크 지원.">
+<meta name="theme-color" content="#0a0611">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23120a24'/%3E%3Cpath d='M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z' fill='%23a855f7'/%3E%3Cpath d='M6 11a6 6 0 0 0 12 0' fill='none' stroke='%23f59e0b' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M12 17v4' stroke='%23a855f7' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<script>
+(function () {
+  try { var t = localStorage.getItem('cream_theme'); document.documentElement.classList.toggle('dark', t ? t === 'dark' : true); } catch (e) { }
+  if (location.search.indexOf('debug') > -1) {
+    window.__castErrs = [];
+    addEventListener('error', function (e) { window.__castErrs.push('error: ' + (e.message || e.error)); });
+    addEventListener('unhandledrejection', function (e) { window.__castErrs.push('unhandled: ' + String(e.reason)); });
+  }
+  try { document.documentElement.setAttribute('data-anim', localStorage.getItem('lemon_anim_mode') || 'full'); } catch (e) { }
+})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        neutral: { 950: '#08050d', 900: '#0f0a18', 850: '#150e21', 800: '#221933', 700: '#372a4d', 600: '#4c3c66', 200: '#e7e2f0', 100: '#f4f1fa' },
+        brand: { 50: '#f5f0ff', 100: '#eadcff', 200: '#d7baff', 300: '#bd8dff', 400: '#a35cfb', 500: '#8b3df0', 600: '#7c3aed', 700: '#6825c9', 800: '#521ba0', 900: '#3d1478', 950: '#240a4a' },
+        amber: { 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' }
+      }
+    }
+  }
+};
+</script>
+<link rel="stylesheet" href="lemon-ui.css">
+<link rel="stylesheet" href="anim-mode.css">
+<style>
+  :root {
+    --brand: #7c3aed;
+    --brand-2: #a855f7;
+    --brand-deep: #5b21b6;
+    --accent: #f59e0b;
+    --accent-soft: #fbbf24;
+    --page: #fbf8ff;
+    --ink: #17101f;
+  }
+  .dark {
+    --page: #0a0611;
+    --ink: #f4f0fb;
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", Roboto, "Helvetica Neue", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    background-color: var(--page);
+    color: var(--ink);
+    overflow-x: hidden;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  main { flex: 1 0 auto; }
+  .dark body { background-color: #0a0611; color: #f4f0fb; }
+  button, input, select, textarea { font-family: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ---------- ambient ---------- */
+  .cast-wash {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(760px 420px at 12% -8%, rgba(124, 58, 237, .16) 0%, transparent 64%),
+      radial-gradient(620px 380px at 92% 4%, rgba(245, 158, 11, .12) 0%, transparent 66%);
+  }
+  .dark .cast-wash {
+    background:
+      radial-gradient(760px 460px at 10% -10%, rgba(124, 58, 237, .34) 0%, transparent 62%),
+      radial-gradient(620px 400px at 94% 0%, rgba(245, 158, 11, .16) 0%, transparent 64%);
+  }
+  .orb {
+    position: fixed; border-radius: 9999px; filter: blur(90px); opacity: .22; pointer-events: none; z-index: -1;
+    animation: orbDrift 26s ease-in-out infinite; will-change: transform;
+  }
+  .dark .orb { opacity: .28; }
+  .orb.o1 { width: 320px; height: 320px; background: radial-gradient(circle, #8b3df0, transparent 70%); top: -80px; left: -60px; }
+  .orb.o2 { width: 280px; height: 280px; background: radial-gradient(circle, #f59e0b, transparent 70%); bottom: 8%; right: -70px; animation-duration: 33s; animation-delay: -8s; }
+  @keyframes orbDrift {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(22px, -28px, 0) scale(1.09); }
+  }
+
+  /* ---------- brand bits ---------- */
+  .brand-grad { background-image: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%); }
+  .brand-soft { background-image: linear-gradient(135deg, rgba(124, 58, 237, .12), rgba(245, 158, 11, .10)); }
+  .dark .brand-soft { background-image: linear-gradient(135deg, rgba(124, 58, 237, .28), rgba(245, 158, 11, .12)); }
+  .brand-text { background-image: linear-gradient(115deg, #6825c9 0%, #8b3df0 45%, #f59e0b 105%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .dark .brand-text { background-image: linear-gradient(115deg, #ffffff 0%, #c9a2ff 45%, #fbbf24 100%); }
+  .hero-shell {
+    position: relative; overflow: hidden;
+    background: linear-gradient(150deg, #ffffff 0%, #f8f2ff 52%, #fff7ec 100%);
+    border: 1px solid #e7ddfa;
+  }
+  .dark .hero-shell {
+    background: linear-gradient(150deg, #150e21 0%, #1a0f2c 48%, #1d1226 100%);
+    border-color: #33234d;
+  }
+  .hero-shell::after {
+    content: ''; position: absolute; width: 340px; height: 340px; right: -110px; top: -140px; border-radius: 9999px;
+    background: radial-gradient(circle, rgba(124, 58, 237, .30), transparent 68%); pointer-events: none;
+  }
+  .card-lift { transition: transform .22s cubic-bezier(.22, 1, .36, 1), box-shadow .26s ease, border-color .2s ease; }
+  .card-lift:hover { transform: translateY(-3px); box-shadow: 0 18px 40px -22px rgba(76, 29, 149, .45); }
+  .dark .card-lift:hover { box-shadow: 0 18px 44px -20px rgba(168, 85, 247, .38); }
+
+  .step-num {
+    width: 1.55rem; height: 1.55rem; border-radius: .55rem; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: .7rem; font-weight: 800;
+    background-image: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff;
+    box-shadow: 0 6px 14px -8px rgba(124, 58, 237, .9);
+  }
+  .guide-kicker { font-size: .65rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #8b3df0; }
+  .dark .guide-kicker { color: #c9a2ff; }
+
+  /* ---------- header ---------- */
+  .site-head { backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); }
+  .nav-chip {
+    display: inline-flex; align-items: center; gap: .35rem; padding: .4rem .68rem; border-radius: .7rem;
+    font-size: .78rem; font-weight: 700; color: #4b4258; transition: all .18s ease; border: 1px solid transparent;
+  }
+  .dark .nav-chip { color: #b9aecb; }
+  .nav-chip:hover { background: rgba(124, 58, 237, .09); color: #6825c9; }
+  .dark .nav-chip:hover { background: rgba(168, 85, 247, .14); color: #d7baff; }
+  .nav-chip.on { background: #efe6ff; color: #5b21b6; border-color: #dcc9fb; }
+  .dark .nav-chip.on { background: #241638; color: #e6d4ff; border-color: #4a2f70; }
+  .nav-chip svg { width: .95rem; height: .95rem; }
+
+  /* ---------- search / inputs ---------- */
+  .field {
+    width: 100%; border-radius: .85rem; border: 1px solid #e2d8f4; background: #fff;
+    padding: .68rem .9rem; font-size: .85rem; color: #1f1630; transition: border-color .18s ease, box-shadow .18s ease;
+  }
+  .field::placeholder { color: #9d92b3; }
+  .field:focus { outline: none; border-color: #a35cfb; box-shadow: 0 0 0 3px rgba(124, 58, 237, .16); }
+  .dark .field { background: #150e21; border-color: #33234d; color: #f1ebfb; }
+  .dark .field::placeholder { color: #7f719a; }
+  .dark .field:focus { border-color: #a35cfb; box-shadow: 0 0 0 3px rgba(168, 85, 247, .2); }
+
+  .result-row {
+    display: flex; gap: .7rem; align-items: center; padding: .55rem; border-radius: .9rem;
+    border: 1px solid #ece4fa; background: #fff; transition: border-color .16s ease, transform .16s ease;
+  }
+  .dark .result-row { background: #150e21; border-color: #2b1e42; }
+  .result-row:hover { border-color: #b98bff; transform: translateY(-1px); }
+
+  .art {
+    border-radius: .7rem; object-fit: cover; background: #efe7fb; flex: none;
+    box-shadow: 0 6px 16px -10px rgba(60, 20, 120, .6);
+  }
+  .dark .art { background: #241935; }
+  .art.art-fallback, .dark .art.art-fallback, .dark .art-fallback {
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    background: linear-gradient(135deg, #7c3aed, #a855f7 60%, #f59e0b);
+  }
+
+  /* ---------- preset ---------- */
+  .preset {
+    position: relative; overflow: hidden; border-radius: 1rem; border: 1px solid #e8def8; background: #fff;
+    padding: .85rem; display: flex; flex-direction: column; gap: .55rem;
+  }
+  .dark .preset { background: #130c1f; border-color: #2c1e43; }
+  .preset::after {
+    content: ''; position: absolute; inset: auto -30% -60% auto; width: 130px; height: 130px; border-radius: 9999px;
+    background: radial-gradient(circle, rgba(245, 158, 11, .18), transparent 70%); pointer-events: none;
+  }
+
+  /* ---------- player ---------- */
+  .mini-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    padding: 0 env(safe-area-inset-left) env(safe-area-inset-bottom) env(safe-area-inset-right);
+    background: rgba(255, 255, 255, .92);
+    border-top: 1px solid #e7dcf8;
+    backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+    box-shadow: 0 -14px 40px -26px rgba(58, 20, 110, .55);
+    transform: translateY(120%); transition: transform .42s cubic-bezier(.22, 1, .36, 1);
+  }
+  .dark .mini-bar { background: rgba(12, 7, 20, .93); border-top-color: #2c1e43; box-shadow: 0 -14px 44px -24px rgba(0, 0, 0, .9); }
+  .mini-bar.up { transform: translateY(0); }
+  .mini-inner { max-width: 1120px; margin: 0 auto; padding: .5rem .75rem .55rem; }
+  .mini-top { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: #ece3f9; cursor: pointer; }
+  .dark .mini-top { background: #2a1d3f; }
+  .mini-fill {
+    height: 100%; width: 0%;
+    background-image: linear-gradient(90deg, var(--brand), var(--brand-2) 60%, var(--accent));
+    box-shadow: 0 0 12px rgba(168, 85, 247, .6); transition: width .18s linear;
+  }
+  .mini-row { display: flex; align-items: center; gap: .6rem; }
+  .mini-art { width: 42px; height: 42px; border-radius: .6rem; }
+  .mini-title { font-size: .8rem; font-weight: 800; line-height: 1.2; }
+  .mini-sub { font-size: .68rem; color: #7c6f92; line-height: 1.25; margin-top: .12rem; }
+  .dark .mini-sub { color: #9c8fb5; }
+  .mini-meta { font-size: .68rem; font-variant-numeric: tabular-nums; color: #7c6f92; }
+  .dark .mini-meta { color: #a294bd; }
+
+  .icon-btn-sq {
+    width: 2.2rem; height: 2.2rem; border-radius: .7rem; display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid #e6dcf6; background: #fff; color: #4b3a63; transition: all .16s ease; flex: none;
+  }
+  .dark .icon-btn-sq { background: #1a1128; border-color: #33234d; color: #c6b8dc; }
+  .icon-btn-sq:hover { color: #7c3aed; border-color: #b98bff; }
+  .icon-btn-sq:active { transform: scale(.93); }
+  .play-btn {
+    width: 2.75rem; height: 2.75rem; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; background-image: linear-gradient(135deg, #7c3aed, #a855f7 62%, #f59e0b 130%);
+    box-shadow: 0 10px 24px -12px rgba(124, 58, 237, .95); transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), filter .2s ease;
+    flex: none;
+  }
+  .play-btn:hover { filter: brightness(1.07); transform: scale(1.04); }
+  .play-btn:active { transform: scale(.94); }
+  .play-btn.lg { width: 3.6rem; height: 3.6rem; }
+
+  /* waveform */
+  .wave { position: relative; height: 46px; cursor: pointer; user-select: none; }
+  .wave-bars { position: absolute; inset: 0; display: flex; align-items: center; gap: 2px; }
+  .wave-bars span { flex: 1 1 0; min-width: 1px; border-radius: 2px; background: #e3d8f4; transition: background-color .2s ease; }
+  .dark .wave-bars span { background: #302148; }
+  .wave-played { position: absolute; inset: 0; display: flex; align-items: center; gap: 2px; clip-path: inset(0 100% 0 0); }
+  .wave-played span { flex: 1 1 0; min-width: 1px; border-radius: 2px; background: linear-gradient(180deg, #a855f7, #7c3aed 70%); }
+  .wave-head { position: absolute; top: -2px; bottom: -2px; width: 2px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px rgba(245, 158, 11, .9); opacity: 0; }
+  .wave.live .wave-head { opacity: 1; }
+  .ab-band { position: absolute; top: -3px; bottom: -3px; border-radius: 3px; background: rgba(245, 158, 11, .18); border: 1px solid rgba(245, 158, 11, .5); pointer-events: none; display: none; }
+  .ab-band.on { display: block; }
+
+  /* sheet */
+  .sheet-backdrop {
+    position: fixed; inset: 0; z-index: 70; background: rgba(9, 5, 16, .58);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    opacity: 0; pointer-events: none; transition: opacity .26s ease;
+  }
+  .sheet-backdrop.on { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed; z-index: 75; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow-y: auto;
+    border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem;
+    background: #fdfbff; border-top: 1px solid #eadff9; box-shadow: 0 -30px 70px -30px rgba(20, 8, 40, .7);
+    transform: translateY(104%); transition: transform .44s cubic-bezier(.22, 1, .36, 1);
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+  .dark .sheet { background: #0f0a18; border-top-color: #2f2047; }
+  .sheet.on { transform: translateY(0); }
+  .sheet-grip { width: 42px; height: 4px; border-radius: 9999px; background: #d8cbe9; margin: .6rem auto .2rem; }
+  .dark .sheet-grip { background: #3b2a56; }
+  .sheet::-webkit-scrollbar { width: 6px; }
+  .sheet::-webkit-scrollbar-thumb { background: #d6c8ea; border-radius: 99px; }
+  .dark .sheet::-webkit-scrollbar-thumb { background: #3a2a53; }
+
+  @media (min-width: 900px) {
+    .sheet { left: 50%; right: auto; width: 640px; transform: translate(-50%, 104%); border-radius: 1.5rem; bottom: 24px; max-height: 86vh; }
+    .sheet.on { transform: translate(-50%, 0); }
+  }
+
+  /* guide modal */
+  .modal-wrap {
+    position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 1rem;
+    opacity: 0; pointer-events: none; transition: opacity .24s ease;
+  }
+  .modal-wrap.on { opacity: 1; pointer-events: auto; }
+  .modal-veil { position: absolute; inset: 0; background: rgba(9, 5, 16, .62); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+  .modal-card {
+    position: relative; width: 100%; max-width: 900px; max-height: 88vh; display: flex; flex-direction: column;
+    border-radius: 1.4rem; overflow: hidden; background: #fdfbff; border: 1px solid #e9dff9;
+    box-shadow: 0 40px 90px -40px rgba(24, 8, 50, .8);
+    transform: translateY(22px) scale(.985); transition: transform .34s cubic-bezier(.22, 1, .36, 1);
+  }
+  .dark .modal-card { background: #0f0a18; border-color: #2f2047; }
+  .modal-wrap.on .modal-card { transform: none; }
+  .guide-nav { display: flex; gap: .3rem; overflow-x: auto; scrollbar-width: none; padding: .1rem; }
+  .guide-nav::-webkit-scrollbar { display: none; }
+  .guide-tab {
+    flex: none; padding: .42rem .7rem; border-radius: .65rem; font-size: .74rem; font-weight: 700;
+    color: #5a4b70; border: 1px solid transparent; transition: all .16s ease; display: inline-flex; align-items: center; gap: .3rem;
+  }
+  .dark .guide-tab { color: #b6a7ce; }
+  .guide-tab:hover { background: rgba(124, 58, 237, .08); }
+  @media (max-width: 640px) { .guide-nav { flex-wrap: wrap; overflow-x: visible; } .guide-tab { font-size: .7rem; padding: .34rem .55rem; } }
+  .guide-tab.on { background: #efe6ff; color: #5b21b6; border-color: #d7baff; }
+  .dark .guide-tab.on { background: #241638; color: #e2ccff; border-color: #4a2f70; }
+  .guide-body { overflow-y: auto; padding: 1rem 1.15rem 1.4rem; }
+  .guide-body h4 { font-size: .95rem; font-weight: 800; margin: .1rem 0 .3rem; }
+  .guide-body p { font-size: .82rem; line-height: 1.75; color: #4b4258; }
+  .dark .guide-body p { color: #c3b6d8; }
+  .guide-note {
+    font-size: .78rem; line-height: 1.7; border-radius: .8rem; padding: .7rem .8rem;
+    background: #f4edff; border: 1px solid #e3d4fb; color: #4a3968;
+  }
+  .dark .guide-note { background: #1a1128; border-color: #33234d; color: #cbbce2; }
+  .guide-warn { background: #fff6e6; border-color: #f7dfb0; color: #7a4d09; }
+  .dark .guide-warn { background: #241708; border-color: #573a10; color: #fbbf24; }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: .76rem; letter-spacing: 0; word-break: break-all;
+  }
+
+  /* toast */
+  .toast-wrap { position: fixed; left: 50%; bottom: calc(104px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 95; display: flex; flex-direction: column; gap: .4rem; align-items: center; pointer-events: none; }
+  .toast {
+    display: inline-flex; align-items: center; gap: .45rem; padding: .55rem .85rem; border-radius: .8rem;
+    font-size: .78rem; font-weight: 700; color: #fff; background: #2a1b40;
+    box-shadow: 0 16px 34px -18px rgba(0, 0, 0, .8); animation: toastIn .34s cubic-bezier(.22, 1, .36, 1) both;
+    max-width: 86vw;
+  }
+  .toast.ok { background-image: linear-gradient(135deg, #6d28d9, #8b3df0); }
+  .toast.err { background-image: linear-gradient(135deg, #b91c1c, #e11d48); }
+  .toast.info { background-image: linear-gradient(135deg, #1e293b, #334155); }
+  .toast.out { animation: toastOut .22s ease both; }
+  body.overlay-open .toast-wrap { bottom: auto; top: calc(72px + env(safe-area-inset-top)); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(-6px) scale(.98); } }
+
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .pulse-dot { animation: pulseDot 1.8s ease-in-out infinite; }
+  @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.86); } }
+  .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+  .eq i { width: 3px; border-radius: 2px; background: currentColor; animation: eqBar 1s ease-in-out infinite; }
+  .eq i:nth-child(2) { animation-delay: .18s; }
+  .eq i:nth-child(3) { animation-delay: .36s; }
+  .eq i:nth-child(4) { animation-delay: .54s; }
+  .eq.paused i { animation-play-state: paused; height: 4px; }
+  @keyframes eqBar { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+
+  .hide-sb::-webkit-scrollbar { display: none; }
+  .hide-sb { scrollbar-width: none; }
+
+  .ep-row { display: flex; gap: .7rem; padding: .6rem; border-radius: .8rem; transition: background-color .16s ease; }
+  .ep-row:hover { background: rgba(124, 58, 237, .07); }
+  .dark .ep-row:hover { background: rgba(168, 85, 247, .1); }
+  .ep-row.playing { background: rgba(124, 58, 237, .1); }
+  .dark .ep-row.playing { background: rgba(168, 85, 247, .14); }
+
+  .tab-line { position: relative; }
+  .tab-line::after {
+    content: ''; position: absolute; left: .6rem; right: .6rem; bottom: -.15rem; height: 2px; border-radius: 2px;
+    background-image: linear-gradient(90deg, var(--brand), var(--accent)); opacity: 0; transition: opacity .2s ease;
+  }
+  .tab-line.on::after { opacity: 1; }
+
+  .mode-grid { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .chip-mini {
+    display: inline-flex; align-items: center; gap: .28rem; padding: .2rem .5rem; border-radius: 9999px;
+    font-size: .64rem; font-weight: 800; letter-spacing: .02em;
+    background: rgba(124, 58, 237, .1); color: #6825c9; border: 1px solid rgba(124, 58, 237, .18);
+  }
+  .dark .chip-mini { background: rgba(168, 85, 247, .16); color: #dcc4ff; border-color: rgba(168, 85, 247, .3); }
+  .chip-amber { background: rgba(245, 158, 11, .14); color: #92500a; border-color: rgba(245, 158, 11, .28); }
+  .dark .chip-amber { background: rgba(245, 158, 11, .16); color: #fbbf24; border-color: rgba(245, 158, 11, .3); }
+
+  .seg-btn { padding: .34rem .6rem; border-radius: .55rem; font-size: .72rem; font-weight: 800; color: #59496f; transition: all .16s ease; }
+  .dark .seg-btn { color: #b3a5c9; }
+  .seg-btn.on { background: #fff; color: #5b21b6; box-shadow: 0 1px 5px rgba(60, 20, 120, .14); }
+  .dark .seg-btn.on { background: rgba(255, 255, 255, .14); color: #efe2ff; }
+  .seg-wrap { display: inline-flex; gap: 2px; padding: 3px; border-radius: .7rem; background: rgba(124, 58, 237, .08); border: 1px solid rgba(124, 58, 237, .1); }
+  .dark .seg-wrap { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .08); }
+</style>
+</head>
+<body>
+<div class="cast-wash"></div>
+<div class="orb o1"></div>
+<div class="orb o2"></div>
+
+<!-- ================= HEADER ================= -->
+<header class="site-head sticky top-0 z-50 bg-white/85 dark:bg-[#0a0611]/95 border-b border-[#ece2f8] dark:border-[#241834]">
+  <div class="max-w-6xl mx-auto px-3 sm:px-5">
+    <div class="h-16 flex items-center justify-between gap-2">
+      <!-- brand -->
+      <a href="cast.html" class="flex items-center gap-2.5 min-w-0 group">
+        <span class="w-9 h-9 rounded-xl brand-grad text-white flex items-center justify-center shadow-[0_10px_22px_-12px_rgba(124,58,237,.9)] group-hover:scale-105 transition-transform">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" class="w-5 h-5"><path d="M12 3.2a2.8 2.8 0 0 1 2.8 2.8v5.6a2.8 2.8 0 0 1-5.6 0V6A2.8 2.8 0 0 1 12 3.2z"/><path d="M6.2 11a5.8 5.8 0 0 0 11.6 0"/><path d="M12 17.2V21"/><path d="M9 21h6"/></svg>
+        </span>
+        <span class="min-w-0">
+          <span class="flex items-center gap-1.5">
+            <span class="font-extrabold text-[15px] tracking-tight text-neutral-900 dark:text-white">Flux Cast</span>
+            <span class="text-[9px] font-mono px-1.5 py-[2px] rounded-full bg-[#efe6ff] dark:bg-[#241638] text-[#6825c9] dark:text-[#dcc4ff] font-bold border border-[#dcc9fb] dark:border-[#4a2f70]">RSS v1.0</span>
+          </span>
+          <span class="block text-[10.5px] text-neutral-500 dark:text-neutral-400 truncate">RSS 팟캐스트 플레이어</span>
+        </span>
+      </a>
+
+      <!-- desktop nav -->
+      <nav class="hidden md:flex items-center gap-0.5" aria-label="주요 화면">
+        <button class="nav-chip on" data-nav="home" onclick="showView('home')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg>
+          <span>홈</span>
+        </button>
+        <button class="nav-chip" data-nav="subs" onclick="showView('subs')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5.5h16"/><path d="M4 10h16"/><path d="M4 14.5h10"/><circle cx="18" cy="17.5" r="3.2"/></svg>
+          <span>내 구독</span>
+          <span class="text-[10px] font-mono opacity-70" id="navSubCount">0</span>
+        </button>
+        <button class="nav-chip" data-nav="library" onclick="showView('library')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3.5h9.5L20 8v12.5H6z"/><path d="M15 3.5V8h4.5"/><path d="M9.5 12.5h6"/><path d="M9.5 16.5h4"/></svg>
+          <span>보관함</span>
+          <span class="text-[10px] font-mono opacity-70" id="navMarkCount">0</span>
+        </button>
+        <button class="nav-chip" onclick="openGuide()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2-2.4 3.6"/><path d="M12 17.2h.01"/></svg>
+          <span>RSS 가이드</span>
+        </button>
+      </nav>
+
+      <!-- right controls -->
+      <div class="flex items-center gap-1.5 flex-none">
+        <button onclick="openGuide()" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-extrabold text-white brand-grad shadow-[0_10px_22px_-14px_rgba(124,58,237,1)] btn-tap active:scale-95">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M4.5 11a7.5 7.5 0 0 1 15 0"/><path d="M8 11a4 4 0 0 1 8 0"/><path d="M12 11v10"/><circle cx="12" cy="9.5" r="1.1" fill="currentColor" stroke="none"/></svg>
+          <span>RSS 찾는 법</span>
+        </button>
+        <a href="index.html" class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-[#e6dcf6] dark:border-[#3f2c5c] bg-white/60 dark:bg-[#1a1128] text-[12px] font-bold text-neutral-700 dark:text-neutral-200 hover:border-[#a35cfb] dark:hover:border-[#a35cfb] transition" title="Soft Hub로 돌아가기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span class="hidden sm:inline">Soft Hub</span>
+        </a>
+        <button data-theme-toggle class="icon-btn-sq" title="라이트/다크 모드" aria-label="라이트/다크 모드 전환">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M20 14.5A8 8 0 0 1 9.5 4a8.2 8.2 0 1 0 10.5 10.5z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- mobile nav -->
+    <div class="md:hidden flex items-center justify-around border-t border-[#f0e8fb] dark:border-[#1e1430] -mx-3 px-3 pt-1.5 pb-1.5 text-[11px]">
+      <button class="flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[#6825c9] dark:text-[#dcc4ff] font-extrabold" data-mnav="home" onclick="showView('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg>
+        <span>홈</span>
+      </button>
+      <button class="flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-neutral-500 dark:text-neutral-400 font-semibold" data-mnav="subs" onclick="showView('subs')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 6h16"/><path d="M4 10.5h16"/><path d="M4 15h9"/><circle cx="17.5" cy="17" r="3"/></svg>
+        <span>구독 <span id="mNavSubCount">0</span></span>
+      </button>
+      <button class="flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-neutral-500 dark:text-neutral-400 font-semibold" data-mnav="library" onclick="showView('library')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M6 3.5h9.5L20 8v12.5H6z"/><path d="M15 3.5V8h4.5"/><path d="M9.5 13h6"/></svg>
+        <span>보관함</span>
+      </button>
+      <button class="flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-neutral-500 dark:text-neutral-400 font-semibold" onclick="openGuide()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2-2.4 3.6"/><path d="M12 17.2h.01"/></svg>
+        <span>가이드</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-3 sm:px-5 py-5 space-y-6 w-full">
+
+  <!-- ================= HOME ================= -->
+  <section id="viewHome" data-view="home" class="space-y-6">
+
+    <!-- Hero -->
+    <div class="hero-shell rounded-3xl p-5 sm:p-8 shadow-[0_26px_60px_-42px_rgba(58,20,110,.75)]">
+      <div class="relative z-10 grid lg:grid-cols-[1.25fr_.75fr] gap-6 items-center">
+        <div class="space-y-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="chip-mini">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-3 h-3"><path d="M4.5 11a7.5 7.5 0 0 1 15 0"/><path d="M8 11a4 4 0 0 1 8 0"/><path d="M12 11v10"/></svg>
+              RSS PODCAST PLAYER
+            </span>
+            <span class="chip-mini chip-amber">로그인 없음 · 광고 없음 · 0원</span>
+          </div>
+          <h1 class="text-[26px] sm:text-[34px] leading-[1.28] font-extrabold tracking-tight text-neutral-900 dark:text-white">
+            내 팟캐스트는<br class="sm:hidden"> <span class="brand-text">RSS 주소 하나</span>로 듣습니다
+          </h1>
+          <p class="text-[13.5px] sm:text-sm leading-relaxed text-neutral-600 dark:text-neutral-300 max-w-xl">
+            팟캐스트 방송마다 있는 공개 주소(<span class="mono">feed.xml</span>)만 붙여넣으면, 그 방송의 새 에피소드가 이 화면에 그대로 올라옵니다.
+            구독·배속·구간 반복·수면 타이머·타임스탬프 북마크까지 전부 브라우저 안에서, 서버 저장 없이 동작합니다.
+          </p>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button onclick="openGuide()" class="inline-flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-extrabold text-white brand-grad shadow-[0_16px_32px_-18px_rgba(124,58,237,1)] btn-shimmer btn-tap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2-2.4 3.6"/><path d="M12 17.2h.01"/></svg>
+              <span>RSS 찾는 법 · 등록하는 법 가이드</span>
+            </button>
+            <button onclick="focusSearch()" class="inline-flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-bold text-neutral-800 dark:text-neutral-100 bg-white/90 dark:bg-[#1a1128]/90 border border-[#e2d5f6] dark:border-[#3a2654] hover:border-[#a35cfb] transition btn-tap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" class="w-4 h-4"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+              <span>팟캐스트 이름으로 검색</span>
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-neutral-500 dark:text-neutral-400 pt-1">
+            <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#7c3aed]"></span>구독 <b id="heroSubCount" class="font-mono text-neutral-800 dark:text-neutral-200">0</b>개</span>
+            <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[#f59e0b]"></span>북마크 <b id="heroMarkCount" class="font-mono text-neutral-800 dark:text-neutral-200">0</b>개</span>
+            <span class="inline-flex items-center gap-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>기록은 이 브라우저에만 저장</span>
+          </div>
+        </div>
+
+        <!-- decorative now-playing -->
+        <div class="hidden lg:block">
+          <div class="rounded-2xl border border-[#ece0fb] dark:border-[#33234d] bg-white/70 dark:bg-[#150e21]/80 p-3.5 backdrop-blur-sm">
+            <div class="flex items-center gap-2.5">
+              <div class="w-12 h-12 rounded-xl brand-grad flex items-center justify-center text-white flex-none float-y">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="w-6 h-6"><path d="M12 3.4a2.6 2.6 0 0 1 2.6 2.6v5.2a2.6 2.6 0 0 1-5.2 0V6A2.6 2.6 0 0 1 12 3.4z"/><path d="M6.6 11a5.4 5.4 0 0 0 10.8 0"/><path d="M12 16.8V20"/></svg>
+              </div>
+              <div class="min-w-0">
+                <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white truncate">새 에피소드가 도착했어요</p>
+                <p class="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">구독한 방송 · RSS 자동 확인</p>
+              </div>
+              <span class="ml-auto text-[#7c3aed] dark:text-[#c9a2ff] eq"><i></i><i></i><i></i><i></i></span>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div class="flex items-center gap-2.5 rounded-xl border border-[#f0e8fb] dark:border-[#2a1d3f] px-2.5 py-2">
+                <span class="w-7 h-7 rounded-lg bg-[#efe6ff] dark:bg-[#241638] text-[#6825c9] dark:text-[#dcc4ff] flex items-center justify-center flex-none">
+                  <svg viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5"><path d="M8 5.5v13l11-6.5z"/></svg>
+                </span>
+                <span class="h-2 rounded-full bg-[#ede4fa] dark:bg-[#2c1f43] flex-1"></span>
+                <span class="text-[10px] font-mono text-neutral-400">24:18</span>
+              </div>
+              <div class="flex items-center gap-2.5 rounded-xl border border-[#f0e8fb] dark:border-[#2a1d3f] px-2.5 py-2 opacity-70">
+                <span class="w-7 h-7 rounded-lg bg-[#fff3dd] dark:bg-[#2b1d08] text-[#b45309] dark:text-[#fbbf24] flex items-center justify-center flex-none">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M5 4h14v16l-7-4.5L5 20z"/></svg>
+                </span>
+                <span class="h-2 rounded-full bg-[#ede4fa] dark:bg-[#2c1f43] w-2/3"></span>
+                <span class="text-[10px] font-mono text-neutral-400">A–B</span>
+              </div>
+              <div class="flex items-center gap-2.5 rounded-xl border border-[#f0e8fb] dark:border-[#2a1d3f] px-2.5 py-2 opacity-60">
+                <span class="w-7 h-7 rounded-lg bg-[#efe6ff] dark:bg-[#241638] text-[#6825c9] dark:text-[#dcc4ff] flex items-center justify-center flex-none">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5"/><path d="M9 3h6"/></svg>
+                </span>
+                <span class="h-2 rounded-full bg-[#ede4fa] dark:bg-[#2c1f43] w-1/2"></span>
+                <span class="text-[10px] font-mono text-neutral-400">수면</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Guide banner (always visible, core request) -->
+    <button onclick="openGuide()" class="w-full text-left rounded-2xl border border-[#dcc9fb] dark:border-[#4a2f70] brand-soft p-4 sm:p-5 flex items-center gap-3.5 card-lift">
+      <span class="w-11 h-11 rounded-xl bg-white dark:bg-[#1a1128] text-[#7c3aed] dark:text-[#c9a2ff] flex items-center justify-center flex-none border border-[#e3d4fb] dark:border-[#3a2654] shadow-sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" class="w-5 h-5"><path d="M4.5 11a7.5 7.5 0 0 1 15 0"/><path d="M8 11a4 4 0 0 1 8 0"/><path d="M12 11v10"/><circle cx="12" cy="9.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+      </span>
+      <span class="min-w-0 flex-1">
+        <span class="block text-[13.5px] font-extrabold text-neutral-900 dark:text-white">처음이신가요? RSS 주소를 찾는 방법부터 차근차근 알려드립니다</span>
+        <span class="block text-[12px] text-neutral-600 dark:text-neutral-400 mt-0.5">RSS가 뭔지 · Apple Podcasts 링크로 1초 변환 · 팟빵·스포티파이처럼 RSS가 없는 곳 구분법 · 실제 샘플 5개로 바로 체험</span>
+      </span>
+      <span class="hidden sm:inline-flex items-center gap-1 text-[12px] font-extrabold text-[#6825c9] dark:text-[#dcc4ff] flex-none">
+        가이드 열기
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" class="w-4 h-4"><path d="m9 5 7 7-7 7"/></svg>
+      </span>
+    </button>
+
+    <!-- Add feed: 4 methods -->
+    <div id="addPanel" class="rounded-2xl border border-[#ece2f8] dark:border-[#241834] bg-white dark:bg-[#0f0a18] p-4 sm:p-5 space-y-4 shadow-[0_20px_50px_-45px_rgba(40,15,80,.8)]">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-[15px] font-extrabold text-neutral-900 dark:text-white">방송 추가하기</h2>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">아래 네 가지 중 편한 방법 하나만 쓰면 됩니다. 무엇을 눌러야 할지 모르겠다면 <button onclick="openGuide()" class="font-bold text-[#6825c9] dark:text-[#dcc4ff] underline decoration-dotted">가이드</button>를 먼저 보세요.</p>
+        </div>
+      </div>
+
+      <!-- 1 search -->
+      <div class="rounded-xl border border-[#efe6fb] dark:border-[#281b3d] p-3 space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="step-num">1</span>
+          <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">이름으로 검색해서 구독</p>
+          <span class="chip-mini ml-auto hidden sm:inline-flex">가장 쉬움</span>
+        </div>
+        <div class="flex gap-2">
+          <input id="searchInput" type="search" class="field" placeholder="예: 슈카월드, 세바시, 나는 성동, The Daily" autocomplete="off" enterkeyhint="search">
+          <button id="searchBtn" onclick="doSearch()" class="flex-none px-4 rounded-xl brand-grad text-white text-[12.5px] font-extrabold btn-tap active:scale-95 inline-flex items-center gap-1.5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-4 h-4"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+            <span>검색</span>
+          </button>
+        </div>
+        <p id="searchStatus" class="text-[11px] text-neutral-500 dark:text-neutral-400"></p>
+        <div id="searchResults" class="grid gap-2 sm:grid-cols-2"></div>
+      </div>
+
+      <!-- 2 apple -->
+      <div class="rounded-xl border border-[#efe6fb] dark:border-[#281b3d] p-3 space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="step-num">2</span>
+          <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">Apple Podcasts 링크를 붙여넣으면 RSS로 자동 변환</p>
+        </div>
+        <div class="flex gap-2">
+          <input id="appleInput" type="url" class="field" placeholder="https://podcasts.apple.com/kr/podcast/.../id1639494417" autocomplete="off">
+          <button id="appleBtn" onclick="convertApple()" class="flex-none px-4 rounded-xl bg-[#1f1430] dark:bg-white text-white dark:text-[#140d20] text-[12.5px] font-extrabold btn-tap active:scale-95">변환</button>
+        </div>
+        <p id="appleStatus" class="text-[11px] text-neutral-500 dark:text-neutral-400">링크 안의 <span class="mono">id...</span> 숫자만 알아내 iTunes 카탈로그에서 실제 RSS 주소를 찾아드립니다.</p>
+      </div>
+
+      <!-- 3 direct -->
+      <div class="rounded-xl border border-[#efe6fb] dark:border-[#281b3d] p-3 space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="step-num">3</span>
+          <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">RSS 주소(feed.xml)를 직접 붙여넣기</p>
+        </div>
+        <div class="flex gap-2">
+          <input id="directInput" type="url" class="field" placeholder="https://example.com/podcast/feed.xml" autocomplete="off">
+          <button id="directBtn" onclick="addDirect()" class="flex-none px-4 rounded-xl bg-[#1f1430] dark:bg-white text-white dark:text-[#140d20] text-[12.5px] font-extrabold btn-tap active:scale-95">추가</button>
+        </div>
+        <p id="directStatus" class="text-[11px] text-neutral-500 dark:text-neutral-400">이미 RSS 주소를 알고 있다면 이 방법이 가장 빠릅니다. <span class="mono">http://</span> 주소는 일부 브라우저에서 막히니 <span class="mono">https://</span>를 권장합니다.</p>
+      </div>
+
+      <!-- 4 opml -->
+      <div class="rounded-xl border border-[#efe6fb] dark:border-[#281b3d] p-3 space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="step-num">4</span>
+          <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">OPML 파일로 한 번에 가져오기 / 내보내기</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <input id="opmlFile" type="file" accept=".opml,.xml,text/xml,application/xml" class="hidden">
+          <button onclick="document.getElementById('opmlFile').click()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#e2d5f6] dark:border-[#3a2654] text-[12px] font-bold text-neutral-800 dark:text-neutral-200 hover:border-[#a35cfb] transition active:scale-95">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3.5h16V16"/></svg>
+            OPML 가져오기
+          </button>
+          <button onclick="exportOPML()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#e2d5f6] dark:border-[#3a2654] text-[12px] font-bold text-neutral-800 dark:text-neutral-200 hover:border-[#a35cfb] transition active:scale-95">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M4 16v3.5h16V16"/></svg>
+            내 구독 OPML 내보내기
+          </button>
+        </div>
+        <p id="opmlStatus" class="text-[11px] text-neutral-500 dark:text-neutral-400">다른 앱에서 쓰던 구독 목록(.opml)을 그대로 옮겨올 수 있습니다. 최대 25개까지 순서대로 확인합니다.</p>
+      </div>
+    </div>
+
+    <!-- presets -->
+    <div class="space-y-3">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <h2 class="text-[15px] font-extrabold text-neutral-900 dark:text-white">샘플 피드로 바로 체험</h2>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">실제로 열리는 공개 RSS 피드 5개입니다. 버튼 한 번으로 구독하고 바로 들어보세요.</p>
+        </div>
+        <span class="text-[11px] text-neutral-400 dark:text-neutral-500 font-mono hidden sm:inline">5 feeds</span>
+      </div>
+      <div id="presetGrid" class="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3"></div>
+    </div>
+
+    <!-- latest episodes from subs -->
+    <div class="space-y-3">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <h2 class="text-[15px] font-extrabold text-neutral-900 dark:text-white">최근 올라온 에피소드</h2>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">구독한 방송들의 최신 회차를 한 줄로 모았습니다.</p>
+        </div>
+        <button onclick="showView('subs')" class="text-[11.5px] font-bold text-[#6825c9] dark:text-[#dcc4ff] inline-flex items-center gap-0.5">전체 보기 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" class="w-3.5 h-3.5"><path d="m9 5 7 7-7 7"/></svg></button>
+      </div>
+      <div id="latestList" class="rounded-2xl border border-[#ece2f8] dark:border-[#241834] bg-white dark:bg-[#0f0a18] divide-y divide-[#f3ecfd] dark:divide-[#1e1430] overflow-hidden"></div>
+    </div>
+  </section>
+
+  <!-- ================= SUBS ================= -->
+  <section id="viewSubs" data-view="subs" class="space-y-4 hidden">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 class="text-[18px] font-extrabold text-neutral-900 dark:text-white">내 구독</h2>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">구독한 방송 <b id="subsCountText" class="font-mono">0</b>개 · 각 방송을 눌러 에피소드 목록을 펼치세요.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="refreshAll()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#e2d5f6] dark:border-[#3a2654] text-[12px] font-bold text-neutral-800 dark:text-neutral-200 hover:border-[#a35cfb] transition active:scale-95">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4.5V11h-6.5"/></svg>
+          전체 새로고침
+        </button>
+        <button onclick="exportOPML()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#e2d5f6] dark:border-[#3a2654] text-[12px] font-bold text-neutral-800 dark:text-neutral-200 hover:border-[#a35cfb] transition active:scale-95">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M4 16v3.5h16V16"/></svg>
+          OPML
+        </button>
+        <button onclick="showView('home');focusSearch()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl brand-grad text-white text-[12px] font-extrabold active:scale-95 btn-tap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-4 h-4"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          방송 추가
+        </button>
+      </div>
+    </div>
+    <div id="subsGrid" class="space-y-3"></div>
+    <div id="subsEmpty" class="rounded-2xl border border-dashed border-[#ddd0f1] dark:border-[#33234d] bg-white/70 dark:bg-[#0f0a18]/70 p-8 text-center space-y-3">
+      <span class="inline-flex w-12 h-12 rounded-2xl brand-soft text-[#7c3aed] dark:text-[#c9a2ff] items-center justify-center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="w-6 h-6"><path d="M4.5 11a7.5 7.5 0 0 1 15 0"/><path d="M8 11a4 4 0 0 1 8 0"/><path d="M12 11v10"/></svg>
+      </span>
+      <p class="text-[13px] font-extrabold text-neutral-900 dark:text-white">아직 구독한 방송이 없습니다</p>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400">이름으로 검색하거나, 샘플 피드로 먼저 시작해 보세요.</p>
+      <div class="flex flex-wrap justify-center gap-2 pt-1">
+        <button onclick="showView('home');focusSearch()" class="px-4 py-2.5 rounded-xl brand-grad text-white text-[12px] font-extrabold active:scale-95">이름으로 검색</button>
+        <button onclick="openGuide('feeds')" class="px-4 py-2.5 rounded-xl border border-[#e2d5f6] dark:border-[#3a2654] text-[12px] font-bold text-neutral-800 dark:text-neutral-200 active:scale-95">샘플 피드 보기</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= LIBRARY ================= -->
+  <section id="viewLibrary" data-view="library" class="space-y-4 hidden">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 class="text-[18px] font-extrabold text-neutral-900 dark:text-white">보관함</h2>
+        <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5">타임스탬프 북마크와 메모 <b id="libCountText" class="font-mono">0</b>개 · 눌러서 그 지점부터 다시 듣습니다.</p>
+      </div>
+      <div class="seg-wrap" id="libFilter">
+        <button class="seg-btn on" data-libfilter="all" onclick="setLibFilter('all')">전체</button>
+        <button class="seg-btn" data-libfilter="note" onclick="setLibFilter('note')">메모 있음</button>
+        <button class="seg-btn" data-libfilter="recent" onclick="setLibFilter('recent')">최근 순</button>
+      </div>
+    </div>
+    <div id="libList" class="space-y-2"></div>
+    <div id="libEmpty" class="rounded-2xl border border-dashed border-[#ddd0f1] dark:border-[#33234d] bg-white/70 dark:bg-[#0f0a18]/70 p-8 text-center space-y-2">
+      <span class="inline-flex w-12 h-12 rounded-2xl brand-soft text-[#7c3aed] dark:text-[#c9a2ff] items-center justify-center">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="w-6 h-6"><path d="M6 3.5h9.5L20 8v12.5H6z"/><path d="M15 3.5V8h4.5"/><path d="M9.5 13h6"/></svg>
+      </span>
+      <p class="text-[13px] font-extrabold text-neutral-900 dark:text-white">북마크가 비어 있습니다</p>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400">재생 중 <b>북마크</b> 버튼을 누르면 그 시점이 저장되고, 메모를 남길 수 있습니다.</p>
+    </div>
+  </section>
+</main>
+
+<!-- ================= FOOTER ================= -->
+<footer class="mt-4 border-t border-[#ece2f8] dark:border-[#241834] py-6 text-center">
+  <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+    <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400">Flux Cast — Lemon soft가 만든 RSS 팟캐스트 플레이어</p>
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11.5px] text-neutral-400">
+      <a href="index.html" class="hover:underline hover:text-[#6825c9] dark:hover:text-[#dcc4ff] font-bold">Soft Hub</a>
+      <span>·</span>
+      <a href="player.html" class="hover:underline">Lemon Player</a>
+      <span>·</span>
+      <a href="drive.html" class="hover:underline">Flux Drive</a>
+      <span>·</span>
+      <a href="shelf.html" class="hover:underline">Lemon Shelf</a>
+      <span>·</span>
+      <button onclick="openGuide()" class="hover:underline">RSS 가이드</button>
+    </div>
+  </div>
+</footer>
+
+<!-- ================= MINI PLAYER ================= -->
+<div id="miniBar" class="mini-bar" aria-live="polite">
+  <div class="mini-inner relative">
+    <div id="miniTop" class="mini-top" title="클릭해서 이동"><div id="miniFill" class="mini-fill"></div></div>
+    <div class="mini-row pt-1.5">
+      <button id="miniOpen" class="mini-art art art-fallback flex-none relative overflow-hidden" title="플레이어 크게 열기" aria-label="플레이어 크게 열기">
+        <img id="miniArt" alt="" class="w-full h-full object-cover hidden">
+        <span id="miniArtFallback" class="text-[11px] font-black">FC</span>
+      </button>
+      <button id="miniInfo" class="min-w-0 flex-1 text-left">
+        <p id="miniTitle" class="mini-title truncate text-neutral-900 dark:text-white">재생할 에피소드가 없습니다</p>
+        <p id="miniSub" class="mini-sub truncate">샘플 피드나 구독에서 에피소드를 골라주세요</p>
+      </button>
+      <div class="flex items-center gap-1 flex-none">
+        <span id="miniTime" class="mini-meta hidden sm:inline tabular">0:00</span>
+        <button id="miniBack" class="icon-btn-sq hidden sm:inline-flex" title="15초 뒤로" aria-label="15초 뒤로">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 9.5V4"/><path d="M4 9.5h5.5"/><path d="M4.6 9.4A8 8 0 1 1 4 14"/></svg>
+        </button>
+        <button id="miniPlay" class="play-btn" title="재생/일시정지" aria-label="재생 또는 일시정지">
+          <svg id="miniPlayIcon" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path d="M8 5.5v13l11-6.5z"/></svg>
+        </button>
+        <button id="miniFwd" class="icon-btn-sq hidden sm:inline-flex" title="30초 앞으로" aria-label="30초 앞으로">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M20 9.5V4"/><path d="M20 9.5h-5.5"/><path d="M19.4 9.4A8 8 0 1 0 20 14"/></svg>
+        </button>
+        <button id="miniExpand" class="icon-btn-sq" title="풀 플레이어" aria-label="풀 플레이어 열기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M8 4H4v4"/><path d="M16 20h4v-4"/><path d="M20 8V4h-4"/><path d="M4 16v4h4"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= FULL PLAYER SHEET ================= -->
+<div id="sheetBackdrop" class="sheet-backdrop" onclick="closePlayerSheet()"></div>
+<aside id="playerSheet" class="sheet" role="dialog" aria-modal="true" aria-label="플레이어">
+  <div class="sheet-grip"></div>
+  <div class="px-4 sm:px-5 pb-3 pt-1 space-y-4">
+    <div class="flex items-center justify-between">
+      <p class="text-[11px] font-extrabold tracking-wide text-[#7c3aed] dark:text-[#c9a2ff] uppercase">Now Playing</p>
+      <button onclick="closePlayerSheet()" class="icon-btn-sq" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="flex items-center gap-3.5">
+      <div id="plArtWrap" class="w-20 h-20 rounded-2xl overflow-hidden flex-none art art-fallback shadow-lg">
+        <img id="plArt" alt="" class="w-full h-full object-cover hidden">
+        <span id="plArtFallback" class="text-lg font-black">FC</span>
+      </div>
+      <div class="min-w-0">
+        <p id="plTitle" class="text-[14.5px] font-extrabold leading-snug text-neutral-900 dark:text-white">재생 중인 에피소드가 없습니다</p>
+        <p id="plShow" class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-0.5 truncate"></p>
+        <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+          <span id="plSpeedChip" class="chip-mini">1.0x</span>
+          <span id="plAbChip" class="chip-mini chip-amber hidden">A–B 반복</span>
+          <span id="plSleepChip" class="chip-mini hidden">수면 타이머</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- waveform -->
+    <div>
+      <div id="plWave" class="wave live" title="파형을 눌러 이동">
+        <div class="wave-bars" id="plBars"></div>
+        <div class="wave-played" id="plPlayed"></div>
+        <div class="ab-band" id="plAbBand"></div>
+        <div class="wave-head" id="plHead" style="left:0%"></div>
+      </div>
+      <div class="flex items-center justify-between mt-1.5 text-[11px] text-neutral-500 dark:text-neutral-400 tabular">
+        <span id="plTime">0:00</span>
+        <span id="plDur">0:00</span>
+      </div>
+    </div>
+
+    <!-- transport -->
+    <div class="flex items-center justify-center gap-3">
+      <button id="plBack15" class="icon-btn-sq" title="15초 뒤로" aria-label="15초 뒤로">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 9.5V4"/><path d="M4 9.5h5.5"/><path d="M4.6 9.4A8 8 0 1 1 4 14"/></svg>
+      </button>
+      <button id="plBack30" class="icon-btn-sq" title="30초 뒤로" aria-label="30초 뒤로">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M20 9.5V4"/><path d="M20 9.5h-5.5"/><path d="M19.4 9.4A8 8 0 1 0 20 14"/><text x="9" y="15.5" font-size="7" font-weight="700" fill="currentColor" stroke="none">30</text></svg>
+      </button>
+      <button id="plPlay" class="play-btn lg" title="재생/일시정지" aria-label="재생 또는 일시정지">
+        <svg id="plPlayIcon" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M8 5.5v13l11-6.5z"/></svg>
+      </button>
+      <button id="plFwd15" class="icon-btn-sq" title="15초 앞으로" aria-label="15초 앞으로">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M20 9.5V4"/><path d="M20 9.5h-5.5"/><path d="M19.4 9.4A8 8 0 1 0 20 14"/></svg>
+      </button>
+      <button id="plFwd30" class="icon-btn-sq" title="30초 앞으로" aria-label="30초 앞으로">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 9.5V4"/><path d="M4 9.5h5.5"/><path d="M4.6 9.4A8 8 0 1 1 4 14"/><text x="9" y="15.5" font-size="7" font-weight="700" fill="currentColor" stroke="none">30</text></svg>
+      </button>
+    </div>
+
+    <!-- tools -->
+    <div class="rounded-xl border border-[#eee4fa] dark:border-[#281b3d] p-3 space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-[11.5px] font-extrabold text-neutral-800 dark:text-neutral-200">배속</p>
+        <div class="seg-wrap" id="plSpeedBtns"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="plSetA" class="px-2.5 py-1.5 rounded-lg border border-[#e2d5f6] dark:border-[#3a2654] text-[11.5px] font-extrabold text-neutral-800 dark:text-neutral-200 active:scale-95">A 지점 지정</button>
+        <button id="plSetB" class="px-2.5 py-1.5 rounded-lg border border-[#e2d5f6] dark:border-[#3a2654] text-[11.5px] font-extrabold text-neutral-800 dark:text-neutral-200 active:scale-95">B 지점 지정</button>
+        <button id="plClearAB" class="px-2.5 py-1.5 rounded-lg text-[11.5px] font-bold text-neutral-500 dark:text-neutral-400 hover:text-[#6825c9] active:scale-95">해제</button>
+        <span id="plAbText" class="text-[11px] font-mono text-neutral-500 dark:text-neutral-400"></span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative">
+          <button id="plSleepBtn" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#e2d5f6] dark:border-[#3a2654] text-[11.5px] font-extrabold text-neutral-800 dark:text-neutral-200 active:scale-95">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5"/><path d="M9 3h6"/></svg>
+            수면 타이머
+          </button>
+          <div id="plSleepMenu" class="hidden absolute left-0 bottom-full mb-1 z-10 w-44 rounded-xl border border-[#e6dcf6] dark:border-[#3a2654] bg-white dark:bg-[#160f22] shadow-xl p-1"></div>
+        </div>
+        <button id="plBookmark" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#e2d5f6] dark:border-[#3a2654] text-[11.5px] font-extrabold text-neutral-800 dark:text-neutral-200 active:scale-95">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M5 4h14v16l-7-4.5L5 20z"/></svg>
+          이 지점 북마크
+        </button>
+        <span id="plResumeNote" class="text-[11px] text-neutral-500 dark:text-neutral-400"></span>
+      </div>
+    </div>
+
+    <!-- marks for this episode -->
+    <div>
+      <div class="flex items-center justify-between">
+        <p class="text-[11.5px] font-extrabold text-neutral-800 dark:text-neutral-200">이 에피소드의 북마크</p>
+        <span id="plMarkCount" class="text-[10.5px] text-neutral-400 font-mono">0</span>
+      </div>
+      <div id="plMarks" class="mt-1.5 space-y-1.5 max-h-40 overflow-y-auto hide-sb"></div>
+    </div>
+
+    <!-- description -->
+    <div class="rounded-xl border border-[#eee4fa] dark:border-[#281b3d] p-3">
+      <p class="text-[11.5px] font-extrabold text-neutral-800 dark:text-neutral-200 mb-1">에피소드 설명</p>
+      <p id="plDesc" class="text-[11.5px] leading-relaxed text-neutral-600 dark:text-neutral-400 whitespace-pre-line max-h-40 overflow-y-auto hide-sb">설명이 없습니다.</p>
+      <a id="plLink" href="#" target="_blank" rel="noopener" class="hidden mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#6825c9] dark:text-[#dcc4ff]">원문 페이지 열기
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-3 h-3"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v5.5H4.5V6H10"/></svg>
+      </a>
+    </div>
+  </div>
+</aside>
+
+<!-- ================= GUIDE MODAL ================= -->
+<div id="guideModal" class="modal-wrap" role="dialog" aria-modal="true" aria-label="RSS 가이드">
+  <div class="modal-veil" onclick="closeGuide()"></div>
+  <div class="modal-card">
+    <div class="px-4 sm:px-5 pt-4 pb-2 border-b border-[#f0e8fb] dark:border-[#241834]">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <p class="guide-kicker">RSS GUIDE · 초보자용</p>
+          <h3 class="text-[16px] sm:text-[18px] font-extrabold text-neutral-900 dark:text-white mt-0.5">RSS 찾는 법부터 등록까지, 이 순서대로만 하면 됩니다</h3>
+          <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400 mt-1">막히면 이 창을 열어 두고 그대로 따라 하세요. 각 단계에 실제 버튼이 들어 있습니다.</p>
+        </div>
+        <button onclick="closeGuide()" class="icon-btn-sq flex-none" aria-label="가이드 닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="guide-nav mt-3 pb-2" id="guideNav">
+        <button class="guide-tab on" data-gtab="what" onclick="showGuideTab('what')"><span class="step-num" style="width:1.15rem;height:1.15rem;font-size:.6rem">1</span>RSS가 뭔가요?</button>
+        <button class="guide-tab" data-gtab="where" onclick="showGuideTab('where')"><span class="step-num" style="width:1.15rem;height:1.15rem;font-size:.6rem">2</span>어디서 찾나요?</button>
+        <button class="guide-tab" data-gtab="how" onclick="showGuideTab('how')"><span class="step-num" style="width:1.15rem;height:1.15rem;font-size:.6rem">3</span>어떻게 등록하나요?</button>
+        <button class="guide-tab" data-gtab="feeds" onclick="showGuideTab('feeds')"><span class="step-num" style="width:1.15rem;height:1.15rem;font-size:.6rem">4</span>샘플 피드</button>
+        <button class="guide-tab" data-gtab="help" onclick="showGuideTab('help')"><span class="step-num" style="width:1.15rem;height:1.15rem;font-size:.6rem">5</span>막혔을 때</button>
+      </div>
+    </div>
+
+    <div class="guide-body" id="guideBody">
+      <!-- 1. WHAT -->
+      <div data-gbody="what" class="space-y-3">
+        <h4>RSS는 "방송이 새 회차를 올리는 공개 주소"입니다</h4>
+        <p>팟캐스트 방송에는 저마다 <b>공개 주소 하나</b>가 있습니다. 보통 <span class="mono">https://.../feed.xml</span>, <span class="mono">/rss</span>, <span class="mono">/podcast.xml</span> 같은 모양입니다. 이 주소를 열면 방송의 제목·표지·회차 목록과 <b>음성 파일(mp3) 링크</b>가 들어 있는 목록 파일이 나옵니다.</p>
+        <div class="guide-note">
+          <b>비유하자면</b> — 방송은 도서관 서가이고, RSS 주소는 그 서가의 <b>목록표</b>입니다. 목록표만 있으면 새 책이 꽂힐 때마다 우리 화면에 자동으로 나타납니다. 그래서 RSS가 있는 방송은 <b>가입·로그인·앱 설치 없이</b> 어디서든 들을 수 있습니다.
+        </div>
+        <div class="grid sm:grid-cols-2 gap-2.5">
+          <div class="guide-note"><b>RSS가 있는 방송</b><br>거의 모든 팟캐스트. Apple Podcasts·스포티파이에 올라간 방송도 대부분 뒤에 RSS가 있습니다.</div>
+          <div class="guide-note guide-warn"><b>RSS가 없는 방송</b><br>플랫폼 독점 공개(오디오클립 전용, 스포티파이 독점 등)나 유료 회원 전용. 이 경우엔 이 앱에서 들을 수 없습니다.</div>
+        </div>
+        <h4 class="pt-1">이 앱이 하는 일</h4>
+        <p>주소를 받아 목록을 읽고, 재생 버튼을 누르면 그 방송의 음성 파일을 브라우저가 직접 재생합니다. 서버에 아무것도 저장하지 않으므로 로그인이 필요 없고, 구독 목록·북마크·들은 위치는 <b>이 브라우저 안에만</b> 남습니다.</p>
+      </div>
+
+      <!-- 2. WHERE -->
+      <div data-gbody="where" class="space-y-3 hidden">
+        <h4>방송별로 RSS 주소를 찾는 방법이 조금씩 다릅니다</h4>
+        <p>아래 표처럼 <b>이미 주소를 아는 경우</b>와 <b>링크만 아는 경우</b>로 나뉩니다. 대부분은 ① Apple Podcasts 링크를 붙여넣는 것으로 끝납니다.</p>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="step-num">A</span>
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">Apple Podcasts 링크 → RSS 자동 변환 (가장 확실)</p>
+          </div>
+          <p class="text-[11.5px]">Apple Podcasts에 방송이 올라와 있다면, 그 링크만 붙여넣으면 됩니다. 링크 안의 <span class="mono">id</span> 숫자로 Apple 카탈로그에 물어봐 실제 RSS 주소를 가져옵니다.</p>
+          <div class="flex gap-2">
+            <input id="guideAppleInput" type="url" class="field" placeholder="https://podcasts.apple.com/kr/podcast/.../id1639494417">
+            <button onclick="convertAppleFrom('guideAppleInput','guideAppleStatus')" class="flex-none px-3.5 rounded-xl brand-grad text-white text-[12px] font-extrabold active:scale-95">변환</button>
+          </div>
+          <p id="guideAppleStatus" class="text-[11px] text-neutral-500 dark:text-neutral-400"></p>
+          <p class="text-[11px] text-neutral-500 dark:text-neutral-400">
+            <b>링크를 찾는 법</b>: Apple Podcasts 앱에서 방송을 열고 <b>공유 → 링크 복사</b>. 앱이 없으면 <a href="https://podcasts.apple.com/kr" target="_blank" rel="noopener" class="font-bold text-[#6825c9] dark:text-[#dcc4ff] underline decoration-dotted">podcasts.apple.com</a>에서 방송 이름을 검색해 주소창의 링크를 복사하면 됩니다.
+          </p>
+        </div>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="step-num">B</span>
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">팟빵(Podbbang)</p>
+          </div>
+          <p class="text-[11.5px]">팟빵에 올라온 방송은 <b>대부분 RSS가 공개</b>되어 있습니다. 방송 페이지 주소가 <span class="mono">podbbang.com/ch/12345</span> 형태라면, 그 방송이 Apple Podcasts에도 등록돼 있는 경우가 많아 <b>위 A 방법(Apple 링크 변환)</b>이 가장 빠릅니다.</p>
+          <p class="text-[11.5px]">방송 페이지에 <b>RSS</b>·<b>구독</b>·<b>공유</b> 버튼이 있으면 그 안의 <span class="mono">.xml</span> 주소를 복사해 ③번 방법으로 붙여넣으세요. 팟빵 제작자 센터에서 <b>RSS 주소</b>를 안내하는 경우도 있습니다.</p>
+        </div>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="step-num">C</span>
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">네이버 오디오클립 · 스포티파이</p>
+          </div>
+          <p class="text-[11.5px]"><b>오디오클립 전용 공개</b> 방송은 RSS가 공개되지 않는 경우가 많습니다. <b>스포티파이 독점</b> 방송도 마찬가지입니다. 이때는 제작자가 따로 운영하는 RSS가 있는지 확인하세요 — <b>방송 소개란·홈페이지·인스타그램 프로필 링크</b>에 <span class="mono">feed</span>·<span class="mono">RSS</span>·<span class="mono">구독하기</span> 링크가 있는지 보면 됩니다.</p>
+          <p class="text-[11.5px]">스포티파이에서 퍼온 링크(<span class="mono">open.spotify.com/show/...</span>)는 RSS 주소가 아니므로 그대로 넣어도 열리지 않습니다. 이 앱은 스포티파이 링크를 RSS로 바꿔주지 않습니다(스포티파이가 RSS를 공개하지 않기 때문).</p>
+        </div>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="step-num">D</span>
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">유튜브 · 방송 홈페이지 · 링크 모음</p>
+          </div>
+          <p class="text-[11.5px]">제작자 홈페이지의 <b>푸터(맨 아래)</b>나 <b>구독/듣기</b> 메뉴에 RSS 아이콘과 주소가 숨어 있는 경우가 많습니다. 페이지에서 <span class="mono">feed</span>, <span class="mono">rss</span>, <span class="mono">xml</span>을 찾아보세요. 링크트리·인스타그램 프로필의 링크 목록에도 자주 있습니다.</p>
+          <p class="text-[11.5px]">유튜브 채널은 공식 RSS가 <span class="mono">youtube.com/feeds/videos.xml?channel_id=...</span> 형태로 있지만, 이 앱은 <b>팟캐스트 음성 피드</b>용이라 유튜브 영상 피드는 재생되지 않습니다.</p>
+        </div>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="step-num">E</span>
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">무료 검색 도구로 찾기</p>
+          </div>
+          <ul class="text-[11.5px] space-y-1.5 list-disc pl-4">
+            <li><b>이 앱의 이름 검색</b> — Apple 카탈로그를 뒤져 RSS 주소까지 같이 가져옵니다. 가장 빠른 길입니다.</li>
+            <li><b>Podcast Index</b> (<span class="mono">podcastindex.org</span>) — 오픈 팟캐스트 데이터베이스. 방송을 검색하면 피드 주소가 표시됩니다.</li>
+            <li><b>Listen Notes</b> (<span class="mono">listennotes.com</span>) — 방송 상세 페이지에 <b>RSS feed</b> 항목이 있습니다.</li>
+            <li><b>GetRSSFeed</b> (<span class="mono">getrssfeed.com</span>) — Apple Podcasts 링크를 넣으면 RSS를 대신 찾아주는 무료 도구입니다.</li>
+          </ul>
+          <div class="guide-note guide-warn">검색 도구는 Apple 카탈로그에 없는 방송(국내 전용·종료된 방송)을 못 찾을 수 있습니다. 그럴 때는 제작자 홈페이지에서 직접 찾는 편이 빠릅니다.</div>
+        </div>
+      </div>
+
+      <!-- 3. HOW -->
+      <div data-gbody="how" class="space-y-3 hidden">
+        <h4>찾은 주소를 넣는 네 가지 방법</h4>
+        <p>아래 버튼을 누르면 홈 화면의 해당 입력칸으로 이동합니다. 하나만 하면 됩니다.</p>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 flex items-start gap-3">
+          <span class="step-num">1</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">이름으로 검색해 구독</p>
+            <p class="text-[11.5px] mt-0.5">방송 이름 일부만 넣어도 됩니다. 결과에서 <b>구독</b>을 누르면 끝. 한국 방송이 먼저 나오고, 없으면 해외 카탈로그도 함께 찾습니다.</p>
+            <button onclick="closeGuide();showView('home');focusSearch()" class="mt-2 px-3 py-1.5 rounded-lg brand-grad text-white text-[11.5px] font-extrabold active:scale-95">검색창으로 가기</button>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 flex items-start gap-3">
+          <span class="step-num">2</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">Apple Podcasts 링크 붙여넣기</p>
+            <p class="text-[11.5px] mt-0.5">링크를 넣고 <b>변환</b>을 누르면 RSS를 찾아 바로 구독 화면까지 갑니다. 링크가 아니어도 <span class="mono">id1639494417</span>처럼 숫자만 넣어도 됩니다.</p>
+            <button onclick="closeGuide();showView('home');focusApple()" class="mt-2 px-3 py-1.5 rounded-lg brand-grad text-white text-[11.5px] font-extrabold active:scale-95">링크 변환으로 가기</button>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 flex items-start gap-3">
+          <span class="step-num">3</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">RSS 주소를 직접 붙여넣기</p>
+            <p class="text-[11.5px] mt-0.5">이미 <span class="mono">https://.../feed.xml</span> 주소를 알고 있다면 가장 빠릅니다. 붙여넣고 <b>추가</b>만 누르면 됩니다.</p>
+            <button onclick="closeGuide();showView('home');focusDirect()" class="mt-2 px-3 py-1.5 rounded-lg brand-grad text-white text-[11.5px] font-extrabold active:scale-95">RSS 주소 입력으로 가기</button>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-[#ece0fb] dark:border-[#33234d] p-3 flex items-start gap-3">
+          <span class="step-num">4</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white">OPML 파일로 한 번에 옮기기</p>
+            <p class="text-[11.5px] mt-0.5">다른 팟캐스트 앱의 <b>구독 내보내기</b>로 만든 <span class="mono">.opml</span> 파일을 그대로 가져옵니다. 여기서 구독한 목록도 OPML로 내보낼 수 있어 다른 앱으로 옮겨갈 수 있습니다.</p>
+            <button onclick="closeGuide();showView('home');setTimeout(function(){document.getElementById('opmlFile').click();},260)" class="mt-2 px-3 py-1.5 rounded-lg brand-grad text-white text-[11.5px] font-extrabold active:scale-95">OPML 파일 고르기</button>
+          </div>
+        </div>
+
+        <div class="guide-note">
+          <b>구독한 뒤에 할 수 있는 것</b> — 회차 목록에서 재생, <b>배속(0.8x~2.5x)</b>, <b>±15초/±30초</b> 이동, <b>A–B 구간 반복</b>, <b>수면 타이머</b>, <b>타임스탬프 북마크+메모</b>, 들은 위치 자동 기억. 모두 왼쪽 아래 재생 바에서 됩니다.
+        </div>
+      </div>
+
+      <!-- 4. FEEDS -->
+      <div data-gbody="feeds" class="space-y-3 hidden">
+        <h4>바로 넣어볼 수 있는 실제 공개 피드 5개</h4>
+        <p>아래 방송들은 지금도 새 회차가 올라오는 <b>실제 RSS 피드</b>입니다. <b>원클릭 구독</b>을 누르면 주소를 몰라도 그대로 들어갑니다.</p>
+        <div id="guidePresetGrid" class="grid gap-2.5 sm:grid-cols-2"></div>
+        <div class="guide-note">
+          <b>주소를 직접 보고 싶다면</b> — 각 카드의 <b>RSS 주소 복사</b>를 누르면 클립보드에 들어갑니다. 브라우저 주소창에 붙여넣으면 실제 XML 목록을 눈으로 확인할 수 있습니다.
+        </div>
+        <div class="guide-note guide-warn">
+          <b>방송이 안 열릴 때</b> — 방송사 서버가 다른 사이트에서의 접근을 막아둔 경우(CORS 차단)가 있습니다. 이 앱은 여러 경로로 다시 시도하지만, 끝까지 막히면 그 방송은 브라우저에서 직접 들을 수 없습니다. 그때는 오류 메시지에 적힌 <b>주소를 직접 열어</b> 확인해 보세요.
+        </div>
+      </div>
+
+      <!-- 5. HELP -->
+      <div data-gbody="help" class="space-y-3 hidden">
+        <h4>자주 막히는 지점과 해결법</h4>
+        <div class="guide-note">
+          <b>"피드를 읽을 수 없습니다"</b><br>
+          주소가 RSS가 아니거나(방송 페이지 주소를 넣은 경우), 방송사가 외부 접근을 막은 경우입니다. ① 주소가 <span class="mono">.xml</span>·<span class="mono">feed</span>로 끝나는지 확인 ② Apple 링크 변환으로 다시 시도 ③ 브라우저 주소창에 주소를 직접 열어 XML이 보이는지 확인.
+        </div>
+        <div class="guide-note">
+          <b>주소가 <span class="mono">http://</span>로 시작합니다</b><br>
+          보안 연결이 아닌 주소는 브라우저가 막습니다. 주소의 <span class="mono">http://</span>를 <span class="mono">https://</span>로 바꿔 다시 넣어보세요. 안 되면 그 방송은 https를 지원하지 않는 것입니다.
+        </div>
+        <div class="guide-note">
+          <b>목록은 보이는데 재생이 안 됩니다</b><br>
+          음성 파일이 만료된 회차이거나, 방송사가 음성 파일에 접근 제한을 건 경우입니다. 다른 회차를 눌러보고, 계속 안 되면 원문 링크에서 직접 들어보세요.
+        </div>
+        <div class="guide-note">
+          <b>구독이 저장되지 않습니다</b><br>
+          시크릿 모드이거나 브라우저 저장 공간이 가득 찼을 수 있습니다. 일반 창에서 다시 열고, 오래된 구독을 정리해 보세요.
+        </div>
+        <div class="guide-note">
+          <b>스포티파이·오디오클립 링크를 넣었습니다</b><br>
+          이 링크들은 RSS가 아니라 플랫폼 링크입니다. 그 플랫폼이 RSS를 공개하지 않으면 이 앱으로는 들을 수 없습니다. 제작자 홈페이지에 별도 RSS가 있는지 확인해 보세요.
+        </div>
+        <div class="guide-note">
+          <b>들은 위치·북마크가 사라졌습니다</b><br>
+          이 앱은 서버가 없어 브라우저에만 저장합니다. 브라우저 기록/사이트 데이터를 지우면 함께 사라집니다. 중요하면 북마크 메모를 따로 남겨두세요.
+        </div>
+        <div class="mt-1">
+          <button onclick="closeGuide();showView('home');focusSearch()" class="w-full px-4 py-3 rounded-xl brand-grad text-white text-[12.5px] font-extrabold active:scale-95">그래도 안 되면, 이름으로 검색해서 다시 시도하기</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= BOOKMARK NOTE MODAL ================= -->
+<div id="noteModal" class="modal-wrap" role="dialog" aria-modal="true" aria-label="북마크 메모">
+  <div class="modal-veil" onclick="closeNoteModal()"></div>
+  <div class="modal-card" style="max-width:460px">
+    <div class="p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <p class="text-[13.5px] font-extrabold text-neutral-900 dark:text-white">타임스탬프 북마크</p>
+        <button onclick="closeNoteModal()" class="icon-btn-sq" aria-label="닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-4 h-4"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <p class="text-[11.5px] text-neutral-500 dark:text-neutral-400" id="noteMeta">이 지점을 저장합니다.</p>
+      <textarea id="noteInput" class="field" rows="3" placeholder="메모 (선택) — 예: 여기서부터 다시 들을 부분, 중요한 이야기"></textarea>
+      <div class="flex gap-2">
+        <button onclick="closeNoteModal()" class="flex-1 px-4 py-2.5 rounded-xl border border-[#e2d5f6] dark:border-[#3a2654] text-[12px] font-bold text-neutral-700 dark:text-neutral-300">취소</button>
+        <button onclick="saveBookmark()" class="flex-1 px-4 py-2.5 rounded-xl brand-grad text-white text-[12px] font-extrabold active:scale-95">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+<script src="lemon-ui.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* ============================================================
+   Flux Cast — RSS 팟캐스트 플레이어
+   저장소: localStorage['flux_cast_v1'] (Flux Drive가 스캔)
+   ============================================================ */
+
+const KEY = 'flux_cast_v1';
+const $ = (id) => document.getElementById(id);
+
+/* ---------- 샘플 공개 피드 (실제 확인된 RSS) ---------- */
+const PRESETS = [
+  { id: 'suka', title: '슈카월드', author: '슈카', tag: '경제·시사', letter: '슈',
+    feedUrl: 'https://anchor.fm/s/ddaceaa8/podcast/rss' },
+  { id: 'kbs-stage', title: 'KBS 무대', author: 'KBS', tag: '라디오 드라마', letter: 'K',
+    feedUrl: 'https://api.kbs.co.kr/mediafactory/v1/podcast/rss/R2002-0172-stage' },
+  { id: 'match', title: '생존형 개발자 성냥의 불친절한 코딩 이야기', author: '성냥', tag: '개발', letter: '성',
+    feedUrl: 'https://anchor.fm/s/3f50bd80/podcast/rss' },
+  { id: 'ssul', title: '[쓸공언니] 경제 뉴스와 책 읽기', author: '쓸공언니', tag: '경제·책', letter: '쓸',
+    feedUrl: 'https://anchor.fm/s/f97ac048/podcast/rss' },
+  { id: 'sebasi', title: '세바시', author: '세바시', tag: '강연·인터뷰', letter: '세',
+    feedUrl: 'https://anchor.fm/s/e09cb02c/podcast/rss' }
+];
+
+/* ---------- state ---------- */
+function blankState() {
+  return { v: 1, subs: [], marks: [], positions: {}, settings: { speed: 1 }, last: null, updatedAt: Date.now() };
+}
+function loadState() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return blankState();
+    const s = JSON.parse(raw);
+    if (!s || typeof s !== 'object') return blankState();
+    s.v = 1;
+    s.subs = Array.isArray(s.subs) ? s.subs : [];
+    s.marks = Array.isArray(s.marks) ? s.marks : [];
+    s.positions = s.positions && typeof s.positions === 'object' ? s.positions : {};
+    s.settings = Object.assign({ speed: 1 }, s.settings || {});
+    /* Flux Drive가 작업물로 읽을 수 있도록 제목/설명/시각 필드를 맞춰 둔다 */
+    let dirty = false;
+    s.subs.forEach((x) => {
+      if (!x.description || !x.updatedAt || !x.createdAt) dirty = true;
+      x.title = x.title || '이름 없는 방송';
+      x.description = x.description || ((x.author ? x.author + ' · ' : '') + (x.episodes ? x.episodes.length : 0) + '개 회차 구독');
+      x.updatedAt = x.updatedAt || x.fetchedAt || x.addedAt || Date.now();
+      x.createdAt = x.createdAt || x.addedAt || x.updatedAt;
+    });
+    s.marks.forEach((m) => {
+      if (!m.title || !m.updatedAt) dirty = true;
+      m.title = m.title || m.epTitle || '북마크';
+      m.description = m.description || (m.note || '');
+      m.updatedAt = m.updatedAt || m.createdAt || Date.now();
+    });
+    if (dirty) s.__dirty = true;
+    return s;
+  } catch (e) { return blankState(); }
+}
+let state = loadState();
+
+let saveTimer = null;
+function save() {
+  state.updatedAt = Date.now();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    } catch (e) {
+      /* 용량 초과 시 오래된 회차 목록을 줄여 다시 시도 */
+      try {
+        state.subs.forEach((s) => { if (s.episodes && s.episodes.length > 25) s.episodes = s.episodes.slice(0, 25); });
+        localStorage.setItem(KEY, JSON.stringify(state));
+        toast('저장 공간이 부족해 오래된 회차 목록을 정리했어요', 'info');
+      } catch (e2) {
+        toast('저장에 실패했습니다. 브라우저 저장 공간을 확인해 주세요.', 'err');
+      }
+    }
+  }, 220);
+}
+
+/* ---------- utils ---------- */
+function esc(s) {
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h > 0 ? h + ':' + pad2(m) + ':' + pad2(s) : m + ':' + pad2(s);
+}
+function fmtDur(sec) {
+  sec = Math.floor(Number(sec) || 0);
+  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+  if (h > 0) return h + '시간 ' + m + '분';
+  return m + '분';
+}
+function fmtDay(v) {
+  if (!v) return '';
+  const t = typeof v === 'number' ? v : Date.parse(v);
+  if (isNaN(t)) return '';
+  const d = new Date(t), now = Date.now(), diff = (now - t) / 1000;
+  if (diff < 3600) return Math.max(1, Math.floor(diff / 60)) + '분 전';
+  if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+  if (diff < 86400 * 8) return Math.floor(diff / 86400) + '일 전';
+  return d.getFullYear() + '.' + pad2(d.getMonth() + 1) + '.' + pad2(d.getDate());
+}
+function stripTags(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+function hash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < String(str).length; i++) { h ^= String(str).charCodeAt(i); h = Math.imul(h, 16777619); }
+  return Math.abs(h);
+}
+function pkey(feedUrl, epId) { return feedUrl + '|' + epId; }
+function normUrl(u) {
+  u = String(u || '').trim().replace(/^["'<\s]+|["'>\s]+$/g, '');
+  if (!u) return '';
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u.replace(/^\/+/, '');
+  return u;
+}
+
+/* ---------- toast ---------- */
+function toast(msg, kind) {
+  const wrap = $('toastWrap');
+  if (!wrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind || 'info');
+  const icon = kind === 'ok'
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" class="w-3.5 h-3.5"><path d="m5 12.5 4.5 4.5L19 7"/></svg>'
+    : kind === 'err'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M12 7v6"/><path d="M12 17h.01"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" class="w-3.5 h-3.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>';
+  el.innerHTML = icon + '<span>' + esc(msg) + '</span>';
+  wrap.appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 240); }, kind === 'err' ? 5200 : 2800);
+}
+
+/* ============================================================
+   피드 가져오기 (직접 → 프록시들 → rss2json)
+   ============================================================ */
+function looksFeed(t) { return /<rss[\s>]|<feed[\s>]|<rdf:RDF/i.test(String(t || '').slice(0, 6000)); }
+
+async function fetchText(url, ms) {
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), ms || 15000);
+  try {
+    const r = await fetch(url, {
+      signal: ctl.signal, cache: 'no-store', mode: 'cors',
+      headers: { 'Accept': 'application/rss+xml, application/xml, text/xml, */*' }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.text();
+  } finally { clearTimeout(to); }
+}
+
+function xmlNodeText(el, names) {
+  if (!el) return '';
+  for (const n of names) {
+    const found = el.getElementsByTagName(n)[0] || el.getElementsByTagName('itunes:' + n)[0] || el.getElementsByTagName('media:' + n)[0];
+    if (found && found.textContent && found.textContent.trim()) return found.textContent.trim();
+  }
+  return '';
+}
+function childText(el, localNames) {
+  if (!el) return '';
+  for (const ln of localNames) {
+    const kids = el.childNodes;
+    for (let i = 0; i < kids.length; i++) {
+      const k = kids[i];
+      if (k.nodeType === 1 && (k.localName === ln || k.nodeName === ln || k.nodeName === 'itunes:' + ln)) {
+        if (k.textContent && k.textContent.trim()) return k.textContent.trim();
+      }
+    }
+  }
+  return '';
+}
+function childAttr(el, localName, attr) {
+  if (!el) return '';
+  const kids = el.childNodes;
+  for (let i = 0; i < kids.length; i++) {
+    const k = kids[i];
+    if (k.nodeType === 1 && (k.localName === localName || k.nodeName === localName || k.nodeName === 'itunes:' + localName || k.nodeName === 'media:' + localName)) {
+      const v = k.getAttribute(attr);
+      if (v) return v;
+    }
+  }
+  return '';
+}
+function parseDuration(v) {
+  if (!v) return 0;
+  v = String(v).trim();
+  if (/^\d+$/.test(v)) return Number(v);
+  const parts = v.split(':').map(Number);
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return 0;
+}
+
+function parseFeedXML(text, feedUrl) {
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('XML 형식이 아닙니다');
+  const channel = doc.getElementsByTagName('channel')[0] || doc.getElementsByTagName('feed')[0];
+  if (!channel) throw new Error('RSS/Atom 채널을 찾지 못했습니다');
+
+  const isAtom = channel.localName === 'feed';
+  const feed = {
+    title: stripTags(childText(channel, ['title'])) || '이름 없는 방송',
+    author: stripTags(childText(channel, ['author']) || xmlNodeText(channel, ['author'])),
+    desc: stripTags(childText(channel, ['description', 'subtitle', 'summary'])).slice(0, 400),
+    image: childAttr(channel, 'image', 'href') || stripTags(xmlNodeText(channel, ['url'])) || childAttr(channel, 'thumbnail', 'url') || '',
+    link: stripTags(childText(channel, ['link'])) || (channel.getElementsByTagName('link')[0] || {}).getAttribute?.('href') || '',
+    episodes: []
+  };
+  if (!feed.image) {
+    const imgEl = channel.getElementsByTagName('image')[0];
+    if (imgEl) feed.image = stripTags(xmlNodeText(imgEl, ['url']) || childText(imgEl, ['url']));
+  }
+  if (isAtom && !feed.link) {
+    const links = channel.getElementsByTagName('link');
+    for (let i = 0; i < links.length; i++) {
+      const rel = links[i].getAttribute('rel');
+      if (!rel || rel === 'alternate') { feed.link = links[i].getAttribute('href') || ''; break; }
+    }
+  }
+
+  const items = Array.prototype.slice.call(
+    isAtom ? channel.getElementsByTagName('entry') : channel.getElementsByTagName('item')
+  );
+  const seen = {};
+  for (const it of items) {
+    const title = stripTags(childText(it, ['title'])) || '(제목 없음)';
+    const desc = stripTags(childText(it, ['description', 'summary', 'content', 'encoded', 'subtitle'])).slice(0, 1200);
+    const dateRaw = childText(it, ['pubDate', 'published', 'updated', 'date']);
+    const date = Date.parse(dateRaw) || 0;
+    let audio = childAttr(it, 'enclosure', 'url');
+    let mime = childAttr(it, 'enclosure', 'type');
+    if (!audio) {
+      const links = it.getElementsByTagName('link');
+      for (let i = 0; i < links.length; i++) {
+        if (links[i].getAttribute('rel') === 'enclosure') { audio = links[i].getAttribute('href') || ''; mime = links[i].getAttribute('type') || ''; break; }
+      }
+    }
+    if (!audio) {
+      const med = it.getElementsByTagName('media:content')[0] || it.getElementsByTagName('content')[0];
+      if (med && med.getAttribute && med.getAttribute('url')) { audio = med.getAttribute('url'); mime = med.getAttribute('type') || ''; }
+    }
+    const guid = childText(it, ['guid', 'id']) || audio || (title + '|' + dateRaw);
+    const link = stripTags(childText(it, ['link'])) || (isAtom ? '' : '');
+    const durRaw = childText(it, ['duration', 'length']);
+    const duration = parseDuration(durRaw);
+    const image = childAttr(it, 'image', 'href') || childAttr(it, 'thumbnail', 'url') || '';
+    if (!audio) continue;
+    if (seen[guid]) continue;
+    seen[guid] = 1;
+    feed.episodes.push({
+      id: String(guid).slice(0, 220), title, desc,
+      date, dateRaw, duration, audio, mime, link, image
+    });
+  }
+  feed.episodes.sort((a, b) => (b.date || 0) - (a.date || 0));
+  if (!feed.episodes.length) throw new Error('재생할 수 있는 회차(음성 파일)가 없습니다');
+  return feed;
+}
+
+function rss2jsonFeed(json, feedUrl) {
+  if (!json || json.status !== 'ok' || !json.feed) throw new Error('rss2json 실패');
+  const f = json.feed;
+  const feed = {
+    title: stripTags(f.title) || '이름 없는 방송',
+    author: stripTags(f.author || ''),
+    desc: stripTags(f.description || '').slice(0, 400),
+    image: f.image || '',
+    link: f.link || '',
+    episodes: []
+  };
+  (json.items || []).forEach((it) => {
+    const audio = (it.enclosure && (it.enclosure.link || it.enclosure.url)) || '';
+    if (!audio) return;
+    feed.episodes.push({
+      id: String(it.guid || audio || it.title).slice(0, 220),
+      title: stripTags(it.title) || '(제목 없음)',
+      desc: stripTags(it.description || it.content || '').slice(0, 1200),
+      date: Date.parse(it.pubDate) || 0,
+      dateRaw: it.pubDate || '',
+      duration: 0,
+      audio, mime: (it.enclosure && it.enclosure.type) || '',
+      link: it.link || '',
+      image: it.thumbnail || ''
+    });
+  });
+  feed.episodes.sort((a, b) => (b.date || 0) - (a.date || 0));
+  if (!feed.episodes.length) throw new Error('회차가 없습니다');
+  feed.partial = true;
+  return feed;
+}
+
+async function loadFeed(rawUrl, onProgress) {
+  const url = normUrl(rawUrl);
+  if (!url) throw new Error('주소가 비어 있습니다');
+  const tries = [];
+  const httpsAlt = url.replace(/^http:\/\//i, 'https://');
+  if (httpsAlt !== url) tries.push({ name: 'https 재시도', run: () => fetchText(httpsAlt, 9000) });
+  tries.push({ name: '직접 연결', run: () => fetchText(url, 10000) });
+  tries.push({ name: 'allorigins', run: () => fetchText('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), 13000) });
+  tries.push({ name: 'codetabs', run: () => fetchText('https://api.codetabs.com/v1/proxy/?quest=' + url, 13000) });
+  tries.push({
+    name: 'rss2json', json: true,
+    run: () => fetchText('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(url), 13000)
+  });
+
+  const failures = [];
+  let step = 0;
+  for (const t of tries) {
+    step++;
+    if (onProgress) onProgress(step, tries.length, t.name);
+    try {
+      const raw = await t.run();
+      if (t.json) {
+        let j = null;
+        try { j = JSON.parse(raw); } catch (e) { throw new Error('JSON 형식 오류'); }
+        return rss2jsonFeed(j, url);
+      }
+      if (!looksFeed(raw)) throw new Error('RSS 형식이 아님');
+      return parseFeedXML(raw, url);
+    } catch (e) {
+      failures.push(t.name + ': ' + (e && e.message ? e.message : e));
+    }
+  }
+  const err = new Error('피드를 읽을 수 없습니다');
+  err.detail = failures;
+  throw err;
+}
+
+/* ============================================================
+   iTunes 카탈로그 (검색 · Apple 링크 → RSS)
+   ============================================================ */
+async function itunesJSON(path) {
+  const raw = await fetchText(path, 16000);
+  return JSON.parse(raw);
+}
+function appleIdOf(input) {
+  const s = String(input || '').trim();
+  let m = s.match(/id(\d{5,})/i);
+  if (m) return m[1];
+  if (/^\d{5,}$/.test(s)) return s;
+  m = s.match(/(\d{6,})/);
+  return m ? m[1] : null;
+}
+async function lookupApple(input) {
+  const id = appleIdOf(input);
+  if (!id) throw new Error('링크에서 방송 id 숫자를 찾지 못했습니다');
+  const countryFromUrl = (String(input).match(/podcasts\.apple\.com\/([a-z]{2})\//i) || [])[1];
+  const countries = [];
+  if (countryFromUrl) countries.push(countryFromUrl.toLowerCase());
+  ['kr', 'us'].forEach((c) => { if (countries.indexOf(c) < 0) countries.push(c); });
+  for (const c of countries) {
+    try {
+      const j = await itunesJSON('https://itunes.apple.com/lookup?id=' + id + '&country=' + c + '&entity=podcast');
+      const r = (j.results || []).find((x) => x.feedUrl);
+      if (r) return { title: r.collectionName || r.trackName, author: r.artistName || '', feedUrl: r.feedUrl, image: r.artworkUrl600 || r.artworkUrl100 || '', appleUrl: r.collectionViewUrl || '' };
+    } catch (e) { /* 다음 국가 */ }
+  }
+  throw new Error('Apple 카탈로그에서 이 방송을 찾지 못했습니다');
+}
+
+/* ============================================================
+   구독
+   ============================================================ */
+const pending = {};
+async function subscribe(rawUrl, meta, statusEl) {
+  const url = normUrl(rawUrl);
+  if (!url) { toast('RSS 주소를 확인해 주세요', 'err'); return null; }
+  const dup = state.subs.find((s) => s.feedUrl === url);
+  if (dup) { toast('이미 구독 중인 방송입니다', 'info'); showView('subs'); expandSub(dup.id, true); return dup; }
+  if (pending[url]) { toast('불러오는 중입니다', 'info'); return null; }
+  pending[url] = 1;
+  try {
+    toast('피드를 불러오는 중입니다', 'info');
+    const f = await loadFeed(url, (i, n, name) => {
+      if (statusEl) statusEl.textContent = '피드를 확인하는 중... (' + i + '/' + n + ' · ' + name + ')';
+    });
+    const sub = {
+      id: uid(),
+      feedUrl: url,
+      title: (meta && meta.title) || f.title,
+      author: (meta && meta.author) || f.author || '',
+      desc: f.desc || '',
+      image: (meta && meta.image) || f.image || '',
+      link: f.link || '',
+      addedAt: Date.now(),
+      fetchedAt: Date.now(),
+      updatedAt: Date.now(),
+      createdAt: Date.now(),
+      description: ((meta && meta.author) || f.author ? ((meta && meta.author) || f.author) + ' · ' : '') + f.episodes.length + '개 회차 구독',
+      partial: !!f.partial,
+      episodes: f.episodes.slice(0, 80)
+    };
+    state.subs.unshift(sub);
+    save(); renderAll(); showView('subs');
+    setTimeout(() => expandSub(sub.id, true), 60);
+    toast('구독 완료 — ' + sub.title, 'ok');
+    return sub;
+  } catch (e) {
+    toast(e.message || '피드를 읽지 못했습니다', 'err');
+    showFeedError(e, statusEl);
+    return null;
+  } finally { delete pending[url]; }
+}
+
+function showFeedError(e, el) {
+  if (!e || !e.detail) return;
+  const st = el || $('directStatus');
+  if (st) {
+    st.innerHTML = '<span class="text-[#b91c1c] font-bold">모든 경로 실패</span> · ' + esc(e.detail.join(' / ').slice(0, 220)) +
+      ' — <button onclick="openGuide(\'help\')" class="underline font-bold">해결 방법</button>';
+  }
+}
+
+function subscribePreset(id) {
+  const p = PRESETS.find((x) => x.id === id);
+  if (!p) return;
+  return subscribe(p.feedUrl, { title: p.title, author: p.author });
+}
+
+/* ============================================================
+   검색
+   ============================================================ */
+let lastSearchKey = '';
+async function doSearch() {
+  const q = ($('searchInput').value || '').trim();
+  const st = $('searchStatus'), box = $('searchResults');
+  if (!q) { st.textContent = '방송 이름을 입력해 주세요.'; $('searchInput').focus(); return; }
+  st.innerHTML = '<span class="inline-flex items-center gap-1.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" class="w-3.5 h-3.5 spin"><path d="M20 11a8 8 0 1 0-2.3 5.7"/></svg>Apple 카탈로그를 검색하는 중...</span>';
+  box.innerHTML = '';
+  lastSearchKey = q;
+  const groups = [];
+  try {
+    for (const c of ['KR', 'US']) {
+      let j;
+      try {
+        j = await itunesJSON('https://itunes.apple.com/search?media=podcast&term=' + encodeURIComponent(q) + '&limit=18&country=' + c);
+      } catch (e) { continue; }
+      const rs = (j.results || []).filter((r) => r.feedUrl);
+      groups.push({ c, rs });
+      if (c === 'KR' && rs.length >= 4) break;
+    }
+  } catch (e) {
+    st.innerHTML = '<span class="text-[#b91c1c] font-bold">검색에 실패했습니다.</span> 잠시 후 다시 시도하거나 RSS 주소를 직접 넣어 주세요.';
+    return;
+  }
+  const merged = [];
+  const seen = {};
+  groups.forEach((g) => g.rs.forEach((r) => {
+    const k = r.feedUrl;
+    if (seen[k]) return;
+    seen[k] = 1;
+    merged.push(r);
+  }));
+  if (!merged.length) {
+    st.innerHTML = '결과가 없습니다. 다른 이름으로 검색하거나 <button onclick="openGuide(\'where\')" class="underline font-bold">RSS를 직접 찾는 방법</button>을 참고하세요.';
+    return;
+  }
+  st.innerHTML = '<b>' + esc(q) + '</b> 검색 결과 ' + merged.length + '개 · 구독을 누르면 회차 목록을 불러옵니다.';
+  box.innerHTML = merged.slice(0, 12).map((r) => {
+    const art = r.artworkUrl100 || r.artworkUrl60 || '';
+    const letter = esc((r.collectionName || '?').slice(0, 1));
+    const cnt = r.trackCount ? r.trackCount + '개 회차' : (r.primaryGenreName || '팟캐스트');
+    return '<div class="result-row">' +
+      (art ? '<img src="' + esc(art) + '" alt="" class="w-11 h-11 art" loading="lazy" referrerpolicy="no-referrer">'
+           : '<span class="w-11 h-11 art art-fallback text-[12px] font-black flex-none">' + letter + '</span>') +
+      '<div class="min-w-0 flex-1">' +
+        '<p class="text-[12px] font-extrabold truncate text-neutral-900 dark:text-white">' + esc(r.collectionName || r.trackName) + '</p>' +
+        '<p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(r.artistName || '') + ' · ' + esc(cnt) + '</p>' +
+      '</div>' +
+      '<button class="flex-none px-2.5 py-1.5 rounded-lg brand-grad text-white text-[11px] font-extrabold active:scale-95" onclick="subscribeFromResult(this)" ' +
+        'data-url="' + esc(r.feedUrl) + '" data-title="' + esc(r.collectionName || r.trackName || '') + '" data-author="' + esc(r.artistName || '') + '" data-image="' + esc(r.artworkUrl600 || art) + '">구독</button>' +
+    '</div>';
+  }).join('');
+}
+function subscribeFromResult(btn) {
+  subscribe(btn.getAttribute('data-url'), {
+    title: btn.getAttribute('data-title'),
+    author: btn.getAttribute('data-author'),
+    image: btn.getAttribute('data-image')
+  });
+}
+
+/* ---------- Apple 링크 변환 ---------- */
+async function convertAppleFrom(inputId, statusId) {
+  const inp = $(inputId), st = $(statusId);
+  const v = (inp && inp.value || '').trim();
+  if (!v) { if (st) st.textContent = 'Apple Podcasts 링크를 붙여넣어 주세요.'; if (inp) inp.focus(); return; }
+  if (st) st.innerHTML = '<span class="inline-flex items-center gap-1.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" class="w-3.5 h-3.5 spin"><path d="M20 11a8 8 0 1 0-2.3 5.7"/></svg>RSS 주소를 찾는 중...</span>';
+  try {
+    const r = await lookupApple(v);
+    if (st) st.innerHTML = '<b class="text-[#6825c9] dark:text-[#dcc4ff]">' + esc(r.title) + '</b> 의 RSS 주소를 찾았습니다.<br><span class="mono">' + esc(r.feedUrl) + '</span>' +
+      (/^http:\/\//i.test(r.feedUrl) ? '<br><span class="text-[#b45309] dark:text-[#fbbf24] font-bold">주의: http:// 주소라 브라우저가 막을 수 있습니다.</span>' : '');
+    const sub = await subscribe(r.feedUrl, { title: r.title, author: r.author, image: r.image }, st);
+    if (inp && sub) inp.value = '';
+    if (st) {
+      if (sub) st.innerHTML = '<b class="text-[#6825c9] dark:text-[#dcc4ff]">' + esc(r.title) + '</b> 구독 완료 · <span class="mono">' + esc(r.feedUrl) + '</span>';
+      else st.innerHTML = '<b class="text-[#b45309] dark:text-[#fbbf24]">RSS는 찾았지만 피드를 열지 못했습니다.</b><br><span class="mono">' + esc(r.feedUrl) + '</span><br>' +
+        '<span class="text-[11px]">방송사가 외부 접근을 막았거나 http 주소일 수 있습니다. <button onclick="convertAppleFrom(\'' + inputId + '\',\'' + statusId + '\')" class="underline font-bold">다시 시도</button></span>';
+    }
+  } catch (e) {
+    if (st) st.innerHTML = '<span class="text-[#b91c1c] font-bold">' + esc(e.message || '변환 실패') + '</span> — 링크에 <span class="mono">/id123456789</span> 숫자가 있는지 확인해 주세요.';
+  }
+}
+function convertApple() { return convertAppleFrom('appleInput', 'appleStatus'); }
+function addDirect() {
+  const v = ($('directInput').value || '').trim();
+  const st = $('directStatus');
+  if (!v) { st.textContent = 'RSS 주소를 붙여넣어 주세요.'; $('directInput').focus(); return; }
+  st.textContent = '피드를 확인하는 중...';
+  subscribe(v, null, st).then((s) => {
+    if (s) { $('directInput').value = ''; st.textContent = '구독 완료 — ' + s.title; }
+    else if (/실패/.test(st.textContent)) { /* showFeedError가 문구를 채움 */ }
+    else st.textContent = '주소를 다시 확인해 주세요.';
+  });
+}
+
+/* ============================================================
+   OPML
+   ============================================================ */
+function exportOPML() {
+  if (!state.subs.length) { toast('내보낼 구독이 없습니다', 'info'); return; }
+  const rows = state.subs.map((s) =>
+    '    <outline type="rss" text="' + esc(s.title) + '" title="' + esc(s.title) + '" xmlUrl="' + esc(s.feedUrl) + '" htmlUrl="' + esc(s.link || '') + '"/>'
+  ).join('\n');
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head>\n    <title>Flux Cast 구독 목록</title>\n    <dateCreated>' + new Date().toUTCString() + '</dateCreated>\n  </head>\n  <body>\n' + rows + '\n  </body>\n</opml>\n';
+  const blob = new Blob([xml], { type: 'text/x-opml;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'flux-cast-subscriptions.opml';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+  toast('OPML 파일을 내려받았습니다', 'ok');
+}
+async function importOPML(file) {
+  const st = $('opmlStatus');
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    const outlines = Array.prototype.slice.call(doc.getElementsByTagName('outline'))
+      .filter((o) => o.getAttribute('xmlUrl'));
+    const urls = [];
+    outlines.forEach((o) => { const u = o.getAttribute('xmlUrl'); if (u && urls.indexOf(u) < 0) urls.push(u); });
+    if (!urls.length) { st.innerHTML = '<span class="text-[#b91c1c] font-bold">OPML에서 RSS 주소를 찾지 못했습니다.</span> 구독 목록을 내보낸 파일인지 확인해 주세요.'; return; }
+    const list = urls.slice(0, 25);
+    let ok = 0, fail = 0, dupN = 0;
+    for (let i = 0; i < list.length; i++) {
+      st.textContent = 'OPML 가져오는 중... ' + (i + 1) + ' / ' + list.length;
+      const before = state.subs.length;
+      try {
+        const dup = state.subs.find((s) => s.feedUrl === normUrl(list[i]));
+        if (dup) { dupN++; continue; }
+        const f = await loadFeed(list[i]);
+        state.subs.unshift({
+          id: uid(), feedUrl: normUrl(list[i]), title: f.title, author: f.author || '', desc: f.desc || '',
+          image: f.image || '', link: f.link || '', addedAt: Date.now(), fetchedAt: Date.now(),
+          updatedAt: Date.now(), createdAt: Date.now(),
+          description: (f.author ? f.author + ' · ' : '') + f.episodes.length + '개 회차 구독',
+          partial: !!f.partial, episodes: f.episodes.slice(0, 80)
+        });
+        if (state.subs.length > before) ok++;
+      } catch (e) { fail++; }
+      renderAll();
+    }
+    save();
+    st.innerHTML = '<b>' + ok + '개 구독 완료</b>' + (dupN ? ' · ' + dupN + '개는 이미 구독 중' : '') + (fail ? ' · ' + fail + '개는 피드를 열지 못했습니다' : '') + ' (최대 25개까지 확인)';
+    toast('OPML 가져오기 완료 · ' + ok + '개', ok ? 'ok' : 'info');
+    if (ok) showView('subs');
+  } catch (e) {
+    st.innerHTML = '<span class="text-[#b91c1c] font-bold">OPML 파일을 읽지 못했습니다.</span> .opml 파일인지 확인해 주세요.';
+  }
+}
+
+/* ============================================================
+   플레이어
+   ============================================================ */
+const audio = new Audio();
+audio.preload = 'metadata';
+let cur = null;                 /* {sub, ep} */
+let pendingSeek = null;
+let lastPosSave = 0;
+let ab = { a: null, b: null };
+let sleepUntil = 0;
+let sleepTimer = null;
+let waveSeed = '';
+
+function feedOf(feedUrl) { return state.subs.find((s) => s.feedUrl === feedUrl); }
+function findEp(feedUrl, epId) {
+  const s = feedOf(feedUrl);
+  if (!s) return null;
+  return s.episodes.find((e) => e.id === epId) || null;
+}
+
+function setPlayIcons(playing) {
+  const playSvg = '<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path d="M8 5.5v13l11-6.5z"/></svg>';
+  const pauseSvg = '<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></svg>';
+  const playSvgLg = '<svg viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M8 5.5v13l11-6.5z"/></svg>';
+  const pauseSvgLg = '<svg viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><rect x="7" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2"/></svg>';
+  $('miniPlayIcon').outerHTML = (playing ? pauseSvg : playSvg).replace('<svg ', '<svg id="miniPlayIcon" ');
+  $('plPlayIcon').outerHTML = (playing ? pauseSvgLg : playSvgLg).replace('<svg ', '<svg id="plPlayIcon" ');
+  document.querySelectorAll('.ep-eq').forEach((el) => el.classList.toggle('paused', !playing));
+}
+
+function buildWave(seed) {
+  if (waveSeed === seed) return;
+  waveSeed = seed;
+  const n = 56;
+  const h = hash(seed || 'flux-cast');
+  let bars = '', played = '';
+  for (let i = 0; i < n; i++) {
+    const v = ((h >> (i % 24)) ^ (i * 2654435761)) >>> 0;
+    const pct = 22 + (v % 78);
+    const style = 'height:' + Math.max(12, Math.round(pct * 0.46)) + 'px';
+    bars += '<span style="' + style + '"></span>';
+    played += '<span style="' + style + '"></span>';
+  }
+  $('plBars').innerHTML = bars;
+  $('plPlayed').innerHTML = played;
+}
+
+function artHTML(image, letter, cls) {
+  if (image) return '<img src="' + esc(image) + '" alt="" class="w-full h-full object-cover" loading="lazy" referrerpolicy="no-referrer">';
+  return '<span class="' + cls + '">' + esc(letter || 'FC') + '</span>';
+}
+
+function setArt(imgEl, wrapEl, fallbackEl, image, letter) {
+  if (image) {
+    imgEl.src = image; imgEl.classList.remove('hidden');
+    if (fallbackEl) fallbackEl.classList.add('hidden');
+    wrapEl.classList.remove('art-fallback');
+  } else {
+    imgEl.classList.add('hidden'); imgEl.removeAttribute('src');
+    if (fallbackEl) { fallbackEl.classList.remove('hidden'); fallbackEl.textContent = letter || 'FC'; }
+    wrapEl.classList.add('art-fallback');
+  }
+}
+
+function playEpisode(feedUrl, epId, opts) {
+  const sub = feedOf(feedUrl);
+  if (!sub) { toast('구독 정보를 찾지 못했습니다', 'err'); return; }
+  const ep = sub.episodes.find((e) => e.id === epId);
+  if (!ep) { toast('회차를 찾지 못했습니다', 'err'); return; }
+  if (cur && cur.ep && pkey(cur.sub.feedUrl, cur.ep.id) === pkey(feedUrl, epId) && !audio.paused && !(opts && opts.restart)) {
+    audio.pause(); return;
+  }
+  cur = { sub, ep };
+  state.last = { feedUrl, epId, at: Date.now() };
+  save();
+  ab = { a: null, b: null };
+  updateAbUI();
+
+  const pos = state.positions[pkey(feedUrl, epId)];
+  pendingSeek = pos && pos.t > 5 ? pos.t : 0;
+
+  audio.src = ep.audio;
+  audio.playbackRate = Number(state.settings.speed) || 1;
+  buildWave(epId);
+  renderMini();
+  renderSheet();
+  $('miniBar').classList.add('up');
+  const p = audio.play();
+  if (p && p.catch) p.catch(() => { toast('재생을 시작하지 못했습니다. 다시 눌러 주세요.', 'err'); setPlayIcons(false); });
+  renderPlayingStates();
+}
+
+function togglePlay() {
+  if (!cur) {
+    const first = pickFirstEpisode();
+    if (first) playEpisode(first.feedUrl, first.epId);
+    else { toast('먼저 방송을 구독해 주세요', 'info'); focusSearch(); }
+    return;
+  }
+  if (audio.paused) {
+    if (!audio.src) { playEpisode(cur.sub.feedUrl, cur.ep.id); return; }
+    audio.play().catch(() => toast('재생할 수 없습니다', 'err'));
+  } else audio.pause();
+}
+function pickFirstEpisode() {
+  for (const s of state.subs) {
+    if (s.episodes && s.episodes.length) {
+      const ep = s.episodes.find((e) => e.audio);
+      if (ep) return { feedUrl: s.feedUrl, epId: ep.id };
+    }
+  }
+  return null;
+}
+function seekBy(sec) {
+  if (!cur || !isFinite(audio.duration)) { toast('아직 재생할 회차가 없습니다', 'info'); return; }
+  audio.currentTime = Math.min(Math.max(0, audio.currentTime + sec), audio.duration - 0.4);
+  updateProgress();
+}
+function seekTo(sec) { if (cur && isFinite(sec)) { audio.currentTime = Math.max(0, sec); updateProgress(); } }
+
+function updateProgress() {
+  const dur = isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+  const t = audio.currentTime || 0;
+  const pct = dur ? Math.min(100, (t / dur) * 100) : 0;
+  $('miniFill').style.width = pct + '%';
+  $('plPlayed').style.clipPath = 'inset(0 ' + (100 - pct) + '% 0 0)';
+  $('plHead').style.left = pct + '%';
+  $('miniTime').textContent = fmtTime(t);
+  $('plTime').textContent = fmtTime(t);
+  $('plDur').textContent = dur ? fmtTime(dur) : '--:--';
+  const band = $('plAbBand');
+  if (ab.a !== null && ab.b !== null && dur && ab.b > ab.a) {
+    band.classList.add('on');
+    band.style.left = (ab.a / dur * 100) + '%';
+    band.style.width = ((ab.b - ab.a) / dur * 100) + '%';
+  } else band.classList.remove('on');
+}
+
+audio.addEventListener('loadedmetadata', () => {
+  if (pendingSeek) {
+    try { audio.currentTime = Math.min(pendingSeek, Math.max(0, audio.duration - 3)); } catch (e) { }
+    if (pendingSeek > 10) toast(fmtTime(pendingSeek) + '부터 이어서 재생합니다', 'info');
+    pendingSeek = null;
+  }
+  updateProgress();
+});
+audio.addEventListener('timeupdate', () => {
+  updateProgress();
+  if (ab.a !== null && ab.b !== null && ab.b > ab.a && audio.currentTime >= ab.b) {
+    audio.currentTime = ab.a;
+    toast('A–B 구간을 반복합니다', 'info');
+  }
+  const now = Date.now();
+  if (cur && now - lastPosSave > 4000) {
+    lastPosSave = now;
+    savePosition();
+  }
+});
+audio.addEventListener('play', () => { setPlayIcons(true); renderPlayingStates(); });
+audio.addEventListener('pause', () => { setPlayIcons(false); renderPlayingStates(); savePosition(); });
+audio.addEventListener('ended', () => {
+  setPlayIcons(false); savePosition();
+  if (sleepUntil === -1) {
+    sleepUntil = 0;
+    const chip = $('plSleepChip'); if (chip) chip.classList.add('hidden');
+    toast('회차가 끝나 재생을 멈췄습니다 (수면 타이머)', 'ok');
+    return;
+  }
+  const next = nextEpisode();
+  if (next) { toast('다음 회차를 재생합니다', 'info'); playEpisode(next.feedUrl, next.epId); }
+  else toast('재생이 끝났습니다', 'ok');
+});
+audio.addEventListener('error', () => {
+  if (!audio.src) return;
+  toast('음성 파일을 열 수 없습니다. 다른 회차를 시도해 보세요.', 'err');
+  setPlayIcons(false);
+});
+function savePosition() {
+  if (!cur || !audio.currentTime) return;
+  const k = pkey(cur.sub.feedUrl, cur.ep.id);
+  state.positions[k] = { t: Math.floor(audio.currentTime), dur: Math.floor(audio.duration || 0), updated: Date.now() };
+  const keys = Object.keys(state.positions);
+  if (keys.length > 200) {
+    keys.sort((a, b) => (state.positions[a].updated || 0) - (state.positions[b].updated || 0));
+    keys.slice(0, keys.length - 200).forEach((k2) => delete state.positions[k2]);
+  }
+  save();
+}
+function nextEpisode() {
+  if (!cur) return null;
+  const list = cur.sub.episodes;
+  const i = list.findIndex((e) => e.id === cur.ep.id);
+  /* 최신순 목록이므로 "다음"은 아래(더 오래된) 회차 */
+  for (let j = i + 1; j < list.length; j++) if (list[j].audio) return { feedUrl: cur.sub.feedUrl, epId: list[j].id };
+  return null;
+}
+
+/* ---------- A–B ---------- */
+function setA() { if (!cur) return; ab.a = audio.currentTime; if (ab.b !== null && ab.b <= ab.a) ab.b = null; updateAbUI(); toast('A 지점: ' + fmtTime(ab.a), 'ok'); }
+function setB() {
+  if (!cur) return;
+  if (ab.a === null) { toast('먼저 A 지점을 지정해 주세요', 'info'); return; }
+  if (audio.currentTime <= ab.a + 1) { toast('B 지점은 A보다 뒤여야 합니다', 'info'); return; }
+  ab.b = audio.currentTime; updateAbUI(); toast('A–B 구간 반복: ' + fmtTime(ab.a) + ' ~ ' + fmtTime(ab.b), 'ok');
+}
+function clearAB() { ab = { a: null, b: null }; updateAbUI(); toast('구간 반복을 해제했습니다', 'info'); }
+function updateAbUI() {
+  const chip = $('plAbChip'), txt = $('plAbText');
+  if (ab.a !== null) {
+    chip.classList.remove('hidden');
+    chip.textContent = ab.b !== null ? 'A–B 반복 ' + fmtTime(ab.a) + '~' + fmtTime(ab.b) : 'A ' + fmtTime(ab.a);
+    txt.textContent = ab.b !== null ? fmtTime(ab.b - ab.a) + ' 구간 반복 중' : 'B 지점을 지정해 주세요';
+  } else { chip.classList.add('hidden'); txt.textContent = ''; }
+  updateProgress();
+  const band = $('plAbBand');
+  if (!(ab.a !== null) ) band.classList.remove('on');
+}
+
+/* ---------- 배속 ---------- */
+const SPEEDS = [0.8, 1, 1.25, 1.5, 1.75, 2, 2.5];
+function renderSpeedBtns() {
+  $('plSpeedBtns').innerHTML = SPEEDS.map((s) =>
+    '<button class="seg-btn' + (Math.abs((Number(state.settings.speed) || 1) - s) < 0.01 ? ' on' : '') + '" onclick="setSpeed(' + s + ')">' + s + 'x</button>'
+  ).join('');
+  $('plSpeedChip').textContent = (Number(state.settings.speed) || 1).toFixed(2).replace(/0$/, '') + 'x';
+}
+function setSpeed(s) {
+  state.settings.speed = Number(s) || 1;
+  audio.playbackRate = state.settings.speed;
+  save(); renderSpeedBtns();
+  toast('재생 속도 ' + state.settings.speed + 'x', 'info');
+}
+
+/* ---------- 수면 타이머 ---------- */
+const SLEEP_OPTS = [{ m: 5, label: '5분' }, { m: 10, label: '10분' }, { m: 15, label: '15분' }, { m: 30, label: '30분' }, { m: 45, label: '45분' }, { m: 60, label: '60분' }, { m: 0, label: '이 회차가 끝나면' }, { m: -1, label: '해제' }];
+function renderSleepMenu() {
+  $('plSleepMenu').innerHTML = SLEEP_OPTS.map((o) =>
+    '<button class="w-full text-left px-2.5 py-1.5 rounded-lg text-[11.5px] font-bold text-neutral-700 dark:text-neutral-200 hover:bg-[#f3ecff] dark:hover:bg-[#241638]" onclick="setSleep(' + o.m + ')">' + o.label + '</button>'
+  ).join('');
+}
+function setSleep(min) {
+  $('plSleepMenu').classList.add('hidden');
+  clearInterval(sleepTimer); sleepTimer = null; sleepUntil = 0;
+  const chip = $('plSleepChip');
+  if (min === -1) { chip.classList.add('hidden'); toast('수면 타이머를 해제했습니다', 'info'); return; }
+  if (min === 0) {
+    sleepUntil = -1; chip.classList.remove('hidden'); chip.textContent = '이 회차 끝나면 정지';
+    toast('이 회차가 끝나면 멈춥니다', 'ok'); return;
+  }
+  sleepUntil = Date.now() + min * 60000;
+  chip.classList.remove('hidden');
+  const tick = () => {
+    const left = Math.max(0, sleepUntil - Date.now());
+    chip.textContent = '수면 ' + fmtTime(Math.ceil(left / 1000));
+    if (left <= 0) {
+      audio.pause(); clearInterval(sleepTimer); sleepTimer = null; sleepUntil = 0;
+      chip.classList.add('hidden'); toast('수면 타이머로 재생을 멈췄습니다', 'ok');
+    }
+  };
+  tick();
+  sleepTimer = setInterval(tick, 1000);
+  toast('수면 타이머 ' + min + '분', 'ok');
+}
+
+
+/* ============================================================
+   북마크
+   ============================================================ */
+let pendingNote = null;
+function openBookmark() {
+  if (!cur) { toast('재생 중인 회차가 없습니다', 'info'); return; }
+  pendingNote = { time: Math.floor(audio.currentTime), feedUrl: cur.sub.feedUrl, epId: cur.ep.id };
+  const m = state.marks.find((x) => x.feedUrl === cur.sub.feedUrl && x.epId === cur.ep.id && Math.abs(x.time - pendingNote.time) < 2);
+  $('noteInput').value = m ? (m.note || '') : '';
+  $('noteMeta').textContent = fmtTime(pendingNote.time) + ' 지점을 저장합니다 · ' + cur.sub.title;
+  $('noteModal').classList.add('on');
+  setTimeout(() => $('noteInput').focus(), 120);
+}
+function closeNoteModal() { $('noteModal').classList.remove('on'); pendingNote = null; }
+function saveBookmark() {
+  if (!pendingNote || !cur) { closeNoteModal(); return; }
+  const note = ($('noteInput').value || '').trim().slice(0, 300);
+  const dup = state.marks.find((x) => x.feedUrl === cur.sub.feedUrl && x.epId === cur.ep.id && Math.abs(x.time - pendingNote.time) < 2);
+  if (dup) { dup.note = note; dup.description = note; dup.createdAt = Date.now(); dup.updatedAt = Date.now(); }
+  else {
+    state.marks.unshift({
+      id: uid(), feedUrl: cur.sub.feedUrl, epId: cur.ep.id,
+      show: cur.sub.title, epTitle: cur.ep.title,
+      image: cur.sub.image || '', audio: cur.ep.audio,
+      time: pendingNote.time, note,
+      title: cur.ep.title, description: note,
+      createdAt: Date.now(), updatedAt: Date.now()
+    });
+  }
+  save(); renderAll();
+  closeNoteModal();
+  toast('북마크를 저장했습니다', 'ok');
+}
+function playMark(id) {
+  const m = state.marks.find((x) => x.id === id);
+  if (!m) return;
+  const sub = feedOf(m.feedUrl);
+  if (!sub || !sub.episodes.find((e) => e.id === m.epId)) {
+    /* 구독이 사라졌으면 저장된 정보로 재생 */
+    cur = { sub: { feedUrl: m.feedUrl, title: m.show, image: m.image, episodes: [{ id: m.epId, title: m.epTitle, audio: m.audio, desc: '' }], link: '' }, ep: { id: m.epId, title: m.epTitle, audio: m.audio, desc: '' } };
+    audio.src = m.audio;
+    audio.playbackRate = Number(state.settings.speed) || 1;
+    buildWave(m.epId); renderMini(); renderSheet(); $('miniBar').classList.add('up');
+    audio.addEventListener('loadedmetadata', () => { audio.currentTime = m.time; }, { once: true });
+    audio.play().catch(() => { });
+    return;
+  }
+  playEpisode(m.feedUrl, m.epId);
+  audio.addEventListener('loadedmetadata', () => { try { audio.currentTime = m.time; } catch (e) { } }, { once: true });
+}
+function deleteMark(id) {
+  state.marks = state.marks.filter((x) => x.id !== id);
+  save(); renderAll();
+  toast('북마크를 삭제했습니다', 'info');
+}
+
+/* ============================================================
+   렌더
+   ============================================================ */
+function renderAll() { renderPresets(); renderLatest(); renderSubs(); renderLibrary(); renderCounts(); renderMini(); renderSheet(); renderMarks(); }
+
+function renderCounts() {
+  const subs = state.subs.length, marks = state.marks.length;
+  [['heroSubCount', subs], ['navSubCount', subs], ['mNavSubCount', subs], ['subsCountText', subs],
+   ['heroMarkCount', marks], ['navMarkCount', marks], ['libCountText', marks]].forEach(([id, v]) => {
+    const el = $(id); if (el) el.textContent = v;
+  });
+}
+
+function presetCard(p, compact) {
+  return '<div class="preset">' +
+    '<div class="flex items-center gap-2.5">' +
+      '<span class="w-10 h-10 rounded-xl flex-none flex items-center justify-center text-white font-black text-[13px]" style="background-image:linear-gradient(135deg,#7c3aed,#a855f7 58%,#f59e0b)">' + esc(p.letter) + '</span>' +
+      '<div class="min-w-0">' +
+        '<p class="text-[12.5px] font-extrabold text-neutral-900 dark:text-white truncate">' + esc(p.title) + '</p>' +
+        '<p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 truncate">' + esc(p.author) + ' · ' + esc(p.tag) + '</p>' +
+      '</div>' +
+    '</div>' +
+    '<div class="flex gap-1.5 mt-auto">' +
+      '<button class="flex-1 px-2.5 py-2 rounded-xl brand-grad text-white text-[11.5px] font-extrabold active:scale-95" onclick="subscribePreset(\'' + p.id + '\')">원클릭 구독</button>' +
+      (compact ? '' : '<button class="px-2.5 py-2 rounded-xl border border-[#e2d5f6] dark:border-[#3a2654] text-[11px] font-bold text-neutral-600 dark:text-neutral-300 active:scale-95" onclick="copyText(\'' + esc(p.feedUrl) + '\')">RSS 복사</button>') +
+    '</div>' +
+  '</div>';
+}
+function renderPresets() {
+  const a = $('presetGrid'); if (a) a.innerHTML = PRESETS.map((p) => presetCard(p, false)).join('');
+  const b = $('guidePresetGrid'); if (b) b.innerHTML = PRESETS.map((p) => presetCard(p, true)).join('');
+}
+function copyText(t) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(() => toast('RSS 주소를 복사했습니다', 'ok'), () => toast('복사에 실패했습니다', 'err'));
+  } else {
+    const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('RSS 주소를 복사했습니다', 'ok'); } catch (e) { toast('복사에 실패했습니다', 'err'); }
+    ta.remove();
+  }
+}
+
+function epRow(sub, ep, playing) {
+  const pos = state.positions[pkey(sub.feedUrl, ep.id)];
+  const dur = ep.duration ? fmtTime(ep.duration) : (pos && pos.dur ? fmtTime(pos.dur) : '');
+  const mark = state.marks.some((m) => m.feedUrl === sub.feedUrl && m.epId === ep.id);
+  return '<div class="ep-row' + (playing ? ' playing' : '') + '">' +
+    '<button class="w-9 h-9 rounded-lg flex-none flex items-center justify-center ' + (playing ? 'brand-grad text-white' : 'bg-[#f3ecff] dark:bg-[#241638] text-[#6825c9] dark:text-[#dcc4ff]') + ' active:scale-95" onclick="playEpisode(\'' + esc(sub.feedUrl) + '\',\'' + esc(ep.id) + '\')" aria-label="재생">' +
+      (playing ? '<span class="ep-eq eq' + (audio.paused ? ' paused' : '') + '"><i></i><i></i><i></i><i></i></span>' : '<svg viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5"><path d="M8 5.5v13l11-6.5z"/></svg>') +
+    '</button>' +
+    '<div class="min-w-0 flex-1">' +
+      '<p class="text-[12px] font-bold leading-snug text-neutral-900 dark:text-white line-clamp-2">' + esc(ep.title) + '</p>' +
+      '<p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 mt-0.5 flex flex-wrap items-center gap-x-2">' +
+        (ep.date ? '<span>' + esc(fmtDay(ep.date)) + '</span>' : '') +
+        (dur ? '<span class="font-mono">' + dur + '</span>' : '') +
+        (pos && pos.t > 5 ? '<span class="text-[#b45309] dark:text-[#fbbf24] font-bold">이어듣기 ' + fmtTime(pos.t) + '</span>' : '') +
+        (mark ? '<span class="chip-mini">북마크</span>' : '') +
+      '</p>' +
+    '</div>' +
+    '<button class="icon-btn-sq" title="이 회차 북마크" onclick="quickBookmark(\'' + esc(sub.feedUrl) + '\',\'' + esc(ep.id) + '\')" aria-label="북마크">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M5 4h14v16l-7-4.5L5 20z"/></svg>' +
+    '</button>' +
+  '</div>';
+}
+function quickBookmark(feedUrl, epId) {
+  const sub = feedOf(feedUrl); if (!sub) return;
+  const ep = sub.episodes.find((e) => e.id === epId); if (!ep) return;
+  if (!cur || cur.ep.id !== epId) { playEpisode(feedUrl, epId); setTimeout(() => openBookmark(), 900); }
+  else openBookmark();
+}
+
+function renderLatest() {
+  const box = $('latestList');
+  if (!box) return;
+  const rows = [];
+  state.subs.forEach((s) => {
+    (s.episodes || []).slice(0, 4).forEach((ep) => rows.push({ s, ep }));
+  });
+  rows.sort((a, b) => (b.ep.date || 0) - (a.ep.date || 0));
+  if (!rows.length) {
+    box.innerHTML = '<div class="p-5 text-center space-y-2">' +
+      '<p class="text-[12.5px] font-bold text-neutral-700 dark:text-neutral-200">아직 구독한 방송이 없습니다</p>' +
+      '<p class="text-[11.5px] text-neutral-500 dark:text-neutral-400">아래 샘플 피드에서 <b>원클릭 구독</b>을 누르면 최신 회차가 여기에 쌓입니다.</p>' +
+      '<button onclick="openGuide(\'feeds\')" class="px-3.5 py-2 rounded-xl brand-grad text-white text-[11.5px] font-extrabold active:scale-95">샘플 피드 보기</button>' +
+    '</div>';
+    return;
+  }
+  box.innerHTML = rows.slice(0, 10).map(({ s, ep }) => {
+    const playing = cur && cur.ep.id === ep.id && cur.sub.feedUrl === s.feedUrl;
+    return '<div class="px-2.5 py-1">' + epRow(s, ep, playing) + '</div>';
+  }).join('');
+}
+
+function renderSubs() {
+  const grid = $('subsGrid'), empty = $('subsEmpty');
+  if (!grid) return;
+  if (!state.subs.length) {
+    grid.innerHTML = '';
+    if (empty) empty.classList.remove('hidden');
+  } else {
+    if (empty) empty.classList.add('hidden');
+    grid.innerHTML = state.subs.map((s) => {
+      const letter = (s.title || '?').slice(0, 1);
+      const latest = s.episodes && s.episodes[0];
+      return '<div class="rounded-2xl border border-[#ece2f8] dark:border-[#241834] bg-white dark:bg-[#0f0a18] overflow-hidden" id="sub-' + s.id + '">' +
+        '<div class="p-3 flex items-start gap-3">' +
+          '<span class="w-12 h-12 art flex-none overflow-hidden art-' + (s.image ? '' : 'fallback') + '">' + artHTML(s.image, letter, 'text-[13px] font-black text-white') + '</span>' +
+          '<div class="min-w-0 flex-1">' +
+            '<p class="text-[13px] font-extrabold text-neutral-900 dark:text-white leading-snug truncate">' + esc(s.title) + '</p>' +
+            '<p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">' + esc(s.author || '제작자 미상') + '</p>' +
+            '<div class="flex flex-wrap items-center gap-1.5 mt-1.5">' +
+              '<span class="chip-mini">' + (s.episodes ? s.episodes.length : 0) + '개 회차</span>' +
+              (latest && latest.date ? '<span class="chip-mini chip-amber">최근 ' + esc(fmtDay(latest.date)) + '</span>' : '') +
+              (s.partial ? '<span class="chip-mini">간이 목록</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="flex flex-col gap-1 flex-none">' +
+            '<button class="icon-btn-sq" title="에피소드 열기" onclick="expandSub(\'' + s.id + '\')" aria-label="펼치기">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-4 h-4"><path d="m6 9 6 6 6-6"/></svg>' +
+            '</button>' +
+            '<button class="icon-btn-sq" title="새로고침" onclick="refreshSub(\'' + s.id + '\')" aria-label="새로고침">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4.5V11h-6.5"/></svg>' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="px-2.5 pb-2' + (expanded.has(s.id) ? '' : ' hidden') + '" id="eps-' + s.id + '">' + (s.episodes || []).slice(0, 20).map((ep) =>
+          epRow(s, ep, cur && cur.ep.id === ep.id && cur.sub.feedUrl === s.feedUrl)
+        ).join('') + '</div>' +
+        '<div class="px-3 pb-2.5 flex flex-wrap items-center gap-2">' +
+          '<button onclick="copyText(\'' + esc(s.feedUrl) + '\')" class="text-[10.5px] font-bold text-neutral-500 dark:text-neutral-400 hover:text-[#6825c9] dark:hover:text-[#dcc4ff] underline decoration-dotted">RSS 주소 복사</button>' +
+          (s.link ? '<a href="' + esc(s.link) + '" target="_blank" rel="noopener" class="text-[10.5px] font-bold text-neutral-500 dark:text-neutral-400 hover:text-[#6825c9] dark:hover:text-[#dcc4ff] underline decoration-dotted">방송 홈페이지</a>' : '') +
+          '<button onclick="unsubscribe(\'' + s.id + '\')" class="ml-auto text-[10.5px] font-bold text-[#b91c1c] dark:text-[#f87171] hover:underline">구독 취소</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+}
+const expanded = new Set();
+function expandSub(id, force) {
+  const box = document.getElementById('eps-' + id);
+  if (!box) return;
+  if (force) expanded.add(id);
+  else if (expanded.has(id)) expanded.delete(id);
+  else expanded.add(id);
+  box.classList.toggle('hidden', !expanded.has(id));
+  if (expanded.has(id)) { box.classList.remove('view-anim'); void box.offsetWidth; box.classList.add('view-anim'); }
+}
+async function refreshSub(id) {
+  const s = state.subs.find((x) => x.id === id);
+  if (!s) return;
+  toast('새 회차를 확인하는 중...', 'info');
+  try {
+    const f = await loadFeed(s.feedUrl);
+    s.title = f.title || s.title;
+    s.author = f.author || s.author;
+    s.desc = f.desc || s.desc;
+    s.image = f.image || s.image;
+    s.link = f.link || s.link;
+    s.episodes = f.episodes.slice(0, 80);
+    s.fetchedAt = Date.now(); s.updatedAt = Date.now(); s.partial = !!f.partial;
+    s.description = (s.author ? s.author + ' · ' : '') + f.episodes.length + '개 회차 구독';
+    save(); renderAll();
+    toast(s.title + ' 새로고침 완료', 'ok');
+  } catch (e) { toast(e.message || '새로고침 실패', 'err'); }
+}
+async function refreshAll() {
+  if (!state.subs.length) { toast('구독한 방송이 없습니다', 'info'); return; }
+  let n = 0, fail = 0;
+  for (const s of state.subs.slice()) {
+    try {
+      const f = await loadFeed(s.feedUrl);
+      s.episodes = f.episodes.slice(0, 80); s.fetchedAt = Date.now(); s.partial = !!f.partial;
+      s.image = f.image || s.image;
+      n++;
+    } catch (e) { fail++; }
+  }
+  save(); renderAll();
+  toast(n + '개 방송 새로고침' + (fail ? ' · ' + fail + '개 실패' : ''), fail ? 'info' : 'ok');
+}
+function unsubscribe(id) {
+  const s = state.subs.find((x) => x.id === id);
+  if (!s) return;
+  if (!confirm('"' + s.title + '" 구독을 취소할까요?\\n북마크와 들은 위치는 보관함에 그대로 남습니다.')) return;
+  state.subs = state.subs.filter((x) => x.id !== id);
+  save(); renderAll();
+  toast('구독을 취소했습니다', 'info');
+}
+
+/* ---------- library ---------- */
+let libFilter = 'all';
+function setLibFilter(f) {
+  libFilter = f;
+  document.querySelectorAll('[data-libfilter]').forEach((b) => b.classList.toggle('on', b.getAttribute('data-libfilter') === f));
+  renderLibrary();
+}
+function renderLibrary() {
+  const box = $('libList'), empty = $('libEmpty');
+  if (!box) return;
+  let list = state.marks.slice();
+  if (libFilter === 'note') list = list.filter((m) => m.note);
+  else if (libFilter === 'recent') list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!list.length) {
+    box.innerHTML = '';
+    if (empty) empty.classList.remove('hidden');
+    return;
+  }
+  if (empty) empty.classList.add('hidden');
+  box.innerHTML = list.map((m) => {
+    const letter = (m.show || '?').slice(0, 1);
+    return '<div class="rounded-xl border border-[#ece2f8] dark:border-[#241834] bg-white dark:bg-[#0f0a18] p-2.5 flex items-start gap-2.5">' +
+      '<span class="w-10 h-10 art flex-none overflow-hidden">' + artHTML(m.image, letter, 'text-[12px] font-black text-white') + '</span>' +
+      '<button class="min-w-0 flex-1 text-left" onclick="playMark(\'' + m.id + '\')">' +
+        '<p class="text-[12px] font-bold text-neutral-900 dark:text-white leading-snug line-clamp-2">' + esc(m.epTitle) + '</p>' +
+        '<p class="text-[10.5px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5">' + esc(m.show) + '</p>' +
+        '<p class="mt-1 flex items-center gap-1.5"><span class="chip-mini mono">' + fmtTime(m.time) + '</span><span class="text-[10px] text-neutral-400">' + esc(fmtDay(m.createdAt)) + '</span></p>' +
+        (m.note ? '<p class="text-[11px] text-neutral-600 dark:text-neutral-300 mt-1 leading-relaxed">' + esc(m.note) + '</p>' : '') +
+      '</button>' +
+      '<div class="flex flex-col gap-1 flex-none">' +
+        '<button class="icon-btn-sq" title="이 지점 재생" onclick="playMark(\'' + m.id + '\')" aria-label="재생">' +
+          '<svg viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5"><path d="M8 5.5v13l11-6.5z"/></svg></button>' +
+        '<button class="icon-btn-sq" title="삭제" onclick="deleteMark(\'' + m.id + '\')" aria-label="삭제">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M5 7h14"/><path d="M9 7V4.5h6V7"/><path d="M7 7l1 12.5h8L17 7"/></svg></button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ---------- mini + sheet ---------- */
+function renderMini() {
+  if (!cur) {
+    $('miniTitle').textContent = '재생할 에피소드가 없습니다';
+    $('miniSub').textContent = '샘플 피드나 구독에서 에피소드를 골라주세요';
+    return;
+  }
+  setArt($('miniArt'), $('miniOpen'), $('miniArtFallback'), cur.sub.image || cur.ep.image, (cur.sub.title || 'FC').slice(0, 1));
+  $('miniTitle').textContent = cur.ep.title;
+  $('miniSub').textContent = cur.sub.title + (cur.ep.date ? ' · ' + fmtDay(cur.ep.date) : '');
+  updateProgress();
+}
+function renderSheet() {
+  if (!cur) return;
+  setArt($('plArt'), $('plArtWrap'), $('plArtFallback'), cur.sub.image || cur.ep.image, (cur.sub.title || 'FC').slice(0, 1));
+  $('plTitle').textContent = cur.ep.title;
+  $('plShow').textContent = cur.sub.title + (cur.ep.date ? ' · ' + fmtDay(cur.ep.date) : '');
+  $('plDesc').textContent = cur.ep.desc || '설명이 없습니다.';
+  const link = cur.ep.link || cur.sub.link || '';
+  if (link) { $('plLink').href = link; $('plLink').classList.remove('hidden'); }
+  else $('plLink').classList.add('hidden');
+  updateProgress();
+  renderMarks();
+}
+function renderMarks() {
+  const box = $('plMarks');
+  if (!box) return;
+  if (!cur) { box.innerHTML = '<p class="text-[11px] text-neutral-400">재생 중인 회차가 없습니다.</p>'; $('plMarkCount').textContent = '0'; return; }
+  const list = state.marks.filter((m) => m.feedUrl === cur.sub.feedUrl && m.epId === cur.ep.id);
+  $('plMarkCount').textContent = list.length;
+  if (!list.length) { box.innerHTML = '<p class="text-[11px] text-neutral-400">아직 북마크가 없습니다. 재생 중 <b>이 지점 북마크</b>를 눌러 보세요.</p>'; return; }
+  box.innerHTML = list.slice().sort((a, b) => a.time - b.time).map((m) =>
+    '<div class="flex items-start gap-2 rounded-lg border border-[#f0e8fb] dark:border-[#2a1d3f] px-2 py-1.5">' +
+      '<button class="text-[11px] font-mono font-bold text-[#6825c9] dark:text-[#dcc4ff] flex-none" onclick="seekTo(' + m.time + ')">' + fmtTime(m.time) + '</button>' +
+      '<p class="text-[11px] text-neutral-600 dark:text-neutral-300 flex-1 min-w-0 leading-relaxed">' + (m.note ? esc(m.note) : '<span class="text-neutral-400">메모 없음</span>') + '</p>' +
+      '<button class="text-neutral-400 hover:text-[#b91c1c] flex-none" onclick="deleteMark(\'' + m.id + '\')" aria-label="삭제">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><path d="M6 6l12 12M18 6 6 18"/></svg></button>' +
+    '</div>'
+  ).join('');
+}
+function renderPlayingStates() {
+  renderLatest();
+  renderSubs();
+}
+
+/* ---------- views ---------- */
+let currentView = 'home';
+function showView(v) {
+  currentView = v;
+  ['home', 'subs', 'library'].forEach((k) => {
+    const sec = document.getElementById('view' + k.charAt(0).toUpperCase() + k.slice(1));
+    if (sec) sec.classList.toggle('hidden', k !== v);
+  });
+  const map = { home: 'viewHome', subs: 'viewSubs', library: 'viewLibrary' };
+  const sec = $(map[v]);
+  if (sec) { sec.classList.remove('view-anim'); void sec.offsetWidth; sec.classList.add('view-anim'); }
+  document.querySelectorAll('[data-nav]').forEach((b) => b.classList.toggle('on', b.getAttribute('data-nav') === v));
+  document.querySelectorAll('[data-mnav]').forEach((b) => {
+    const on = b.getAttribute('data-mnav') === v;
+    b.className = 'flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg ' + (on ? 'text-[#6825c9] dark:text-[#dcc4ff] font-extrabold' : 'text-neutral-500 dark:text-neutral-400 font-semibold');
+  });
+  try { history.replaceState(null, '', '#' + v); } catch (e) { }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function focusSearch() { const el = $('searchInput'); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 260); } }
+function focusApple() { const el = $('appleInput'); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 260); } }
+function focusDirect() { const el = $('directInput'); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(() => el.focus({ preventScroll: true }), 260); } }
+
+/* ---------- guide ---------- */
+function openGuide(tab) {
+  $('guideModal').classList.add('on');
+  document.body.classList.add('overlay-open');
+  document.body.style.overflow = 'hidden';
+  showGuideTab(tab || 'what');
+}
+function closeGuide() {
+  $('guideModal').classList.remove('on');
+  document.body.classList.remove('overlay-open');
+  document.body.style.overflow = '';
+}
+function showGuideTab(tab) {
+  document.querySelectorAll('[data-gtab]').forEach((b) => b.classList.toggle('on', b.getAttribute('data-gtab') === tab));
+  document.querySelectorAll('[data-gbody]').forEach((b) => {
+    const on = b.getAttribute('data-gbody') === tab;
+    b.classList.toggle('hidden', !on);
+    if (on) { b.classList.remove('view-anim'); void b.offsetWidth; b.classList.add('view-anim'); }
+  });
+  $('guideBody').scrollTop = 0;
+}
+
+/* ---------- player sheet ---------- */
+function openPlayerSheet() {
+  if (!cur) { toast('재생 중인 회차가 없습니다', 'info'); return; }
+  $('playerSheet').classList.add('on');
+  $('sheetBackdrop').classList.add('on');
+  document.body.classList.add('overlay-open');
+  document.body.style.overflow = 'hidden';
+  renderSheet();
+}
+function closePlayerSheet() {
+  $('playerSheet').classList.remove('on');
+  $('sheetBackdrop').classList.remove('on');
+  document.body.classList.remove('overlay-open');
+  document.body.style.overflow = '';
+}
+
+/* ============================================================
+   이벤트 연결
+   ============================================================ */
+function bind() {
+  $('searchBtn').addEventListener('click', doSearch);
+  $('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+  $('appleBtn').addEventListener('click', convertApple);
+  $('appleInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); convertApple(); } });
+  $('directBtn').addEventListener('click', addDirect);
+  $('directInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addDirect(); } });
+  $('opmlFile').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) importOPML(f);
+    e.target.value = '';
+  });
+
+  $('miniPlay').addEventListener('click', togglePlay);
+  $('plPlay').addEventListener('click', togglePlay);
+  $('miniBack').addEventListener('click', () => seekBy(-15));
+  $('miniFwd').addEventListener('click', () => seekBy(30));
+  $('miniExpand').addEventListener('click', openPlayerSheet);
+  $('miniOpen').addEventListener('click', openPlayerSheet);
+  $('miniInfo').addEventListener('click', openPlayerSheet);
+  $('miniTop').addEventListener('click', (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const p = (e.clientX - r.left) / r.width;
+    if (isFinite(audio.duration)) seekTo(p * audio.duration);
+  });
+
+  $('plBack15').addEventListener('click', () => seekBy(-15));
+  $('plBack30').addEventListener('click', () => seekBy(-30));
+  $('plFwd15').addEventListener('click', () => seekBy(15));
+  $('plFwd30').addEventListener('click', () => seekBy(30));
+  $('plSetA').addEventListener('click', setA);
+  $('plSetB').addEventListener('click', setB);
+  $('plClearAB').addEventListener('click', clearAB);
+  $('plBookmark').addEventListener('click', openBookmark);
+  $('plSleepBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('plSleepMenu').classList.toggle('hidden');
+  });
+  $('plWave').addEventListener('click', (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    if (isFinite(audio.duration)) seekTo(p * audio.duration);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest || !e.target.closest('#plSleepMenu, #plSleepBtn')) $('plSleepMenu').classList.add('hidden');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if ($('noteModal').classList.contains('on')) { closeNoteModal(); return; }
+      if ($('guideModal').classList.contains('on')) { closeGuide(); return; }
+      if ($('playerSheet').classList.contains('on')) { closePlayerSheet(); return; }
+    }
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (e.code === 'ArrowRight') { e.preventDefault(); seekBy(e.shiftKey ? 30 : 15); }
+    else if (e.code === 'ArrowLeft') { e.preventDefault(); seekBy(e.shiftKey ? -30 : -15); }
+  });
+}
+
+/* ---------- boot ---------- */
+function restoreLast() {
+  if (!state.last) return;
+  const sub = feedOf(state.last.feedUrl);
+  if (!sub) return;
+  const ep = (sub.episodes || []).find((e) => e.id === state.last.epId);
+  if (!ep) return;
+  cur = { sub, ep };
+  const pos = state.positions[pkey(sub.feedUrl, ep.id)];
+  if (pos && pos.t > 5) $('plResumeNote').textContent = '지난번 ' + fmtTime(pos.t) + '까지 들었습니다';
+  buildWave(ep.id);
+  renderMini(); renderSheet();
+  $('miniBar').classList.add('up');
+}
+function init() {
+  bind();
+  if (state.__dirty) { delete state.__dirty; save(); }
+  renderPresets();
+  renderSpeedBtns();
+  renderSleepMenu();
+  renderAll();
+  restoreLast();
+  const hash = (location.hash || '').replace('#', '');
+  if (['home', 'subs', 'library'].indexOf(hash) >= 0) showView(hash);
+  if (state.subs.length) { /* 첫 화면에서도 구독 목록을 바로 볼 수 있게 */ }
+  window.addEventListener('beforeunload', savePosition);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) savePosition(); });
+}
+
+/* 외부(인라인 onclick)에서 쓰는 함수 노출 */
+window.showView = showView;
+window.focusSearch = focusSearch;
+window.focusApple = focusApple;
+window.focusDirect = focusDirect;
+window.openGuide = openGuide;
+window.closeGuide = closeGuide;
+window.showGuideTab = showGuideTab;
+window.doSearch = doSearch;
+window.convertApple = convertApple;
+window.convertAppleFrom = convertAppleFrom;
+window.addDirect = addDirect;
+window.exportOPML = exportOPML;
+window.subscribePreset = subscribePreset;
+window.subscribeFromResult = subscribeFromResult;
+window.copyText = copyText;
+window.playEpisode = playEpisode;
+window.seekTo = seekTo;
+window.playMark = playMark;
+window.deleteMark = deleteMark;
+window.quickBookmark = quickBookmark;
+window.openBookmark = openBookmark;
+window.saveBookmark = saveBookmark;
+window.closeNoteModal = closeNoteModal;
+window.expandSub = expandSub;
+window.refreshSub = refreshSub;
+window.refreshAll = refreshAll;
+window.unsubscribe = unsubscribe;
+window.setSpeed = setSpeed;
+window.setSleep = setSleep;
+window.setLibFilter = setLibFilter;
+window.openPlayerSheet = openPlayerSheet;
+window.closePlayerSheet = closePlayerSheet;
+window.__cast = { loadFeed: loadFeed, subscribe: subscribe, lookupApple: lookupApple, state: function () { return state; }, audio: audio };
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+})();
+</script>
+</body>
+</html>
