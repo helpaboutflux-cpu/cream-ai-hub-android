@@ -904,6 +904,52 @@
     }
   }
 
+  /* ---------------- custom color picker ----------------
+     모든 Soft Hub 서비스의 <input type="color"> 는 브라우저 기본 색상
+     대화상자 대신 자체 구현 피커(lemon-picker.js / .css)를 쓴다.
+     필요한 페이지에서만 지연 로드하고, 나중에 동적으로 생기는
+     input[type=color](모달 재렌더링 등)도 피커가 스스로 감지한다. */
+  var selfSrc = (doc.currentScript && doc.currentScript.src) || '';
+  function pickerBase() {
+    try { return String(selfSrc).replace(/[?#].*$/, '').replace(/[^/]*$/, ''); } catch (e) { return ''; }
+  }
+  function loadPicker() {
+    if (window.__lcpLoad) return;
+    window.__lcpLoad = 1;
+    var base = pickerBase();
+    try {
+      if (!doc.querySelector('link[href$="lemon-picker.css"]')) {
+        var l = doc.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = base + 'lemon-picker.css';
+        (doc.head || root).appendChild(l);
+      }
+      if (!window.LemonColorPicker) {
+        var s = doc.createElement('script');
+        s.src = base + 'lemon-picker.js';
+        s.async = true;
+        (doc.head || root).appendChild(s);
+      }
+    } catch (e) { }
+  }
+  function watchPicker() {
+    if (window.LemonColorPicker) { window.LemonColorPicker.enhanceAll(doc); return; }
+    if (doc.querySelector('input[type="color"]')) { loadPicker(); return; }
+    if (!window.MutationObserver || !doc.body) return;
+    var timer = 0;
+    var mo = new MutationObserver(function () {
+      // 무거운 앱(빌더 등)이 잦게 다시 그려도 문서 전체 검색은 250ms에 한 번만.
+      if (timer) return;
+      timer = setTimeout(function () {
+        timer = 0;
+        if (!doc.querySelector('input[type="color"]')) return;
+        mo.disconnect();
+        loadPicker();
+      }, 250);
+    });
+    mo.observe(doc.body, { childList: true, subtree: true });
+  }
+
   /* ---------------- boot ---------------- */
   /* IndexedDB 복원은 페이지가 그려지기 전에 시작해 둔다. sessionStorage 미러는 먼저 동기적으로 읽는다. */
   sessSeed();
@@ -916,6 +962,7 @@
     bindRipple();
     bindRanges();
     reveal();
+    watchPicker();
   });
 
   window.Lemon = {
@@ -951,6 +998,17 @@
     timeAgo: timeAgo,
     fmtBytes: fmtBytes,
     pad: pad,
-    refreshRange: refreshRange
+    refreshRange: refreshRange,
+    upgradeColorPickers: function (scope) {
+      loadPicker();
+      if (window.LemonColorPicker) window.LemonColorPicker.enhanceAll(scope || doc);
+    }
   };
+
+  try {
+    Object.defineProperty(window.Lemon, 'colorPicker', {
+      configurable: true,
+      get: function () { return window.LemonColorPicker || null; }
+    });
+  } catch (e) { }
 })();
