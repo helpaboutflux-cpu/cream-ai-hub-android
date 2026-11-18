@@ -78,6 +78,11 @@
         <span>광고 관리</span>
         <span class="navbtn__badge" id="navAdCount">0</span>
       </button>
+      <button class="navbtn" data-view="push">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5a6 6 0 1 1 12 0c0 3.2.9 4.9 1.7 6H4.3c.8-1.1 1.7-2.8 1.7-6z"></path><path d="M9.8 19a2.4 2.4 0 0 0 4.4 0"></path></svg>
+        <span>푸시 알림</span>
+        <span class="navbtn__badge" id="navPushState">0</span>
+      </button>
       <button class="navbtn" data-view="cloud">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.2 9.2 4.4 4.4 0 0 0 6.5 19z"></path></svg>
         <span>Supabase</span>
@@ -459,6 +464,68 @@
         </div>
       </section>
 
+      <!-- ================= 푸시 알림 ================= -->
+      <section class="view" id="view-push">
+        <div class="statusline">
+          <span class="pill" id="pushPill"><span class="pill__dot"></span><span id="pushPillText">연결 중</span></span>
+          <span class="pill" id="pushSubPill">구독자 0명</span>
+          <span class="pill" id="pushPermPill">내 알림 권한 확인 중</span>
+        </div>
+
+        <div class="card">
+          <div class="card__head">
+            <div>
+              <h2 class="card__title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5a6 6 0 1 1 12 0c0 3.2.9 4.9 1.7 6H4.3c.8-1.1 1.7-2.8 1.7-6z"></path><path d="M9.8 19a2.4 2.4 0 0 0 4.4 0"></path></svg>
+                푸시 알림 보내기
+              </h2>
+              <p class="card__desc">soft_hub_push 채널을 구독한 접속 중인 사용자에게 즉시 도착합니다.</p>
+            </div>
+          </div>
+          <div class="card__body">
+            <div class="formgrid">
+              <div class="field">
+                <label for="pushTitle">제목</label>
+                <input class="input" id="pushTitle" maxlength="80" placeholder="예: 새 기능이 열렸습니다" autocomplete="off">
+              </div>
+              <div class="field">
+                <label for="pushBody">내용</label>
+                <textarea class="textarea" id="pushBody" maxlength="240" placeholder="예: Flux Groups Plus 에서 서버·채널 채팅과 푸시 알림을 쓸 수 있습니다."></textarea>
+              </div>
+              <div class="field">
+                <label for="pushUrl">이동 주소</label>
+                <input class="input" id="pushUrl" maxlength="200" placeholder="groups-plus.html" autocomplete="off">
+              </div>
+              <div class="actions">
+                <button class="btn btn--primary" id="pushSend" type="button">알림 보내기</button>
+                <button class="btn" id="pushEnable" type="button">내 알림 권한 켜기</button>
+                <button class="btn" id="pushTest" type="button">내 기기 미리보기</button>
+                <div class="actions__spacer"></div>
+                <a class="btn btn--sm" href="push-center.html" target="_blank" rel="noopener">전체 콘솔</a>
+              </div>
+              <div class="note" id="pushNote">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5.5M12 7.8v.4"></path></svg>
+                <div>브라우저 알림 권한이 허용된 사용자에게 Service Worker 알림으로 표시됩니다. 화면을 보고 있을 때는 페이지 안 토스트로 대신 뜹니다.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card__head">
+            <h2 class="card__title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+              최근 발송
+            </h2>
+          </div>
+          <div class="card__body">
+            <div class="kv" id="pushLog">
+              <div class="kv__row"><span class="kv__k">기록</span><span class="kv__v">아직 보낸 알림이 없습니다.</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ================= 보안 ================= -->
       <section class="view" id="view-security">
         <div class="card">
@@ -680,6 +747,102 @@
 <script src="lemon-cloud.js"></script>
 <script src="lemon-site.js"></script>
 <script src="lemon-ui.js"></script>
+<script src="supabase-js.min.js"></script>
+<script src="lemon-push.js"></script>
 <script src="admin.js"></script>
+<script>
+/* 관리자 콘솔 · 푸시 알림 패널 */
+(function () {
+  var inited = false, sent = [], logs = [];
+  function $(id) { return document.getElementById(id); }
+
+  function refresh() {
+    if (!window.LemonPush) return;
+    var st = LemonPush.state();
+    var perm = LemonPush.permission();
+    if ($('pushPill')) {
+      $('pushPillText').textContent = st.ready ? '실시간 연결됨' : '연결 중';
+      $('pushPill').classList.toggle('pill--on', !!st.ready);
+    }
+    if ($('pushSubPill')) $('pushSubPill').textContent = '구독자 ' + st.count + '명';
+    if ($('navPushState')) $('navPushState').textContent = st.count;
+    if ($('pushPermPill')) {
+      $('pushPermPill').textContent = perm === 'granted' ? '내 알림 허용됨' : perm === 'denied' ? '내 알림 차단됨' : '내 알림 권한 필요';
+    }
+    if ($('pushEnable')) {
+      $('pushEnable').textContent = LemonPush.isEnabled() ? '내 알림 켜짐' : '내 알림 권한 켜기';
+    }
+  }
+
+  function init() {
+    if (inited || !window.LemonPush) return;
+    inited = true;
+    LemonPush.init({ app: 'Soft Hub' });
+    LemonPush.onSubscribers(refresh);
+    setInterval(refresh, 3000);
+
+    $('pushEnable').addEventListener('click', function () {
+      LemonPush.enable().then(function (ok) {
+        refresh();
+        if (!ok) $('pushNote').querySelector('div').textContent = '브라우저에서 알림이 차단되어 있습니다. 주소창의 사이트 설정에서 알림을 허용해 주세요.';
+      });
+    });
+
+    function payload() {
+      return {
+        title: ($('pushTitle').value || '').trim() || 'Soft Hub',
+        body: ($('pushBody').value || '').trim(),
+        url: ($('pushUrl').value || '').trim() || 'index.html',
+        tag: 'hub-' + Date.now()
+      };
+    }
+
+    $('pushTest').addEventListener('click', function () {
+      var p = payload();
+      if (!LemonPush.isEnabled()) LemonPush.enable().then(function () { LemonPush.notify(p); refresh(); });
+      else LemonPush.notify(p);
+      addLog(p, '내 기기');
+    });
+
+    $('pushSend').addEventListener('click', function () {
+      var p = payload();
+      var btn = $('pushSend');
+      if (!p.body) { $('pushNote').querySelector('div').textContent = '내용을 입력해 주세요.'; return; }
+      btn.disabled = true;
+      LemonPush.send(p).then(function () {
+        $('pushNote').querySelector('div').textContent = '보냈습니다. 접속 중인 기기에 곧 도착합니다.';
+        addLog(p, '전체');
+        btn.disabled = false;
+      }).catch(function (e) {
+        $('pushNote').querySelector('div').textContent = '보내지 못했습니다. 실시간 연결 상태를 확인해 주세요.';
+        btn.disabled = false;
+      });
+    });
+
+    refresh();
+  }
+
+  function addLog(p, scope) {
+    var t = new Date();
+    logs.unshift({ hh: ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2), title: p.title, body: p.body, scope: scope });
+    if (logs.length > 8) logs.pop();
+    var box = $('pushLog');
+    if (!box) return;
+    box.innerHTML = '';
+    logs.forEach(function (l) {
+      var row = document.createElement('div');
+      row.className = 'kv__row';
+      row.innerHTML = '<span class="kv__k">' + l.hh + ' · ' + l.scope + '</span><span class="kv__v"></span>';
+      var v = row.querySelector('.kv__v');
+      v.textContent = l.title + ' — ' + l.body;
+      box.appendChild(row);
+    });
+  }
+
+  window.FluxAdminPush = { onShow: function () { init(); refresh(); } };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else setTimeout(init, 800);
+})();
+</script>
 </body>
 </html>

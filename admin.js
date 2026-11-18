@@ -317,6 +317,7 @@
     notice: ['상단 공지 배너', '모든 서비스 상단에 표시'],
     home: ['홈 배너', 'index.html 홈 최상단'],
     ads: ['광고 관리', 'Flux Feed 기사 사이에 노출'],
+    push: ['푸시 알림', '구독 중인 사용자에게 즉시 발송'],
     cloud: ['Supabase', '로그인 · 동기화 · 짧은 공유 링크'],
     security: ['보안', '관리자 비밀번호 · 숨김 점검']
   };
@@ -332,6 +333,7 @@
     var t = TITLES[name] || ['', ''];
     $('topTitle').textContent = t[0];
     $('topSub').textContent = t[1];
+    if (name === 'push' && window.FluxAdminPush) window.FluxAdminPush.onShow();
     if (name === 'cloud') refreshCloudPanel();
     if (name === 'security') checkAdminLinks();
   }
