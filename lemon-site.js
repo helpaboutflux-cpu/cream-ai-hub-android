@@ -548,6 +548,17 @@
   }
   function popKeydown(e) { if (e && e.key === 'Escape') { e.stopPropagation(); closePop(); } }
 
+  /* Google Drive 개인 백업 연결 상태 — 토큰은 lemon-gdrive.js 가 이 기기에만 둔다.
+     다른 페이지에서도 읽을 수 있게 저장된 상태로만 판단한다. */
+  function gdLinkState() {
+    var tok = null, link = null;
+    try { tok = JSON.parse(localStorage.getItem('lemon_gdrive_token_v1') || 'null'); } catch (e) { }
+    try { link = JSON.parse(localStorage.getItem('lemon_gdrive_link_v1') || 'null'); } catch (e) { }
+    var live = !!(tok && tok.access_token && (!tok.expires_at || Date.now() < Number(tok.expires_at) - 60000));
+    if (live) return '연결됨';
+    return (link && link.ts) ? '다시 연결 필요' : '연결 안 됨';
+  }
+
   function popMarkup(user) {
     var mail = String((user && user.email) || 'LK ID');
     var ok = !!(user && user.email_confirmed_at);
@@ -562,8 +573,10 @@
       '<div class="lkpop-swrow"><span>클라우드 저장</span><label class="lkpop-sw"><input type="checkbox" data-pop-sync aria-label="클라우드 저장 켜기"><i></i></label></div>' +
       '<div class="lkpop-urow"><span>클라우드 저장 공간</span><b data-pop-use>-</b></div>' +
       '<div class="lkpop-track"><i data-pop-fill></i></div>' +
+      '<div class="lkpop-urow" style="margin-top:11px"><span>Drive 개인 백업</span><b data-pop-gd>-</b></div>' +
       '<p class="lkpop-msg" data-pop-msg role="status" aria-live="polite"></p>' +
       '<button type="button" class="lkpop-btn lkpop-btn--solid" data-pop-backup>지금 클라우드 백업</button>' +
+      '<a class="lkpop-btn" href="drive.html#cloud">Google Drive 개인 백업</a>' +
       '<a class="lkpop-btn" data-pop-settings href="' + esc(authHref()) + '">LK ID 계정 설정</a>' +
       '<button type="button" class="lkpop-btn lkpop-btn--ghost" data-pop-out>로그아웃</button>' +
       '</div></div>';
@@ -635,6 +648,9 @@
       (c.init ? c.init() : Promise.resolve()).then(function () { return c.usage(); })
         .then(function (u) { if (popLayer === layer) paintUsage(u); }, function () { });
     }
+
+    var gdEl = box.querySelector('[data-pop-gd]');
+    if (gdEl) gdEl.textContent = gdLinkState();
 
     var bk = box.querySelector('[data-pop-backup]');
     if (bk) {

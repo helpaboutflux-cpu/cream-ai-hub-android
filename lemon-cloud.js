@@ -43,6 +43,9 @@
     lemon_site_remote_cfg_v1: 1, lemon_site_remote_ads_v1: 1,
     lemon_notice_ack_v1: 1, lemon_home_ack_v1: 1, lemon_cp_recent: 1,
     lemon_shares_v1: 1, cream_theme: 1, lemon_anim_mode: 1,
+    /* Google Drive 개인 백업 연결 정보 — 이 기기에만 (lemon-gdrive.js) */
+    lemon_gdrive_token_v1: 1, lemon_gdrive_link_v1: 1,
+    lemon_gdrive_last_v1: 1, lemon_gdrive_restore_v1: 1,
     /* 민감 정보 — 절대 클라우드로 올리지 않는다 (이 기기에만) */
     lemon_pass_vault: 1, flux_notebook_gemini_key: 1
   };
