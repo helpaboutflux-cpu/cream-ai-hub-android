@@ -32,7 +32,7 @@
   var pendingOrder = [];
   var idbTail = {};       /* key -> IndexedDB 작업 직렬화 꼬리 */
   var idbDb = null, idbOpenP = null;
-  var hydrated = false, hydrateP = null, readyQ = [], idbNoticeShown = false;
+  var hydrated = false, hydrateP = null, readyQ = [];
 
   function emit(name, detail) {
     try { doc.dispatchEvent(new CustomEvent(name, { detail: detail })); } catch (e) { }
@@ -129,6 +129,12 @@
   function sessDrop(key) {
     try { sessionStorage.removeItem(SESS_PREFIX + key); } catch (e) { }
   }
+  function sessRead(key) {
+    try {
+      var v = sessionStorage.getItem(SESS_PREFIX + key);
+      return (v === null || v === undefined) ? null : v;
+    } catch (e) { return null; }
+  }
   function sessSeed() {
     var n = 0;
     try {
@@ -150,15 +156,11 @@
     if (!idbUsable()) return false;
     memSet(key, text);
     sessPut(key, text);
-    var startNotice = !idbNoticeShown;
     idbSaved[key] = true;
     idbPut(key, text).then(function () {
       if (idbSeq[key] !== seq) return;              /* 그 사이 더 새 값이 저장됨 */
-      try { localStorage.removeItem(key); } catch (e) { }
-      if (startNotice) {
-        idbNoticeShown = true;
-        toast('저장 공간이 부족해 IndexedDB에 자동으로 이어서 저장했어요', 'info');
-      }
+      lsRemove(key);                                /* 옛 localStorage 사본이 새 값을 가리지 않게 */
+      /* 전환이 성공했으면 조용히 넘어간다: 서비스마다 저장 경고를 띄우지 않는다. */
       emit('lemon:idb-saved', { key: key });
     }).catch(function (err) {
       idbSaved[key] = false;
@@ -172,17 +174,11 @@
   function writeKey(key, text) {
     var seq = (idbSeq[key] || 0) + 1;
     idbSeq[key] = seq;
-    /* 복원이 끝나기 전에 들어온 저장 요청은 바로 쓰지 않고 잠시 모아 둔다.
-       (그 화면은 아직 IndexedDB 값을 못 본 상태라, 빈 상태로 덮어쓰면 데이터가 사라진다) */
-    if (!hydrated) {
-      if (!pendingWrites[key]) pendingOrder.push(key);
-      pendingWrites[key] = { text: text, seq: seq };
-      return true;
-    }
+    invalidateKeys();
     /* 복원보다 먼저 그려진 낡은 화면의 저장은 받지 않는다 (IndexedDB 사본을 덮지 않게). */
     if (stalePage) return true;
     try {
-      localStorage.setItem(key, text);
+      lsSet(key, text);
       lastStoreError = null;
       /* localStorage 에 들어갔으니 메모리 캐시와 IndexedDB·sessionStorage 사본은 정리한다. */
       delete memText[key];
@@ -195,10 +191,18 @@
       return true;
     } catch (e) {
       lastStoreError = e;
-      if (isQuotaError(e)) {
-        if (idbFallback(key, text, seq)) return true;
-        storageWarn({ key: key });
+      if (!isQuotaError(e)) return false;
+      /* 아직 IndexedDB 복원 전이면 이 화면은 복원값을 못 본 상태다. 그대로 IndexedDB 사본을
+         덮으면 데이터가 사라지므로 값만 메모리·미러에 두고, 복원이 끝난 뒤 다시 판단한다. */
+      if (!hydrated) {
+        memSet(key, text);
+        sessPut(key, text);
+        if (!pendingWrites[key]) pendingOrder.push(key);
+        pendingWrites[key] = { text: text, seq: seq };
+        return true;
       }
+      if (idbFallback(key, text, seq)) return true;
+      storageWarn({ key: key });
       return false;
     }
   }
@@ -207,11 +211,15 @@
     get: function (key, fallback) {
       if (memStore.hasOwnProperty(key)) return memStore[key];
       if (memText.hasOwnProperty(key)) return safeParse(memText[key], fallback);
-      try {
-        var raw = localStorage.getItem(key);
-        if (raw === null || raw === undefined) return fallback;
-        return JSON.parse(raw);
-      } catch (e) { return fallback; }
+      var raw = null;
+      try { raw = lsGet(key); } catch (e) { raw = null; }
+      if (raw === null || raw === undefined) {
+        var m = sessRead(key);
+        if (m === null) return fallback;
+        memSet(key, m);
+        return safeParse(m, fallback);
+      }
+      return safeParse(raw, fallback);
     },
     /* 한도 초과 시 IndexedDB로 이어서 저장한다. IndexedDB 저장까지 실패했을 때만 false. */
     set: function (key, value) {
@@ -222,36 +230,184 @@
     },
     raw: function (key, fallback) {
       if (memText.hasOwnProperty(key)) return memText[key];
-      try { var v = localStorage.getItem(key); return v === null ? fallback : v; } catch (e) { return fallback; }
+      var v = null;
+      try { v = lsGet(key); } catch (e) { v = null; }
+      if (v !== null && v !== undefined) return v;
+      var m = sessRead(key);
+      if (m === null) return fallback;
+      memSet(key, m);
+      return m;
     },
     rawSet: function (key, value) { return writeKey(key, String(value)); },
     /* 저장된 값을 지운다 (localStorage · 메모리 · IndexedDB 사본 모두). */
     remove: function (key) {
-      try { localStorage.removeItem(key); } catch (e) { }
+      try { lsRemove(key); } catch (e) { }
       delete memText[key];
       delete memStore[key];
       sessDrop(key);
       idbSaved[key] = false;
       idbSeq[key] = (idbSeq[key] || 0) + 1;   /* 진행 중이던 옛 쓰기가 되살리지 않게 */
+      invalidateKeys();
       if (idbUsable()) idbDrop(key).catch(function () { });
       return true;
     },
     /* 이 키가 지금 어디에 저장돼 있는지: 'idb' | 'ls' | null */
     source: function (key) {
       if (idbSaved[key] || memText.hasOwnProperty(key)) return 'idb';
-      try { return localStorage.getItem(key) === null ? null : 'ls'; } catch (e) { return null; }
+      try { return lsGet(key) === null ? null : 'ls'; } catch (e) { return null; }
     },
+    /* 지금 읽을 수 있는 모든 키 (localStorage + IndexedDB 사본). Object.keys(localStorage) 대신 쓴다. */
+    keys: function () { return lsKeys().slice(); },
+    has: function (key) {
+      if (memText.hasOwnProperty(key)) return true;
+      try { return lsGet(key) !== null; } catch (e) { return false; }
+    },
+    patched: function () { return !!patchInstalled; },
     lastError: function () { return lastStoreError; },
     isQuotaError: isQuotaError
   };
+
+  /* ---------------- native localStorage access ----------------
+     서비스 페이지 대부분은 Lemon.store 를 거치지 않고 localStorage 를 직접 부른다.
+     그래서 아래에서 Storage.prototype 을 감싸고, 런타임 내부는 감싸기 전의 원본으로 접근한다. */
+  var lsRef = null;
+  try { lsRef = window.localStorage; } catch (e) { lsRef = null; }
+  var nativeSet = null, nativeGet = null, nativeRemove = null, nativeKey = null, nativeLen = null, nativeClear = null;
+  var patchInstalled = false;
+  function lsIs(self) { return !!lsRef && self === lsRef; }
+  function lsSet(key, text) {
+    if (!nativeSet) return window.localStorage.setItem(key, text);
+    return nativeSet.call(lsRef, key, text);
+  }
+  function lsGet(key) {
+    if (!nativeGet) return window.localStorage.getItem(key);
+    return nativeGet.call(lsRef, key);
+  }
+  function lsRemove(key) {
+    if (!nativeRemove) return window.localStorage.removeItem(key);
+    return nativeRemove.call(lsRef, key);
+  }
+
+  /* 읽을 수 있는 모든 키 = localStorage 키 + IndexedDB 로 넘어간 키(메모리·미러 사본). */
+  var keyCache = null;
+  function invalidateKeys() { keyCache = null; }
+  function lsKeys() {
+    if (keyCache) return keyCache;
+    var out = [], seen = {}, i, k;
+    if (lsRef) {
+      try {
+        var n = nativeLen ? nativeLen.call(lsRef) : lsRef.length;
+        for (i = 0; i < n; i++) {
+          k = nativeKey ? nativeKey.call(lsRef, i) : lsRef.key(i);
+          if (k === null || k === undefined || seen['#' + k]) continue;
+          seen['#' + k] = 1; out.push(k);
+        }
+      } catch (e) { }
+    }
+    for (k in memText) {
+      if (!Object.prototype.hasOwnProperty.call(memText, k)) continue;
+      if (seen['#' + k]) continue;
+      seen['#' + k] = 1; out.push(k);
+    }
+    keyCache = out;
+    return out;
+  }
+
+  function idbClearAll() {
+    return idbWrite('__all__', function (st) { st.clear(); });
+  }
+
+  /* ---------------- global localStorage patch ----------------
+     localStorage(약 5MB)가 꽉 차면 브라우저는 setItem 에서 QuotaExceededError 를 던진다.
+     각 서비스는 그 예외를 각자 try/catch 로 받아 "저장 공간이 부족합니다" 토스트를 띄우고
+     저장을 포기한다. 그 대신 여기에서 Storage.prototype 을 감싸, 용량 초과 순간에만
+     메모리 + IndexedDB + sessionStorage 미러로 조용히 넘기고 예외를 밖으로 던지지 않는다.
+     getItem/removeItem/key/length 도 같이 감싸 넘어간 키를 투명하게 읽고 쓸 수 있게 한다. */
+  function installStoragePatch() {
+    if (patchInstalled) return false;
+    var proto = window.Storage && window.Storage.prototype;
+    if (!proto || !lsRef) return false;
+    nativeSet = proto.setItem;
+    nativeGet = proto.getItem;
+    nativeRemove = proto.removeItem;
+    nativeKey = proto.key;
+    nativeClear = proto.clear;
+    var lenDesc = null;
+    try { lenDesc = Object.getOwnPropertyDescriptor(proto, 'length'); } catch (e) { }
+    nativeLen = (lenDesc && typeof lenDesc.get === 'function') ? lenDesc.get : null;
+
+    proto.setItem = function (k, v) {
+      if (!lsIs(this)) return nativeSet.call(this, k, v);       /* sessionStorage 등은 그대로 */
+      if (writeKey(String(k), String(v))) return;
+      /* IndexedDB 까지 실패한 치명적 상황에서만 예외를 던진다. */
+      throw (lastStoreError || new Error('storage-write-failed'));
+    };
+
+    proto.getItem = function (k) {
+      if (!lsIs(this)) return nativeGet.call(this, k);
+      var v = nativeGet.call(this, k);
+      if (v !== null && v !== undefined) return v;
+      k = String(k);
+      if (Object.prototype.hasOwnProperty.call(memText, k)) return memText[k];
+      var m = sessRead(k);
+      if (m !== null) { memSet(k, m); return m; }
+      return null;
+    };
+
+    proto.removeItem = function (k) {
+      if (!lsIs(this)) return nativeRemove.call(this, k);
+      store.remove(String(k));
+    };
+
+    proto.key = function (i) {
+      if (!lsIs(this)) return nativeKey.call(this, i);
+      var list = lsKeys();
+      var idx = Math.floor(Number(i));
+      if (!isFinite(idx) || idx < 0 || idx >= list.length) return null;
+      return list[idx];
+    };
+
+    try {
+      if (lenDesc && lenDesc.configurable) {
+        Object.defineProperty(proto, 'length', {
+          configurable: true,
+          enumerable: false,
+          get: function () {
+            if (!lsIs(this)) return nativeLen ? nativeLen.call(this) : 0;
+            return lsKeys().length;
+          }
+        });
+      }
+    } catch (e) { }
+
+    proto.clear = function () {
+      if (!lsIs(this)) return nativeClear.call(this);
+      try { nativeClear.call(this); } catch (e) { }
+      var all = [], kk, i, key;
+      for (kk in memText) if (Object.prototype.hasOwnProperty.call(memText, kk)) all.push(kk);
+      for (i = 0; i < all.length; i++) {
+        key = all[i];
+        delete memText[key];
+        delete memStore[key];
+        sessDrop(key);
+        idbSaved[key] = false;
+        idbSeq[key] = (idbSeq[key] || 0) + 1;
+      }
+      invalidateKeys();
+      if (idbUsable()) idbClearAll().catch(function () { });
+    };
+
+    patchInstalled = true;
+    return true;
+  }
+  installStoragePatch();
 
   /* 새 탭처럼 sessionStorage 미러가 빈 상태에서 IndexedDB 값을 뒤늦게 읽으면,
      이미 그려 놓은 페이지(Lemon.ready 를 부르지 않는 페이지)는 빈 화면을 보여 준다.
      그대로 두면 그 빈 상태가 저장돼 IndexedDB 사본을 덮을 수 있으므로,
      탭마다 한 번만 다시 불러와 미러를 동기로 읽게 한다. */
   function maybeBootReload(late, mirrored) {
-    if (!late || !mirrored || bootReloaded) return;
-    if (doc.readyState === 'loading') return;      /* 아직 그리기 전: 그릴 때부터 값이 보인다 */
+    if (!late || !mirrored || bootReloaded || stalePage) return;
     if (readyQ.length) return;                     /* Lemon.ready 로 기다리는 페이지는 직접 처리 */
     try {
       if (sessionStorage.getItem(SESS_RELOAD_KEY) === '1') return;
@@ -284,22 +440,24 @@
   }
 
   /* 새로고침 시: IndexedDB 에 넘겨 저장했던 키들을 메모리로 복원한다. */
-  function finishHydrate(n, mirrored, overrode) {
+  function finishHydrate(r) {
     if (hydrated) return;
     hydrated = true;
     flushPending();
     var q = readyQ;
     readyQ = [];
-    for (var i = 0; i < q.length; i++) { try { q[i](n); } catch (e) { } }
-    emit('lemon:idb-hydrated', { count: n });
-    maybeBootReload(n > 0 || overrode, mirrored);
+    for (var i = 0; i < q.length; i++) { try { q[i](r.n); } catch (e) { } }
+    emit('lemon:idb-hydrated', { count: r.n });
+    /* 복원된 값이 이번 로드에서 이미 동기로 보였으면(synced === n) 다시 불러올 필요가 없다. */
+    var visibleNow = r.n > 0 && r.synced >= r.n;
+    maybeBootReload((r.n > 0 || r.overrode) && !visibleNow, r.mirrored);
   }
 
   function hydrate() {
     if (hydrateP) return hydrateP;
     var job = idbUsable() ? idbGetAll() : Promise.reject(new Error('no-indexeddb'));
     hydrateP = job.then(function (list) {
-      var n = 0, mirrored = 0, overrode = false;
+      var n = 0, mirrored = 0, overrode = false, synced = 0;
       (list || []).forEach(function (rec) {
         if (!rec || rec.key === undefined || rec.key === null) return;
         var key = String(rec.key);
@@ -309,16 +467,18 @@
         if (takePending(key, text)) {
           /* 복원 전 낙은 화면이 쓴 값이다: 버리고 IndexedDB 사본을 살린다 */
           overrode = true;
-          try { localStorage.removeItem(key); } catch (e) { }
+          lsRemove(key);
         }
+        /* 이번 로드에서 이미 같은 값이 동기적으로(sessionStorage 미러) 보였는지 */
+        if (Object.prototype.hasOwnProperty.call(memText, key) && memText[key] === text) synced += 1;
         memSet(key, text);
         if (sessPut(key, text)) mirrored += 1;              /* 다음 로드에서는 동기로 읽힌다 */
         idbSaved[key] = true;
         n += 1;
       });
-      return { n: n, mirrored: mirrored, overrode: overrode };
-    }).then(function (r) { finishHydrate(r.n, r.mirrored, r.overrode); return r.n; },
-            function () { finishHydrate(0, 0, false); return 0; });
+      return { n: n, mirrored: mirrored, overrode: overrode, synced: synced };
+    }).then(function (r) { finishHydrate(r); return r.n; },
+            function () { finishHydrate({ n: 0, mirrored: 0, overrode: false, synced: 0 }); return 0; });
     return hydrateP;
   }
 
@@ -999,7 +1159,13 @@
   sessSeed();
   hydrate();
 
+  /* 공용 저장소 계층만 필요한 페이지(자체 UI 를 가진 서비스)는 페이지가 미리
+     window.__lemonStorageOnly = true 로 알린다. 그러면 저장소 패치만 하고
+     테마·물결·색상 피커·드롭다운 같은 UI 결합은 건드리지 않는다. */
+  var storageOnly = !!window.__lemonStorageOnly;
+
   doc.addEventListener('DOMContentLoaded', function () {
+    if (storageOnly) return;
     kitStyle();
     bindTheme();
     bindAnim();
@@ -1012,6 +1178,7 @@
 
   window.Lemon = {
     store: store,
+    keys: function () { return lsKeys().slice(); },
     ready: ready,
     hydrated: function () { return hydrated; },
     hydrate: hydrate,
