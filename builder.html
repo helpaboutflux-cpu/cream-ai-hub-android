@@ -2211,7 +2211,9 @@ html.dark .ogp-kakao { background: #eef1ea; }
 .v2ic-btn .v2ic-svg svg { width: 15px; height: 15px; }
 .v2ic-btn b { flex: 1; font-weight: 800; }
 .v2ic-btn svg.chev { width: 12px; height: 12px; opacity: .6; }
-.v2ic-pop { position: absolute; z-index: 60; top: calc(100% + 5px); left: 0; right: 0; background: var(--surf); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 24px 50px -20px rgba(10, 14, 8, .28); padding: 7px; max-height: 258px; overflow-y: auto; }
+.v2ic-pop { position: fixed; z-index: 1260; width: 300px; background: var(--surf); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 24px 50px -20px rgba(10, 14, 8, .28); padding: 7px; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.v2ic-pop.v2ic-sheet { border-radius: 16px; box-shadow: 0 -22px 60px -22px rgba(10, 14, 8, .42); padding: 9px; }
+.v2ic-back { position: fixed; inset: 0; z-index: 1255; background: rgba(6, 10, 4, .34); }
 .v2ic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 4px; }
 .v2ic-opt { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 2px; border-radius: 8px; border: 1px solid transparent; color: var(--mute); }
 .v2ic-opt svg { width: 18px; height: 18px; }
@@ -7433,7 +7435,9 @@ html.dark .ogp-kakao { background: #eef1ea; }
     return '<textarea class="txa" rows="' + (rows || 3) + '" data-path="' + escAttr(path) + '" data-kind="lines" placeholder="' + escAttr(ph || '') + '">' + esc((val || []).join('\n')) + '</textarea>';
   }
   function selectHTML(path, val, opts) {
-    return '<select class="sel" data-path="' + escAttr(path) + '">' + opts.map(function (o) {
+    /* 아이콘 선택은 자체 SVG 피커로 그리므로 lemon-dropdown 이 가로채지 않게 표시한다 */
+    var icoSel = /(^|\.)icon$/i.test(String(path || '')) ? ' data-native-select="1" data-no-dropdown="1"' : '';
+    return '<select class="sel" data-path="' + escAttr(path) + '"' + icoSel + '>' + opts.map(function (o) {
       return '<option value="' + escAttr(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
     }).join('') + '</select>';
   }
@@ -7461,14 +7465,15 @@ html.dark .ogp-kakao { background: #eef1ea; }
       '<button type="button" class="li-btn" data-lrm data-lpath="' + escAttr(path) + '" data-i="' + i + '" title="삭제">' + ico('trash', 'ico-sm') + '</button>' +
       '</div><div class="li-body">' + bodyHtml + '</div></div>';
   }
-  function listEditor(path, items, renderItem, addLabel, blank) {
+  function listEditor(path, items, renderItem, addLabel, blank, minItems) {
     var wrap = '<div class="list-ed">';
     (items || []).forEach(function (it, i) {
       wrap += itemCard(renderItem.__title ? renderItem.__title(it, i) : ('항목 ' + (i + 1)), path, i, renderItem(it, i, path), items.length);
     });
     wrap += '</div>';
     wrap += '<button type="button" class="btn btn-sm btn-block btn-soft" data-ladd="' + escAttr(path) + '">' + ico('plus', 'ico-sm') + esc(addLabel) + '</button>';
-    return '<div class="list-ed-wrap" data-newitem="' + escAttr(JSON.stringify(blank || {})) + '">' + wrap + '</div>';
+    /* data-lpath/data-lmin: 항목이 0개까지 지워져도 되는 목록인지 listOp가 알아본다 */
+    return '<div class="list-ed-wrap" data-lpath="' + escAttr(path) + '" data-lmin="' + (minItems == null ? 1 : minItems) + '" data-newitem="' + escAttr(JSON.stringify(blank || {})) + '">' + wrap + '</div>';
   }
 
   function inspFields(type) {
@@ -7496,7 +7501,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
         return fld('제목', inputHTML('props.title', p.title)) +
           fld('설명', areaHTML('props.sub', p.sub, 2)) +
           fld('카드', listEditor('props.items', p.items, function (it, i, path) {
-            return fld('아이콘', selectHTML(path + '.' + i + '.icon', it.icon, LB.SITE_ICON_KEYS.map(function (k) { return [k, k]; }))) +
+            return fld('아이콘', selectHTML(path + '.' + i + '.icon', it.icon, LB.SITE_ICON_KEYS.map(function (k) { return [k, V2ICON_NAMES[k] || k]; }))) +
               inputHTML(path + '.' + i + '.title', it.title, '제목') +
               '<div style="height:5px"></div>' + areaHTML(path + '.' + i + '.text', it.text, 2, '설명');
           }, '카드 추가', { icon: 'spark', title: '새 특징', text: '설명을 적어 주세요.' }));
@@ -7567,15 +7572,21 @@ html.dark .ogp-kakao { background: #eef1ea; }
         return fld('브랜드', inputHTML('props.brand', p.brand)) +
           fld('로고 이미지', imageHTML('props.logoImg', p.logoImg), '없으면 기본 마크') +
           fld('한 줄 소개', inputHTML('props.tagline', p.tagline)) +
-          fld('링크 (이름|주소)', linesHTML('props.links', (p.links || []).map(function (l) { return l.label + '|' + l.href; }), 3, '이용약관|#\n문의|#contact'), '한 줄에 하나') +
+          fld('바로가기 항목', listEditor('props.links', p.links || [], function (l, i, path) {
+            return inputHTML(path + '.' + i + '.label', l.label, '이름') +
+              '<div style="height:5px"></div>' + inputHTML(path + '.' + i + '.href', l.href, '#contact · https://');
+          }, '바로가기 추가', { label: '바로가기', href: '#' }, 0), '링크는 "링크 고르기"로 페이지·섹션에서 골라 넣을 수 있어요') +
           fld('다단 링크 칼럼', listEditor('props.cols', p.cols || [], function (c, i, path) {
             return inputHTML(path + '.' + i + '.title', c.title, '칼럼 제목') +
-              '<div style="height:5px"></div>' + linesHTML(path + '.' + i + '.links', (c.links || []).map(function (l) { return l.label + '|' + l.href; }), 4, '링크 이름|주소');
-          }, '칼럼 추가', { title: '바로가기', links: [{ label: '홈', href: '#top' }] }), '이름|주소 형식') +
+              '<div style="height:8px"></div>' + listEditor(path + '.' + i + '.links', c.links || [], function (l, j, p2) {
+                return inputHTML(p2 + '.' + j + '.label', l.label, '링크 이름') +
+                  '<div style="height:5px"></div>' + inputHTML(p2 + '.' + j + '.href', l.href, '#top · https://');
+              }, '링크 추가', { label: '링크', href: '#top' }, 0);
+          }, '칼럼 추가', { title: '바로가기', links: [{ label: '홈', href: '#top' }] }, 0), '칼럼 안 링크도 "링크 고르기"로 선택') +
           fld('SNS 아이콘', listEditor('props.sns', p.sns || [], function (it, i, path) {
             return selectHTML(path + '.' + i + '.type', it.type, SNS_KEYS.map(function (k) { return [k, SNS_NAMES[k]]; })) +
               '<div style="height:5px"></div>' + inputHTML(path + '.' + i + '.href', it.href, 'https://');
-          }, 'SNS 추가', { type: 'instagram', href: '' })) +
+          }, 'SNS 추가', { type: 'instagram', href: '' }, 0)) +
           fld('저작권 문구', inputHTML('props.copyright', p.copyright));
       case 'blog':
         return fld('제목', inputHTML('props.title', p.title)) +
@@ -10398,15 +10409,22 @@ html.dark .ogp-kakao { background: #eef1ea; }
     if (!sec) return;
     var arr = path.split('.').reduce(function (o, k) { return o ? o[k] : null; }, sec);
     if (!Array.isArray(arr)) return;
+    /* 같은 화면에 목록 편집기가 여럿일 때 클릭한 목록의 설정을 찾는다 */
+    var wrap = null;
+    var wraps = doc.querySelectorAll('.list-ed-wrap[data-lpath]');
+    for (var w = 0; w < wraps.length; w++) {
+      if (wraps[w].getAttribute('data-lpath') === path) { wrap = wraps[w]; break; }
+    }
+    var min = wrap ? Number(wrap.getAttribute('data-lmin')) : 1;
+    if (!(min >= 0)) min = 1;
     if (kind === 'rm') {
-      if (arr.length <= 1) { toast('최소 한 개는 남겨 두세요', 'warn'); return; }
+      if (arr.length <= min) { if (min > 0) toast('최소 한 개는 남겨 두세요', 'warn'); return; }
       arr.splice(i, 1);
     } else if (kind === 'mv') {
       var j = i + dir;
       if (j < 0 || j >= arr.length) return;
       var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
     } else if (kind === 'add') {
-      var wrap = doc.querySelector('[data-newitem]');
       var blank = {};
       try { blank = wrap ? JSON.parse(wrap.getAttribute('data-newitem')) : {}; } catch (e) { blank = {}; }
       arr.push(clone(blank));
@@ -10647,15 +10665,108 @@ html.dark .ogp-kakao { background: #eef1ea; }
   }
 
   /* ---------- 아이콘 선택기 ---------- */
-  function v2IconOptions() {
-    return (LB.SITE_ICON_KEYS || []).map(function (k) { return { k: k, n: V2ICON_NAMES[k] || k }; });
+  function v2IconOptions(hasNone) {
+    var list = (LB.SITE_ICON_KEYS || []).map(function (k) { return { k: k, n: V2ICON_NAMES[k] || k }; });
+    if (hasNone) list = [{ k: '', n: '없음' }].concat(list);
+    return list;
   }
+  /* 아이콘 피커 패널 — 화면 기준(fixed)으로 띄워 인스펙터 스크롤 영역에 잘리지 않게 한다 */
+  function v2CloseIconPop() {
+    var olds = doc.querySelectorAll('.v2ic-pop, .v2ic-back');
+    for (var i = 0; i < olds.length; i++) if (olds[i].parentNode) olds[i].parentNode.removeChild(olds[i]);
+  }
+  function v2PlaceIconPop(pop, btn) {
+    var r = btn.getBoundingClientRect();
+    var vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    if (vw <= 640) {
+      /* 모바일은 화면 아래 시트로 — 아이콘 끝까지 스크롤해서 볼 수 있게 */
+      pop.classList.add('v2ic-sheet');
+      pop.style.width = 'auto'; pop.style.left = '8px'; pop.style.right = '8px';
+      pop.style.top = 'auto'; pop.style.bottom = '10px';
+      pop.style.maxHeight = Math.round(Math.min(vh * 0.7, 540)) + 'px';
+      return;
+    }
+    pop.classList.remove('v2ic-sheet');
+    pop.style.right = 'auto'; pop.style.bottom = 'auto';
+    var w = Math.max(248, Math.min(420, Math.max(r.width + 40, 296)));
+    pop.style.width = w + 'px';
+    var below = vh - r.bottom - 14, above = r.top - 14;
+    /* 아래 공간이 좁으면 위로 펼쳐 아이콘 목록이 잘리지 않게 한다 */
+    var useBelow = below >= 320 ? true : (above >= 320 ? false : below >= above);
+    var maxH = Math.max(160, Math.min(useBelow ? below : above, vh * 0.78));
+    pop.style.maxHeight = Math.round(maxH) + 'px';
+    var h = pop.offsetHeight || maxH;
+    var top = useBelow ? (r.bottom + 6) : (r.top - h - 6);
+    pop.style.top = Math.round(Math.max(8, Math.min(vh - h - 8, top))) + 'px';
+    pop.style.left = Math.round(Math.max(8, Math.min(vw - w - 8, r.left))) + 'px';
+  }
+  /* opts: [{k, n}], cur: 현재 값, onPick(k) */
+  function v2ShowIconPop(btn, opts, cur, onPick) {
+    v2CloseIconPop();
+    var pop = doc.createElement('div');
+    pop.className = 'v2ic-pop';
+    var hasNone = false;
+    for (var q = 0; q < opts.length; q++) if (opts[q].k === '') hasNone = true;
+    pop.innerHTML = '<div class="v2ic-grid">' +
+      (hasNone ? '<button type="button" class="v2ic-opt' + (String(cur == null ? '' : cur) === '' ? ' on' : '') + '" data-ic=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg><span>없음</span></button>' : '') +
+      opts.map(function (o) {
+        if (o.k === '') return '';
+        return '<button type="button" class="v2ic-opt' + (String(cur) === String(o.k) ? ' on' : '') + '" data-ic="' + escAttr(o.k) + '">' + LB.siteIco(o.k) + '<span>' + esc(o.n) + '</span></button>';
+      }).join('') + '</div>';
+    /* 모바일 시트일 때는 뒤를 살짝 가려 패널이 도드라지게 */
+    var back = null;
+    if ((window.innerWidth || 1024) <= 640) {
+      back = doc.createElement('div');
+      back.className = 'v2ic-back';
+      doc.body.appendChild(back);
+      back.addEventListener('click', function () { close(); });
+    }
+    doc.body.appendChild(pop);
+    v2PlaceIconPop(pop, btn);
+    function place() { if (pop.parentNode) v2PlaceIconPop(pop, btn); }
+    function off(ev2) {
+      if (pop.contains(ev2.target)) return;
+      close();
+    }
+    function close() {
+      if (pop.parentNode) pop.parentNode.removeChild(pop);
+      if (back && back.parentNode) back.parentNode.removeChild(back);
+      doc.removeEventListener('pointerdown', off, true);
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+      doc.removeEventListener('keydown', onKey, true);
+    }
+    function onKey(ev3) { if (ev3.key === 'Escape') close(); }
+    pop.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-ic]');
+      if (!b) return;
+      var k = b.getAttribute('data-ic');
+      close();
+      onPick(k);
+    });
+    setTimeout(function () {
+      doc.addEventListener('pointerdown', off, true);
+      window.addEventListener('scroll', place, true);
+      window.addEventListener('resize', place);
+      doc.addEventListener('keydown', onKey, true);
+    }, 10);
+    return pop;
+  }
+
   function v2EnhanceIcons(root) {
     $$('select', root || doc).forEach(function (sel) {
       var path = sel.getAttribute('data-path') || sel.getAttribute('data-set') || '';
       if (!/icon$/i.test(path) && !/\.icon$/.test(path)) return;
       if (sel.__v2ic) return;
       sel.__v2ic = 1;
+      /* lemon-dropdown 이 먼저 붙였더라도 텍스트 목록 대신 자체 아이콘 피커를 쓴다 */
+      sel.setAttribute('data-native-select', '1');
+      sel.setAttribute('data-no-dropdown', '1');
+      var lddField = sel.closest ? sel.closest('.ldd-field') : null;
+      if (lddField) {
+        var lddTrg = lddField.querySelector('.ldd-trigger');
+        if (lddTrg) lddTrg.remove();
+      }
       var wrap = doc.createElement('div');
       wrap.className = 'v2ic';
       sel.parentNode.insertBefore(wrap, sel);
@@ -10664,7 +10775,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
       btn.type = 'button';
       btn.className = 'v2ic-btn';
       wrap.appendChild(btn);
-      var opts = v2IconOptions();
+      var opts = v2IconOptions($$('option', sel).some(function (o) { return o.value === ''; }));
       $$('option', sel).forEach(function (o) {
         var k = o.value;
         if (!V2ICON_NAMES[k] && LB.SITE_ICON_KEYS.indexOf(k) < 0) V2ICON_NAMES[k] = o.textContent || k;
@@ -10677,27 +10788,17 @@ html.dark .ogp-kakao { background: #eef1ea; }
       sel.addEventListener('change', paint);
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
-        var old = wrap.querySelector('.v2ic-pop');
-        if (old) { old.remove(); return; }
-        var pop = doc.createElement('div');
-        pop.className = 'v2ic-pop';
-        pop.innerHTML = '<div class="v2ic-grid">' + opts.map(function (o) {
-          return '<button type="button" class="v2ic-opt' + (sel.value === o.k ? ' on' : '') + '" data-ic="' + escAttr(o.k) + '">' + LB.siteIco(o.k) + '<span>' + esc(o.n) + '</span></button>';
-        }).join('') + '</div>';
-        wrap.appendChild(pop);
-        pop.addEventListener('click', function (ev) {
-          var b = ev.target.closest('[data-ic]');
-          if (!b) return;
-          sel.value = b.getAttribute('data-ic');
+        var wasOpen = doc.querySelector('.v2ic-pop');
+        v2CloseIconPop();
+        if (wasOpen && wasOpen.getAttribute('data-for') === (sel.getAttribute('data-path') || sel.id || '')) return;
+        var pop = v2ShowIconPop(btn, opts, sel.value, function (k) {
+          sel.value = k;
           sel.dispatchEvent(new Event('input', { bubbles: true }));
           sel.dispatchEvent(new Event('change', { bubbles: true }));
-          pop.remove();
           paint();
+          if (sel.id === 'v2NavIcon') { try { v2PaintIconBtn('v2NavIcon'); } catch (err) { } }
         });
-        setTimeout(function () {
-          var off = function (ev2) { if (!wrap.contains(ev2.target)) { pop.remove(); doc.removeEventListener('pointerdown', off, true); } };
-          doc.addEventListener('pointerdown', off, true);
-        }, 10);
+        pop.setAttribute('data-for', sel.getAttribute('data-path') || sel.id || '');
       });
     });
   }
@@ -11590,7 +11691,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
       '<input class="inp" style="margin-top:6px" data-set="settings.seo.desc" value="' + escAttr(seo.desc || '') + '" placeholder="검색 결과에 보이는 설명"></div>';
   }
   function v2IconSelectHTML(id, val) {
-    return '<div class="v2ic" data-v2icwrap="' + id + '"><select id="' + id + '" style="display:none">' +
+    return '<div class="v2ic" data-v2icwrap="' + id + '"><select id="' + id + '" style="display:none" data-native-select="1" data-no-dropdown="1">' +
       '<option value="">없음</option>' + LB.SITE_ICON_KEYS.map(function (k) {
         return '<option value="' + k + '"' + (val === k ? ' selected' : '') + '>' + esc(V2ICON_NAMES[k] || k) + '</option>';
       }).join('') + '</select><button type="button" class="v2ic-btn" data-v2ic="' + id + '"></button></div>';
@@ -12013,6 +12114,20 @@ html.dark .ogp-kakao { background: #eef1ea; }
     step(0);
   }
 
+  /* 설정 화면 브랜드 로고 아이콘 피커 — 같은 패널을 화면 기준으로 띄운다 */
+  function v2ShowIconPotSafe(btn, sel, id) {
+    var opts = [{ k: '', n: '없음' }].concat(LB.SITE_ICON_KEYS.map(function (k) { return { k: k, n: V2ICON_NAMES[k] || k }; }));
+    v2ShowIconPop(btn, opts, sel ? sel.value : '', function (k) {
+      if (!sel) return;
+      sel.value = k;
+      try { v2PaintIconBtn(id); } catch (e) { }
+      if (id === 'v2NavIcon') {
+        var nav = v2NavSec();
+        if (nav) { nav.props.logoIcon = k; renderCanvas(); commit(); scheduleSave(); toast(k ? '로고 아이콘을 바꿨어요' : '로고 아이콘을 뺐어요'); }
+      }
+    });
+  }
+
   /* ---------- 클릭 처리 (설정 · 카드 · 번역 · 브랜드) ---------- */
   doc.addEventListener('click', function (e) {
     var t = e.target;
@@ -12045,31 +12160,9 @@ html.dark .ogp-kakao { background: #eef1ea; }
       var id = icb.getAttribute('data-v2ic');
       var wrap = icb.closest('.v2ic');
       if (!wrap) return;
-      var old = wrap.querySelector('.v2ic-pop');
-      if (old) { old.remove(); return; }
+      if (doc.querySelector('.v2ic-pop')) { v2CloseIconPop(); return; }
       var sel = doc.getElementById(id);
-      var pop = doc.createElement('div');
-      pop.className = 'v2ic-pop';
-      pop.innerHTML = '<div class="v2ic-grid"><button type="button" class="v2ic-opt' + (!sel.value ? ' on' : '') + '" data-v2icv="">' + v2u('<path d="M18 6 6 18M6 6l12 12"/>', 18) + '<span>없음</span></button>' +
-        LB.SITE_ICON_KEYS.map(function (k) {
-          return '<button type="button" class="v2ic-opt' + (sel.value === k ? ' on' : '') + '" data-v2icv="' + escAttr(k) + '">' + LB.siteIco(k) + '<span>' + esc(V2ICON_NAMES[k] || k) + '</span></button>';
-        }).join('') + '</div>';
-      wrap.appendChild(pop);
-      pop.addEventListener('click', function (ev) {
-        var b = ev.target.closest('[data-v2icv]');
-        if (!b) return;
-        sel.value = b.getAttribute('data-v2icv');
-        v2PaintIconBtn(id);
-        pop.remove();
-        if (id === 'v2NavIcon') {
-          var nav = v2NavSec();
-          if (nav) { nav.props.logoIcon = sel.value; renderCanvas(); commit(); scheduleSave(); toast(sel.value ? '로고 아이콘을 바꿨어요' : '로고 아이콘을 뺐어요'); }
-        }
-      });
-      setTimeout(function () {
-        var off = function (ev2) { if (!wrap.contains(ev2.target)) { pop.remove(); doc.removeEventListener('pointerdown', off, true); } };
-        doc.addEventListener('pointerdown', off, true);
-      }, 10);
+      v2ShowIconPotSafe(icb, sel, id);
       return;
     }
     var fav = t.closest('[data-v2fav]');
@@ -12187,11 +12280,25 @@ html.dark .ogp-kakao { background: #eef1ea; }
     };
     inp.click();
   }
+  /* 공유(#site=)·게시(?site=) 사이트를 보고 있을 때만 탭 파비콘을 사이트 것으로 바꾼다.
+     편집 화면(에디터·홈·대시보드)에서는 Flux Builder 기본 파비콘을 그대로 둔다. */
+  function v2PublishedView() {
+    try {
+      if (String(location.hash || '').indexOf('#site=') === 0) return true;
+      var q = new URLSearchParams(location.search).get('site');
+      return !!(q && /^[A-Za-z0-9]{4,24}$/.test(q));
+    } catch (e) { return false; }
+  }
   function v2ApplyFavicon() {
+    var link = doc.querySelector('link#v2SiteFav');
+    if (!v2PublishedView()) {
+      /* 편집 화면으로 돌아오면 사이트 파비콘은 남기지 않는다 */
+      if (link) link.remove();
+      return;
+    }
     var seo = site.settings.seo || {};
     var col = (site.tokens || {}).brand || (PALETTES[site.palette] || {}).brand || '#4d7c0f';
     var url = seo.faviconImg || LB.favUrl(seo.favicon, col);
-    var link = doc.querySelector('link#v2SiteFav');
     if (!link) {
       link = doc.createElement('link');
       link.id = 'v2SiteFav';
@@ -12671,7 +12778,13 @@ html.dark .ogp-kakao { background: #eef1ea; }
   }
 
   window.addEventListener('hashchange', function () {
-    if (location.hash.indexOf('#site=') === 0) renderShare(location.hash);
+    if (location.hash.indexOf('#site=') === 0) {
+      renderShare(location.hash);
+      try { v2ApplyFavicon(); } catch (e) { }
+      return;
+    }
+    /* 공유 화면을 벗어나면 사이트 파비콘을 걷어내고 기본 파비콘으로 돌린다 */
+    try { v2ApplyFavicon(); } catch (e) { }
   });
 
   /* V2 부팅 후 작업 (설정 탭 · 파비콘 · 이어서 편집) */
@@ -13819,6 +13932,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
       var s = null;
       try { s = payload ? normalizeSite(expandShare(payload)) : null; } catch (e) { s = null; }
       if (!s || !totalSections(s)) {
+        var dl = doc.querySelector('link#v2SiteFav'); if (dl) dl.remove();
         root.innerHTML = '<div class="v3load"><b>사이트를 찾지 못했어요</b><span>주소가 바뀌었거나 아직 게시되지 않았습니다. 만든 사람에게 다시 링크를 요청해 주세요.</span>' +
           '<a class="btn btn-sm btn-primary" href="builder.html">Flux Builder 열기</a></div>';
         doc.title = '사이트를 찾지 못함 · Flux Builder';
@@ -13826,6 +13940,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
       }
       site = s;
       doc.title = (s.name || '내 사이트') + ' · Flux Builder';
+      try { v2ApplyFavicon(); } catch (e) { }
       root.setAttribute('style', siteVars(s));
       root.setAttribute('data-hover', (s.settings.motion || {}).hover || 'lift');
       root.setAttribute('data-site', s.id);
