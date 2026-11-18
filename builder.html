@@ -2195,6 +2195,26 @@ html.dark .ogp-kakao { background: #eef1ea; }
   display: flex; align-items: center; justify-content: center;
 }
 
+/* ---------- 자유 배치 요소 — 페이지 위에 바로 놓기 ---------- */
+.lbw { position: relative; }
+.lbw .wb-sec[data-sec][data-free="1"] {
+  position: absolute; z-index: 4; width: auto;
+  left: var(--fx, 6%);
+  max-width: calc(100% - var(--fx, 6%) - 10px);
+  padding: 0; margin: 0; background: none; border: 0;
+}
+.lbw .wb-sec[data-sec][data-free="1"] > .wb-in {
+  width: auto; max-width: none; margin: 0; padding: 0; display: block;
+}
+.lbw .wb-sec[data-sec][data-free="1"] > .wb-in > .wb-elwrap { display: block; }
+.lbw .wb-sec[data-sec][data-free="1"] .wb-el { max-width: 100%; }
+@media (max-width: 720px) {
+  .lbw .wb-sec[data-sec][data-free="1"] {
+    left: calc(var(--fx, 6%) * .6);
+    max-width: calc(100% - var(--fx, 6%) * .6 - 8px);
+  }
+}
+
 </style>
 <style id="appStyleV2">
 
@@ -2458,6 +2478,22 @@ html.dark .ogp-kakao { background: #eef1ea; }
   .img-f-actions .btn { padding: 5px 8px; }
 }
 
+/* ---------- 자유 배치 — 편집 캔버스에서만 쓰는 안내선 ---------- */
+.lbw [data-editpage] { position: relative; }
+.bz-guide {
+  position: absolute; z-index: 9; pointer-events: none; display: none;
+  background: #3b82f6; box-shadow: 0 0 0 .5px rgba(59, 130, 246, .35);
+}
+.bz-guide.v { width: 1px; top: 0; bottom: 0; }
+.bz-guide.h { height: 1px; left: 0; right: 0; }
+.lbw[data-edit] .wb-sec[data-free="1"] { cursor: grab; touch-action: none; }
+.lbw[data-edit] .wb-sec[data-free="1"].is-moving { cursor: grabbing; }
+.lbw[data-edit] .wb-sec[data-free="1"] .wb-el-drag { display: none; }
+.lbw[data-edit] .wb-sec[data-free="1"]::after { border-radius: 10px; }
+.lbw[data-edit] .wb-sec[data-free="1"]:hover::after { border-style: dashed; }
+.v2place { display: flex; gap: 6px; }
+.v2place .btn { flex: 1; justify-content: center; }
+
 </style>
 
 <!-- ===== Builder-only: canvas HUD (편집기에서만 쓰는 스타일, 내보낸 사이트에는 들어가지 않는다) ===== -->
@@ -2712,7 +2748,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
 
         <aside class="bz-pick" id="bzPick" aria-label="요소 추가">
           <div class="bz-side-head">
-            <div><b>요소 추가</b><p>클릭하면 지금 선택한 요소 아래에 들어갑니다.</p></div>
+            <div><b>요소 추가</b><p>클릭하면 지금 보고 있는 페이지 위에 바로 놓습니다.</p></div>
             <button class="icon-btn" style="width:26px;height:26px" id="pickClose" aria-label="닫기"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
           </div>
           <div class="bz-side-body"><div class="block-grid" id="blockGrid"></div></div>
@@ -3517,12 +3553,25 @@ html.dark .ogp-kakao { background: #eef1ea; }
     var s = [];
     if (sec.bgColor) s.push('background:' + sec.bgColor);
     if (sec.textColor) s.push('color:' + sec.textColor);
+    if (sec.free) {
+      /* 자유 배치 — 왼쪽은 %(반응형), 위쪽은 px. 위치는 CSS 변수 --fx 로 넘긴다 */
+      var fx = Number(sec.fx);
+      if (!isFinite(fx) || fx < 0) fx = 6;
+      fx = Math.max(0, Math.min(96, Math.round(fx * 10) / 10));
+      var fy = Number(sec.fy);
+      if (!isFinite(fy) || fy < 0) fy = 80;
+      s.push('--fx:' + fx + '%', 'top:' + Math.round(fy) + 'px');
+      var fw = Math.round(Number(sec.fw) || 0);
+      if (fw > 0) s.push('width:' + fw + 'px');
+      if (Number(sec.fz)) s.push('z-index:' + (4 + Number(sec.fz)));
+    }
     return s.length ? ' style="' + escAttr(s.join(';')) + '"' : '';
   }
   function secAttrs(sec, edit) {
     var SEC_CLASS = { media: 'wb-media-sec', notice: 'wb-notice-sec', team: 'wb-team-sec' };
     var a = ' class="wb-sec ' + (SEC_CLASS[sec.type] || ('wb-' + sec.type)) + '"';
     a += ' data-sec="' + escAttr(sec.id) + '"';
+    if (sec.free) a += ' data-free="1"';
     if (sec.anchor) a += ' id="' + escAttr(sec.anchor) + '"';
     a += ' data-pad="' + escAttr(sec.pad || 'm') + '"';
     a += ' data-bg="' + escAttr(sec.bg || 'auto') + '"';
@@ -6873,15 +6922,28 @@ html.dark .ogp-kakao { background: #eef1ea; }
     if (((site.settings || {}).dark || {}).on) root.setAttribute('data-theme', 'dark');
     else root.removeAttribute('data-theme');
     LB.anncMode(true);
-    root.innerHTML = LB.anncHtml(site) + (site.sections.length ? LB.pageInner(curPage(), site, { edit: true }) : emptyCanvasHtml());
+    root.innerHTML = LB.anncHtml(site) + (site.sections.length ? '<div data-editpage="1">' + LB.pageInner(curPage(), site, { edit: true }) + '</div>' : emptyCanvasHtml());
     LB.anncMode(false);
     markSel();
+    fitFreeHeight();
     renderPgBar();
     renderHud();
     syncCustomCss();
     fitCanvas();
     setTimeout(function () { fitCanvas(); positionHud(); }, 90);
     if (canvas) canvas.scrollTop = st;
+  }
+
+  /* 자유 배치 요소가 페이지 아래에 있어도 편집 캔버스에서 잘리지 않게 높이를 확보한다 */
+  function fitFreeHeight() {
+    var host = editPageHost();
+    if (!host || host.getAttribute('data-editpage') !== '1') return;
+    var max = 0;
+    $$('[data-free="1"]', host).forEach(function (el) {
+      var b = (el.offsetTop || 0) + (el.offsetHeight || 0);
+      if (b > max) max = b;
+    });
+    host.style.minHeight = max ? Math.round(max + 70) + 'px' : '';
   }
 
   /* 캔버스 HUD — 사이트의 떠 있는 요소(진행률 바·FAB·다크 토글)를 미리보기 틀 안에 보여 준다 */
@@ -7401,9 +7463,12 @@ html.dark .ogp-kakao { background: #eef1ea; }
     }
     box.innerHTML = site.sections.map(function (s, i) {
       var b = BLOCKS[s.type] || { label: s.type, icon: 'box' };
-      return '<div class="sec-item' + (s.id === selId ? ' on' : '') + (s.hidden ? ' is-off' : '') + '" draggable="true" data-sid="' + escAttr(s.id) + '" data-i="' + i + '">' +
+      var freeName = s.free ? ((typeof V2_EL_NAMES !== 'undefined' && V2_EL_NAMES[(s.props || {}).kind]) || '요소') : '';
+      var siLabel = s.free ? '자유 요소' : b.label;
+      var siSub = s.free ? (freeName + ' · 끌어서 이동') : (secTitle(s) || b.short);
+      return '<div class="sec-item' + (s.id === selId ? ' on' : '') + (s.hidden ? ' is-off' : '') + (s.free ? ' is-free' : '') + '" draggable="true" data-sid="' + escAttr(s.id) + '" data-i="' + i + '">' +
         '<span class="si-ico">' + ico(b.icon, 'ico-sm') + '</span>' +
-        '<span class="si-txt"><b>' + esc(b.label) + '</b><span>' + esc(secTitle(s) || b.short) + '</span></span>' +
+        '<span class="si-txt"><b>' + esc(siLabel) + '</b><span>' + esc(siSub) + '</span></span>' +
         '<span class="si-num">' + (i + 1) + '</span>' +
         '<span class="si-tools">' +
         '<button data-op="up" data-i="' + i + '" title="위로" aria-label="위로">' + ico('chev-up', 'ico-sm') + '</button>' +
@@ -8114,10 +8179,14 @@ html.dark .ogp-kakao { background: #eef1ea; }
     toast('JSON 백업을 내려받았어요');
   }
   function slimSec(x) {
-    return { t: x.type, pd: x.pad, bg: x.bg, al: x.align, bc: x.bgColor, tc: x.textColor, vr: x.variant, hd: x.hidden, vi: x.vis, an: x.anchor || '', fm: x.fmt || '', pr: x.props };
+    var o = { t: x.type, pd: x.pad, bg: x.bg, al: x.align, bc: x.bgColor, tc: x.textColor, vr: x.variant, hd: x.hidden, vi: x.vis, an: x.anchor || '', fm: x.fmt || '', pr: x.props };
+    if (x.free) { o.fr = 1; o.fx = x.fx; o.fy = x.fy; if (x.fw) o.fw = x.fw; }
+    return o;
   }
   function expandSec(x) {
-    return { id: uid('sec'), type: x.t, pad: x.pd || 'm', bg: x.bg || 'auto', align: x.al || 'left', bgColor: x.bc || '', textColor: x.tc || '', variant: x.vr || '', hidden: x.hd ? 1 : 0, vis: (x.vi === 'pc' || x.vi === 'mobile') ? x.vi : 'all', anchor: x.an || '', fmt: x.fm || {}, props: x.pr || {} };
+    var s = { id: uid('sec'), type: x.t, pad: x.pd || 'm', bg: x.bg || 'auto', align: x.al || 'left', bgColor: x.bc || '', textColor: x.tc || '', variant: x.vr || '', hidden: x.hd ? 1 : 0, vis: (x.vi === 'pc' || x.vi === 'mobile') ? x.vi : 'all', anchor: x.an || '', fmt: x.fm || {}, props: x.pr || {} };
+    if (x.fr) { s.free = 1; s.fx = Number(x.fx) || 0; s.fy = Number(x.fy) || 0; if (x.fw) s.fw = Number(x.fw) || 0; }
+    return s;
   }
   function slimForShare(s) {
     return {
@@ -11005,15 +11074,23 @@ html.dark .ogp-kakao { background: #eef1ea; }
         fld('글자 크기', '<div class="v2fmt-row"><input type="range" data-path="props.fs" min="13" max="40" value="' + Number(p.fs || 19) + '"><output>' + Number(p.fs || 19) + 'px</output></div>');
     }
     h += '<div class="v2fmt-grid">' +
-      fld('가로 위치', segHTML('props.align', p.align || 'center', [['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']])) +
+      fld('가로 정렬', segHTML('props.align', p.align || 'center', [['left', '왼쪽'], ['center', '가운데'], ['right', '오른쪽']])) +
       fld('투명도', '<div class="v2fmt-row"><input type="range" data-path="props.opacity" min="20" max="100" value="' + Number(p.opacity || 100) + '"><output>' + Number(p.opacity || 100) + '%</output></div>') +
       '</div>' +
-      '<div class="v2fmt-grid">' +
-      fld('좌우 이동', '<div class="v2fmt-row"><input type="range" data-path="props.ox" min="-200" max="200" value="' + Number(p.ox || 0) + '"><output>' + Number(p.ox || 0) + 'px</output></div>') +
-      fld('위아래 이동', '<div class="v2fmt-row"><input type="range" data-path="props.oy" min="-200" max="200" value="' + Number(p.oy || 0) + '"><output>' + Number(p.oy || 0) + 'px</output></div>') +
-      '</div>' +
-      fld('그림자', segHTML('props.shadow', p.shadow ? '1' : '0', [['0', '없음'], ['1', '있음']])) +
-      '<p class="v2fmt-hint">캔버스에서 요소 왼쪽 위 손잡이를 끌어 자유롭게 옮길 수 있어요.</p>';
+      fld('그림자', segHTML('props.shadow', p.shadow ? '1' : '0', [['0', '없음'], ['1', '있음']]));
+    if (sec && sec.free) {
+      h += '<div class="v2place">' +
+        '<button type="button" class="btn btn-sm" data-freereset="center">' + ico('layout', 'ico-sm') + '가운데로</button>' +
+        '<button type="button" class="btn btn-sm" data-freereset="home">' + ico('refresh', 'ico-sm') + '원래 자리로</button>' +
+        '</div>' +
+        '<p class="v2fmt-hint">페이지 위 자유 배치입니다. 캔버스에서 요소를 끌어 옮기세요. 가운데·다른 요소·섹션 경계에 가까우면 정렬선이 뜹니다.</p>';
+    } else {
+      h += '<div class="v2fmt-grid">' +
+        fld('좌우 이동', '<div class="v2fmt-row"><input type="range" data-path="props.ox" min="-200" max="200" value="' + Number(p.ox || 0) + '"><output>' + Number(p.ox || 0) + 'px</output></div>') +
+        fld('위아래 이동', '<div class="v2fmt-row"><input type="range" data-path="props.oy" min="-200" max="200" value="' + Number(p.oy || 0) + '"><output>' + Number(p.oy || 0) + 'px</output></div>') +
+        '</div>' +
+        '<p class="v2fmt-hint">캔버스에서 요소 왼쪽 위 손잡이를 끌어 자유롭게 옮길 수 있어요.</p>';
+    }
     return h;
   };
   V2_FIELDS.beforeafter = function () {
@@ -11166,21 +11243,88 @@ html.dark .ogp-kakao { background: #eef1ea; }
     line: '<path d="M3 12h18"/>',
     logo: '<circle cx="8" cy="12" r="4"/><path d="M15 9h5M15 15h3"/>'
   };
+  /* ---------- 자유 배치 도우미 — 페이지 위에 바로 놓기 ---------- */
+  var FREE_W = { text: 300, image: 320, rect: 240, line: 260 };
+  function freeWidth(kind) { return FREE_W[kind] || 0; }
+  function editPageHost() { return $('#siteRoot [data-editpage]') || $('#siteRoot'); }
+  function canvasScale() {
+    var fit = $('#bzFit'), sc = 1;
+    if (fit) { var m = /scale\(([\d.]+)\)/.exec(fit.style.transform || ''); if (m) sc = parseFloat(m[1]) || 1; }
+    return sc || 1;
+  }
+  function freeSpot() {
+    var cv = $('#bzCanvas'), sc = canvasScale();
+    var top = cv ? cv.scrollTop / sc : 0;
+    var vh = cv ? cv.clientHeight / sc : 700;
+    return { fx: 50, fy: Math.max(16, Math.round(top + Math.max(70, Math.min(vh * .34, 330)))) };
+  }
+  function freeSecEl(id) { return $('#siteRoot [data-sec="' + id + '"]'); }
+  function centerFree(sec, keepHome) {
+    var host = editPageHost(), el = freeSecEl(sec.id);
+    if (!host || !el) return;
+    var W = host.clientWidth || 1;
+    var w = el.offsetWidth || 0;
+    var fx = Math.round(((W - w) / 2) / W * 1000) / 10;
+    sec.fx = Math.max(0, Math.min(96, fx));
+    if (keepHome && !sec.home) sec.home = { fx: sec.fx, fy: sec.fy };
+    el.style.setProperty('--fx', sec.fx + '%');
+    el.style.top = Math.round(Number(sec.fy) || 0) + 'px';
+  }
+  /* 새 요소가 이미 놓인 자유 요소와 겹치면 비켜서 놓는다 */
+  function settleFree(sec) {
+    var host = editPageHost(), el = freeSecEl(sec.id);
+    if (!host || !el) return;
+    var W = host.clientWidth || 1;
+    var w = el.offsetWidth || 0, h = el.offsetHeight || 0;
+    var fx = Math.round(((W - w) / 2) / W * 1000) / 10;
+    sec.fx = Math.max(0, Math.min(96, fx));
+    var L = W * sec.fx / 100, T = Math.max(0, Number(sec.fy) || 0);
+    var others = [];
+    $$('#siteRoot [data-free="1"]').forEach(function (o) {
+      if (o === el) return;
+      var r = { x: o.offsetLeft, y: o.offsetTop, w: o.offsetWidth || 0, h: o.offsetHeight || 0 };
+      if (r.w || r.h) others.push(r);
+    });
+    var guard = 0;
+    while (guard++ < 40) {
+      var moved = false;
+      for (var i = 0; i < others.length; i++) {
+        var o = others[i];
+        var ox = Math.min(L + w, o.x + o.w) - Math.max(L, o.x);
+        var oy = Math.min(T + h, o.y + o.h) - Math.max(T, o.y);
+        if (ox > 2 && oy > 2) { T = o.y + o.h + 14; moved = true; }
+      }
+      if (!moved) break;
+    }
+    sec.fy = T;
+    sec.home = { fx: sec.fx, fy: T };
+    el.style.setProperty('--fx', sec.fx + '%');
+    el.style.top = Math.round(T) + 'px';
+    fitFreeHeight();
+  }
   function v2AddElement(kind) {
     if (!started) { toast('먼저 [만들기 시작]을 눌러 주세요', 'warn'); return; }
+    var pg = curPage();
+    if (!pg.sections) pg.sections = [];
     var sec = newSection('element');
     sec.props = V2L.elementDef(kind);
     sec.pad = 's';
     sec.align = kind === 'logo' ? 'left' : 'center';
-    var pg = curPage();
-    var at = selId ? (pg.sections || []).map(function (x) { return x.id; }).indexOf(selId) : -1;
-    if (!pg.sections) pg.sections = [];
-    if (at >= 0) pg.sections.splice(at + 1, 0, sec); else pg.sections.push(sec);
+    sec.anim = 'fade';
+    sec.free = 1;
+    sec.fz = 0;
+    var fw = freeWidth(kind);
+    if (fw) sec.fw = fw;
+    var spot = freeSpot();
+    sec.fx = spot.fx; sec.fy = spot.fy;
+    sec.home = { fx: sec.fx, fy: sec.fy };
+    pg.sections.push(sec);
     selId = sec.id;
     renderCanvas(); renderSecList(); renderInspector();
+    settleFree(sec);
+    if (window.innerWidth < 1024) closePicker();
     commit(); scheduleSave();
-    closeMask('blockMask');
-    toast(V2_EL_NAMES[kind] + ' 요소를 넣었어요');
+    toast(V2_EL_NAMES[kind] + ' 요소를 페이지에 놓았어요 · 끌어서 옮기세요');
   }
   var V2_EL_NAMES = V2L.elNames || {};
 
@@ -11205,6 +11349,21 @@ html.dark .ogp-kakao { background: #eef1ea; }
     }
     var pal = t.closest('[data-pal]');
     if (pal) { copyText(pal.getAttribute('data-pal'), pal.getAttribute('data-pal') + ' 복사했어요'); return; }
+    var fr = t.closest('[data-freereset]');
+    if (fr) {
+      var sf = findSec(selId);
+      if (!sf || !sf.free) return;
+      var mode = fr.getAttribute('data-freereset');
+      if (mode === 'home') {
+        if (sf.home) { sf.fx = sf.home.fx; sf.fy = sf.home.fy; }
+      } else {
+        centerFree(sf, true);
+        sf.home = sf.home || { fx: sf.fx, fy: sf.fy };
+      }
+      renderCanvas(); renderInspector(); commit(); scheduleSave();
+      toast(mode === 'home' ? '처음 놓은 자리로 돌렸어요' : '가로 가운데로 맞췄어요');
+      return;
+    }
     var reset = t.closest('[data-v2fmtreset]');
     if (reset) {
       var sc = findSec(selId);
@@ -11224,6 +11383,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
       if (!sec) return;
       var keep = { align: sec.props.align, ox: sec.props.ox, oy: sec.props.oy };
       sec.props = Object.assign(V2L.elementDef(t.value), keep);
+      if (sec.free) { var nw = freeWidth(t.value); sec.fw = nw || ''; }
       renderCanvas(); renderInspector(); commit(); scheduleSave();
       return;
     }
@@ -11276,6 +11436,122 @@ html.dark .ogp-kakao { background: #eef1ea; }
       var d = drag; drag = null;
       renderCanvas(); renderInspector(); commit(); scheduleSave();
     });
+  })();
+
+  /* ---------- 자유 배치 요소 끌어서 이동 + 정렬 가이드 선 ---------- */
+  (function () {
+    var dg = null;
+    function inEdit() { return !!doc.querySelector('#siteRoot[data-edit]'); }
+    function hostOf(el) { return el.closest('#siteRoot [data-editpage]') || el.closest('#siteRoot') || el.parentNode; }
+    function off(el, host) {
+      var x = 0, y = 0, n = el;
+      while (n && n !== host) { x += n.offsetLeft || 0; y += n.offsetTop || 0; n = n.offsetParent; }
+      return { x: x, y: y, w: el.offsetWidth || 0, h: el.offsetHeight || 0 };
+    }
+    function guide(host, cls) {
+      if (!host) return null;
+      var kids = host.children, i, found = null;
+      for (i = 0; i < kids.length; i++) {
+        if (kids[i].classList && kids[i].classList.contains('bz-guide') && kids[i].classList.contains(cls)) { found = kids[i]; break; }
+      }
+      if (!found) {
+        found = doc.createElement('div');
+        found.className = 'bz-guide ' + cls;
+        found.setAttribute('aria-hidden', 'true');
+        host.appendChild(found);
+      }
+      return found;
+    }
+    function hideGuides(host) {
+      if (!host) return;
+      $$('.bz-guide', host).forEach(function (g) { g.style.display = 'none'; });
+    }
+    function snapTargets(host, selfEl) {
+      var W = host.clientWidth || 1;
+      var xs = [0, W / 2, W], ys = [];
+      $$('[data-sec]', host).forEach(function (el) {
+        if (el === selfEl) return;
+        var o = off(el, host);
+        if (!o.w && !o.h) return;
+        if (el.getAttribute('data-free') === '1') {
+          xs.push(o.x, o.x + o.w / 2, o.x + o.w);
+          ys.push(o.y, o.y + o.h / 2, o.y + o.h);
+        } else {
+          var inn = el.querySelector('.wb-in');
+          if (inn) {
+            var io = off(inn, host);
+            if (io.w > 40) xs.push(io.x, io.x + io.w / 2, io.x + io.w);
+          }
+          ys.push(o.y, o.y + o.h);
+        }
+      });
+      return { xs: xs, ys: ys };
+    }
+    function snapAxis(pos, size, list, thr) {
+      var best = null, probes = [pos, pos + size / 2, pos + size], i, j;
+      for (i = 0; i < list.length; i++) {
+        for (j = 0; j < probes.length; j++) {
+          var d = Math.abs(probes[j] - list[i]);
+          if (d <= thr && (!best || d < best.d)) best = { d: d, pos: pos + (list[i] - probes[j]), at: list[i] };
+        }
+      }
+      return best;
+    }
+    doc.addEventListener('pointerdown', function (e) {
+      if (!inEdit()) return;
+      var t = e.target;
+      if (!t || !t.closest) return;
+      if (e.button != null && e.button !== 0) return;
+      if (t.closest('[data-el-size]') || t.closest('[data-el-drag]')) return;
+      var secEl = t.closest('#siteRoot [data-sec][data-free="1"]');
+      if (!secEl) return;
+      var sec = findSec(secEl.getAttribute('data-sec'));
+      if (!sec) return;
+      e.preventDefault();
+      var host = hostOf(secEl);
+      var o = off(secEl, host);
+      var sc = canvasScale();
+      dg = { sec: sec, el: secEl, host: host, sc: sc, sx: e.clientX, sy: e.clientY, L0: o.x, T0: o.y, w: o.w, h: o.h, L: o.x, T: o.y, moved: false, tg: snapTargets(host, secEl) };
+      select(sec.id);
+      secEl.classList.add('is-moving');
+      try { secEl.setPointerCapture(e.pointerId); } catch (err) { }
+    });
+    doc.addEventListener('pointermove', function (e) {
+      if (!dg) return;
+      var dx = (e.clientX - dg.sx) / dg.sc;
+      var dy = (e.clientY - dg.sy) / dg.sc;
+      if (!dg.moved && Math.abs(dx) + Math.abs(dy) < 2.5) return;
+      dg.moved = true;
+      var W = dg.host ? (dg.host.clientWidth || 1) : 1;
+      var L = dg.L0 + dx, T = dg.T0 + dy;
+      L = Math.max(0, Math.min(Math.max(0, W - Math.min(dg.w, W)), L));
+      T = Math.max(0, T);
+      var thr = Math.max(3, 7 / (dg.sc || 1));
+      var sx = snapAxis(L, dg.w, dg.tg.xs, thr);
+      if (sx) L = Math.max(0, Math.min(Math.max(0, W - Math.min(dg.w, W)), sx.pos));
+      var sy = snapAxis(T, dg.h, dg.tg.ys, thr);
+      if (sy) T = Math.max(0, sy.pos);
+      dg.L = L; dg.T = T;
+      dg.el.style.setProperty('--fx', (Math.round(L / W * 1000) / 10) + '%');
+      dg.el.style.top = Math.round(T) + 'px';
+      var gv = guide(dg.host, 'v'), gh = guide(dg.host, 'h');
+      if (gv) { gv.style.display = sx ? 'block' : 'none'; if (sx) gv.style.left = Math.round(sx.at) + 'px'; }
+      if (gh) { gh.style.display = sy ? 'block' : 'none'; if (sy) gh.style.top = Math.round(sy.at) + 'px'; }
+    });
+    function endDrag(apply) {
+      if (!dg) return;
+      var d = dg; dg = null;
+      d.el.classList.remove('is-moving');
+      hideGuides(d.host);
+      if (!d.moved || !apply) return;
+      var W = d.host ? (d.host.clientWidth || 1) : 1;
+      d.sec.fx = Math.max(0, Math.min(96, Math.round(d.L / W * 1000) / 10));
+      d.sec.fy = Math.max(0, Math.round(d.T));
+      d.sec.props.ox = 0; d.sec.props.oy = 0;
+      renderCanvas(); renderInspector(); commit(); scheduleSave();
+    }
+    doc.addEventListener('pointerup', function () { endDrag(true); });
+    doc.addEventListener('pointercancel', function () { endDrag(false); });
   })();
 
   /* ============================================================
@@ -13469,7 +13745,7 @@ html.dark .ogp-kakao { background: #eef1ea; }
       if (t && !group.querySelector('.v3el-hint')) {
         var hint = doc.createElement('p');
         hint.className = 'hint v3el-hint';
-        hint.textContent = '섹션 없이 한 요소만 놓습니다. 놓은 뒤 캔버스에서 손잡이로 끌어 위치를, 서식 탭에서 크기를 바꿉니다.';
+        hint.textContent = '섹션을 만들지 않고 페이지 위에 바로 놓습니다. 캔버스에서 끌어 위치를 옮기고, 서식 탭에서 크기를 바꿉니다.';
         group.appendChild(hint);
       }
     }
