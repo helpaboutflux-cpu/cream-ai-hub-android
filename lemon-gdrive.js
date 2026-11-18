@@ -736,7 +736,9 @@
     var c = String(code || '');
     if (c === 'not-linked') return 'Google Drive 연결이 필요합니다. [Google Drive 연결]을 눌러 주세요.';
     if (c === 'timeout') return 'Google 창에서 응답이 없어 연결을 마치지 못했습니다. 다시 시도해 주세요.';
-    if (c === 'popup_closed' || c === 'popup_closed_by_user') return '연결 창이 닫혔습니다. 다시 시도해 주세요.';
+    if (c === 'popup_closed' || c === 'popup_closed_by_user') {
+      return '연결 창이 닫혔습니다. 다시 시도해 주세요. (Google 창에 "승인되지 않은 원본" 안내가 보이면 관리자 설정 — 승인된 JavaScript 원본 — 에 사이트 주소를 등록해야 합니다.)';
+    }
     if (c === 'popup-blocked' || c === 'popup_failed_to_open') return '브라우저가 연결 창을 막았습니다. 팝업을 허용한 뒤 다시 시도해 주세요.';
     if (c === 'access_denied') return 'Google Drive 연결을 취소했습니다.';
     if (c === 'origin_mismatch' || c === 'idpiframe_initialization_failed') {
