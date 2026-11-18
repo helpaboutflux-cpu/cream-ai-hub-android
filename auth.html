@@ -329,6 +329,7 @@
         var m = (err && err.message) || '오류가 발생했습니다.';
         if (/Invalid login credentials/i.test(m)) m = '이메일 또는 비밀번호가 올바르지 않습니다.';
         else if (/already registered/i.test(m)) m = '이미 가입된 이메일입니다. 로그인해 주세요.';
+        else if (/Email not confirmed/i.test(m)) m = '이메일 인증이 필요합니다. 받은 메일의 링크를 누른 뒤 로그인하세요.';
         else if (/Password should be/i.test(m)) m = '비밀번호는 6자 이상이어야 합니다.';
         msg(m, 'err');
       });
@@ -336,7 +337,18 @@
 
     $('googleBtn').addEventListener('click', function () {
       if (!LemonCloud.configured()) { msg('클라우드 로그인이 아직 설정되지 않았습니다.', 'info'); return; }
-      LemonCloud.signInWithGoogle();
+      try {
+        /* Supabase에서 Google 제공자가 꺼져 있으면 바로 안내한다. */
+        fetch(LemonCloud.config().url + '/auth/v1/settings', {
+          headers: { apikey: LemonCloud.config().anonKey }
+        }).then(function (r) { return r.json(); }).then(function (s) {
+          if (s && s.external && s.external.google === false) {
+            msg('Google 로그인은 아직 켜지지 않았습니다. 이메일로 로그인하거나 Supabase에서 Google 제공자를 설정하세요.', 'info');
+            return;
+          }
+          LemonCloud.signInWithGoogle();
+        }).catch(function () { LemonCloud.signInWithGoogle(); });
+      } catch (e) { LemonCloud.signInWithGoogle(); }
     });
 
     $('forgotBtn').addEventListener('click', function () {
