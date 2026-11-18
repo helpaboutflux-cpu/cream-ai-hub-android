@@ -1,0 +1,587 @@
+/* ============================================================
+   Lemon soft · Cloud engine  (lemon-cloud.js)
+   ------------------------------------------------------------
+   Supabase 를 쓰기 위한 의존성 없는 경량 REST/Auth 래퍼.
+
+   · 설정(Project URL · anon key)이 없으면 아무 오류 없이 로컬 모드로 동작한다.
+       - 로컬 모드: 로그인 UI 는 "클라우드 미연결" 안내, 공유 링크는 이 기기의
+         localStorage 로, 동기화는 사용 안 함.
+   · 설정이 있으면
+       1) 공용 로그인/회원가입/로그아웃 (이메일·비밀번호 + Google OAuth)
+       2) 클라우드 동기화 — 로그인 사용자의 lemon_* / flux_* 데이터를
+          user_sync_data 테이블에 백업하고 복원한다.
+       3) 짧은 공유 링크 — shared_pages 테이블 + view.html?id=짧은코드
+       4) 원격 설정/광고 — site_config / site_ads 를 읽어 전 방문자에게 반영
+
+   설정 우선순위
+     window.LEMON_CLOUD_CONFIG  (lemon-cloud-config.js 로 배포)
+     > localStorage['lemon_cloud_cfg']  (관리자 콘솔에서 저장)
+   스키마는 supabase_schema.sql 한 번 실행으로 끝난다.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  if (window.LemonCloud && window.LemonCloud.__v) return;
+
+  var doc = document;
+
+  var K_CFG = 'lemon_cloud_cfg';
+  var K_SESSION = 'lemon_cloud_session';
+  var K_LOCAL_SHARES = 'lemon_shares_v1';
+  var K_LAST_SYNC = 'lemon_cloud_last_sync';
+
+  /* 동기화에서 제외하는 내부 키 */
+  var SYNC_SKIP = {
+    lemon_cloud_cfg: 1, lemon_cloud_session: 1, lemon_cloud_last_sync: 1,
+    lemon_admin_auth: 1, lemon_site_config_v1: 1, lemon_site_ads_v1: 1,
+    lemon_site_remote_cfg_v1: 1, lemon_site_remote_ads_v1: 1,
+    lemon_notice_ack_v1: 1, lemon_home_ack_v1: 1, lemon_cp_recent: 1,
+    lemon_shares_v1: 1, cream_theme: 1, lemon_anim_mode: 1
+  };
+  var SYNC_PREFIX = /^(lemon_|flux_)/i;
+  var SYNC_MAX_KEY = 240 * 1024;
+  var SYNC_MAX_TOTAL = 3 * 1024 * 1024;
+
+  /* ---------------- 상태 ---------------- */
+  var cfg = null;
+  var session = null;
+  var initP = null;
+  var remoteReady = false;
+
+  function readJSON(key, fb) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (!raw) return fb;
+      var v = JSON.parse(raw);
+      return v === null || v === undefined ? fb : v;
+    } catch (e) { return fb; }
+  }
+  function writeJSON(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; }
+  }
+  function drop(key) { try { localStorage.removeItem(key); } catch (e) { } }
+
+  function normUrl(u) {
+    var s = String(u || '').trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(s)) return '';
+    return s;
+  }
+  function isConfigured(c) { return !!(c && normUrl(c.url) && String(c.anonKey || '').trim()); }
+
+  function loadConfig() {
+    /* 이 브라우저에서 직접 저장한 설정이 있으면 그것을 먼저 쓰고,
+       없으면 배포된 공용 설정(lemon-cloud-config.js)을 쓴다. */
+    var local = readJSON(K_CFG, null);
+    if (isConfigured(local)) return { url: normUrl(local.url), anonKey: String(local.anonKey).trim() };
+    var c = window.LEMON_CLOUD_CONFIG;
+    if (isConfigured(c)) return { url: normUrl(c.url), anonKey: String(c.anonKey).trim() };
+    return { url: '', anonKey: '' };
+  }
+
+  function ensureConfigFile() {
+    /* 배포된 공용 설정 파일(lemon-cloud-config.js)을 한 번 읽어본다.
+       파일이 없거나 비어 있으면 조용히 넘어간다. */
+    if (window.LEMON_CLOUD_CONFIG) return Promise.resolve();
+    return new Promise(function (resolve) {
+      var base = scriptBase();
+      var s = doc.createElement('script');
+      s.src = base + 'lemon-cloud-config.js';
+      s.async = true;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { resolve(); };
+      (doc.head || doc.documentElement).appendChild(s);
+      setTimeout(resolve, 1800);
+    });
+  }
+
+  function scriptBase() {
+    try {
+      var cs = doc.currentScript;
+      if (!cs || !cs.src) {
+        var list = doc.querySelectorAll('script[src$="lemon-cloud.js"]');
+        cs = list[list.length - 1];
+      }
+      return String(cs && cs.src || '').replace(/[?#].*$/, '').replace(/[^/]*$/, '');
+    } catch (e) { return ''; }
+  }
+
+  /* ---------------- 세션 ---------------- */
+  function saveSession(s) { session = s; writeJSON(K_SESSION, s); }
+  function loadSession() {
+    var s = readJSON(K_SESSION, null);
+    session = s && s.access_token ? s : null;
+    return session;
+  }
+  function clearSession() { session = null; drop(K_SESSION); emit('signed-out'); }
+
+  function emit(name, detail) {
+    try { window.dispatchEvent(new CustomEvent('lemoncloud:' + name, { detail: detail || {} })); } catch (e) { }
+  }
+
+  function sessionUser() {
+    if (!session) return null;
+    return session.user || null;
+  }
+
+  function tokenExpired() {
+    if (!session) return true;
+    if (!session.expires_at) return false;
+    return Date.now() > (session.expires_at - 60000);
+  }
+
+  /* ---------------- HTTP ---------------- */
+  function headers(extra) {
+    var h = { apikey: cfg.anonKey, 'Content-Type': 'application/json' };
+    var tok = session && session.access_token;
+    h.Authorization = 'Bearer ' + (tok || cfg.anonKey);
+    if (extra) Object.keys(extra).forEach(function (k) { h[k] = extra[k]; });
+    return h;
+  }
+
+  function request(path, opts) {
+    opts = opts || {};
+    if (!isConfigured(cfg)) {
+      return Promise.reject(new Error('cloud-not-configured'));
+    }
+    var url = cfg.url + path;
+    var init = {
+      method: opts.method || 'GET',
+      headers: headers(opts.headers || {}),
+      cache: 'no-store'
+    };
+    if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
+    return fetch(url, init).then(function (r) {
+      return r.text().then(function (txt) {
+        var data = null;
+        try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = txt; }
+        if (!r.ok) {
+          var err = new Error((data && (data.message || data.error_description || data.msg || data.hint)) || ('HTTP ' + r.status));
+          err.status = r.status;
+          err.data = data;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  function refreshToken() {
+    if (!session || !session.refresh_token) return Promise.reject(new Error('no-refresh-token'));
+    return request('/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST', body: { refresh_token: session.refresh_token }
+    }).then(function (d) {
+      var u = session.user;
+      saveSession({
+        access_token: d.access_token,
+        refresh_token: d.refresh_token || session.refresh_token,
+        expires_at: d.expires_in ? Date.now() + d.expires_in * 1000 : 0,
+        user: d.user || u
+      });
+      return session;
+    });
+  }
+
+  function ensureToken() {
+    if (!session) return Promise.resolve(null);
+    if (!tokenExpired()) return Promise.resolve(session);
+    return refreshToken().catch(function () { clearSession(); return null; });
+  }
+
+  function rest(path, opts) {
+    return ensureToken().then(function () { return request(path, opts); });
+  }
+
+  /* ---------------- 인증 ---------------- */
+  function storeAuth(d) {
+    var u = d.user || null;
+    saveSession({
+      access_token: d.access_token,
+      refresh_token: d.refresh_token,
+      expires_at: d.expires_in ? Date.now() + d.expires_in * 1000 : 0,
+      user: u
+    });
+    emit('signed-in', u);
+    if (autoSyncOn) setTimeout(function () { autoSync(); }, 600);
+    return u;
+  }
+
+  function consumeRedirect() {
+    try {
+      var h = location.hash && location.hash.charAt(0) === '#' ? location.hash.slice(1) : '';
+      if (!h || h.indexOf('access_token=') < 0) return null;
+      var p = new URLSearchParams(h);
+      var at = p.get('access_token');
+      if (!at) return null;
+      var d = {
+        access_token: at,
+        refresh_token: p.get('refresh_token') || '',
+        expires_in: parseInt(p.get('expires_in'), 10) || 3600,
+        user: null
+      };
+      if (history.replaceState) history.replaceState(null, '', location.pathname + location.search);
+      return d;
+    } catch (e) { return null; }
+  }
+
+  function signUp(email, password) {
+    return request('/auth/v1/signup', { method: 'POST', body: { email: email, password: password } })
+      .then(function (d) {
+        if (d && d.access_token) { storeAuth(d); return { ok: true, user: d.user }; }
+        return { ok: true, pending: true, user: d && d.user };
+      });
+  }
+
+  function signIn(email, password) {
+    return request('/auth/v1/token?grant_type=password', {
+      method: 'POST', body: { email: email, password: password }
+    }).then(function (d) {
+      var u = storeAuth(d);
+      return { ok: true, user: u };
+    });
+  }
+
+  function signOut() {
+    var p = session ? request('/auth/v1/logout', { method: 'POST' }).catch(function () { }) : Promise.resolve();
+    return p.then(function () { clearSession(); return { ok: true }; });
+  }
+
+  function recover(email) {
+    return request('/auth/v1/recover', { method: 'POST', body: { email: email } });
+  }
+
+  function signInWithGoogle() {
+    if (!isConfigured(cfg)) return false;
+    var back = location.origin + location.pathname;
+    location.href = cfg.url + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(back);
+    return true;
+  }
+
+  function getUser() {
+    if (!session) return Promise.resolve(null);
+    return rest('/auth/v1/user').then(function (u) {
+      if (u) { session.user = u; saveSession(session); }
+      return u;
+    });
+  }
+
+  /* ---------------- 원격 설정 / 광고 ---------------- */
+  function fetchSiteData() {
+    if (!isConfigured(cfg)) return Promise.resolve(null);
+    return rest('/rest/v1/site_config?select=id,value')
+      .then(function (rows) {
+        var config = {};
+        (rows || []).forEach(function (r) {
+          if (!r || !r.id) return;
+          if (r.id === 'notice' || r.id === 'home') config[r.id] = r.value;
+          if (r.id === 'ads') config.ads = r.value;
+        });
+        return rest('/rest/v1/site_ads?select=id,data,enabled&order=sort_order.asc').then(function (adRows) {
+          var ads = (adRows || []).map(function (r) {
+            var d = r.data && typeof r.data === 'object' ? r.data : {};
+            d.id = d.id || r.id;
+            if (r.enabled === false) d.enabled = false;
+            return d;
+          });
+          return { config: config, ads: ads };
+        });
+      });
+  }
+
+  function upsert(table, rows, conflict) {
+    return rest('/rest/v1/' + table + (conflict ? '?on_conflict=' + conflict : ''), {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: rows
+    });
+  }
+
+  function getConfigRow(id) {
+    if (!isConfigured(cfg)) return Promise.resolve(null);
+    return rest('/rest/v1/site_config?select=value&id=eq.' + encodeURIComponent(id))
+      .then(function (rows) { return rows && rows[0] ? rows[0].value : null; }, function () { return null; });
+  }
+
+  function saveConfigRow(id, value) {
+    if (!isConfigured(cfg) || !session) return Promise.resolve(null);
+    return upsert('site_config', [{ id: id, value: value, updated_at: new Date().toISOString() }], 'id')
+      .catch(function () { return null; });
+  }
+
+  function saveSiteData(config, ads) {
+    if (!isConfigured(cfg)) return Promise.reject(new Error('cloud-not-configured'));
+    if (!session) return Promise.reject(new Error('admin-login-required'));
+    var rows = [];
+    ['notice', 'home'].forEach(function (k) {
+      if (config && config[k]) rows.push({ id: k, value: config[k], updated_at: new Date().toISOString() });
+    });
+    if (config && config.ads) rows.push({ id: 'ads', value: config.ads, updated_at: new Date().toISOString() });
+    var p = rows.length ? upsert('site_config', rows, 'id') : Promise.resolve();
+
+    return p.then(function () {
+      if (!Array.isArray(ads)) return null;
+      var payload = ads.map(function (a, i) {
+        return {
+          id: String(a.id || ('ad-' + i)),
+          data: a,
+          enabled: a.enabled !== false,
+          position: a.position || 'feed',
+          sort_order: a.order || i + 1,
+          updated_at: new Date().toISOString()
+        };
+      });
+      return upsert('site_ads', payload, 'id').then(function () {
+        /* 원격에서 지워진 광고 정리 */
+        return rest('/rest/v1/site_ads?select=id').then(function (cur) {
+          var keep = {};
+          payload.forEach(function (r) { keep[r.id] = 1; });
+          var gone = (cur || []).filter(function (r) { return !keep[r.id]; });
+          if (!gone.length) return null;
+          return Promise.all(gone.map(function (r) {
+            return rest('/rest/v1/site_ads?id=eq.' + encodeURIComponent(r.id), { method: 'DELETE' });
+          }));
+        });
+      });
+    });
+  }
+
+  function testConnection(url, key) {
+    var u = normUrl(url), k = String(key || '').trim();
+    if (!u || !k) return Promise.resolve({ ok: false, error: 'URL 과 anon key 를 모두 입력하세요.' });
+    return fetch(u + '/rest/v1/site_config?select=id&limit=1', {
+      headers: { apikey: k, Authorization: 'Bearer ' + k }, cache: 'no-store'
+    }).then(function (r) {
+      if (r.status === 401 || r.status === 403) return { ok: false, error: 'anon key 가 올바르지 않습니다 (HTTP ' + r.status + ').' };
+      if (r.status === 404) {
+        return { ok: true, schema: false, note: '연결은 되었지만 site_config 테이블이 없습니다. supabase_schema.sql 을 실행하세요.' };
+      }
+      if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
+      return { ok: true, schema: true, note: '연결되었습니다.' };
+    }).catch(function (e) {
+      return { ok: false, error: '연결 실패: ' + (e && e.message ? e.message : '네트워크 오류') };
+    });
+  }
+
+  /* ---------------- 짧은 공유 링크 ---------------- */
+  function shortId(n) {
+    var abc = 'abcdefghijkmnpqrstuvwxyz23456789';
+    var out = '';
+    var arr = new Uint8Array(n || 8);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(arr);
+    else for (var i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+    for (var j = 0; j < arr.length; j++) out += abc[arr[j] % abc.length];
+    return out;
+  }
+
+  function localShares() { return readJSON(K_LOCAL_SHARES, {}) || {}; }
+  function saveLocalShare(rec) {
+    var all = localShares();
+    all[rec.id] = rec;
+    /* 60개까지만 유지 */
+    var ids = Object.keys(all);
+    if (ids.length > 60) {
+      ids.sort(function (a, b) { return (all[a].ts || 0) - (all[b].ts || 0); });
+      while (ids.length > 60) delete all[ids.shift()];
+    }
+    writeJSON(K_LOCAL_SHARES, all);
+  }
+
+  function createShare(share) {
+    share = share || {};
+    var payload = share.payload === undefined ? {} : share.payload;
+    var json = '';
+    try { json = JSON.stringify(payload); } catch (e) { return Promise.resolve({ ok: false, error: '공유할 데이터를 직렬화하지 못했습니다.' }); }
+    if (json.length > 180000) return Promise.resolve({ ok: false, error: '공유할 내용이 너무 큽니다(180KB 초과).' });
+
+    var rec = {
+      id: shortId(8),
+      kind: String(share.kind || 'page').slice(0, 40),
+      title: String(share.title || 'Shared page').slice(0, 120),
+      payload: payload,
+      ts: Date.now()
+    };
+
+    if (isConfigured(cfg)) {
+      return rest('/rest/v1/shared_pages', {
+        method: 'POST',
+        headers: { Prefer: 'return=minimal' },
+        body: [{
+          id: rec.id, kind: rec.kind, title: rec.title, payload: rec.payload,
+          created_at: new Date().toISOString(),
+          expires_at: share.ttlMinutes ? new Date(Date.now() + share.ttlMinutes * 60000).toISOString() : null
+        }]
+      }).then(function () {
+        return { ok: true, id: rec.id, url: 'view.html?id=' + rec.id, local: false };
+      }).catch(function (e) {
+        saveLocalShare(rec);
+        return { ok: true, id: rec.id, url: 'view.html?id=' + rec.id, local: true, warning: (e && e.message) || 'remote-failed' };
+      });
+    }
+    saveLocalShare(rec);
+    return Promise.resolve({ ok: true, id: rec.id, url: 'view.html?id=' + rec.id, local: true });
+  }
+
+  function getShare(id) {
+    id = String(id || '').trim();
+    if (!/^[a-z0-9]{4,24}$/i.test(id)) return Promise.resolve({ ok: false, error: 'invalid-id' });
+    var localAll = localShares();
+    var localRec = localAll[id] || null;
+    if (isConfigured(cfg)) {
+      return rest('/rest/v1/shared_pages?select=id,kind,title,payload,created_at&id=eq.' + encodeURIComponent(id))
+        .then(function (rows) {
+          if (rows && rows[0]) return { ok: true, share: rows[0], source: 'cloud' };
+          if (localRec) return { ok: true, share: localRec, source: 'local' };
+          return { ok: false, error: 'not-found' };
+        })
+        .catch(function () {
+          if (localRec) return { ok: true, share: localRec, source: 'local', warning: 'offline' };
+          return { ok: false, error: 'network' };
+        });
+    }
+    if (localRec) return Promise.resolve({ ok: true, share: localRec, source: 'local' });
+    return Promise.resolve({ ok: false, error: 'not-found' });
+  }
+
+  /* ---------------- 클라우드 동기화 ---------------- */
+  function syncKeys() {
+    var out = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!k || SYNC_SKIP[k] || !SYNC_PREFIX.test(k)) continue;
+        var v = localStorage.getItem(k);
+        if (v === null) continue;
+        if (v.length > SYNC_MAX_KEY) continue;
+        out.push({ key: k, raw: v });
+      }
+    } catch (e) { }
+    return out;
+  }
+
+  function syncPush() {
+    if (!isConfigured(cfg)) return Promise.resolve({ ok: false, error: 'cloud-not-configured' });
+    if (!session) return Promise.resolve({ ok: false, error: 'login-required' });
+    var keys = syncKeys();
+    var total = 0, rows = [];
+    keys.forEach(function (k) {
+      total += k.raw.length;
+      if (total > SYNC_MAX_TOTAL) return;
+      var val;
+      try { val = JSON.parse(k.raw); } catch (e) { val = k.raw; }
+      rows.push({
+        user_id: sessionUser().id, key: k.key, value: val,
+        updated_at: new Date().toISOString()
+      });
+    });
+    if (!rows.length) return Promise.resolve({ ok: true, count: 0 });
+    return upsert('user_sync_data', rows, 'user_id,key').then(function () {
+      writeJSON(K_LAST_SYNC, { ts: Date.now(), dir: 'push', count: rows.length });
+      return { ok: true, count: rows.length };
+    });
+  }
+
+  function syncPull(opts) {
+    opts = opts || {};
+    if (!isConfigured(cfg)) return Promise.resolve({ ok: false, error: 'cloud-not-configured' });
+    if (!session) return Promise.resolve({ ok: false, error: 'login-required' });
+    return rest('/rest/v1/user_sync_data?select=key,value,updated_at')
+      .then(function (rows) {
+        var restored = 0, skipped = 0;
+        (rows || []).forEach(function (r) {
+          if (!r || !r.key) return;
+          var exists = false;
+          try { exists = localStorage.getItem(r.key) !== null; } catch (e) { }
+          if (exists && !opts.overwrite) { skipped++; return; }
+          try {
+            localStorage.setItem(r.key, typeof r.value === 'string' ? r.value : JSON.stringify(r.value));
+            restored++;
+          } catch (e) { }
+        });
+        writeJSON(K_LAST_SYNC, { ts: Date.now(), dir: 'pull', count: restored });
+        return { ok: true, count: restored, skipped: skipped };
+      });
+  }
+
+  var autoSyncOn = false, autoTimer = 0;
+  function autoSync() {
+    if (!session || !isConfigured(cfg)) return Promise.resolve(null);
+    return syncPull({ overwrite: false })
+      .then(function (r) { return syncPush().then(function (p) { return { pull: r, push: p }; }); })
+      .catch(function () { return null; });
+  }
+  function enableAutoSync() {
+    autoSyncOn = true;
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = setInterval(function () { if (session) syncPush().catch(function () { }); }, 5 * 60 * 1000);
+  }
+
+  function lastSync() { return readJSON(K_LAST_SYNC, null); }
+
+  /* ---------------- init ---------------- */
+  function init() {
+    if (initP) return initP;
+    initP = Promise.resolve()
+      .then(function () { return ensureConfigFile(); })
+      .then(function () {
+        cfg = loadConfig();
+        remoteReady = isConfigured(cfg);
+        var redir = consumeRedirect();
+        if (redir) {
+          loadSession();
+          storeAuth(redir);
+          return getUser().catch(function () { });
+        }
+        loadSession();
+        if (session && cfg.url) {
+          enableAutoSync();
+          getUser().catch(function () { });
+        }
+        return null;
+      })
+      .then(function () { return cfg; });
+    return initP;
+  }
+
+  window.LemonCloud = {
+    __v: 1,
+    init: init,
+    configured: function () { return isConfigured(cfg); },
+    config: function () { return cfg ? { url: cfg.url, anonKey: cfg.anonKey } : { url: '', anonKey: '' }; },
+    setConfig: function (url, key) {
+      var c = { url: normUrl(url), anonKey: String(key || '').trim() };
+      writeJSON(K_CFG, c);
+      cfg = c;
+      remoteReady = isConfigured(c);
+      return c;
+    },
+    clearConfig: function () { drop(K_CFG); cfg = loadConfig(); },
+    testConnection: testConnection,
+
+    signUp: signUp,
+    signIn: signIn,
+    signOut: signOut,
+    recover: recover,
+    signInWithGoogle: signInWithGoogle,
+    getUser: getUser,
+    sessionUser: sessionUser,
+    hasSession: function () { return !!session; },
+
+    fetchSiteData: fetchSiteData,
+    saveSiteData: saveSiteData,
+    getConfigRow: getConfigRow,
+    saveConfigRow: saveConfigRow,
+
+    createShare: createShare,
+    getShare: getShare,
+
+    syncPush: syncPush,
+    syncPull: syncPull,
+    autoSync: autoSync,
+    lastSync: lastSync,
+
+    escape: function (s) {
+      return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+  };
+})();

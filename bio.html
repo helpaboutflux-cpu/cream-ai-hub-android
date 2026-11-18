@@ -986,6 +986,7 @@ input[type="color"]::-moz-color-swatch { border: 1px solid rgba(128, 128, 140, .
   </style>
 <link rel="stylesheet" href="anim-mode.css">
 <script src="anim-mode.js"></script>
+<link rel="stylesheet" href="lemon-site.css">
 </head>
 <body>
 <!-- ============================================================ -->
@@ -1448,6 +1449,10 @@ input[type="color"]::-moz-color-swatch { border: 1px solid rgba(128, 128, 140, .
       <button class="btn btn-sm" id="downloadQr">
         <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M8 8h2v2H8zM14 8h2v2h-2zM8 14h2v2H8zM14 14h2v2h-2z"></path></svg>
         QR 저장
+      </button>
+      <button class="btn btn-sm hidden" id="shortShare" type="button" title="Soft Hub 짧은 링크 (view.html?id=...)">
+        <svg class="ico ico-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg>
+        짧은 링크
       </button>
     </div>
   </div>
@@ -3682,6 +3687,58 @@ function initEvents() {
       else { toast('복사가 막혔어요. 링크를 길게 눌러 복사해 주세요', 'err'); const f = $('#shareUrl'); if (f) { f.focus(); f.select(); } }
     });
   });
+  /* Soft Hub 짧은 링크 — Supabase 가 연결된 경우에만 나타난다 (미연결 시 기존 해시 링크 유지) */
+  const shortBtn = $('#shortShare');
+  if (shortBtn) {
+    const shortReady = function () {
+      try { return !!(window.LemonCloud && LemonCloud.configured && LemonCloud.configured()); } catch (e) { return false; }
+    };
+    /* lemon-cloud.js 는 공통 런타임이 늦게 불러오므로, 준비되는 대로 버튼을 보여준다. */
+    const syncShort = function () {
+      if (shortReady()) shortBtn.classList.remove('hidden');
+      else shortBtn.classList.add('hidden');
+    };
+    syncShort();
+    if (window.LemonCloud && LemonCloud.init) LemonCloud.init().then(syncShort, syncShort);
+    else {
+      let tries = 0;
+      const timer = setInterval(function () {
+        tries++;
+        if (window.LemonCloud && LemonCloud.init) { clearInterval(timer); LemonCloud.init().then(syncShort, syncShort); }
+        else if (tries > 12) clearInterval(timer);
+      }, 400);
+    }
+    window.addEventListener('lemonsite:config', syncShort);
+    shortBtn.addEventListener('click', function () {
+      if (!shortReady()) { toast('클라우드 연결 후에 쓸 수 있어요', 'err'); return; }
+      if (shortBtn.disabled) return;
+      const full = buildShareUrl();
+      const hash = full.indexOf('#') >= 0 ? full.slice(full.indexOf('#')) : '';
+      const title = (doc.profile && doc.profile.name) || 'Lemon Bio';
+      const payload = {
+        app: 'bio.html',
+        hash: hash,
+        title: title,
+        pages: (doc.pages || []).length,
+        blocks: (doc.pages || []).reduce(function (n, p) { return n + (p.blocks || []).length; }, 0)
+      };
+      shortBtn.disabled = true;
+      LemonCloud.createShare({ kind: 'bio', title: title, payload: payload }).then(function (r) {
+        shortBtn.disabled = false;
+        if (!r || !r.ok) { toast((r && r.error) || '짧은 링크를 만들지 못했어요', 'err'); return; }
+        const short = baseUrl().replace(/bio\.html$/, '') + r.url;
+        const field = $('#shareUrl'); if (field) field.value = short;
+        const openLink = $('#openShare'); if (openLink) openLink.href = short;
+        copyText(short).then(function (ok) {
+          toast(ok ? '짧은 링크를 만들었어요' : '짧은 링크를 만들었어요. 길게 눌러 복사해 주세요', ok ? 'ok' : 'err');
+          if (ok) { confetti(14); hap(10); }
+        });
+      }, function () {
+        shortBtn.disabled = false;
+        toast('짧은 링크를 만들지 못했어요', 'err');
+      });
+    });
+  }
   const qrBtn = $('#downloadQr');
   if (qrBtn) qrBtn.addEventListener('click', function () {
     const box = $('#qrBox');
@@ -4215,5 +4272,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
   </script>
+<script src="lemon-site.js" defer></script>
 </body>
 </html>
