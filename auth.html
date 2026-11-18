@@ -225,6 +225,19 @@
   }
   .lk-state.on { display: block; }
 
+  /* ---------------- 클라우드 저장 스위치 ---------------- */
+  .lk-swrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--lk-line); font-size: 11px; }
+  .lk-swrow > span { color: var(--lk-muted); font-weight: 600; letter-spacing: .02em; }
+  .lk-sw { position: relative; display: inline-flex; align-items: center; gap: 9px; cursor: pointer; }
+  .lk-sw input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .lk-sw i { display: block; width: 36px; height: 19px; border: 1px solid var(--lk-line2); background: var(--lk-field); position: relative; flex: none; transition: background-color .16s ease, border-color .16s ease; }
+  .lk-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; background: var(--lk-muted); transition: transform .16s ease, background-color .16s ease; }
+  .lk-sw input:checked + i { background: var(--lk-ink); border-color: var(--lk-ink); }
+  .lk-sw input:checked + i::after { transform: translateX(17px); background: var(--lk-inv); }
+  .lk-sw input:focus-visible + i { outline: 1px solid var(--lk-ink); outline-offset: 2px; }
+  .lk-sw b { font-size: 11px; font-weight: 800; letter-spacing: -.01em; min-width: 22px; }
+  .lk-usage.is-off { opacity: .45; }
+
   .lk-foot { padding: 0 30px 26px; }
   .lk-foot__in { max-width: 372px; margin: 0 auto; font-size: 10px; line-height: 1.75; font-weight: 500; color: var(--lk-muted); }
   .lk-foot__legal { margin-top: 9px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
@@ -372,6 +385,15 @@
           </div>
           <p class="lk-state" id="backupState"></p>
 
+          <div class="lk-swrow">
+            <span>클라우드 저장</span>
+            <label class="lk-sw">
+              <input type="checkbox" id="syncToggle" aria-label="클라우드 저장 켜기">
+              <i aria-hidden="true"></i>
+              <b id="syncState">켜짐</b>
+            </label>
+          </div>
+
           <div class="lk-usage" id="usageBox">
             <div class="lk-usage__top"><span>클라우드 저장 공간</span><b id="usageVal">0 MB / 5.0 MB</b></div>
             <div class="lk-usage__track" id="usageTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="클라우드 저장 공간 사용률"><i id="usageFill"></i></div>
@@ -491,7 +513,7 @@
     $('avatar').textContent = String(name || 'L').charAt(0);
     $('nextBtn').classList.toggle('hidden', !nextTarget);
     refreshSync();
-    refreshUsage();
+    paintSyncMode();
   }
   function showAuth() {
     $('accountBox').classList.add('hidden');
@@ -566,6 +588,33 @@
     if (!window.LemonCloud || !LemonCloud.usage) return Promise.resolve(null);
     return LemonCloud.usage().then(function (u) { paintUsage(u); return u; }, function () { return null; });
   }
+
+  /* 클라우드 저장 켜기/끄기 — 꺼두면 자동·수동 백업 모두 멈추고 기기에만 저장한다. */
+  function paintSyncMode() {
+    var c = window.LemonCloud;
+    var on = c && c.syncEnabled ? c.syncEnabled() : true;
+    var t = $('syncToggle');
+    if (t) t.checked = on;
+    if ($('syncState')) $('syncState').textContent = on ? '켜짐' : '꺼짐';
+    if ($('backupBtn')) {
+      $('backupBtn').disabled = backupBusy || !on;
+      $('backupBtn').title = on ? '' : '클라우드 저장이 꺼져 있습니다';
+    }
+    if ($('restoreBtn')) {
+      $('restoreBtn').disabled = !on;
+      $('restoreBtn').title = on ? '' : '클라우드 저장이 꺼져 있습니다';
+    }
+    if ($('usageBox')) $('usageBox').classList.toggle('is-off', !on);
+    if (!on) {
+      if ($('usageVal')) $('usageVal').textContent = '꺼짐 · 기기에만 저장';
+      if ($('usagePct')) $('usagePct').textContent = '자동 백업 정지';
+      if ($('usageSrc')) $('usageSrc').textContent = '로컬 전용';
+      if ($('usageFill')) $('usageFill').style.width = '0%';
+    } else {
+      refreshUsage();
+    }
+    return on;
+  }
   function backupState(text) {
     var el = $('backupState');
     if (!el) return;
@@ -577,7 +626,7 @@
     backupBusy = on;
     var b = $('backupBtn');
     if (!b) return;
-    b.disabled = on;
+    b.disabled = on || !(window.LemonCloud && LemonCloud.syncEnabled ? LemonCloud.syncEnabled() : true);
     b.innerHTML = on
       ? '<span class="lk-spin" aria-hidden="true"></span><span>백업 중</span>'
       : '<span>지금 클라우드 백업</span>';
@@ -675,6 +724,7 @@
       if (backupBusy) return;
       if (!LemonCloud.configured()) { msg('클라우드 로그인이 아직 설정되지 않았습니다.', 'info'); return; }
       if (!LemonCloud.sessionUser()) { msg('로그인이 필요합니다.', 'err'); return; }
+      if (LemonCloud.syncEnabled && !LemonCloud.syncEnabled()) { msg('클라우드 저장이 꺼져 있습니다. 위의 스위치를 켜면 백업할 수 있습니다.', 'info'); return; }
       setBackupBusy(true);
       refreshSync();
       backupState('변경분을 모아 올리는 중…');
@@ -734,6 +784,19 @@
         refreshUsage();
       }
     });
+
+    var syncToggle = $('syncToggle');
+    if (syncToggle) {
+      syncToggle.addEventListener('change', function () {
+        var on = LemonCloud.setSyncEnabled(!!syncToggle.checked);
+        paintSyncMode();
+        backupState('');
+        msg(on ? '클라우드 저장을 켰습니다. 곧 백업을 시작합니다.' : '클라우드 저장을 껐습니다. 이제 데이터는 이 기기에만 저장됩니다.', on ? 'ok' : 'info');
+        refreshSync();
+        if (on) refreshUsage();
+      });
+    }
+    window.addEventListener('lemoncloud:syncmode', function () { paintSyncMode(); });
 
     window.addEventListener('lemoncloud:signed-in', function () {
       var u = LemonCloud.sessionUser();

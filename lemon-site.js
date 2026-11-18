@@ -477,6 +477,15 @@
     '.lkpop-x svg{width:13px;height:13px;}',
     '.lkpop-body{padding:13px 15px 15px;}',
     '.lkpop-kv{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11px;padding-bottom:11px;}',
+    '.lkpop-swrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:11px;font-size:11px;font-weight:600;color:var(--lp-muted);}',
+    '.lkpop-sw{position:relative;display:inline-flex;align-items:center;cursor:pointer;}',
+    '.lkpop-sw input{position:absolute;opacity:0;width:1px;height:1px;}',
+    '.lkpop-sw i{display:block;width:34px;height:18px;border:1px solid var(--lp-line2);background:var(--lp-field);position:relative;transition:background-color .16s ease,border-color .16s ease;}',
+    '.lkpop-sw i::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;background:var(--lp-muted);transition:transform .16s ease,background-color .16s ease;}',
+    '.lkpop-sw input:checked + i{background:var(--lp-ink);border-color:var(--lp-ink);}',
+    '.lkpop-sw input:checked + i::after{transform:translateX(16px);background:var(--lp-inv);}',
+    '.lkpop-sw input:focus-visible + i{outline:1px solid var(--lp-ink);outline-offset:2px;}',
+    '.lkpop.is-off .lkpop-urow,.lkpop.is-off .lkpop-track{opacity:.4;}',
     '.lkpop-kv span{color:var(--lp-muted);font-weight:600;}',
     '.lkpop-kv b{font-weight:800;font-family:var(--lp-mono);font-size:10.5px;letter-spacing:.02em;}',
     '.lkpop-urow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11px;}',
@@ -550,6 +559,7 @@
       '</div>' +
       '<div class="lkpop-body">' +
       '<div class="lkpop-kv"><span>계정 상태</span><b>' + (ok ? '이메일 인증 완료' : '이메일 인증 대기') + '</b></div>' +
+      '<div class="lkpop-swrow"><span>클라우드 저장</span><label class="lkpop-sw"><input type="checkbox" data-pop-sync aria-label="클라우드 저장 켜기"><i></i></label></div>' +
       '<div class="lkpop-urow"><span>클라우드 저장 공간</span><b data-pop-use>-</b></div>' +
       '<div class="lkpop-track"><i data-pop-fill></i></div>' +
       '<p class="lkpop-msg" data-pop-msg role="status" aria-live="polite"></p>' +
@@ -641,6 +651,8 @@
             setMsg('백업 완료 · ' + hhmmss(r.ts) + ' · ' + r.count + '개 항목 (' + fmtB(r.bytes) + ')');
           } else if (r && r.error === 'quota-exceeded') {
             setMsg('클라우드 저장 한도(' + fmtB(r.limit) + ')를 초과해 백업할 수 없습니다. 불필요한 항목을 정리해 주세요.', 'err');
+          } else if (r && r.error === 'sync-off') {
+            setMsg('클라우드 저장이 꺼져 있어 백업하지 않았습니다.', 'err');
           } else if (r && r.error === 'login-required') {
             setMsg('로그인이 풀렸습니다. 다시 로그인해 주세요.', 'err');
           } else {
@@ -673,7 +685,29 @@
       });
     }
 
-    refreshUsage();
+    var sw = box.querySelector('[data-pop-sync]');
+    function paintMode() {
+      var c = window.LemonCloud;
+      var on = c && c.syncEnabled ? c.syncEnabled() : true;
+      if (sw) sw.checked = on;
+      box.classList.toggle('is-off', !on);
+      if (bk) {
+        bk.disabled = !on;
+        bk.title = on ? '' : '클라우드 저장이 꺼져 있습니다';
+      }
+      var use = box.querySelector('[data-pop-use]');
+      if (!on && use) use.textContent = '꺼짐 · 기기에만 저장';
+      if (on) refreshUsage();
+      setMsg(on ? '' : '클라우드 저장이 꺼져 있습니다. 데이터는 이 기기에만 저장됩니다.');
+    }
+    if (sw) {
+      sw.addEventListener('change', function () {
+        var on = window.LemonCloud.setSyncEnabled(!!sw.checked);
+        paintMode();
+        if (on) setMsg('클라우드 저장을 켰습니다.');
+      });
+    }
+    paintMode();
     setTimeout(function () { if (bk) { try { bk.focus({ preventScroll: true }); } catch (e) { } } }, 40);
   }
 

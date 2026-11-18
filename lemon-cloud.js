@@ -33,11 +33,12 @@
   var K_LAST_SYNC = 'lemon_cloud_last_sync';
   var K_USAGE = 'lemon_cloud_usage_v1';   /* 소스별 마지막 업로드 해시·용량(이 기기 기준 장부) */
   var K_PULLED = 'lemon_cloud_pulled_v1'; /* 새 기기에서 클라우드 데이터를 한 번 받아왔는지 */
+  var K_SYNC_OFF = 'lemon_cloud_sync_off'; /* '1' 이면 클라우드 저장을 끈 상태 */
 
   /* 동기화에서 제외하는 내부 키 */
   var SYNC_SKIP = {
     lemon_cloud_cfg: 1, lemon_cloud_session: 1, lemon_cloud_last_sync: 1,
-    lemon_cloud_usage_v1: 1, lemon_cloud_pulled_v1: 1,
+    lemon_cloud_usage_v1: 1, lemon_cloud_pulled_v1: 1, lemon_cloud_sync_off: 1,
     lemon_admin_auth: 1, lemon_site_config_v1: 1, lemon_site_ads_v1: 1,
     lemon_site_remote_cfg_v1: 1, lemon_site_remote_ads_v1: 1,
     lemon_notice_ack_v1: 1, lemon_home_ack_v1: 1, lemon_cp_recent: 1,
@@ -209,8 +210,10 @@
     if (prev === now) return session;
     if (now) {
       emit('signed-in', sessionUser());
-      enableAutoSync();
-      setTimeout(function () { autoSync(); }, 300);
+      if (syncEnabled()) {
+        enableAutoSync();
+        setTimeout(function () { autoSync(); }, 300);
+      }
     } else {
       stopAutoSync();
       emit('signed-out');
@@ -233,6 +236,29 @@
 
   function emit(name, detail) {
     try { window.dispatchEvent(new CustomEvent('lemoncloud:' + name, { detail: detail || {} })); } catch (e) { }
+  }
+
+  /* ---------------- 클라우드 저장 켜기/끄기 ---------------- */
+  function syncEnabled() {
+    try { return localStorage.getItem(K_SYNC_OFF) !== '1'; } catch (e) { return true; }
+  }
+  function setSyncEnabled(on) {
+    on = !!on;
+    try {
+      if (on) localStorage.removeItem(K_SYNC_OFF);
+      else localStorage.setItem(K_SYNC_OFF, '1');
+    } catch (e) { }
+    emit('syncmode', { enabled: on });
+    if (!on) {
+      stopAutoSync();
+    } else if (session) {
+      enableAutoSync();
+      autoSync();
+    }
+    return on;
+  }
+  function syncOffResult(source) {
+    return Promise.resolve({ ok: false, error: 'sync-off', source: source || 'local' });
   }
 
   function sessionUser() {
@@ -319,8 +345,10 @@
       user: u
     });
     emit('signed-in', u);
-    enableAutoSync();
-    setTimeout(function () { autoSync(); }, 600);
+    if (syncEnabled()) {
+      enableAutoSync();
+      setTimeout(function () { autoSync(); }, 600);
+    }
     return u;
   }
 
@@ -609,6 +637,7 @@
   function uploadRows(rows, opts) {
     opts = opts || {};
     var source = String(opts.source || 'extra');
+    if (!syncEnabled()) return syncOffResult(source);
     if (!cfgReady()) return Promise.resolve({ ok: false, error: 'cloud-not-configured', source: source });
     if (!session) return Promise.resolve({ ok: false, error: 'login-required', source: source });
     if (!rows || !rows.length) {
@@ -665,6 +694,7 @@
      opts.force = true (수동 버튼) → 내용이 같아도 무조건 다시 올린다. */
   function syncPush(opts) {
     opts = opts || {};
+    if (!syncEnabled()) return syncOffResult('local');
     if (!cfgReady()) return Promise.resolve({ ok: false, error: 'cloud-not-configured' });
     if (!session) return Promise.resolve({ ok: false, error: 'login-required' });
     var built = syncRows();
@@ -808,6 +838,7 @@
   /* 드라이브 폴더·파일을 클라우드로 올린다. 바뀐 것이 없으면 건너뛴다. */
   function syncDrive(opts) {
     opts = opts || {};
+    if (!syncEnabled()) return syncOffResult('drive');
     if (!cfgReady()) return Promise.resolve({ ok: false, error: 'cloud-not-configured', source: 'drive' });
     if (!session) return Promise.resolve({ ok: false, error: 'login-required', source: 'drive' });
     return driveNodes().then(function (nodes) {
@@ -887,6 +918,7 @@
 
   function restoreDrive(opts) {
     opts = opts || {};
+    if (!syncEnabled()) return syncOffResult('drive');
     if (!cfgReady()) return Promise.resolve({ ok: false, error: 'cloud-not-configured' });
     if (!session) return Promise.resolve({ ok: false, error: 'login-required' });
     return downloadRows(DRIVE_PREFIX).then(function (res) {
@@ -924,6 +956,7 @@
      먼저 키 목록만 받아 비교하고, 정말 없는 항목의 값만 내려받는다. */
   function syncPull(opts) {
     opts = opts || {};
+    if (!syncEnabled()) return syncOffResult('pull');
     if (!cfgReady()) return Promise.resolve({ ok: false, error: 'cloud-not-configured' });
     if (!session) return Promise.resolve({ ok: false, error: 'login-required' });
     return rest('/rest/v1/user_sync_data?select=key,updated_at')
@@ -980,6 +1013,7 @@
 
   /* 접두사로 클라우드 행을 그대로 내려받는다. */
   function downloadRows(prefix) {
+    if (!syncEnabled()) return syncOffResult('drive');
     if (!cfgReady()) return Promise.resolve({ ok: false, error: 'cloud-not-configured' });
     if (!session) return Promise.resolve({ ok: false, error: 'login-required' });
     var p = String(prefix || '');
@@ -1000,12 +1034,12 @@
     var book = usageBook();
     var driveBytes = Number((book.drive && book.drive.bytes) || 0);
     var out = {
-      ok: true, configured: cfgReady(), signedIn: !!session,
+      ok: true, configured: cfgReady(), signedIn: !!session, enabled: syncEnabled(),
       limit: limit, quotaMB: mb, source: 'local',
       bytes: built.payloadBytes + driveBytes,
       sources: { local: built.payloadBytes, drive: driveBytes }
     };
-    if (!session || !out.configured) return Promise.resolve(out);
+    if (!session || !out.configured || !out.enabled) return Promise.resolve(out);
 
     /* size_bytes 컬럼이 아직 없으면(스키마 미적용) 6시간 동안은 다시 묻지 않는다.
        또 사용량이 한도의 60% 미만이면 서버에 물어보지 않고 이 기기 장부로 충분하다. */
@@ -1161,9 +1195,11 @@
         }
         loadSession();
         if (session && cfg.url) {
-          enableAutoSync();
+          if (syncEnabled()) {
+            enableAutoSync();
+            pullOnInit();
+          }
           getUser().catch(function () { });
-          pullOnInit();
         }
         return null;
       })
@@ -1218,6 +1254,8 @@
     downloadRows: downloadRows,
     syncDrive: syncDrive,
     restoreDrive: restoreDrive,
+    syncEnabled: syncEnabled,
+    setSyncEnabled: setSyncEnabled,
     driveFileMax: DRIVE_FILE_MAX,
     syncRows: syncRows,
     quota: function () { return { mb: quotaMB(), bytes: quotaBytes() }; },

@@ -932,6 +932,16 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
 .cl-list { margin: 9px 0 0; padding: 0; list-style: none; display: grid; gap: 5px; }
 .cl-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--ink-3); }
 .cl-list li b { font-weight: 800; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cl-sw { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.cl-sw input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cl-sw i { display: block; width: 36px; height: 19px; border: 1px solid var(--line); background: var(--sheet); position: relative; flex: none; border-radius: 99px; transition: background-color .16s ease, border-color .16s ease; }
+.cl-sw i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 99px; background: var(--ink-3); transition: transform .16s ease, background-color .16s ease; }
+.cl-sw input:checked + i { background: var(--brand); border-color: var(--brand); }
+.cl-sw input:checked + i::after { transform: translateX(17px); background: #fff; }
+.cl-sw input:focus-visible + i { outline: 2px solid var(--brand); outline-offset: 2px; }
+.cl-sw b { font-size: 11.5px; font-weight: 800; min-width: 22px; }
+.cl-swrow b { font-weight: 800; }
+.cl.is-off .cl-track, .cl.is-off .cl-num { opacity: .45; }
 .cl-empty { display: grid; gap: 10px; }
 .cl-empty p { margin: 0; font-size: 12px; line-height: 1.7; color: var(--ink-2); }
 .sheet-foot .cl-grow { flex: 1; }
@@ -3686,6 +3696,14 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
   function paintCloudChip(u) {
     var pill = $('#tbCloud'), label = $('#cloudLabel'), fill = $('#cloudFill');
     if (!pill || !label) return;
+    var c = cloudApi();
+    if (c && c.syncEnabled && !c.syncEnabled()) {
+      label.textContent = '클라우드 꺼짐';
+      if (fill) fill.style.width = '0%';
+      pill.classList.remove('is-full');
+      pill.title = '클라우드 저장이 꺼져 있습니다 — 이 기기에만 저장';
+      return;
+    }
     if (!cloudUser()) {
       label.textContent = '클라우드';
       if (fill) fill.style.width = '0%';
@@ -3701,6 +3719,12 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     pill.title = '클라우드 ' + fmtMB(u.bytes) + ' / ' + fmtMB(u.limit) + ' — 눌러서 지금 백업';
   }
   function paintCloudSheet(u) {
+    if (u && cloudUI.box) {
+      var c2 = cloudApi();
+      if (c2 && c2.syncEnabled && !c2.syncEnabled()) {
+        cloudUI.box.classList.add('is-off');
+      }
+    }
     if (!u || !cloudUI.box) return;
     var pct = u.limit ? Math.min(100, (Number(u.bytes) || 0) / u.limit * 100) : 0;
     if (cloudUI.fill) cloudUI.fill.style.width = pct + '%';
@@ -3757,6 +3781,8 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
       } else if (r && r.error === 'quota-exceeded') {
         cloudStatus('클라우드 저장 한도를 넘어 백업을 멈췄습니다.', 0);
         cloudQuotaNote(r);
+      } else if (r && r.error === 'sync-off') {
+        cloudStatus('클라우드 저장이 꺼져 있어 백업하지 않았습니다.', 0);
       } else if (r && r.error === 'login-required') {
         cloudStatus('로그인이 풀렸습니다. 다시 로그인해 주세요.', 0);
       } else if (r && r.error === 'idb-unavailable') {
@@ -3853,6 +3879,7 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
         '<div class="cl-top"><div class="cl-num"><b id="clUsed">' + fmtMB(bytes) + '</b><span>/ ' + fmtMB(limit) + '</span></div>' +
         '<span class="cl-tag">' + esc(String(user.email || 'LK ID').split('@')[0]) + '</span></div>' +
         '<div class="cl-track"><i id="clFillSheet"></i></div>' +
+        '<div class="cl-row"><span>클라우드 저장</span><label class="cl-sw"><input type="checkbox" id="clSync" aria-label="클라우드 저장 켜기"><i aria-hidden="true"></i><b id="clSyncState">켜짐</b></label></div>' +
         '<div class="cl-row"><span>마지막 클라우드 백업</span><b id="clLast">' + esc(lastCloudText()) + '</b></div>' +
         '<div class="cl-row"><span>백업 대상</span><b>폴더 구조 · 1MB 이하 파일</b></div>' +
         '<div class="cl-row"><span>기기에만 있는 파일</span><b id="clLocalOnly">' + esc(localOnlyText()) + '</b></div>' +
@@ -3890,6 +3917,32 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
         if (b) b.addEventListener('click', function () { cloudBackup(b); });
         var r = $('#clRestore', w);
         if (r) r.addEventListener('click', function () { cloudRestore(r); });
+
+        var sw = $('#clSync', w);
+        function paintMode() {
+          var c2 = cloudApi();
+          var on = c2 && c2.syncEnabled ? c2.syncEnabled() : true;
+          if (sw) sw.checked = on;
+          var st = $('#clSyncState', w);
+          if (st) st.textContent = on ? '켜짐' : '꺼짐';
+          var boxEl = $('#clBox', w);
+          if (boxEl) boxEl.classList.toggle('is-off', !on);
+          if (b) { b.disabled = !on; b.title = on ? '' : '클라우드 저장이 꺼져 있습니다'; }
+          if (r) { r.disabled = !on; r.title = on ? '' : '클라우드 저장이 꺼져 있습니다'; }
+          if (!on) cloudStatus('클라우드 저장이 꺼져 있습니다. 이 기기에만 저장됩니다.', 0);
+          else if (cloudUI.status) cloudUI.status.hidden = true;
+        }
+        if (sw) {
+          sw.addEventListener('change', function () {
+            var c3 = cloudApi();
+            if (!c3 || !c3.setSyncEnabled) return;
+            var on = c3.setSyncEnabled(!!sw.checked);
+            paintMode();
+            toast(on ? '클라우드 저장을 켰습니다.' : '클라우드 저장을 껐습니다. 이 기기에만 저장됩니다.');
+            cloudRefresh();
+          });
+        }
+        paintMode();
         var a = $('#clAccount', w);
         if (a) a.addEventListener('click', function () { location.href = authNext(); });
         cloudRefresh();
