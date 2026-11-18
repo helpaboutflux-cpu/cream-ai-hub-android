@@ -453,22 +453,31 @@
     return 1;
   }
 
-  /* ---------------- 허브 로그인 상태 ---------------- */
-  var ICON_USER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
+  /* ---------------- 허브 로그인 상태 (LK ID) ---------------- */
+  var ICON_LK = '<svg viewBox="0 0 46 32" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true"><path d="M3 5V27H17"></path><path d="M24 5V27"></path><path d="M42 5L26.5 16L42 27"></path></svg>';
+
+  /* 지금 보고 있는 페이지로 돌아올 수 있도록 ?next= 를 붙인다. */
+  function authHref() {
+    var file = '';
+    try { file = String(location.pathname || '').split('/').pop() || 'index.html'; } catch (e) { file = ''; }
+    if (!/\.html$/i.test(file)) file = 'index.html';
+    return 'auth.html?next=' + encodeURIComponent(file + (location.search || ''));
+  }
 
   function renderAuth() {
     var btns = [doc.getElementById('lsAuthBtn'), doc.getElementById('lsAuthBtnMobile')];
     if (!btns[0] && !btns[1]) return;
-    var user = null, ready = false;
+    var user = null;
     try {
-      if (window.LemonCloud && LemonCloud.ready) { user = LemonCloud.sessionUser(); ready = LemonCloud.configured(); }
+      if (window.LemonCloud) user = LemonCloud.sessionUser();
     } catch (e) { }
     btns.forEach(function (b) {
       if (!b) return;
-      var label = user ? (user.email || '내 계정').split('@')[0] : (ready ? '로그인' : '로그인');
-      b.innerHTML = ICON_USER + '<span class="ls-authbtn__label">' + esc(label) + '</span>' + (user ? '<span class="ls-authbtn__dot" aria-hidden="true"></span>' : '');
-      b.title = user ? (user.email || '') : 'Soft Hub 계정';
-      b.onclick = function () { location.href = 'auth.html'; };
+      var label = user ? (user.email || '내 계정').split('@')[0] : '로그인';
+      b.innerHTML = ICON_LK + '<span class="ls-authbtn__label">' + esc(label) + '</span>' + (user ? '<span class="ls-authbtn__dot" aria-hidden="true"></span>' : '');
+      b.title = user ? ('LK ID · ' + (user.email || '')) : 'LK ID 로그인';
+      b.setAttribute('aria-label', user ? ('LK ID 계정 · ' + (user.email || '')) : 'LK ID 로그인');
+      b.onclick = function () { location.href = authHref(); };
     });
   }
 
