@@ -385,6 +385,12 @@
     writeJSON(K_LOCAL_SHARES, all);
   }
 
+  function hitShare(id) {
+    if (!isConfigured(cfg) || !id) return Promise.resolve(null);
+    return request('/rest/v1/rpc/share_view_hit', { method: 'POST', body: { p_id: id } })
+      .catch(function () { return null; });
+  }
+
   function createShare(share) {
     share = share || {};
     var payload = share.payload === undefined ? {} : share.payload;
@@ -572,6 +578,7 @@
 
     createShare: createShare,
     getShare: getShare,
+    hitShare: hitShare,
 
     syncPush: syncPush,
     syncPull: syncPull,
