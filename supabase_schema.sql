@@ -222,7 +222,58 @@ create trigger user_sync_touch before update on public.user_sync_data
   for each row execute function public.touch_updated_at();
 
 -- ------------------------------------------------------------
--- 6. 권한 (Supabase 기본 권한 위에 명시)
+-- 7. 클라우드 저장 한도 (1인당 5MB) — 서버 보호
+--    클라이언트(lemon-cloud.js)가 먼저 막지만, 다른 경로로 들어오는
+--    대용량 업로드를 DB 에서도 막는다. 무료 플랜 DB 500MB 를 지키기 위한 장치다.
+--    한도를 바꾸려면 아래 5242880(5MB) 숫자만 고쳐 다시 실행하면 된다.
+-- ------------------------------------------------------------
+-- 행마다 실제 저장 바이트를 기록한다.
+-- lemon-cloud.js 가 이 컬럼을 읽어 "서버 기준 사용량"을 보여준다.
+alter table public.user_sync_data
+  add column if not exists size_bytes bigint not null default 0;
+
+create index if not exists user_sync_data_size_idx on public.user_sync_data (user_id, size_bytes);
+
+create or replace function public.enforce_user_sync_quota()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+  declare
+    quota  bigint := 5242880;   -- 5MB
+    used   bigint;
+    mine   bigint;
+  begin
+    mine := octet_length(coalesce(new.value::text, ''));
+    new.size_bytes := mine;
+
+    select coalesce(sum(octet_length(coalesce(value::text, ''))), 0)
+      into used
+      from public.user_sync_data
+     where user_id = new.user_id
+       and (tg_op = 'INSERT' or key <> new.key);
+
+    if used + mine > quota then
+      raise exception 'cloud-quota-exceeded: % + % > %', used, mine, quota
+        using errcode = 'check_violation',
+              hint = '클라우드 저장 한도(5MB)를 초과했습니다. 불필요한 파일/항목을 정리해 주세요.';
+    end if;
+    return new;
+  end;
+$$;
+
+update public.user_sync_data
+   set size_bytes = octet_length(coalesce(value::text, ''))
+ where size_bytes = 0;
+
+drop trigger if exists user_sync_quota on public.user_sync_data;
+create trigger user_sync_quota
+  before insert or update on public.user_sync_data
+  for each row execute function public.enforce_user_sync_quota();
+
+-- ------------------------------------------------------------
+-- 8. 권한 (Supabase 기본 권한 위에 명시)
 -- ------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
 grant select on public.site_config to anon, authenticated;
@@ -232,7 +283,7 @@ grant select, insert, update, delete on public.site_ads    to authenticated;
 grant select, insert, update, delete on public.user_sync_data to authenticated;
 
 -- ------------------------------------------------------------
--- 7. 관리자 등록 — 아래 주석을 풀고 본인 이메일을 넣어 한 번 실행하세요.
+-- 9. 관리자 등록 — 아래 주석을 풀고 본인 이메일을 넣어 한 번 실행하세요.
 --    (관리자 콘솔에서 Supabase 로그인한 계정과 같은 이메일이어야 합니다)
 -- ------------------------------------------------------------
 -- insert into public.admin_users (email) values ('helpaboutflux@gmail.com')

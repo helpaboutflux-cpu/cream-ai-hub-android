@@ -729,6 +729,8 @@
   /* ---------------- 광고 이벤트 ---------------- */
   function bindAds() {
     $('adAdd').addEventListener('click', function () { openEditor(null); });
+    var adsSaveBtn = $('adsSave');
+    if (adsSaveBtn) adsSaveBtn.addEventListener('click', function () { saveAll('ads'); });
     $('adSeed').addEventListener('click', function () {
       var have = {};
       state.ads.forEach(function (a) { have[a.id] = 1; });
@@ -744,7 +746,7 @@
     $('adsEnabled').addEventListener('change', function () {
       markDirty();
       renderAdList();
-      saveAll('ads');
+      toast('바뀐 내용은 [변경사항 저장] 을 눌러야 반영됩니다.');
     });
 
     $('adList').addEventListener('click', function (e) {
@@ -770,8 +772,8 @@
         if (!confirm('이 광고를 삭제할까요?')) return;
         state.ads = state.ads.filter(function (a) { return a.id !== id; });
         renderAdList();
-        saveAll('ads');
-        toast('광고를 삭제했습니다.');
+        markDirty();
+        toast('광고를 삭제했습니다. [변경사항 저장] 을 눌러 반영하세요.');
       }
     });
 
@@ -783,7 +785,7 @@
       if (!ad) return;
       ad.enabled = cb.checked;
       renderAdList();
-      saveAll('ads');
+      markDirty();
     });
 
     /* 모달 */
@@ -877,8 +879,8 @@
       }
       closeEditor();
       renderAdList();
-      saveAll('ads');
-      toast('광고를 저장했습니다. Flux Feed에 반영됩니다.');
+      markDirty();
+      toast('광고를 수정했습니다. [변경사항 저장] 을 눌러 Flux Feed에 반영하세요.');
     });
 
     $('adDelete').addEventListener('click', function () {
@@ -887,8 +889,8 @@
       state.ads = state.ads.filter(function (x) { return x.id !== state.editingId; });
       closeEditor();
       renderAdList();
-      saveAll('ads');
-      toast('광고를 삭제했습니다.');
+      markDirty();
+      toast('광고를 삭제했습니다. [변경사항 저장] 을 눌러 반영하세요.');
     });
   }
 
