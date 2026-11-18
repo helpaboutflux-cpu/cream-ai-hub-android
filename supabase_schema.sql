@@ -222,7 +222,7 @@ create trigger user_sync_touch before update on public.user_sync_data
   for each row execute function public.touch_updated_at();
 
 -- ------------------------------------------------------------
--- 7. 클라우드 저장 한도 (1인당 5MB) — 서버 보호
+-- 6. 클라우드 저장 한도 (1인당 5MB) — 서버 보호
 --    클라이언트(lemon-cloud.js)가 먼저 막지만, 다른 경로로 들어오는
 --    대용량 업로드를 DB 에서도 막는다. 무료 플랜 DB 500MB 를 지키기 위한 장치다.
 --    한도를 바꾸려면 아래 5242880(5MB) 숫자만 고쳐 다시 실행하면 된다.
@@ -273,7 +273,7 @@ create trigger user_sync_quota
   for each row execute function public.enforce_user_sync_quota();
 
 -- ------------------------------------------------------------
--- 8. 권한 (Supabase 기본 권한 위에 명시)
+-- 7. 권한 (Supabase 기본 권한 위에 명시)
 -- ------------------------------------------------------------
 grant usage on schema public to anon, authenticated;
 grant select on public.site_config to anon, authenticated;
@@ -283,7 +283,7 @@ grant select, insert, update, delete on public.site_ads    to authenticated;
 grant select, insert, update, delete on public.user_sync_data to authenticated;
 
 -- ------------------------------------------------------------
--- 9. 관리자 등록 — 아래 주석을 풀고 본인 이메일을 넣어 한 번 실행하세요.
+-- 8. 관리자 등록 — 아래 주석을 풀고 본인 이메일을 넣어 한 번 실행하세요.
 --    (관리자 콘솔에서 Supabase 로그인한 계정과 같은 이메일이어야 합니다)
 -- ------------------------------------------------------------
 -- insert into public.admin_users (email) values ('helpaboutflux@gmail.com')
