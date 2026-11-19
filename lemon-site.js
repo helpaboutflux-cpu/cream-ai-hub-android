@@ -644,13 +644,28 @@
     el.setAttribute('data-tone', info.tone || '');
   }
 
+  /* LK ID 표시 이름(닉네임). Supabase user_metadata 의 full_name / name / display_name
+     을 우선하고, 비어 있을 때만 이메일 @ 앞부분을 쓴다. */
+  function displayName(user) {
+    if (!user) return '';
+    var m = (user.user_metadata && typeof user.user_metadata === 'object') ? user.user_metadata : {};
+    var keys = ['full_name', 'name', 'display_name', 'nickname'];
+    for (var i = 0; i < keys.length; i++) {
+      var v = m[keys[i]];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    var email = String(user.email || '');
+    return email.indexOf('@') > 0 ? email.split('@')[0] : '';
+  }
+
   function popMarkup(user) {
     var mail = String((user && user.email) || 'LK ID');
+    var nick = displayName(user) || 'LK ID 계정';
     var ok = !!(user && user.email_confirmed_at);
     return '<div class="lkpop is-pop" role="dialog" aria-modal="true" aria-label="LK ID 계정 설정">' +
       '<div class="lkpop-head">' +
       '<span class="lkpop-tile" aria-hidden="true">' + ICON_LK_SMALL + '</span>' +
-      '<div class="lkpop-id"><b>LK ID 계정 설정</b><span>' + esc(mail) + '</span></div>' +
+      '<div class="lkpop-id"><b>' + esc(nick) + '</b><span>' + esc(mail) + '</span></div>' +
       '<button type="button" class="lkpop-x" data-pop-close aria-label="닫기">' + ICON_X + '</button>' +
       '</div>' +
       '<div class="lkpop-body">' +
@@ -778,11 +793,12 @@
     } catch (e) { }
     btns.forEach(function (b) {
       if (!b) return;
-      var label = user ? (user.email || '내 계정').split('@')[0] : '로그인';
+      var label = user ? (displayName(user) || (user.email || '내 계정').split('@')[0]) : '로그인';
       var caret = user ? '<svg class="ls-authbtn__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>' : '';
       b.innerHTML = ICON_LK + '<span class="ls-authbtn__label">' + esc(label) + '</span>' + caret + (user ? '<span class="ls-authbtn__dot" aria-hidden="true"></span>' : '');
-      b.title = user ? ('LK ID 계정 설정 · ' + (user.email || '') + ' — 눌러서 백업·로그아웃') : 'LK ID 로그인';
-      b.setAttribute('aria-label', user ? ('LK ID 계정 설정 · ' + (user.email || '')) : 'LK ID 로그인');
+      var who = user ? (displayName(user) ? displayName(user) + ' · ' : '') + (user.email || '') : '';
+      b.title = user ? ('LK ID 계정 설정 · ' + who + ' — 눌러서 백업·로그아웃') : 'LK ID 로그인';
+      b.setAttribute('aria-label', user ? ('LK ID 계정 설정 · ' + who) : 'LK ID 로그인');
       b.setAttribute('aria-haspopup', user ? 'dialog' : 'false');
       b.setAttribute('aria-expanded', 'false');
       b.onclick = function (e) {
