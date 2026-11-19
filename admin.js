@@ -335,7 +335,8 @@
     push: ['푸시 알림', '구독 중인 사용자에게 즉시 발송'],
     cloud: ['Supabase', '로그인 · 짧은 공유 링크 · 원격 설정'],
     security: ['보안', '관리자 비밀번호 · 숨김 점검'],
-    accounts: ['LK ID 계정', 'Soft Hub LK ID 가입자 목록']
+    accounts: ['LK ID 계정', 'Soft Hub LK ID 가입자 목록'],
+    community: ['커뮤니티 승인', '개발자 포털 등록 앱 승인 · 반려']
   };
 
   function switchView(name) {
@@ -353,6 +354,7 @@
     if (name === 'cloud') refreshCloudPanel();
     if (name === 'security') checkAdminLinks();
     if (name === 'accounts') loadAccounts();
+    if (name === 'community') { loadCommunity(); loadCloudinaryConfig(); }
   }
 
   /* ---------------- 색상 페어 ---------------- */
@@ -945,10 +947,10 @@
       var box = $('cloudTestResult');
       box.style.display = '';
       box.className = 'note';
-      box.innerHTML = '연결 확인 중...';
+      box.innerHTML = '<div>연결 확인 중...</div>';
       LemonCloud.testConnection($('cUrl').value, $('cKey').value).then(function (r) {
         box.className = 'note' + (r.ok ? '' : ' note--warn');
-        box.innerHTML = esc(r.ok ? (r.note || '연결되었습니다.') : (r.error || '연결 실패'));
+        box.innerHTML = '<div>' + esc(r.ok ? (r.note || '연결되었습니다.') : (r.error || '연결 실패')) + '</div>';
       });
     });
     $('cloudSave').addEventListener('click', function () {
@@ -1156,6 +1158,8 @@
 
     bindAds();
     bindCloud();
+    bindCommunity();
+    loadCloudinaryConfig();
 
     /* 로그인/로그아웃하면 원격 설정을 다시 받아 이 화면을 맞춘다. */
     window.addEventListener('lemoncloud:signed-in', function () {
@@ -1502,6 +1506,514 @@
     });
     window.addEventListener('lemoncloud:signed-in', function () { acc.loaded = false; acc.mode = ''; });
     window.addEventListener('lemoncloud:signed-out', function () { acc.loaded = false; acc.mode = ''; acc.rows = []; });
+  }
+
+  /* ============================================================
+     커뮤니티 승인 — community_apps 조회 · 승인 · 반려 · 삭제
+     ============================================================ */
+  var cm = { rows: [], loaded: false, loading: false, mode: '', error: '', at: 0, filter: 'all', busy: '' };
+  var CM_SQL_FALLBACK = '';
+
+  function cmErrorKind(e) {
+    var msg = String((e && e.message) || '');
+    var st = e && e.status;
+    if (st === 404 || /could not find the table|relation .* does not exist|schema cache|PGRST205|permission denied for table/i.test(msg)) return 'setup';
+    if (st === 401 || /jwt|login-required|admin-login-required|not authenticated|no api key/i.test(msg)) return 'no-session';
+    if (/row-level security|violates row-level|permission denied/i.test(msg)) return 'forbidden';
+    return 'error';
+  }
+
+  function communitySqlText() {
+    var full = ($('sqlBox') && $('sqlBox').value) || '';
+    var a = full.indexOf('-- >> community_apps');
+    var b = full.indexOf('-- << community_apps');
+    if (a >= 0 && b > a) {
+      var nl = full.indexOf('\n', a);
+      return nl > 0 ? full.slice(nl + 1, b).replace(/\s+$/, '') : '';
+    }
+    return CM_SQL_FALLBACK;
+  }
+
+  function fillCmSql() {
+    var box = $('cmSqlBox');
+    if (!box) return;
+    var txt = communitySqlText();
+    if (txt && box.value !== txt) box.value = txt;
+  }
+
+  function cmSqlUrl() {
+    try {
+      var u = (window.LemonCloud && LemonCloud.config().url) || '';
+      var m = /^https?:\/\/([a-z0-9-]+)\.supabase\.co/i.exec(u);
+      if (m) return 'https://supabase.com/dashboard/project/' + m[1] + '/sql/new';
+    } catch (e) { }
+    return 'https://supabase.com/dashboard';
+  }
+
+  function cmStamp(t) {
+    if (!t) return '—';
+    var d = new Date(t);
+    if (isNaN(d.getTime())) return '—';
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function cmClock(t) {
+    if (!t) return '—';
+    var d = new Date(t);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function cmFiltered() {
+    if (cm.filter === 'all') return cm.rows.slice();
+    return cm.rows.filter(function (r) { return r.status === cm.filter; });
+  }
+
+  function cmCounts() {
+    var c = { all: cm.rows.length, pending: 0, approved: 0, rejected: 0 };
+    cm.rows.forEach(function (r) {
+      if (c[r.status] !== undefined) c[r.status]++;
+    });
+    return c;
+  }
+
+  function cmBadge(status) {
+    var map = {
+      approved: ['게시 중', 'ok'],
+      rejected: ['반려됨', 'bad'],
+      pending: ['승인 대기', 'wait']
+    };
+    var m = map[status] || map.pending;
+    return '<span class="accbadge accbadge--' + m[1] + '">' + m[0] + '</span>';
+  }
+
+  function cmIcon(app) {
+    var color = /^#[0-9a-fA-F]{6}$/.test(app.color || '') ? app.color : '#3b82f6';
+    var body = CM_ICONS[app.icon_id] || CM_ICONS.globe;
+    return '<span class="cmicon" style="--c:' + color + '" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor">' + body + '</svg></span>';
+  }
+
+  function cmCat(id) {
+    var map = { utility: '생활 도구', productivity: '생산성', media: '미디어', game: '게임', dev: '개발', etc: '기타' };
+    return map[id] || '기타';
+  }
+
+  var CM_ICONS = (function () {
+    try { if (window.LemonCommunity && LemonCommunity.ICONS) return LemonCommunity.ICONS; } catch (e) { }
+    return { globe: '<circle cx="12" cy="12" r="8.6"/><path d="M3.4 12h17.2"/>' };
+  })();
+
+  function cmSafeUrl(u) {
+    return /^https?:\/\//i.test(String(u || '')) ? String(u) : '';
+  }
+
+  function renderCmStats() {
+    var ok = cm.loaded && !cm.loading && cm.mode === 'ok';
+    var c = cmCounts();
+    $('cmTotal').textContent = ok ? String(c.all) : '—';
+    $('cmPending').textContent = ok ? String(c.pending) : '—';
+    $('cmLive').textContent = ok ? String(c.approved) : '—';
+    $('cmRejected').textContent = ok ? String(c.rejected) : '—';
+    $('navCmPending').textContent = ok ? String(c.pending) : '0';
+  }
+
+  function cmMsg(title, desc, action) {
+    return '<div class="accmsg"><div class="accmsg__icon">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="10.5" x2="12" y2="16.5"></line><circle cx="12" cy="7.6" r=".9" fill="currentColor" stroke="none"></circle></svg>' +
+      '</div><b>' + esc(title) + '</b><span>' + esc(desc) + '</span>' + (action || '') + '</div>';
+  }
+
+  function renderCmList() {
+    var box = $('cmList');
+    if (!box) return;
+    if (cm.loading) { box.innerHTML = '<div class="emptybox">커뮤니티 앱을 불러오는 중입니다.</div>'; return; }
+    if (!cm.loaded) { box.innerHTML = '<div class="emptybox">아직 불러오지 않았습니다.</div>'; return; }
+
+    if (cm.mode === 'err') {
+      var login = '<a class="btn btn--primary btn--sm" href="auth.html?next=admin.html" target="_blank" rel="noopener">LK ID 로그인</a>';
+      if (cm.error === 'setup') {
+        box.innerHTML = cmMsg('아직 커뮤니티 표가 없습니다', '위의 SQL을 Supabase SQL Editor에서 1회 실행한 뒤 [저장한 뒤 다시 확인] 을 눌러 주세요.');
+      } else if (cm.error === 'no-session') {
+        box.innerHTML = cmMsg('LK ID 로그인이 필요합니다', '관리자 이메일(public.admin_users)로 로그인한 세션에서만 승인 작업을 할 수 있습니다.', login);
+      } else if (cm.error === 'forbidden') {
+        box.innerHTML = cmMsg('관리자 계정이 아닙니다', '지금 로그인한 이메일이 public.admin_users 에 등록되어 있는지 확인해 주세요.', login);
+      } else if (cm.error === 'no-cloud') {
+        box.innerHTML = cmMsg('Supabase 연결이 없습니다', 'Supabase 탭에서 Project URL 과 anon key 를 저장하면 커뮤니티 승인을 쓸 수 있습니다.');
+      } else {
+        box.innerHTML = cmMsg('불러오지 못했습니다', '잠시 뒤 [새로고침] 으로 다시 시도해 주세요.');
+      }
+      return;
+    }
+
+    if (!cm.rows.length) {
+      box.innerHTML = '<div class="emptybox">아직 등록된 커뮤니티 앱이 없습니다. 개발자 포털에서 첫 서비스가 등록되면 여기에 나타납니다.</div>';
+      return;
+    }
+    var rows = cmFiltered();
+    if (!rows.length) {
+      box.innerHTML = '<div class="emptybox">이 상태의 앱이 없습니다.</div>';
+      return;
+    }
+
+    box.innerHTML = rows.map(function (a) {
+      var url = cmSafeUrl(a.url);
+      var shot = cmSafeUrl(a.screenshot_url);
+      var act = '<div class="cmcard__acts">';
+      if (a.status !== 'approved') {
+        act += '<button class="btn btn--primary btn--sm" type="button" data-cm-approve="' + esc(a.id) + '"' +
+          (cm.busy === a.id ? ' disabled' : '') + '>' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>승인</button>';
+      }
+      if (a.status !== 'rejected') {
+        act += '<button class="btn btn--sm" type="button" data-cm-reject="' + esc(a.id) + '"' +
+          (cm.busy === a.id ? ' disabled' : '') + '>반려</button>';
+      }
+      act += '<button class="btn btn--danger btn--sm" type="button" data-cm-del="' + esc(a.id) + '"' +
+        (cm.busy === a.id ? ' disabled' : '') + '>' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M9.5 7V4.6h5V7"></path><path d="M6.4 7l.8 12.2A1.8 1.8 0 0 0 9 21h6a1.8 1.8 0 0 0 1.8-1.8L17.6 7"></path></svg>삭제</button>';
+      act += '</div>';
+
+      var cause = (a.status === 'rejected' && a.reject_reason)
+        ? '<div class="cmcause"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="8" x2="12" y2="13"></line><circle cx="12" cy="16.2" r=".9" fill="currentColor" stroke="none"></circle></svg><span>반려 사유 · ' + esc(a.reject_reason) + '</span></div>'
+        : '';
+
+      return '<div class="cmcard cmcard--' + (a.status || 'pending') + '" data-id="' + esc(a.id) + '">' +
+        '<div class="cmcard__top">' + cmIcon(a) +
+          '<div class="cmcard__head">' +
+            '<div class="cmcard__name">' + esc(a.name) + cmBadge(a.status) +
+              '<span class="accbadge">' + esc(cmCat(a.category)) + '</span>' +
+            '</div>' +
+            '<div class="cmcard__meta">' +
+              '<span>' + esc(a.author_name || '익명') + '</span><i>·</i>' +
+              '<span>' + esc(cmStamp(a.created_at)) + ' 등록</span>' +
+              (a.updated_at && a.updated_at !== a.created_at ? '<i>·</i><span>' + esc(cmStamp(a.updated_at)) + ' 수정</span>' : '') +
+            '</div>' +
+            (url ? '<a class="cmcard__url" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" title="' + esc(url) + '">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"></path><path d="M20 4 11 13"></path><path d="M18 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"></path></svg>' +
+              esc(String(a.url).replace(/^https?:\/\//i, '')) + '</a>' : '') +
+          '</div>' +
+          act +
+        '</div>' +
+        (a.description ? '<p class="cmcard__desc">' + esc(a.description) + '</p>' : '') +
+        cause +
+        (shot ? '<div class="cmcard__shot"><img src="' + esc(shot) + '" alt="' + esc(a.name) + ' 스크린샷" loading="lazy" referrerpolicy="no-referrer"></div>' : '') +
+        '<div class="cmreject" data-rejectbox="' + esc(a.id) + '" hidden>' +
+          '<input class="input" type="text" maxlength="200" placeholder="반려 사유 (예: 주소가 열리지 않습니다)" data-reason="' + esc(a.id) + '">' +
+          '<button class="btn btn--danger btn--sm" type="button" data-cm-reject-go="' + esc(a.id) + '">반려 확정</button>' +
+          '<button class="btn btn--ghost btn--sm" type="button" data-cm-reject-cancel="' + esc(a.id) + '">취소</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderCm() {
+    renderCmStats();
+    var pill = $('cmPill'), txt = $('cmPillText');
+    var ok = cm.loaded && !cm.loading && cm.mode === 'ok';
+    if (cm.loading) { pill.className = 'pill pill--warn'; txt.textContent = '불러오는 중'; }
+    else if (ok) { pill.className = 'pill pill--ok'; txt.textContent = '앱 ' + cm.rows.length + '개'; }
+    else { pill.className = 'pill pill--off'; txt.textContent = cm.loaded ? '확인 필요' : '불러오기 전'; }
+    $('cmSyncPill').textContent = '최근 갱신 ' + cmClock(cm.at);
+
+    var setup = cm.mode === 'err' && cm.error === 'setup';
+    $('cmSetupCard').style.display = setup ? '' : 'none';
+    $('cmListCard').style.display = setup ? 'none' : '';
+    if (setup) {
+      fillCmSql();
+      var open = $('cmSqlOpen');
+      if (open) open.setAttribute('href', cmSqlUrl());
+    }
+
+    var note = $('cmFootNote');
+    if (note) {
+      if (ok) {
+        var c = cmCounts();
+        note.textContent = '전체 ' + c.all + '개 · 승인 대기 ' + c.pending + '개 · 게시 중 ' + c.approved + '개 · 반려 ' + c.rejected + '개';
+      } else {
+        note.textContent = '';
+      }
+    }
+    renderCmList();
+    /* 이미지 주소가 깨진 앱은 스크린샷 칸을 접는다 */
+    var cmListEl = $('cmList');
+    [].forEach.call((cmListEl || document).querySelectorAll('.cmcard__shot img'), function (img) {
+      img.addEventListener('error', function () {
+        var wrap = img.closest ? img.closest('.cmcard__shot') : null;
+        if (wrap) wrap.style.display = 'none';
+      });
+      img.addEventListener('load', function () {
+        var wrap = img.closest ? img.closest('.cmcard__shot') : null;
+        if (wrap) wrap.style.display = '';
+      });
+    });
+    var rf = $('cmRefresh');
+    if (rf) rf.disabled = cm.loading;
+  }
+
+  function loadCommunity(force) {
+    if (cm.loading) return;
+    if (!force && cm.loaded && cm.mode === 'ok' && Date.now() - cm.at < 120000) { renderCm(); return; }
+    if (!cloudOn()) {
+      cm.loaded = true; cm.mode = 'err'; cm.error = 'no-cloud'; cm.at = Date.now();
+      renderCm();
+      return;
+    }
+    if (!LemonCloud.hasSession()) {
+      cm.loaded = true; cm.mode = 'err'; cm.error = 'no-session'; cm.at = Date.now();
+      renderCm();
+      return;
+    }
+    cm.loading = true;
+    cm.mode = 'loading';
+    renderCm();
+    LemonCloud.adminListCommunityApps('all').then(function (rows) {
+      cm.loading = false;
+      cm.loaded = true;
+      cm.at = Date.now();
+      cm.rows = Array.isArray(rows) ? rows : [];
+      cm.mode = 'ok';
+      cm.error = '';
+      renderCm();
+    }, function (e) {
+      cm.loading = false;
+      cm.loaded = true;
+      cm.at = Date.now();
+      cm.mode = 'err';
+      cm.error = cmErrorKind(e);
+      renderCm();
+    });
+  }
+
+  function cmFind(id) {
+    for (var i = 0; i < cm.rows.length; i++) if (String(cm.rows[i].id) === String(id)) return cm.rows[i];
+    return null;
+  }
+
+  function cmSetRow(row) {
+    if (!row) return;
+    for (var i = 0; i < cm.rows.length; i++) {
+      if (String(cm.rows[i].id) === String(row.id)) { cm.rows[i] = row; return; }
+    }
+  }
+
+  function cmReview(id, status, reason) {
+    var app = cmFind(id);
+    if (!app) return;
+    cm.busy = id;
+    renderCm();
+    LemonCloud.adminReviewCommunityApp(id, status, reason).then(function (row) {
+      cm.busy = '';
+      if (row) cmSetRow(row);
+      else { app.status = status; app.reject_reason = status === 'rejected' ? (reason || '') : ''; }
+      if (cm.filter !== 'all' && status !== 'approved' && status !== 'rejected') { /* 유지 */ }
+      renderCm();
+      toast(status === 'approved' ? '「' + app.name + '」을 승인했습니다. 커뮤니티에 게시됩니다.' : '「' + app.name + '」을 반려했습니다.', status === 'approved' ? 'ok' : 'err');
+    }, function (e) {
+      cm.busy = '';
+      renderCm();
+      var k = cmErrorKind(e);
+      if (k === 'no-session' || k === 'forbidden') {
+        toast('관리자 로그인과 admin_users 등록을 확인해 주세요.', 'err');
+      } else if (k === 'setup') {
+        toast('커뮤니티 표(community_apps)가 없습니다. SQL을 실행해 주세요.', 'err');
+      } else {
+        toast('처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.', 'err');
+      }
+    });
+  }
+
+  function cmRemove(id) {
+    var app = cmFind(id);
+    if (!app) return;
+    if (!confirm('「' + app.name + '」 등록을 삭제할까요?\n삭제하면 커뮤니티에서도 사라지며 되돌릴 수 없습니다.')) return;
+    cm.busy = id;
+    renderCm();
+    LemonCloud.deleteCommunityApp(id).then(function () {
+      cm.busy = '';
+      cm.rows = cm.rows.filter(function (r) { return String(r.id) !== String(id); });
+      cm.at = Date.now();
+      renderCm();
+      toast('삭제했습니다.');
+    }, function (e) {
+      cm.busy = '';
+      renderCm();
+      var k = cmErrorKind(e);
+      toast(k === 'no-session' || k === 'forbidden' ? '관리자 로그인이 필요합니다.' : '삭제하지 못했습니다.', 'err');
+    });
+  }
+
+  /* ---------------- Cloudinary 설정 ---------------- */
+  function cmCloudPill(on) {
+    var pill = $('cmCloudPill'), txt = $('cmCloudPillText');
+    if (!pill || !txt) return;
+    pill.className = 'pill ' + (on ? 'pill--ok' : 'pill--off');
+    txt.textContent = on ? '업로드 켜짐' : '미설정';
+  }
+
+  function loadCloudinaryConfig() {
+    if (!window.LemonCloud || !cloudOn()) {
+      cmCloudPill(false);
+      $('cmCloudWarn').style.display = '';
+      return;
+    }
+    $('cmCloudWarn').style.display = LemonCloud.hasSession() ? 'none' : '';
+    LemonCloud.fetchSiteData().then(function (data) {
+      var c = data && data.config ? data.config.cloudinary : null;
+      if (c && typeof c === 'object') {
+        $('cmCloudName').value = c.cloudName || '';
+        $('cmCloudPreset').value = c.uploadPreset || '';
+        cmCloudPill(!!(c.cloudName && c.uploadPreset));
+      } else {
+        cmCloudPill(false);
+      }
+    }, function () { cmCloudPill(false); });
+  }
+
+  function saveCloudinaryConfig(clear) {
+    if (!window.LemonCloud) return;
+    var box = $('cmCloudResult');
+    box.style.display = '';
+    box.className = 'note';
+    if (!cloudOn()) {
+      box.className = 'note note--warn';
+      box.innerHTML = '<div>Supabase 연결이 없습니다. Supabase 탭에서 먼저 연결해 주세요.</div>';
+      return;
+    }
+    if (!LemonCloud.hasSession()) {
+      box.className = 'note note--warn';
+      box.innerHTML = '<div>관리자 로그인이 필요합니다. <a href="auth.html?next=admin.html" target="_blank" rel="noopener">LK ID 로그인</a> 후 다시 저장해 주세요.</div>';
+      $('cmCloudWarn').style.display = '';
+      return;
+    }
+    var val = clear ? {} : {
+      cloudName: $('cmCloudName').value.trim(),
+      uploadPreset: $('cmCloudPreset').value.trim()
+    };
+    if (!clear && (!val.cloudName || !val.uploadPreset)) {
+      box.className = 'note note--warn';
+      box.innerHTML = '<div>Cloud name 과 upload preset 을 모두 입력하세요. (파일 업로드를 끄려면 [비우기])</div>';
+      return;
+    }
+    box.innerHTML = '<div>저장하는 중...</div>';
+    $('cmCloudSave').disabled = true;
+    LemonCloud.saveRemoteConfigRow('cloudinary', val).then(function () {
+      return LemonCloud.getConfigRow('cloudinary');
+    }).then(function (saved) {
+      $('cmCloudSave').disabled = false;
+      var s = saved && typeof saved === 'object' ? saved : null;
+      var on = !!(s && s.cloudName && s.uploadPreset);
+      cmCloudPill(on);
+      if (clear) {
+        box.className = 'note';
+        box.innerHTML = '<div>Cloudinary 설정을 비웠습니다. 개발자 포털은 이미지 URL 입력만 씁니다.</div>';
+      } else if (on) {
+        box.className = 'note';
+        box.innerHTML = '<div>저장했습니다. 개발자 포털의 <b>이미지 업로드</b>가 바로 켜집니다. (cloud: <code>' + esc(s.cloudName) + '</code> · preset: <code>' + esc(s.uploadPreset) + '</code>)</div>';
+      } else {
+        box.className = 'note note--warn';
+        box.innerHTML = '<div>저장 결과를 확인하지 못했습니다. 새로고침 후 다시 확인해 주세요.</div>';
+      }
+      toast(on ? 'Cloudinary 설정을 저장했습니다.' : 'Cloudinary 설정을 비웠습니다.');
+    }, function (e) {
+      $('cmCloudSave').disabled = false;
+      box.className = 'note note--warn';
+      var msg = String((e && e.message) || '');
+      if (/row-level security|permission denied|admin-login-required/i.test(msg)) {
+        box.innerHTML = '<div>저장 권한이 없습니다. 관리자 이메일로 로그인했는지 확인해 주세요.</div>';
+      } else {
+        box.innerHTML = '<div>저장하지 못했습니다. ' + esc(msg || '잠시 뒤 다시 시도해 주세요.') + '</div>';
+      }
+      toast('Cloudinary 설정을 저장하지 못했습니다.', 'err');
+    });
+  }
+
+  function bindCommunity() {
+    var seg = $('cmFilterSeg');
+    if (seg) {
+      seg.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-filter]') : null;
+        if (!b) return;
+        cm.filter = b.getAttribute('data-filter');
+        Array.prototype.forEach.call(seg.children, function (x) { x.classList.toggle('on', x === b); });
+        renderCm();
+      });
+    }
+    var rf = $('cmRefresh');
+    if (rf) rf.addEventListener('click', function () { loadCommunity(true); });
+    var again = $('cmSqlAgain');
+    if (again) again.addEventListener('click', function () { loadCommunity(true); });
+    var copy = $('cmSqlCopy');
+    if (copy) copy.addEventListener('click', function () {
+      var txt = communitySqlText();
+      if (!txt) { toast('SQL을 준비하지 못했습니다.', 'err'); return; }
+      copyText(txt).then(function (ok) { toast(ok ? 'SQL을 복사했습니다.' : '복사에 실패했습니다.', ok ? 'ok' : 'err'); });
+    });
+
+    var list = $('cmList');
+    if (list) {
+      list.addEventListener('click', function (e) {
+        var t = e.target;
+        var ap = t.closest ? t.closest('[data-cm-approve]') : null;
+        if (ap) { cmReview(ap.getAttribute('data-cm-approve'), 'approved', ''); return; }
+        var rj = t.closest ? t.closest('[data-cm-reject]') : null;
+        if (rj) {
+          var id = rj.getAttribute('data-cm-reject');
+          var box = list.querySelector('[data-rejectbox="' + id + '"]');
+          if (box) {
+            box.hidden = !box.hidden;
+            if (!box.hidden) {
+              var inp = box.querySelector('[data-reason]');
+              if (inp) inp.focus();
+            }
+          }
+          return;
+        }
+        var go = t.closest ? t.closest('[data-cm-reject-go]') : null;
+        if (go) {
+          var rid = go.getAttribute('data-cm-reject-go');
+          var inp2 = list.querySelector('[data-reason="' + rid + '"]');
+          cmReview(rid, 'rejected', inp2 ? inp2.value.trim() : '');
+          return;
+        }
+        var cn = t.closest ? t.closest('[data-cm-reject-cancel]') : null;
+        if (cn) {
+          var cid = cn.getAttribute('data-cm-reject-cancel');
+          var b2 = list.querySelector('[data-rejectbox="' + cid + '"]');
+          if (b2) b2.hidden = true;
+          return;
+        }
+        var del = t.closest ? t.closest('[data-cm-del]') : null;
+        if (del) { cmRemove(del.getAttribute('data-cm-del')); }
+      });
+      list.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        var go = e.target.closest ? e.target.closest('[data-reason]') : null;
+        if (!go) return;
+        e.preventDefault();
+        var rid = go.getAttribute('data-reason');
+        cmReview(rid, 'rejected', go.value.trim());
+      });
+    }
+
+    var save = $('cmCloudSave');
+    if (save) save.addEventListener('click', function () { saveCloudinaryConfig(false); });
+    var clr = $('cmCloudClear');
+    if (clr) clr.addEventListener('click', function () {
+      if (!confirm('Cloudinary 설정을 비울까요? 개발자 포털의 파일 업로드가 꺼집니다.')) return;
+      saveCloudinaryConfig(true);
+    });
+
+    window.addEventListener('lemoncloud:signed-in', function () {
+      cm.loaded = false; cm.mode = ''; cm.at = 0;
+      if (document.getElementById('view-community').classList.contains('on')) loadCommunity(true);
+      loadCloudinaryConfig();
+    });
+    window.addEventListener('lemoncloud:signed-out', function () {
+      cm.loaded = false; cm.mode = ''; cm.rows = []; cm.at = 0;
+      loadCloudinaryConfig();
+    });
   }
 
   /* ---------------- 부트 ---------------- */

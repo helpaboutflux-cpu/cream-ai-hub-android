@@ -324,6 +324,7 @@
           if (!r || !r.id) return;
           if (r.id === 'notice' || r.id === 'home') config[r.id] = r.value;
           if (r.id === 'ads') config.ads = r.value;
+          if (r.id === 'cloudinary') config.cloudinary = r.value;
         });
         return rest('/rest/v1/site_ads?select=id,data,enabled&order=sort_order.asc').then(function (adRows) {
           var ads = (adRows || []).map(function (r) {
@@ -513,6 +514,149 @@
     return Promise.resolve({ ok: false, error: 'not-found' });
   }
 
+  /* ---------------- 커뮤니티 앱(portal.html · index.html · admin.html) ----------------
+     community_apps 테이블 — 개발자 포털에서 등록(pending) → 관리자 승인(approved).
+     로그인하지 않은 방문자도 승인된 앱 목록은 읽을 수 있다. */
+  var COMMUNITY_COLS = 'id,owner_id,author_name,name,description,url,category,icon_id,color,screenshot_url,status,reject_reason,created_at,updated_at';
+
+  function loginRequired() {
+    var e = new Error('login-required');
+    e.status = 401;
+    return e;
+  }
+
+  function currentUid() {
+    loadSessionIfChanged();
+    return (session && session.user && session.user.id) ? String(session.user.id) : '';
+  }
+
+  /* 서버로 보내는 값은 여기서 정한다. 화면 검증을 건너뛴 값도 안전한 형태로 줄인다. */
+  function communityPayload(p) {
+    p = p || {};
+    function s(v, n) {
+      return String(v === null || v === undefined ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+    }
+    var color = s(p.color, 7);
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = '#3b82f6';
+    var cat = s(p.category, 20);
+    if (['utility', 'productivity', 'media', 'game', 'dev', 'etc'].indexOf(cat) < 0) cat = 'utility';
+    return {
+      name: s(p.name, 60),
+      description: s(p.description, 400),
+      url: s(p.url, 400),
+      category: cat,
+      icon_id: s(p.icon_id, 40) || 'globe',
+      color: color,
+      screenshot_url: s(p.screenshot_url, 600),
+      author_name: s(p.author_name, 60)
+    };
+  }
+
+  /* 승인된 앱 — 누구나(비로그인 포함) */
+  function listApprovedCommunityApps(limit) {
+    var n = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 500);
+    return rest('/rest/v1/community_apps?select=' + COMMUNITY_COLS +
+      '&status=eq.approved&order=created_at.desc&limit=' + n);
+  }
+
+  /* 내가 등록한 앱 — 로그인 필수 */
+  function listMyCommunityApps() {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    var uid = currentUid();
+    if (!uid) return Promise.reject(loginRequired());
+    return rest('/rest/v1/community_apps?select=' + COMMUNITY_COLS +
+      '&owner_id=eq.' + encodeURIComponent(uid) + '&order=created_at.desc');
+  }
+
+  /* 등록 — 항상 pending 으로만 올라간다(RLS 도 같은 규칙을 건다). */
+  function submitCommunityAdminRow(uid, authorName, payload) {
+    var row = communityPayload(payload);
+    row.owner_id = uid;
+    row.status = 'pending';
+    row.reject_reason = '';
+    if (authorName) row.author_name = String(authorName).trim().slice(0, 60);
+    return rest('/rest/v1/community_apps', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: [row]
+    }).then(function (rows) { return rows && rows[0] ? rows[0] : row; });
+  }
+
+  function submitCommunityApp(payload) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    var uid = currentUid();
+    if (!uid) return Promise.reject(loginRequired());
+    var u = session.user || {};
+    var meta = (u.user_metadata && typeof u.user_metadata === 'object') ? u.user_metadata : {};
+    var author = meta.full_name || meta.name || meta.display_name || meta.nickname || (u.email ? String(u.email).split('@')[0] : '');
+    return submitCommunityAdminRow(uid, author, payload);
+  }
+
+  /* 수정 — 본인 앱만, 수정하면 다시 승인 대기(pending)로 돌아간다. */
+  function updateMyCommunityApp(id, payload) {
+    id = String(id || '').trim();
+    if (!id) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!currentUid()) return Promise.reject(loginRequired());
+    var row = communityPayload(payload);
+    row.status = 'pending';
+    row.reject_reason = '';
+    return rest('/rest/v1/community_apps?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: row
+    }).then(function (rows) { return rows && rows[0] ? rows[0] : row; });
+  }
+
+  /* 삭제 — 본인 또는 관리자(RLS 가 판단) */
+  function deleteCommunityApp(id) {
+    id = String(id || '').trim();
+    if (!id) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!currentUid()) return Promise.reject(loginRequired());
+    return rest('/rest/v1/community_apps?id=eq.' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: { Prefer: 'return=representation' }
+    });
+  }
+
+  /* 관리자 — 상태별 전체 목록 */
+  function adminListCommunityApps(statusFilter) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!session) return Promise.reject(loginRequired());
+    var q = '/rest/v1/community_apps?select=' + COMMUNITY_COLS + '&order=created_at.desc';
+    var st = String(statusFilter || '').trim();
+    if (st && st !== 'all') q += '&status=eq.' + encodeURIComponent(st);
+    return rest(q);
+  }
+
+  /* 관리자 — 승인 / 반려 */
+  function adminReviewCommunityApp(id, status, rejectReason) {
+    id = String(id || '').trim();
+    if (!id) return Promise.reject(new Error('invalid-id'));
+    var st = String(status || '').trim();
+    if (st !== 'approved' && st !== 'rejected' && st !== 'pending') return Promise.reject(new Error('invalid-status'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/community_apps?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: { status: st, reject_reason: st === 'rejected' ? String(rejectReason || '').trim().slice(0, 200) : '' }
+    }).then(function (rows) { return rows && rows[0] ? rows[0] : null; });
+  }
+
+  /* 원격 설정 한 줄 저장 — 실패를 그대로 돌려준다(관리자 콘솔 저장 확인용). */
+  function saveRemoteConfigRow(id, value) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(new Error('admin-login-required'));
+    return upsert('site_config', [{ id: id, value: value, updated_at: new Date().toISOString() }], 'id');
+  }
+
   /* ---------------- init ---------------- */
   function init() {
     if (initP) return initP;
@@ -567,6 +711,15 @@
     getConfigRow: getConfigRow,
     saveConfigRow: saveConfigRow,
     listAccounts: listAccounts,
+
+    listApprovedCommunityApps: listApprovedCommunityApps,
+    listMyCommunityApps: listMyCommunityApps,
+    submitCommunityApp: submitCommunityApp,
+    updateMyCommunityApp: updateMyCommunityApp,
+    deleteCommunityApp: deleteCommunityApp,
+    adminListCommunityApps: adminListCommunityApps,
+    adminReviewCommunityApp: adminReviewCommunityApp,
+    saveRemoteConfigRow: saveRemoteConfigRow,
 
     createShare: createShare,
     getShare: getShare,

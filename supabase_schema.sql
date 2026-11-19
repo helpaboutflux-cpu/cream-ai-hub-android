@@ -12,6 +12,7 @@
 --    site_ads         Flux Feed 광고 목록                            (전 방문자 읽기)
 --    shared_pages     짧은 공유 링크(view.html?id=...)               (링크 보유자 읽기)
 --    admin_users      관리자 이메일 목록                             (관리자만 확인)
+--    community_apps   커뮤니티 앱 전시 (portal.html 등록 → 관리자 승인)
 --  관리자 전용 함수
 --    admin_list_lk_accounts()  LK ID 가입 계정 목록 (관리자 세션만, 9번 항목)
 --  모든 테이블에 RLS 가 켜져 있고, 쓰기는 관리자/본인으로 제한됩니다.
@@ -50,8 +51,8 @@ revoke all on function public.is_site_admin() from public;
 grant execute on function public.is_site_admin() to anon, authenticated;
 
 -- ------------------------------------------------------------
--- 1. site_config — 상단 공지 · 홈 배너 · 광고 설정
---    id: 'notice' | 'home' | 'ads'
+-- 1. site_config — 상단 공지 · 홈 배너 · 광고 설정 · Cloudinary 연동
+--    id: 'notice' | 'home' | 'ads' | 'cloudinary'
 -- ------------------------------------------------------------
 create table if not exists public.site_config (
   id         text primary key,
@@ -69,7 +70,7 @@ drop policy if exists "site_config admin write"  on public.site_config;
 create policy "site_config public read"
   on public.site_config for select
   to anon, authenticated
-  using (id in ('notice', 'home', 'ads'));
+  using (id in ('notice', 'home', 'ads', 'cloudinary'));
 
 create policy "site_config admin read"
   on public.site_config for select
@@ -274,6 +275,111 @@ revoke all on function public.admin_list_lk_accounts() from public;
 grant execute on function public.admin_list_lk_accounts() to authenticated;
 -- << admin_list_lk_accounts
 
+-- ------------------------------------------------------------
+-- 10. community_apps — 커뮤니티 앱 전시
+--     개발자 포털(portal.html)에서 로그인한 이용자가 자기 서비스를 등록하면
+--     관리자 콘솔(admin.html · 커뮤니티 승인)에서 승인/반려한다.
+--     · 누구나 '승인된 앱'만 조회
+--     · 본인은 자기 앱을 pending 상태로만 등록·수정(승인된 뒤 임의로 approved 유지 불가)
+--     · 관리자는 모든 앱 조회·승인·반려·삭제
+--     · screenshot_url 은 Cloudinary 업로드 주소 또는 직접 입력한 이미지 주소
+--     관리자 콘솔의 커뮤니티 승인 탭에서 안내/복사하는 SQL 과 같은 내용이다.
+-- ------------------------------------------------------------
+-- >> community_apps
+create table if not exists public.community_apps (
+  id             uuid primary key default gen_random_uuid(),
+  owner_id       uuid not null references auth.users (id) on delete cascade,
+  author_name    text not null default '',
+  name           text not null,
+  description    text not null default '',
+  url            text not null,
+  category       text not null default 'utility',
+  icon_id        text not null default 'globe',
+  color          text not null default '#3b82f6',
+  screenshot_url text not null default '',
+  status         text not null default 'pending',
+  reject_reason  text not null default '',
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  constraint community_apps_url_http
+    check (url ~* '^https?://'),
+  constraint community_apps_status
+    check (status in ('pending', 'approved', 'rejected')),
+  constraint community_apps_category
+    check (category in ('utility', 'productivity', 'media', 'game', 'dev', 'etc')),
+  constraint community_apps_name_len
+    check (char_length(btrim(name)) between 1 and 60),
+  constraint community_apps_desc_len
+    check (char_length(description) <= 400),
+  constraint community_apps_color
+    check (color ~ '^#[0-9a-fA-F]{6}$'),
+  constraint community_apps_screenshot
+    check (screenshot_url = '' or screenshot_url ~* '^https?://')
+);
+
+create index if not exists community_apps_status_idx
+  on public.community_apps (status, created_at desc);
+create index if not exists community_apps_owner_idx
+  on public.community_apps (owner_id, created_at desc);
+
+alter table public.community_apps enable row level security;
+
+drop policy if exists "community public read"  on public.community_apps;
+drop policy if exists "community owner insert" on public.community_apps;
+drop policy if exists "community owner update" on public.community_apps;
+drop policy if exists "community admin update" on public.community_apps;
+drop policy if exists "community owner delete" on public.community_apps;
+
+-- 승인된 앱은 누구나, 내 앱은 나만, 나머지는 관리자만 본다.
+create policy "community public read"
+  on public.community_apps for select
+  to anon, authenticated
+  using (status = 'approved' or auth.uid() = owner_id or public.is_site_admin());
+
+-- 등록은 로그인한 본인 소유 + pending 만 허용한다.
+create policy "community owner insert"
+  on public.community_apps for insert
+  to authenticated
+  with check (auth.uid() = owner_id and status = 'pending');
+
+-- 본인이 고치면 다시 승인 대기(pending)로 돌아간다.
+-- 승인된 앱을 그대로 approved 로 유지한 채 내용만 바꾸는 것은 허용하지 않는다.
+create policy "community owner update"
+  on public.community_apps for update
+  to authenticated
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id and status = 'pending');
+
+-- 관리자는 상태·반려 사유를 포함해 모든 컬럼을 바꿀 수 있다.
+create policy "community admin update"
+  on public.community_apps for update
+  to authenticated
+  using (public.is_site_admin())
+  with check (public.is_site_admin());
+
+create policy "community owner delete"
+  on public.community_apps for delete
+  to authenticated
+  using (auth.uid() = owner_id or public.is_site_admin());
+
+-- updated_at 자동 갱신
+drop trigger if exists community_apps_touch on public.community_apps;
+create trigger community_apps_touch before update on public.community_apps
+  for each row execute function public.touch_updated_at();
+
+-- 표 권한 (RLS 가 실제 제어를 맡고, 여기서는 PostgREST 접근만 열어 준다)
+grant select on public.community_apps to anon;
+grant select, insert, update, delete on public.community_apps to authenticated;
+
+-- site_config 의 'cloudinary' 행도 공개 읽기 대상에 넣는다
+-- (위 1번 항목과 같은 정책이다. 이 블록만 따로 실행해도 반영되도록 한 번 더 만든다.)
+drop policy if exists "site_config public read" on public.site_config;
+create policy "site_config public read"
+  on public.site_config for select
+  to anon, authenticated
+  using (id in ('notice', 'home', 'ads', 'cloudinary'));
+-- << community_apps
+
 -- 확인용
 select 'site_config'    as table_name, count(*) from public.site_config
 union all
@@ -281,4 +387,6 @@ select 'site_ads',      count(*) from public.site_ads
 union all
 select 'shared_pages',  count(*) from public.shared_pages
 union all
-select 'admin_users',   count(*) from public.admin_users;
+select 'admin_users',   count(*) from public.admin_users
+union all
+select 'community_apps', count(*) from public.community_apps;
