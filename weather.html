@@ -675,6 +675,38 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
 .leaflet-tooltip.rd-tip{background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; font-size:11px; font-weight:800; padding:3px 7px; box-shadow:none}
 .leaflet-tooltip.rd-tip::before{display:none}
 .rd-dot{width:14px; height:14px; border-radius:50%; background:var(--brand); border:2.5px solid #fff; box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 26%,transparent),0 4px 10px rgba(2,132,199,.5)}
+/* 예측 강수 오버레이 (Open-Meteo 격자 보간) */
+.rd-legend .snow{display:flex; align-items:center; gap:5px; margin-top:4px; font-size:9px; font-weight:800; color:var(--ink-3)}
+.rd-legend .snow b{display:block; width:28px; height:6px; border-radius:99px; background:linear-gradient(90deg,#8fd0ff,#bfe6ff,#e4f5ff,#fbfeff); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink-3) 30%,transparent)}
+.rd-card.is-fc .rd-legend i{background:linear-gradient(90deg,#86c8ff,#4fb4ff,#2b9dff,#22d3ee,#5b6cf9,#8b5cf6,#b06bff)}
+.rd-fc-tag{
+  position:absolute; right:10px; top:10px; z-index:620; display:inline-flex; align-items:center; gap:5px;
+  padding:4px 9px; border-radius:99px; font-size:9.5px; font-weight:800; letter-spacing:-.01em;
+  color:#7c3aed; border:1px solid color-mix(in srgb,#7c3aed 34%,transparent);
+  background:color-mix(in srgb,var(--card) 94%,transparent); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  pointer-events:none; white-space:nowrap;
+}
+html.dark .rd-fc-tag{color:#c4b5fd; border-color:color-mix(in srgb,#c4b5fd 42%,transparent)}
+.rd-fc-tag[hidden]{display:none}
+.rd-dry{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:621;
+  padding:8px 13px; border-radius:12px; font-size:10.5px; font-weight:800; color:var(--ink-2);
+  border:1px solid var(--line); background:color-mix(in srgb,var(--card) 90%,transparent);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); pointer-events:none; white-space:nowrap;
+}
+.rd-dry[hidden]{display:none}
+.rd-track{position:relative; padding-top:11px}
+.rd-mark{
+  position:absolute; top:0; left:0; transform:translateX(-50%); font-size:8.5px; font-weight:800; letter-spacing:.02em;
+  color:var(--ink-3); pointer-events:none; white-space:nowrap;
+}
+.rd-mark::after{content:""; position:absolute; left:50%; top:11px; width:1px; height:8px; background:currentColor; opacity:.5}
+.rd-mark[hidden]{display:none}
+.rd-card.is-fc .rd-range{background:linear-gradient(90deg,#7c3aed var(--fill,0%),var(--line) var(--fill,0%))}
+.rd-card.is-fc .rd-range::-webkit-slider-thumb{border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.42)}
+.rd-card.is-fc .rd-range::-moz-range-thumb{border-color:#7c3aed}
+.rd-card.is-fc .rd-time .mid{color:#7c3aed}
+.leaflet-image-layer.rd-heat{pointer-events:none}
 
 /* ---------------- desktop floating rail ---------------- */
 .wx-rail{display:none}
@@ -760,6 +792,10 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
   .rd-map{height:290px}
   .rd-card{padding:16px 14px 14px}
   .rd-ctrl{gap:8px; flex-wrap:wrap}
+  .rd-legend{padding:6px 8px 5px; font-size:9px}
+  .rd-legend i{min-width:86px}
+  .rd-legend .snow{font-size:8.5px; margin-top:3px}
+  .rd-legend .snow b{width:24px; height:5px}
   .rd-btn span{display:none}
   .rd-btn{padding:8px 10px}
   .nw-grid{grid-template-columns:1fr}
@@ -1006,10 +1042,13 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
     <div class="rd-map" id="rdMapWrap">
       <div id="wxMap" role="application" aria-label="강수 레이더 지도"></div>
       <div class="rd-legend" aria-hidden="true">
-        <span>강수 강도</span>
+        <span id="rdLegendT">관측 강수 강도</span>
         <i></i>
         <div class="rd-legend-l"><span>약한 비</span><span>보통</span><span>강한 비</span></div>
+        <div class="snow"><b></b>눈</div>
       </div>
+      <div class="rd-fc-tag" id="rdFcTag" hidden>예측 · Open-Meteo 모델</div>
+      <div class="rd-dry" id="rdDry" hidden>이 시각 강수 예상 없음</div>
       <div class="rd-state" id="rdState">
         <svg class="i"><use href="#i-radar"></use></svg>
         <b id="rdStateTitle">레이더를 불러오는 중</b>
@@ -1022,14 +1061,17 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
         <svg class="i sm" id="rdPlayIcon"><use href="#i-play"></use></svg>
       </button>
       <div class="rd-sl">
-        <input type="range" class="rd-range" id="rdRange" min="0" max="0" value="0" step="1" aria-label="레이더 시간대" />
+        <div class="rd-track">
+          <input type="range" class="rd-range" id="rdRange" min="0" max="0" value="0" step="1" aria-label="레이더 시간대" />
+          <span class="rd-mark" id="rdMark" hidden>지금</span>
+        </div>
         <div class="rd-time"><span id="rdFrom">--:--</span><span class="mid" id="rdMid">관측</span><span id="rdTo">--:--</span></div>
       </div>
       <button type="button" class="rd-btn" id="rdLocate" title="선택한 도시로 이동" aria-label="선택한 도시로 이동">
         <svg class="i sm"><use href="#i-target"></use></svg><span>내 도시</span>
       </button>
     </div>
-    <p class="rd-foot"><svg class="i sm"><use href="#i-info"></use></svg><span>과거 2시간 강수 구름을 재생해 이동 방향을 볼 수 있어요. 레이더는 RainViewer, 지도는 Esri·OpenStreetMap 자료를 씁니다.</span></p>
+    <p class="rd-foot"><svg class="i sm"><use href="#i-info"></use></svg><span id="rdFootNote">과거 2시간 강수 구름을 재생해 이동 방향을 보고, 오른쪽으로 넘기면 6시간 뒤까지 예측을 볼 수 있어요. 관측 RainViewer · 예측 Open-Meteo 모델(격자 보간).</span></p>
   </section>
 
   <section class="sec" aria-label="대기질과 자외선">
@@ -1126,7 +1168,7 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
     </div>
   </div>
   <p class="foot-note">
-    기상·대기질 데이터 Open-Meteo (CC BY 4.0) · Open-Meteo 응답이 없을 때는 MET Norway 예보로 이어서 보여 줍니다. 강수 레이더 RainViewer · 지도 Esri·OpenStreetMap · 도시 검색 Open-Meteo Geocoding · 위치 변환 BigDataCloud · 날씨 뉴스는 공개 RSS 모음입니다.
+    기상·대기질 데이터 Open-Meteo (CC BY 4.0) · Open-Meteo 응답이 없을 때는 MET Norway 예보로 이어서 보여 줍니다. 강수 레이더 RainViewer · 미래 강수 예측 Open-Meteo 격자 보간 · 지도 Esri·OpenStreetMap · 도시 검색 Open-Meteo Geocoding · 위치 변환 BigDataCloud · 날씨 뉴스는 공개 RSS 모음입니다.
     즐겨찾는 도시와 테마·단위 설정은 이 브라우저에만 저장되며, Google Drive를 연결하면 다른 기기와 자동으로 동기화됩니다.
   </p>
 </footer>
@@ -3372,7 +3414,7 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
   var RD_CSS = ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'vendor/leaflet/leaflet.css'];
   var RD_COLOR = 2, RD_OPTS = '1_1';
   var RD = {
-    map: null, base: null, labels: null, layer: null, dot: null, frames: [], idx: 0,
+    map: null, base: null, labels: null, layer: null, dot: null, frames: [], obs: [], fcFrames: [], idx: 0,
     playing: false, timer: null, host: 'https://tilecache.rainviewer.com',
     loading: false, failed: false, baseDark: null, cssOk: false, jsTried: false
   };
@@ -3477,14 +3519,20 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
       RD.dot.bindTooltip(c.name, { direction: 'top', offset: [0, -7], className: 'rd-tip' });
     } catch (e) { RD.dot = null; }
     setTimeout(function () { if (RD.map) RD.map.invalidateSize(); }, 160);
+    /* 지도를 옮기거나 확대하면 그 화면을 덮는 격자로 예측을 다시 받는다 */
+    try {
+      RD.map.on('moveend zoomend', fcSchedule);
+    } catch (e) { }
   }
 
   function rdCityLabel() {
     var el = $('#rdCity');
     if (!el) return;
     var c = currentCity();
-    var hasFc = RD.frames.some(function (f) { return f.k === 'fc'; });
-    el.textContent = (c ? c.name : '내 위치') + ' 주변 강수 · 과거 2시간' + (hasFc ? ' + 짧은 예보' : '');
+    var off = 0;
+    for (var i = 0; i < RD.frames.length; i++) if (RD.frames[i].src === 'om') off = Math.max(off, RD.frames[i].off);
+    var tail = off ? ' + ' + off + '시간 예측' : (FC.loading ? ' · 예측 준비 중' : (FC.err ? ' · 예측 없음' : ''));
+    el.textContent = (c ? c.name : '내 위치') + ' 주변 강수 · 과거 2시간' + tail;
   }
 
   function rdCityChanged() {
@@ -3507,35 +3555,57 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
     var idx = clamp(Math.round(Number(i) || 0), 0, RD.frames.length - 1);
     RD.idx = idx;
     var f = RD.frames[idx];
-    var url = RD.host + f.p + '/256/{z}/{x}/{y}/' + RD_COLOR + '/' + RD_OPTS + '.png';
-    try {
-      if (!RD.layer) {
-        RD.layer = L.tileLayer(url, {
-          tileSize: 256, opacity: .72, maxNativeZoom: 7, maxZoom: 12,
-          attribution: 'RainViewer', zIndex: 5
-        }).addTo(RD.map);
-      } else {
-        RD.layer.setUrl(url);
-      }
-      if (RD.layer && RD.labels) RD.labels.bringToFront();
-    } catch (e) { }
+    var isFc = f.src === 'om';
+    if (isFc) {
+      /* 예측 시각에는 관측 타일을 감추고 Open-Meteo 히트맵만 보여 준다 */
+      if (RD.layer) { try { RD.layer.setOpacity(0); } catch (e) { } }
+      fcShow(f);
+    } else {
+      fcHide();
+      var url = RD.host + f.p + '/256/{z}/{x}/{y}/' + RD_COLOR + '/' + RD_OPTS + '.png';
+      try {
+        if (!RD.layer) {
+          RD.layer = L.tileLayer(url, {
+            tileSize: 256, opacity: .72, maxNativeZoom: 7, maxZoom: 12,
+            attribution: 'RainViewer', zIndex: 5
+          }).addTo(RD.map);
+        } else {
+          RD.layer.setOpacity(0.72);
+          RD.layer.setUrl(url);
+        }
+        if (RD.layer && RD.labels) RD.labels.bringToFront();
+      } catch (e) { }
+    }
     var r = $('#rdRange');
     if (r) {
       r.value = String(idx);
       var pct = RD.frames.length > 1 ? (idx / (RD.frames.length - 1)) * 100 : 100;
       r.style.setProperty('--fill', pct.toFixed(1) + '%');
-      r.setAttribute('aria-valuetext', rdHM(f.t) + (f.k === 'fc' ? ' 예보' : ' 관측'));
+      r.setAttribute('aria-valuetext', rdHM(f.t) + (isFc ? ' Open-Meteo 모델 예측 +' + f.off + '시간' : ' 레이더 관측'));
     }
     var stamp = $('#rdStamp');
     if (stamp) stamp.textContent = rdHM(f.t);
     var badge = $('#rdBadge');
     if (badge) {
       badge.hidden = false;
-      badge.className = 'rd-badge ' + (f.k === 'fc' ? 'fc' : 'obs');
-      badge.textContent = f.k === 'fc' ? '예보' : '관측';
+      badge.className = 'rd-badge ' + (isFc ? 'fc' : 'obs');
+      badge.textContent = isFc ? '예측' : '관측';
+      badge.title = isFc ? 'Open-Meteo 모델 예측' : '기상 레이더 관측';
+      badge.setAttribute('aria-label', badge.title);
     }
     var mid = $('#rdMid');
-    if (mid) mid.textContent = f.k === 'fc' ? '예측 시각' : '관측 시각';
+    if (mid) mid.textContent = isFc ? '예측 +' + f.off + '시간' : '관측 시각';
+    var card = doc.getElementById('radarSec');
+    if (card) card.classList.toggle('is-fc', isFc);
+    var tag = $('#rdFcTag');
+    if (tag) tag.hidden = !isFc;
+    var legendT = $('#rdLegendT');
+    if (legendT) legendT.textContent = isFc ? '예측 강수 강도' : '관측 강수 강도';
+    var dry = $('#rdDry');
+    if (dry) {
+      var st = isFc ? FC.stat[fcIndex(f)] : null;
+      dry.hidden = !(isFc && st && st.dry);
+    }
     rdState('ok');
   }
 
@@ -3577,14 +3647,16 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
       var past = Array.isArray(radar.past) ? radar.past : [];
       var now = Array.isArray(radar.nowcast) ? radar.nowcast : [];
       var frames = [];
-      past.forEach(function (f) { if (f && f.path && num(f.time) !== null) frames.push({ t: Number(f.time), p: String(f.path), k: 'obs' }); });
-      now.forEach(function (f) { if (f && f.path && num(f.time) !== null) frames.push({ t: Number(f.time), p: String(f.path), k: 'fc' }); });
+      past.forEach(function (f) { if (f && f.path && num(f.time) !== null) frames.push({ t: Number(f.time), p: String(f.path), k: 'obs', src: 'rv' }); });
+      now.forEach(function (f) { if (f && f.path && num(f.time) !== null) frames.push({ t: Number(f.time), p: String(f.path), k: 'fc', src: 'rv' }); });
       if (!frames.length) throw new Error('no-frames');
       frames.sort(function (a, b) { return a.t - b.t; });
-      RD.frames = frames;
+      RD.obs = frames.filter(function (f) { return f.k === 'obs'; });
+      var prev = RD.frames[RD.idx];
+      RD.resumeOff = (prev && prev.src === 'om') ? prev.off : 0;   /* 새로고침해도 보던 예측 시각을 지킨다 */
+      RD.frames = RD.obs.slice();          /* 예측 프레임은 Open-Meteo 자료가 오면 뒤에 이어 붙인다 */
       RD.host = (m && m.host) ? String(m.host) : 'https://tilecache.rainviewer.com';
-      var start = 0;
-      for (var i = 0; i < frames.length; i++) if (frames[i].k === 'obs') start = i;
+      var start = Math.max(0, RD.obs.length - 1);
       rdEnsure(function (err) {
         RD.loading = false;
         if (err) { rdFail(); return; }
@@ -3598,6 +3670,7 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
         if (from) from.textContent = rdHM(RD.frames[0].t);
         if (to) to.textContent = rdHM(RD.frames[RD.frames.length - 1].t);
         setTimeout(function () { if (RD.map) RD.map.invalidateSize(); }, 200);
+        fcLoad(false);
       });
     }, function () {
       RD.loading = false;
@@ -3611,6 +3684,362 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
   function rdInit() {
     rdCityLabel();
     rdFetch();
+  }
+
+  /* =========================================================
+     18-b-2. 미래 강수 예측 오버레이 (Open-Meteo 격자 · 1회 다점 조회)
+     RainViewer 무료 공용 API가 nowcast(미래)를 빈 배열로 돌려주기 때문에
+     지도에 덮는 6x6 격자를 한 번에 받아, 이선형 보간한 히트맵으로
+     +1~+6시간 강수(비·눈)를 그린다.
+     ========================================================= */
+  var FC_N = 6;                        /* 6x6 = 36 격자점 */
+  var FC_HOURS = 6;                    /* +1h ~ +6h */
+  var FC_TTL = 10 * 60 * 1000;         /* 같은 범위·10분 이내 재요청은 메모리 캐시 */
+  var FC_W = 512;                      /* 히트맵 캔버스 가로 */
+  var FC_RAIN_STOPS = [[0, '#86c8ff'], [0.20, '#4fb4ff'], [0.40, '#2b9dff'], [0.58, '#22d3ee'], [0.74, '#5b6cf9'], [0.88, '#8b5cf6'], [1, '#b06bff']];
+  var FC_SNOW_STOPS = [[0, '#8fd0ff'], [0.34, '#bfe6ff'], [0.68, '#e4f5ff'], [1, '#fbfeff']];
+
+  var FC = {
+    grid: null, frames: [], urls: [], stat: [], at: 0, key: '',
+    token: 0, loading: false, err: null, layer: null, busy: false, retry: null, retryKey: ''
+  };
+
+  function fcHex(h) {
+    var v = parseInt(String(h).replace('#', ''), 16);
+    return [v >> 16 & 255, v >> 8 & 255, v & 255];
+  }
+  function fcRamp(stops, n) {
+    var cols = stops.map(function (s) { return fcHex(s[1]); });
+    var out = { r: new Uint8Array(n + 1), g: new Uint8Array(n + 1), b: new Uint8Array(n + 1) };
+    for (var i = 0; i <= n; i++) {
+      var t = i / n, k = 0;
+      while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+      var a = cols[k], c = cols[k + 1];
+      var t0 = stops[k][0], t1 = stops[k + 1][0];
+      var f = t1 > t0 ? clamp((t - t0) / (t1 - t0), 0, 1) : 0;
+      out.r[i] = Math.round(a[0] + (c[0] - a[0]) * f);
+      out.g[i] = Math.round(a[1] + (c[1] - a[1]) * f);
+      out.b[i] = Math.round(a[2] + (c[2] - a[2]) * f);
+    }
+    return out;
+  }
+  var FC_RAIN_L = fcRamp(FC_RAIN_STOPS, 255);
+  var FC_SNOW_L = fcRamp(FC_SNOW_STOPS, 127);
+  var FC_ALPHA = new Float32Array(257);
+  var FC_DEN = Math.log(1 + 2.4 * 34);
+  (function () {
+    for (var i = 0; i < FC_ALPHA.length; i++) FC_ALPHA[i] = 0.22 + 0.64 * Math.pow(i / 256, 0.55);
+  })();
+
+  function fcMerc(lat) { return Math.log(Math.tan(Math.PI / 4 + clamp(lat, -85, 85) * Math.PI / 360)); }
+  function fcUnmerc(y) { return (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI; }
+
+  /* 지도에 보이는 범위를 조금 넓혀 덮는 격자. 화면을 옮기면 그 중심으로 다시 잡는다 */
+  function fcGridNow() {
+    var c = currentCity() || defaultCity();
+    var b = null;
+    try { if (RD.map) b = RD.map.getBounds(); } catch (e) { b = null; }
+    var s, n, w, e;
+    if (b && isFinite(b.getSouth()) && isFinite(b.getNorth()) && isFinite(b.getWest()) && isFinite(b.getEast())) {
+      s = b.getSouth(); n = b.getNorth(); w = b.getWest(); e = b.getEast();
+    } else {
+      s = c.lat - 1.9; n = c.lat + 1.9; w = c.lon - 2.2; e = c.lon + 2.2;
+    }
+    var cLat = clamp((s + n) / 2, -80, 80), cLon = (w + e) / 2;
+    while (cLon >= 180) cLon -= 360;
+    while (cLon < -180) cLon += 360;
+    /* 모델 격자보다 지나치게 촘촘하거나 성기지 않게 반경을 묶어 둔다 */
+    var hLat = clamp((n - s) * 0.55, 1.7, 2.9);
+    var hLon = clamp((e - w) * 0.55, 2.3, 3.5);
+    var g = {
+      lat0: +(cLat - hLat).toFixed(3), lat1: +(cLat + hLat).toFixed(3),
+      lon0: +(cLon - hLon).toFixed(3), lon1: +(cLon + hLon).toFixed(3),
+      nx: FC_N, ny: FC_N
+    };
+    g.dLat = (g.lat1 - g.lat0) / (FC_N - 1);
+    g.dLon = (g.lon1 - g.lon0) / (FC_N - 1);
+    g.key = g.lat0 + ',' + g.lon0 + ',' + g.lat1 + ',' + g.lon1;
+    return g;
+  }
+
+  function fcGridUrl(g) {
+    var lats = [], lons = [];
+    for (var y = 0; y < g.ny; y++) {
+      for (var x = 0; x < g.nx; x++) {
+        lats.push((g.lat0 + y * g.dLat).toFixed(3));
+        lons.push((g.lon0 + x * g.dLon).toFixed(3));
+      }
+    }
+    return API_FC + '?latitude=' + lats.join(',') + '&longitude=' + lons.join(',') +
+      '&hourly=precipitation,snowfall,precipitation_probability' +
+      '&forecast_hours=' + (FC_HOURS + 2) + '&timezone=auto';
+  }
+
+  function fcApply(g, res) {
+    var list = Array.isArray(res) ? res : [res];
+    var n = g.nx * g.ny;
+    if (!list.length || list.length < n) throw new Error('fc-grid');
+    var h0 = list[0].hourly || {};
+    var times = h0.time || [];
+    if (!times.length) throw new Error('fc-time');
+    /* 격자점마다 시간대가 다를 수 있어(중국·한국 경계) UTC로 맞춘 뒤 같은 시각끼리 읽는다 */
+    var off = num(list[0].utc_offset_seconds);
+    if (off === null) off = 9 * 3600;
+    var unix = times.map(function (s) {
+      var t = String(s);
+      if (t.length > 16) t = t.slice(0, 16);
+      return Math.round(Date.parse(t + ':00Z') / 1000) - off;
+    });
+    var nowS = Math.floor(Date.now() / 1000);
+    var picks = [];
+    for (var i = 0; i < times.length && picks.length < FC_HOURS; i++) if (unix[i] > nowS) picks.push(i);
+    if (!picks.length) throw new Error('fc-pick');
+    var frames = picks.map(function (hi, k) {
+      var p = new Float32Array(n), s = new Float32Array(n), r = new Float32Array(n);
+      var maxP = 0, maxS = 0, maxR = 0;
+      for (var j = 0; j < n; j++) {
+        var hy = list[j] && list[j].hourly ? list[j].hourly : {};
+        var pv = num(hy.precipitation ? hy.precipitation[hi] : null);
+        var sv = num(hy.snowfall ? hy.snowfall[hi] : null);
+        var rv = num(hy.precipitation_probability ? hy.precipitation_probability[hi] : null);
+        pv = pv === null ? 0 : Math.max(0, pv);
+        sv = sv === null ? 0 : Math.max(0, sv);
+        rv = rv === null ? 0 : clamp(rv, 0, 100);
+        p[j] = pv; s[j] = sv; r[j] = rv;
+        if (pv > maxP) maxP = pv;
+        if (sv > maxS) maxS = sv;
+        if (rv > maxR) maxR = rv;
+      }
+      return { t: unix[hi], k: 'fc', src: 'om', off: k + 1, p: p, s: s, r: r, maxP: maxP, maxS: maxS, maxR: maxR };
+    });
+    FC.grid = g;
+    FC.frames = frames;
+    FC.urls = [];
+    FC.stat = [];
+    FC.key = g.key;
+    FC.at = Date.now();
+    FC.err = null;
+    if (FC.layer && RD.map) { try { RD.map.removeLayer(FC.layer); } catch (e) { } }
+    FC.layer = null;
+  }
+
+  function fcFail(e) {
+    FC.err = e || new Error('fc');
+    FC.loading = false;
+    rdCityLabel();
+  }
+
+  function fcLoad(force) {
+    if (!currentCity()) return;
+    var g = fcGridNow();
+    if (!force && FC.frames.length && FC.key === g.key && (Date.now() - FC.at) < FC_TTL) {
+      rdApplyFc();
+      return;
+    }
+    if (!force && FC.loading) return;          /* 이미 다른 범위를 받는 중이면 기다린다 */
+    var tok = ++FC.token;
+    FC.loading = true;
+    FC.err = null;
+    rdCityLabel();
+    fetchJson(fcGridUrl(g), 12000).then(function (res) {
+      if (tok !== FC.token) return;
+      FC.loading = false;
+      try {
+        fcApply(g, res);
+        clearTimeout(FC.retry);
+        FC.retry = null;
+        FC.retryKey = '';
+        rdApplyFc();
+        fcWarm();
+      } catch (err) { fcFail(err); }
+    }, function (err) {
+      if (tok !== FC.token) return;
+      FC.loading = false;
+      fcFail(err);
+      /* 일시적인 끊김이면 같은 격자로 한 번만 조용히 다시 시도한다 */
+      if (FC.retryKey !== g.key) {
+        FC.retryKey = g.key;
+        clearTimeout(FC.retry);
+        FC.retry = setTimeout(function () { FC.retry = null; fcLoad(true); }, 2600);
+      }
+    });
+  }
+
+  var fcTimer = null;
+  function fcSchedule() {
+    clearTimeout(fcTimer);
+    fcTimer = setTimeout(function () { fcLoad(false); }, 780);
+  }
+
+  function fcIndex(f) {
+    for (var i = 0; i < FC.frames.length; i++) if (FC.frames[i] === f) return i;
+    return -1;
+  }
+
+  /* 한 시각의 격자를 이선형 보간해 부드러운 강수 히트맵 PNG로 굽는다 */
+  function fcPaint(f) {
+    var g = FC.grid;
+    if (!g || !f) return { url: '', dry: true, cov: 0 };
+    var top = fcMerc(g.lat1), bot = fcMerc(g.lat0);
+    var W = FC_W;
+    var H = clamp(Math.round(W * (top - bot) / ((g.lon1 - g.lon0) * Math.PI / 180)), 180, 720);
+    if (H > FC_W) {                      /* 세로가 긴 격자는 픽셀 수를 묶어 둔다 */
+      W = Math.max(240, Math.round(FC_W * FC_W / H));
+      H = clamp(Math.round(W * (top - bot) / ((g.lon1 - g.lon0) * Math.PI / 180)), 140, FC_W);
+    }
+    var cv = doc.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    var ctx = cv.getContext('2d');
+    if (!ctx) return { url: '', dry: true, cov: 0 };
+    var img = ctx.createImageData(W, H), d = img.data;
+    var nx = g.nx, ny = g.ny;
+    var i00, i10, i01, i11;
+    var colX = new Float64Array(W), colE = new Float64Array(W);
+    for (var px = 0; px < W; px++) {
+      var lon = g.lon0 + ((px + 0.5) / W) * (g.lon1 - g.lon0);
+      colX[px] = (lon - g.lon0) / g.dLon;
+      var ex = clamp(Math.min(px, W - 1 - px) / (W * 0.09), 0, 1);
+      colE[px] = ex * ex * (3 - 2 * ex);
+    }
+    var cov = 0, maxP = 0, maxS = 0;
+    for (var py = 0; py < H; py++) {
+      var lat = fcUnmerc(top + ((py + 0.5) / H) * (bot - top));
+      var gy = (lat - g.lat0) / g.dLat;
+      var y0 = Math.floor(gy), fy = gy - y0;
+      if (y0 > ny - 2) { y0 = ny - 2; fy = 1; }
+      if (y0 < 0) { y0 = 0; fy = 0; }
+      var r0 = y0 * nx, r1 = r0 + nx;
+      var ey = clamp(Math.min(py, H - 1 - py) / (H * 0.09), 0, 1);
+      ey = ey * ey * (3 - 2 * ey);
+      var o = py * W * 4;
+      for (var px2 = 0; px2 < W; px2++, o += 4) {
+        var gx = colX[px2];
+        var x0 = Math.floor(gx), fx = gx - x0;
+        if (x0 > nx - 2) { x0 = nx - 2; fx = 1; }
+        if (x0 < 0) { x0 = 0; fx = 0; }
+        i00 = r0 + x0; i10 = i00 + 1; i01 = r1 + x0; i11 = i01 + 1;
+        var w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
+        var pv = f.p[i00] * w00 + f.p[i10] * w10 + f.p[i01] * w01 + f.p[i11] * w11;
+        var sv = f.s[i00] * w00 + f.s[i10] * w10 + f.s[i01] * w01 + f.s[i11] * w11;
+        if (pv > maxP) maxP = pv;
+        if (sv > maxS) maxS = sv;
+        if (pv < 0.15 && sv < 0.06) continue;
+        var gr = clamp((pv - 0.15) / 0.45, 0, 1);
+        gr = gr * gr * (3 - 2 * gr);
+        var gs = clamp((sv - 0.06) / 0.20, 0, 1);
+        gs = gs * gs * (3 - 2 * gs);
+        var gk = gr > gs ? gr : gs;
+        if (gk < 0.03) continue;
+        var pr = f.r[i00] * w00 + f.r[i10] * w10 + f.r[i01] * w01 + f.r[i11] * w11;
+        var wat = pv + sv;                     /* 눈 1cm ≈ 물 1mm */
+        var kk = Math.log(1 + wat * 2.4) / FC_DEN;
+        if (kk > 1) kk = 1;
+        var ki = Math.round(kk * 256);
+        var al = FC_ALPHA[ki] * (0.62 + 0.0038 * pr) * gk * ey * colE[px2];
+        if (al > 0.86) al = 0.86;
+        if (al < 0.02) continue;
+        var L = (sv > 0.05 && sv >= pv * 0.45) ? FC_SNOW_L : FC_RAIN_L;
+        var ci = L === FC_SNOW_L ? Math.round(kk * 127) : Math.min(255, ki);
+        d[o] = L.r[ci]; d[o + 1] = L.g[ci]; d[o + 2] = L.b[ci]; d[o + 3] = Math.round(al * 255);
+        cov++;
+      }
+    }
+    try { ctx.putImageData(img, 0, 0); } catch (e) { return { url: '', dry: true, cov: 0 }; }
+    var url = '';
+    try { url = cv.toDataURL('image/png'); } catch (e) { url = ''; }
+    return { url: url, dry: (maxP < 0.2 && maxS < 0.12), cov: cov, maxP: maxP, maxS: maxS, w: W, h: H };
+  }
+
+  function fcEnsure(fi) {
+    var f = FC.frames[fi];
+    if (!f) return '';
+    if (FC.urls[fi] && FC.stat[fi]) return FC.urls[fi];
+    var r0 = fcPaint(f);
+    FC.urls[fi] = r0.url;
+    FC.stat[fi] = r0;
+    return r0.url;
+  }
+
+  /* 다음 시각들을 미리 구워 두면 재생이 끊기지 않는다 */
+  function fcWarm() {
+    var fr = FC.frames;
+    var i = 0;
+    FC.busy = true;
+    (function step() {
+      if (FC.frames !== fr) { FC.busy = false; return; }
+      while (i < fr.length && FC.urls[i]) i++;
+      if (i >= fr.length) { FC.busy = false; return; }
+      try { fcEnsure(i); } catch (e) { }
+      i++;
+      if (i < fr.length) setTimeout(step, 26);
+      else FC.busy = false;
+    })();
+  }
+
+  function fcShow(f) {
+    if (!RD.map || !window.L || !FC.grid) return false;
+    var fi = fcIndex(f);
+    if (fi < 0) return false;
+    var url = fcEnsure(fi);
+    if (!url) return false;
+    var g = FC.grid;
+    var b = L.latLngBounds([g.lat0, g.lon0], [g.lat1, g.lon1]);
+    if (!FC.layer) {
+      try {
+        FC.layer = L.imageOverlay(url, b, { opacity: 1, interactive: false, className: 'rd-heat', attribution: 'Open-Meteo 예측' });
+      } catch (e) { FC.layer = null; return false; }
+    } else {
+      FC.layer.setBounds(b);
+      FC.layer.setUrl(url);
+    }
+    if (!RD.map.hasLayer(FC.layer)) FC.layer.addTo(RD.map);
+    return true;
+  }
+
+  function fcHide() {
+    if (FC.layer && RD.map && RD.map.hasLayer(FC.layer)) {
+      try { RD.map.removeLayer(FC.layer); } catch (e) { }
+    }
+  }
+
+  /* 타임라인: 관측 프레임 뒤에 예측 프레임을 잇는다 */
+  function rdApplyFc() {
+    if (!FC.frames.length) return false;
+    RD.fcFrames = FC.frames;
+    var frames = (RD.obs || []).concat(FC.frames);
+    frames.sort(function (a, b) { return a.t - b.t; });
+    RD.frames = frames;
+    var r = $('#rdRange');
+    if (r) r.max = String(Math.max(0, RD.frames.length - 1));
+    var to = $('#rdTo');
+    if (to && RD.frames.length) to.textContent = rdHM(RD.frames[RD.frames.length - 1].t);
+    var from = $('#rdFrom');
+    if (from && RD.frames.length) from.textContent = rdHM(RD.frames[0].t);
+    rdCityLabel();
+    rdMarkNow();
+    var cur = RD.frames[RD.idx];
+    var want = RD.resumeOff || (cur && cur.src === 'om' ? cur.off : 0);
+    RD.resumeOff = 0;
+    if (want) {
+      for (var i = 0; i < RD.frames.length; i++) {
+        if (RD.frames[i].src === 'om' && RD.frames[i].off === want) { rdSetFrame(i); return true; }
+      }
+    }
+    if (cur && cur.src === 'om') { rdSetFrame(Math.max(0, (RD.obs || []).length - 1)); return true; }
+    if (RD.idx >= RD.frames.length) rdSetFrame(RD.frames.length - 1);
+    return true;
+  }
+
+  function rdMarkNow() {
+    var mark = $('#rdMark'), r = $('#rdRange');
+    if (!mark || !r) return;
+    var n = RD.frames.length, obs = (RD.obs || []).length;
+    if (!n || obs < 1 || n <= obs) { mark.hidden = true; return; }
+    mark.hidden = false;
+    var pct = (obs - 1) / (n - 1);
+    var w = r.clientWidth || 0;
+    mark.style.left = Math.round(7.5 + Math.max(0, w - 15) * pct) + 'px';
   }
 
   /* =========================================================
@@ -4070,7 +4499,7 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
 
     /* 레이더 컨트롤 */
     var rdRefresh = $('#rdRefresh');
-    if (rdRefresh) rdRefresh.addEventListener('click', function () { rdPlay(false); rdFetch(); });
+    if (rdRefresh) rdRefresh.addEventListener('click', function () { rdPlay(false); rdFetch(); fcLoad(true); });
     var rdRetry = $('#rdRetry');
     if (rdRetry) rdRetry.addEventListener('click', function () { rdFetch(); });
     var rdBtn = $('#rdPlay');
@@ -4295,7 +4724,7 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
     var rt = null;
     window.addEventListener('resize', function () {
       clearTimeout(rt);
-      rt = setTimeout(drawHourly, 140);
+      rt = setTimeout(function () { drawHourly(); rdMarkNow(); }, 140);
     });
     if (window.ResizeObserver) {
       var ro = new ResizeObserver(function () {
@@ -4382,7 +4811,9 @@ html.wx-fade .rd-btn, html.wx-fade .rd-badge, html.wx-fade .head{
       state: S, cache: function () { return memCache; }, current: function () { return current; },
       load: load, fetchCity: fetchCity, saveState: saveState, reloadFromStore: reloadFromStore,
       theme: function (m) { applyTheme(m, { silent: true }); }, themeMode: function () { return themeMode; }, renderLife: renderLife, indices: indices,
-      sky: function () { updateDynamicSky(true); return skySpecNow(); }, radar: RD, news: function () { return newsDoc; }
+      sky: function () { updateDynamicSky(true); return skySpecNow(); }, radar: RD, news: function () { return newsDoc; },
+      forecast: function () { return FC; }, frame: function (i) { rdSetFrame(i); },
+      fcPaint: function (i) { return fcPaint(FC.frames[i]); }
     };
   }
 })();
