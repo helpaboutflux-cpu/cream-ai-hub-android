@@ -490,7 +490,12 @@
     '.lkpop-kv b{font-weight:800;font-family:var(--lp-mono);font-size:10.5px;letter-spacing:.02em;}',
     '.lkpop-urow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11px;}',
     '.lkpop-urow span{color:var(--lp-muted);font-weight:600;}',
+    '.lkpop-urow__lbl{display:inline-flex;align-items:center;gap:5px;}',
+    '.lkpop-ic{width:11px;height:11px;flex:none;opacity:.7;}',
     '.lkpop-urow b{font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}',
+    '.lkpop-urow b[data-tone="live"]{opacity:.55;}',
+    '.lkpop-urow b[data-tone="ok"]{font-weight:700;}',
+    '.lkpop-urow b[data-tone="warn"]{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;}',
     '.lkpop-track{height:5px;margin:8px 0 0;background:var(--lp-line);overflow:hidden;}',
     '.lkpop-track i{display:block;height:100%;width:0;background:var(--lp-ink);transition:width .45s cubic-bezier(.22,1,.36,1);}',
     '.lkpop.is-full .lkpop-track{background:repeating-linear-gradient(135deg,var(--lp-ink) 0 3px,transparent 3px 6px);}',
@@ -520,6 +525,7 @@
 
   var ICON_LK_SMALL = '<svg viewBox="0 0 46 32" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true"><path d="M3 5V27H17"></path><path d="M24 5V27"></path><path d="M42 5L26.5 16L42 27"></path></svg>';
   var ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+  var ICON_SYNC = '<svg class="lkpop-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5A8 8 0 0 0 6.3 6.3L4 8.5"></path><path d="M4 4.5v4h4"></path><path d="M4 12.5a8 8 0 0 0 13.7 5.2L20 15.5"></path><path d="M20 19.5v-4h-4"></path></svg>';
 
   var popLayer = null;
 
@@ -551,6 +557,64 @@
     return (link && link.ts) ? '다시 연결 필요' : '연결 안 됨';
   }
 
+  /* ---------------- 자동 동기화 (lemon-gdrive.js) ---------------- */
+  /* 연결한 적이 있는 기기에서만 엔진을 받아 온다 — 연결하지 않은 방문자는 추가로 받는 것이 없다. */
+  var gdriveLoading = false, gdriveDone = false;
+  function gdriveLinked() {
+    var link = null;
+    try { link = JSON.parse(localStorage.getItem('lemon_gdrive_link_v1') || 'null'); } catch (e) { }
+    return !!(link && (link.ts || link.folderId));
+  }
+  function loadGDrive() {
+    if (window.LemonGDrive) { gdriveDone = true; return; }
+    if (gdriveDone || gdriveLoading || !gdriveLinked()) return;
+    gdriveLoading = true;
+    var s = doc.createElement('script');
+    s.src = cloudBase() + 'lemon-gdrive.js';
+    s.async = true;
+    s.onload = function () { gdriveLoading = false; gdriveDone = true; paintSyncState(); };
+    s.onerror = function () { gdriveLoading = false; };
+    (doc.head || doc.documentElement).appendChild(s);
+  }
+
+  function hhmm(ts) {
+    try {
+      var d = new Date(Number(ts));
+      var h = String(d.getHours()), m = String(d.getMinutes());
+      return (h.length < 2 ? '0' + h : h) + ':' + (m.length < 2 ? '0' + m : m);
+    } catch (e) { return ''; }
+  }
+
+  /* 계정 팝오버에 은은하게 보이는 자동 동기화 상태 */
+  function syncInfo() {
+    var g = window.LemonGDrive;
+    if (!gdriveLinked()) return { label: '연결 안 됨', tone: '' };
+    if (!g || !g.autoState) return { label: '확인 중', tone: '' };
+    var a = null;
+    try { a = g.autoState(); } catch (e) { a = null; }
+    if (!a) return { label: '-', tone: '' };
+    if (!a.enabled) return { label: '꺼짐', tone: '' };
+    if (a.state === 'syncing') return { label: '동기화 중', tone: 'live' };
+    if (a.state === 'restoring') return { label: '불러오는 중', tone: 'live' };
+    if (a.state === 'need-reconnect') return { label: '재연결 필요', tone: 'warn' };
+    if (a.state === 'error') return { label: '잠시 뒤 재시도', tone: 'warn' };
+    var t = Number(a.lastAutoAt || a.lastBackupAt || a.lastSyncedAt) || 0;
+    if (t) {
+      if (Date.now() - t < 90000) return { label: a.push ? '방금 백업됨' : '방금 동기화됨', tone: 'ok' };
+      return { label: '동기화됨 · ' + hhmm(t), tone: '' };
+    }
+    return { label: a.push ? '켜짐 · 변경 시 자동 백업' : '켜짐 · 접속 시 불러오기', tone: '' };
+  }
+
+  function paintSyncState() {
+    if (!popLayer) return;
+    var el = popLayer.querySelector('[data-pop-sync]');
+    if (!el) return;
+    var info = syncInfo();
+    el.textContent = info.label;
+    el.setAttribute('data-tone', info.tone || '');
+  }
+
   function popMarkup(user) {
     var mail = String((user && user.email) || 'LK ID');
     var ok = !!(user && user.email_confirmed_at);
@@ -563,6 +627,7 @@
       '<div class="lkpop-body">' +
       '<div class="lkpop-kv"><span>계정 상태</span><b>' + (ok ? '이메일 인증 완료' : '이메일 인증 대기') + '</b></div>' +
       '<div class="lkpop-urow"><span>Drive 개인 백업</span><b data-pop-gd>-</b></div>' +
+      '<div class="lkpop-urow"><span class="lkpop-urow__lbl">' + ICON_SYNC + '자동 동기화</span><b data-pop-sync>-</b></div>' +
       '<p class="lkpop-msg" data-pop-msg role="status" aria-live="polite"></p>' +
       '<a class="lkpop-btn lkpop-btn--solid" href="drive.html#cloud">Google Drive 백업 · 복원</a>' +
       '<a class="lkpop-btn" data-pop-settings href="' + esc(authHref(true)) + '">LK ID 계정 설정</a>' +
@@ -623,6 +688,8 @@
 
     var gdEl = box.querySelector('[data-pop-gd]');
     if (gdEl) gdEl.textContent = gdLinkState();
+    paintSyncState();
+    loadGDrive();
 
     /* 계정 설정 링크는 팝오버를 닫은 뒤 이동한다(겹친 레이어가 클릭을 가로채지 않도록). */
     var toSettings = box.querySelector('[data-pop-settings]');
@@ -782,9 +849,16 @@
     if (!mounted) {
       mounted = true;
       loadCloud();
+      loadGDrive();
       window.addEventListener('storage', function (e) {
         if (e && (e.key === K_CFG || e.key === K_ADS)) refresh();
       });
+      /* 자동 동기화 상태가 바뀌면 계정 팝오버의 표시도 따라 바뀐다. */
+      ['lemongdrive:sync', 'lemongdrive:backup', 'lemongdrive:auto-backup', 'lemongdrive:restored',
+        'lemongdrive:change', 'lemongdrive:restore-error', 'lemongdrive:backup-error',
+        'lemon-gdrive:sync', 'lemon-gdrive:backup', 'lemon-gdrive:restored'].forEach(function (n) {
+          window.addEventListener(n, paintSyncState);
+        });
       doc.addEventListener('lemon:theme', renderNotice);
     }
   }

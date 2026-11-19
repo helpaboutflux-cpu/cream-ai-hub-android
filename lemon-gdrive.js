@@ -18,6 +18,15 @@
    · 백업 제외 : 비밀번호 금고(lemon_pass_vault) · AI API 키(flux_notebook_gemini_key)
                  · 이 엔진의 연결 토큰(lemon_gdrive_*)
    · 복원은 덮어쓰지 않는다 — 이 기기에 없는 항목만 채운다.
+
+   자동 동기화 (2026-11)
+   · 접속 시  : 연결된 기기라면 페이지를 열 때 Drive 의 스냅샷 메타(modifiedTime)만
+                가볍게 확인하고, 로컬보다 새 것일 때만 복원한다. (20초 쿨다운 · 탭 간 잠금)
+                토큰이 만료됐으면 silent(prompt:'') 갱신을 20분에 1회만 조용히 시도한다.
+   · 변경 시  : 백업 대상 localStorage·IndexedDB 에 쓰기가 생기면 5초 디바운스 뒤
+                backup() 을 자동 실행한다. (복원 중 쓰기는 isRestoring 으로 막는다)
+   · 설정     : lemon_gdrive_sync_v1 { pull, push, ... } — 기본 둘 다 켜짐.
+   · 용량     : quota() — about.get(전체 드라이브) + Soft Hub Backup 폴더 합산.
    ============================================================ */
 (function () {
   'use strict';
@@ -44,6 +53,8 @@
   var K_LINK = 'lemon_gdrive_link_v1';      /* {folderId, driveFolderId, ts} */
   var K_LAST = 'lemon_gdrive_last_v1';      /* 마지막 백업 결과 */
   var K_LAST_RESTORE = 'lemon_gdrive_restore_v1';
+  var K_SYNC = 'lemon_gdrive_sync_v1';      /* 자동 동기화 설정·상태 */
+  var K_LOCK = 'lemon_gdrive_synclock_v1';  /* 탭 간 동시 실행 방지 잠금 */
 
   /* ---- 백업에서 빼는 내부·민감 키 ---- */
   var SKIP = {
@@ -55,6 +66,7 @@
     lemon_shares_v1: 1, cream_theme: 1, lemon_anim_mode: 1,
     lemon_gdrive_token_v1: 1, lemon_gdrive_link_v1: 1,
     lemon_gdrive_last_v1: 1, lemon_gdrive_restore_v1: 1,
+    lemon_gdrive_sync_v1: 1, lemon_gdrive_synclock_v1: 1,
     /* 민감 정보 — Drive 로도 올리지 않는다 (이 기기에만) */
     lemon_pass_vault: 1, flux_notebook_gemini_key: 1
   };
@@ -88,6 +100,18 @@
   var DRIVE_VER = 1;
 
   var busy = false;
+  var isRestoring = false;                  /* 복원 중 쓰기는 자동 백업에서 제외한다 */
+
+  /* ---- 자동 동기화 ---- */
+  var SYNC_COOLDOWN = 20 * 1000;            /* 연속 페이지 이동 시 메타 확인 간격 */
+  var REMOTE_TOL = 2000;                    /* 서버 시계 오차 허용 */
+  var AUTO_DEBOUNCE = 5000;                 /* 변경 → 백업 지연 */
+  var AUTO_MIN_GAP = 25 * 1000;             /* 자동 백업 최소 간격 (그 사이 변경은 모아서 한 번) */
+  var SILENT_GAP = 20 * 60 * 1000;          /* silent 토큰 갱신 최소 간격 */
+  var LOCK_TTL = 40 * 1000;
+  var autoTimer = null, autoPending = false, autoRunning = false;
+  var pullP = null, silentFlowP = null;
+  var autoBackups = 0, autoRestores = 0;
 
   /* ---------------- 작은 도구 ---------------- */
   function readJSON(key, fb) {
@@ -115,7 +139,9 @@
     return (n / (1024 * 1024)).toFixed(1) + ' MB';
   }
   function emit(name, detail) {
+    /* 두 이름을 함께 알린다 — lemongdrive:* (기존) · lemon-gdrive:* (문서 표기) */
     try { window.dispatchEvent(new CustomEvent('lemongdrive:' + name, { detail: detail || {} })); } catch (e) { }
+    try { window.dispatchEvent(new CustomEvent('lemon-gdrive:' + name, { detail: detail || {} })); } catch (e) { }
   }
   function gerr(code, detail) {
     var e = new Error(String(code || 'error'));
@@ -138,6 +164,7 @@
   function saveToken(access, expiresIn) {
     var sec = Number(expiresIn) || 3600;
     writeJSON(K_TOKEN, { access_token: String(access), expires_at: Date.now() + sec * 1000 });
+    quotaCache = null;
     var link = readJSON(K_LINK, {}) || {};
     link.ts = Date.now();
     link.folder = FOLDER_NAME;
@@ -145,6 +172,11 @@
   }
   function dropToken() { drop(K_TOKEN); }
   function linkRec() { return readJSON(K_LINK, null); }
+  /* 연결한 적이 있는 기기인가 — 토큰 갱신 시각(ts) 또는 백업 폴더 id 가 있으면 그렇다. */
+  function isLinked() {
+    var l = linkRec();
+    return !!(l && (l.ts || l.folderId));
+  }
   function saveLink(patch) {
     var cur = readJSON(K_LINK, {}) || {};
     Object.keys(patch || {}).forEach(function (k) { cur[k] = patch[k]; });
@@ -244,6 +276,7 @@
     return p.then(function () {
       dropToken();
       drop(K_LINK);
+      quotaCache = null;
       emit('change', { connected: false });
       return { ok: true };
     });
@@ -367,7 +400,7 @@
       'Content-Type: ' + (meta.mimeType || 'application/octet-stream') + '\r\n\r\n';
     var tail = '\r\n--' + boundary + '--';
     var body = new Blob([head, blob, tail]);
-    return gfetch(UPLOAD + '?uploadType=multipart&fields=' + encodeURIComponent('id,name,size'), {
+    return gfetch(UPLOAD + '?uploadType=multipart&fields=' + encodeURIComponent('id,name,size,modifiedTime'), {
       method: 'POST',
       headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
       body: body
@@ -375,7 +408,7 @@
   }
 
   function updateFileContent(fileId, blob, mime) {
-    return gfetch(UPLOAD + '/' + fileId + '?uploadType=media&fields=' + encodeURIComponent('id,name,size'), {
+    return gfetch(UPLOAD + '/' + fileId + '?uploadType=media&fields=' + encodeURIComponent('id,name,size,modifiedTime'), {
       method: 'PATCH',
       headers: { 'Content-Type': mime || 'application/octet-stream' },
       body: blob
@@ -1284,9 +1317,9 @@
         parentId: rootId,
         blob: blob,
         mime: 'application/json'
-      }).then(function () {
+      }).then(function (up) {
         progress('snapshot', 1, 1, '완료');
-        return { snapBytes: blob.size };
+        return { snapBytes: blob.size, remoteAt: Date.parse((up && up.modifiedTime) || '') || 0 };
       });
     }).then(function (r) {
       busy = false;
@@ -1297,6 +1330,13 @@
         skippedKeys: result.skippedKeys
       };
       writeJSON(K_LAST, rec);
+      /* 백업을 마쳤으면 이 시점의 원격과 같다고 기록한다 — 다음 접속 때 헛되이 복원하지 않는다. */
+      var syncedAt = Date.now();
+      quotaCache = null;                       /* 방금 올린 내용이 용량 카드에 바로 반영되게 */
+      patchSync({
+        last_backup_at: rec.ts, last_synced_at: syncedAt,
+        last_remote_at: (r && r.remoteAt) || syncedAt, error: ''
+      });
       result.ok = true;
       result.ts = rec.ts;
       result.record = rec;
@@ -1376,6 +1416,7 @@
     if (!token()) return Promise.resolve({ ok: false, error: 'not-linked' });
     if (busy) return Promise.resolve({ ok: false, error: 'busy' });
     busy = true;
+    isRestoring = true;                 /* 복원 중 쓰기로 자동 백업이 돌지 않게 */
     progress('find', 0, 0, '백업을 찾는 중');
     var out = {
       ok: false, keys: 0, kept: 0, nodes: 0, files: 0, missing: 0, total: 0,
@@ -1445,23 +1486,483 @@
       });
     }).then(function () {
       busy = false;
+      isRestoring = false;
+      var changed = (Number(out.keys) || 0) + (Number(out.nodes) || 0) +
+        (Number(out.files) || 0) + (Number(out.records) || 0);
       var rec = {
         ts: Date.now(), keys: out.keys, kept: out.kept, nodes: out.nodes,
         files: out.files, missing: out.missing, total: out.total,
         dbs: out.dbs, records: out.records, keptRecords: out.keptRecords,
-        skippedRecords: out.skippedRecords, missingMedia: out.missingMedia
+        skippedRecords: out.skippedRecords, missingMedia: out.missingMedia,
+        changed: changed
       };
       writeJSON(K_LAST_RESTORE, rec);
+      /* 복원을 마쳤으면 이 시점의 원격을 확인한 것으로 기록한다(다음 접속에 다시 받지 않는다) */
+      quotaCache = null;
+      patchSync({ last_restore_at: rec.ts, last_synced_at: Date.now(), last_remote_at: 0, error: '' });
       out.ok = true;
       out.ts = rec.ts;
-      emit('restored', rec);
+      out.changed = changed;
+      /* 실제로 이 기기의 데이터가 바뀌었을 때만 알린다 */
+      if (changed > 0) emit('restored', rec);
       progress('done', 1, 1, '완료');
       return out;
     }, function (e) {
       busy = false;
+      isRestoring = false;
       var code = (e && e.code) || 'restore-failed';
       emit('restore-error', { error: code });
       return { ok: false, error: code, detail: String((e && (e.detail || e.message)) || '') };
+    });
+  }
+
+  /* ============================================================
+     자동 동기화 — 설정·상태
+     ============================================================ */
+  var SYNC_DEF = {
+    pull: true, push: true,
+    last_check_at: 0,        /* 마지막으로 Drive 메타를 확인한 시각 */
+    last_synced_at: 0,       /* 로컬과 Drive 가 같다고 본 시각 */
+    last_remote_at: 0,       /* 그때 Drive 스냅샷의 modifiedTime */
+    last_backup_at: 0, last_auto_at: 0, last_restore_at: 0,
+    silent_at: 0,            /* 마지막 silent 토큰 갱신 시도 */
+    state: 'idle', state_at: 0, error: ''
+  };
+
+  function syncRec() {
+    var r = readJSON(K_SYNC, null), out = {};
+    Object.keys(SYNC_DEF).forEach(function (k) {
+      out[k] = (r && r[k] !== undefined && r[k] !== null) ? r[k] : SYNC_DEF[k];
+    });
+    return out;
+  }
+  function patchSync(patch) {
+    var cur = syncRec();
+    Object.keys(patch || {}).forEach(function (k) { cur[k] = patch[k]; });
+    if (patch && patch.state !== undefined) cur.state_at = Date.now();
+    writeJSON(K_SYNC, cur);
+    emit('sync', autoState());
+    return cur;
+  }
+
+  /* 화면(lemon-site.js·auth.html)이 읽는 자동 동기화 상태 */
+  function autoState() {
+    var s = syncRec();
+    var linked = isLinked();
+    var connected = !!token();
+    var enabled = !!(s.pull || s.push);
+    var state = String(s.state || 'idle');
+    if (!enabled) state = 'off';
+    else if (!linked) state = 'off';
+    else if (!connected && state !== 'syncing' && state !== 'restoring') state = 'need-reconnect';
+    return {
+      pull: !!s.pull, push: !!s.push, enabled: enabled,
+      connected: connected, wasLinked: linked,
+      state: state, error: s.error || '',
+      lastCheckAt: Number(s.last_check_at) || 0,
+      lastSyncedAt: Number(s.last_synced_at) || 0,
+      lastRemoteAt: Number(s.last_remote_at) || 0,
+      lastBackupAt: Number(s.last_backup_at) || 0,
+      lastAutoAt: Number(s.last_auto_at) || 0,
+      lastRestoreAt: Number(s.last_restore_at) || 0,
+      stateAt: Number(s.state_at) || 0,
+      autoBackups: autoBackups, autoRestores: autoRestores,
+      busy: busy || isRestoring
+    };
+  }
+
+  /* 사용자가 켜고 끄는 자동 동기화 (기본 ON)
+     opts: { pull: 접속 시 자동 불러오기, push: 변경 시 자동 백업 } */
+  function setAuto(opts) {
+    opts = opts || {};
+    var cur = syncRec();
+    var pull = opts.pull === undefined ? !!cur.pull : !!opts.pull;
+    var push = opts.push === undefined ? !!cur.push : !!opts.push;
+    var linked = isLinked();
+    var state = (!pull && !push) ? 'off' : (!linked ? 'off' : (token() ? 'idle' : 'need-reconnect'));
+    patchSync({ pull: pull, push: push, state: state, error: '' });
+    if (!push) { autoPending = false; }
+    if (pull && token() && linked) setTimeout(function () { autoPull({ reason: 'enabled' }); }, 400);
+    return autoState();
+  }
+
+  /* ---- 탭 간 동시 실행 방지 ---- */
+  function lockHeld() {
+    var cur = readJSON(K_LOCK, null);
+    return !!(cur && cur.ts && (Date.now() - Number(cur.ts)) < LOCK_TTL);
+  }
+  function lockAcquire() {
+    if (lockHeld()) return false;
+    writeJSON(K_LOCK, { ts: Date.now(), id: Math.random().toString(36).slice(2, 10) });
+    return true;
+  }
+  function lockRelease() { drop(K_LOCK); }
+  try {
+    window.addEventListener('pagehide', lockRelease);
+    window.addEventListener('beforeunload', lockRelease);
+  } catch (e) { }
+
+  /* ---- 토큰: 있으면 그대로, 만료됐고 연동한 적이 있으면 silent 갱신 1회 ---- */
+  function ensureToken(opts) {
+    opts = opts || {};
+    var t = token();
+    if (t) return Promise.resolve({ ok: true, token: t });
+    if (!isLinked()) return Promise.resolve({ ok: false, error: 'not-linked', state: 'off' });
+    var s = syncRec();
+    var now = Date.now();
+    if (!opts.force && s.silent_at && now - Number(s.silent_at) < SILENT_GAP) {
+      return Promise.resolve({ ok: false, error: 'need-reconnect', state: 'need-reconnect' });
+    }
+    patchSync({ silent_at: now });
+    if (silentFlowP) return silentFlowP;
+    silentFlowP = (gisReady() ? Promise.resolve() : loadGis()).then(function () {
+      return startFlow({ silent: true });
+    }, function () {
+      return { ok: false, error: 'gis-load-failed' };
+    }).then(function (r) {
+      silentFlowP = null;
+      if (r && r.ok && token()) return { ok: true, token: token() };
+      patchSync({ state: 'need-reconnect', error: String((r && r.error) || 'silent-failed') });
+      return { ok: false, error: (r && r.error) || 'silent-failed', state: 'need-reconnect' };
+    }, function (e) {
+      silentFlowP = null;
+      patchSync({ state: 'need-reconnect', error: String((e && e.code) || 'silent-failed') });
+      return { ok: false, error: (e && e.code) || 'silent-failed', state: 'need-reconnect' };
+    });
+    return silentFlowP;
+  }
+
+  /* ---- Drive 쪽 스냅샷 메타만 확인 (파일은 받지 않는다) ---- */
+  function remoteHead() {
+    var link = linkRec() || {};
+    function headIn(rootId) {
+      return findFile(SNAP_NAME, rootId).then(function (f) {
+        if (!f || !f.id) return null;
+        return {
+          folderId: rootId, fileId: f.id,
+          modifiedAt: Date.parse(f.modifiedTime || '') || 0,
+          size: Number(f.size || 0)
+        };
+      }, function () { return null; });
+    }
+    if (link.folderId) {
+      return gfetch(API + '/' + link.folderId + '?fields=' + encodeURIComponent('id,trashed'))
+        .then(function (d) {
+          if (d && d.id && !d.trashed) return headIn(link.folderId);
+          return Promise.resolve('retry');
+        }, function () { return 'retry'; })
+        .then(function (r) {
+          if (r !== 'retry') return r;
+          return findFolder(FOLDER_NAME, null).then(function (f) {
+            if (!f || !f.id) return null;
+            saveLink({ folderId: f.id });
+            return headIn(f.id);
+          }, function () { return null; });
+        });
+    }
+    return findFolder(FOLDER_NAME, null).then(function (f) {
+      if (!f || !f.id) return null;
+      saveLink({ folderId: f.id });
+      return headIn(f.id);
+    }, function () { return null; });
+  }
+
+  /* 이 기기에 백업 대상 데이터가 하나라도 있는가 */
+  function hasLocalData() {
+    if (keyList().length) return Promise.resolve(true);
+    if (!window.indexedDB || !indexedDB.databases) return Promise.resolve(false);
+    return indexedDB.databases().then(function (list) {
+      return (list || []).some(function (d) {
+        if (!d || !d.name) return false;
+        return d.name === DRIVE_DB || IDB_NAMES.indexOf(d.name) >= 0;
+      });
+    }, function () { return false; });
+  }
+
+  /* 접속 시 자동 복원 — 최신이면 아무것도 받지 않는다. */
+  function autoPull(opts) {
+    opts = opts || {};
+    var s = syncRec();
+    var link = linkRec() || {};
+    if (!isLinked()) return Promise.resolve({ ok: false, error: 'not-linked', state: 'off' });
+    if (!s.pull && !opts.force) return Promise.resolve({ ok: false, error: 'auto-off', state: 'off' });
+    if (isRestoring || busy) return Promise.resolve({ ok: false, error: 'busy' });
+    if (pullP && !opts.force) return pullP;
+    var now = Date.now();
+    if (!opts.force && s.last_check_at && (now - Number(s.last_check_at)) < SYNC_COOLDOWN) {
+      return Promise.resolve({ ok: true, skipped: 'cooldown', restored: false });
+    }
+    if (!lockAcquire()) return Promise.resolve({ ok: true, skipped: 'locked', restored: false });
+
+    function done(res) { pullP = null; lockRelease(); return res; }
+
+    pullP = ensureToken(opts).then(function (tok) {
+      if (!tok.ok) {
+        patchSync({ last_check_at: now, state: tok.state || 'need-reconnect', error: tok.error || '' });
+        return { ok: false, error: tok.error || 'not-linked', state: tok.state || 'need-reconnect' };
+      }
+      patchSync({ last_check_at: now, state: 'syncing', error: '' });
+      return remoteHead().then(function (head) {
+        if (!head) {
+          patchSync({ state: 'synced', last_check_at: now });
+          return { ok: true, restored: false, reason: 'no-backup' };
+        }
+        return hasLocalData().then(function (local) {
+          var remoteAt = Number(head.modifiedAt) || 0;
+          var base = Number(s.last_remote_at) || Number(s.last_synced_at) || 0;   /* 마지막으로 본 원격 시각 */
+          var newer = !base || (remoteAt && remoteAt > base + REMOTE_TOL);
+          if (local && !newer) {
+            patchSync({ state: 'synced', last_check_at: now, last_remote_at: remoteAt });
+            return { ok: true, restored: false, reason: 'up-to-date', remoteAt: remoteAt };
+          }
+          return autoRestore(head);
+        });
+      });
+    }).then(done, function (e) {
+      var code = (e && e.code) || 'sync-failed';
+      patchSync({ state: code === 'not-linked' ? 'need-reconnect' : 'error', error: code });
+      return done({ ok: false, error: code });
+    });
+    return pullP;
+  }
+
+  function autoRestore(head) {
+    var remoteAt = Number(head && head.modifiedAt) || 0;
+    patchSync({ state: 'restoring' });
+    autoRestores++;
+    return restore({ auto: true }).then(function (r) {
+      if (r && r.ok) {
+        patchSync({
+          state: 'synced', error: '', last_synced_at: Date.now(),
+          last_remote_at: remoteAt || Date.now(), last_restore_at: Date.now()
+        });
+        return { ok: true, restored: !!r.changed, result: r };
+      }
+      var code = (r && r.error) || 'restore-failed';
+      patchSync({ state: code === 'not-linked' ? 'need-reconnect' : (code === 'no-backup' ? 'synced' : 'error'), error: code });
+      return { ok: false, error: code };
+    });
+  }
+
+  /* ---- 변경 감지 → 자동 백업 ---- */
+  function isBackupKey(k) {
+    k = String(k === null || k === undefined ? '' : k);
+    if (!k) return false;
+    if (/^lemon_gdrive_/i.test(k)) return false;      /* 이 엔진의 상태·토큰 */
+    if (/^lemon_ui_/i.test(k)) return false;          /* 화면 임시 상태 */
+    if (SKIP[k]) return false;                         /* 테마·세션·민감 키 */
+    return PREFIX.test(k) || EXPLICIT_KEYS[k] || /^cream_/i.test(k);
+  }
+  function isBackupDb(store) {
+    try {
+      var tx = store && store.transaction;
+      var db = tx && tx.db;
+      var name = db && db.name;
+      if (!name) return false;
+      return name === DRIVE_DB || IDB_NAMES.indexOf(name) >= 0;
+    } catch (e) { return false; }
+  }
+
+  function scheduleAutoBackup(reason) {
+    if (isRestoring) return;
+    var s = syncRec();
+    var link = linkRec() || {};
+    if (!s.push) return;
+    if (!isLinked()) return;                           /* 연결한 적이 없으면 조용히 넘어간다 */
+    if (!token()) {
+      if (String(s.state) !== 'need-reconnect') patchSync({ state: 'need-reconnect' });
+      return;
+    }
+    if (autoRunning) { autoPending = true; return; }
+    if (autoTimer) return;
+    var wait = AUTO_DEBOUNCE;
+    var since = Date.now() - (Number(s.last_auto_at) || 0);
+    if (since < AUTO_MIN_GAP) wait = Math.max(wait, AUTO_MIN_GAP - since);
+    autoTimer = setTimeout(function () {
+      autoTimer = null;
+      runAutoBackup(reason);
+    }, wait);
+  }
+
+  function runAutoBackup(reason) {
+    if (isRestoring) return Promise.resolve({ ok: false, error: 'restoring' });
+    var s = syncRec();
+    if (!s.push) return Promise.resolve({ ok: false, error: 'auto-off' });
+    if (!token()) return Promise.resolve({ ok: false, error: 'not-linked' });
+    if (busy) {                                          /* 수동 작업이 끝나면 한 번 더 */
+      autoPending = true;
+      if (!autoTimer) autoTimer = setTimeout(function () { autoTimer = null; runAutoBackup(reason); }, 3000);
+      return Promise.resolve({ ok: false, error: 'busy' });
+    }
+    if (autoRunning) { autoPending = true; return Promise.resolve({ ok: false, error: 'busy' }); }
+    autoRunning = true;
+    patchSync({ state: 'syncing' });
+    return backup({ auto: true }).then(function (r) {
+      autoRunning = false;
+      if (r && r.ok) {
+        autoBackups++;
+        var now = Date.now();
+        patchSync({ state: 'synced', error: '', last_synced_at: now, last_remote_at: now, last_auto_at: now });
+        emit('auto-backup', { ts: r.ts, bytes: r.bytes, reason: reason || '' });
+      } else {
+        var code = (r && r.error) || 'backup-failed';
+        patchSync({ state: code === 'not-linked' ? 'need-reconnect' : (code === 'busy' ? 'idle' : 'error'), error: code });
+      }
+      if (autoPending) { autoPending = false; scheduleAutoBackup('queued'); }
+      return r || { ok: false };
+    }, function (e) {
+      autoRunning = false;
+      patchSync({ state: 'error', error: (e && e.code) || 'backup-failed' });
+      if (autoPending) { autoPending = false; scheduleAutoBackup('queued'); }
+      return { ok: false, error: (e && e.code) || 'backup-failed' };
+    });
+  }
+
+  function notifyChange(reason) {
+    if (isRestoring) return;                            /* 복원이 만든 쓰기는 무시 */
+    if (busy) { autoPending = true; return; }
+    scheduleAutoBackup(reason);
+  }
+
+  /* localStorage 후킹 — 이 엔진이 백업하지 않는 키는 건드리지 않는다. */
+  function hookStorage() {
+    try {
+      var sp = window.Storage && Storage.prototype;
+      if (!sp || sp.__lemonGdHooked) return;
+      sp.__lemonGdHooked = true;
+      var set0 = sp.setItem, rem0 = sp.removeItem, clr0 = sp.clear;
+      sp.setItem = function (k, v) {
+        var r = set0.apply(this, arguments);
+        try { if (isBackupKey(k)) notifyChange('ls:set'); } catch (e) { }
+        return r;
+      };
+      sp.removeItem = function (k) {
+        var r = rem0.apply(this, arguments);
+        try { if (isBackupKey(k)) notifyChange('ls:remove'); } catch (e) { }
+        return r;
+      };
+      sp.clear = function () {
+        var r = clr0.apply(this, arguments);
+        try { notifyChange('ls:clear'); } catch (e) { }
+        return r;
+      };
+    } catch (e) { }
+  }
+
+  /* IndexedDB 후킹 — Flux Drive 와 서비스 저장소에 쓰기가 생기면 알린다. */
+  function hookIdb() {
+    try {
+      if (!window.IDBObjectStore || !IDBObjectStore.prototype) return;
+      var proto = IDBObjectStore.prototype;
+      if (proto.__lemonGdHooked) return;
+      proto.__lemonGdHooked = true;
+      ['put', 'add', 'delete', 'clear'].forEach(function (m) {
+        var orig = proto[m];
+        if (typeof orig !== 'function') return;
+        proto[m] = function () {
+          var r = orig.apply(this, arguments);
+          try { if (isBackupDb(this)) notifyChange('idb:' + m); } catch (e) { }
+          return r;
+        };
+      });
+    } catch (e) { }
+  }
+
+  /* ============================================================
+     Drive 저장 용량 — 전체 드라이브 + Soft Hub 백업 사용량
+     ============================================================ */
+  var quotaCache = null;
+
+  function aboutStorage() {
+    var url = 'https://www.googleapis.com/drive/v3/about?fields=' + encodeURIComponent('storageQuota,user');
+    return gfetch(url).then(function (d) {
+      var q = (d && d.storageQuota) || null;
+      if (!q) return { ok: false, error: 'no-quota' };
+      return {
+        ok: true,
+        limit: Number(q.limit || 0),
+        usage: Number(q.usage || 0),
+        usageInDrive: Number(q.usageInDrive || 0),
+        usageInDriveTrash: Number(q.usageInDriveTrash || 0)
+      };
+    }, function (e) {
+      /* drive.file 범위 정책상 about.get 이 403 이어도 화면은 그대로 쓴다 */
+      return { ok: false, error: (e && e.code) || 'about-failed', status: Number((e && e.status) || 0) };
+    });
+  }
+
+  function listChildrenAll(parentId, pageToken) {
+    var q = "'" + String(parentId) + "' in parents and trashed=false";
+    var u = API + '?q=' + encodeURIComponent(q) +
+      '&fields=' + encodeURIComponent('nextPageToken,files(id,name,size,mimeType,modifiedTime)') +
+      '&pageSize=1000&spaces=drive' + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+    return gfetch(u).then(function (d) {
+      var files = (d && d.files) || [];
+      var next = d && d.nextPageToken;
+      if (!next) return files;
+      return listChildrenAll(parentId, next).then(function (more) { return files.concat(more); });
+    });
+  }
+
+  function folderUsage(folderId, depth, acc) {
+    if (!folderId || depth > 5 || acc.folders > 400) return Promise.resolve(acc);
+    return listChildrenAll(folderId).then(function (files) {
+      var chain = Promise.resolve();
+      (files || []).forEach(function (f) {
+        if (!f) return;
+        if (f.mimeType === 'application/vnd.google-apps.folder') {
+          acc.folders++;
+          chain = chain.then(function () { return folderUsage(f.id, depth + 1, acc); });
+        } else {
+          acc.files++;
+          acc.bytes += Number(f.size || 0);
+        }
+      });
+      return chain;
+    }, function () { acc.errors = (acc.errors || 0) + 1; }).then(function () { return acc; });
+  }
+
+  /* opts.force = true 면 캐시를 버리고 다시 센다 */
+  function quota(opts) {
+    opts = opts || {};
+    if (!token()) return Promise.resolve({ ok: false, error: 'not-linked' });
+    var now = Date.now();
+    if (!opts.force && quotaCache && (now - quotaCache.at) < 60000) return Promise.resolve(quotaCache);
+    var rootUsed = '';
+    return aboutStorage().then(function (about) {
+      var link = linkRec() || {};
+      var rootP = link.folderId
+        ? gfetch(API + '/' + link.folderId + '?fields=' + encodeURIComponent('id,trashed'))
+          .then(function (d) { return (d && d.id && !d.trashed) ? link.folderId : ''; }, function () { return ''; })
+        : Promise.resolve('');
+      return rootP.then(function (rootId) {
+        if (rootId) return rootId;
+        return findFolder(FOLDER_NAME, null).then(function (f) { return (f && f.id) || ''; }, function () { return ''; });
+      }).then(function (rootId) {
+        rootUsed = rootId || '';
+        if (rootId && !(linkRec() || {}).folderId) saveLink({ folderId: rootId });
+        var acc = { bytes: 0, files: 0, folders: 0, errors: 0 };
+        if (!rootId) return acc;
+        return folderUsage(rootId, 0, acc);
+      }).then(function (acc) {
+        var out = {
+          ok: true, at: Date.now(),
+          drive: about && about.ok ? {
+            available: true,
+            limit: about.limit, usage: about.usage,
+            usageInDrive: about.usageInDrive, usageInDriveTrash: about.usageInDriveTrash,
+            percent: about.limit ? Math.min(100, (about.usage / about.limit) * 100) : 0
+          } : { available: false, error: (about && about.error) || 'about-failed' },
+          backup: {
+            bytes: acc.bytes, files: acc.files, folders: acc.folders,
+            errors: acc.errors || 0, folderId: rootUsed
+          }
+        };
+        quotaCache = out;
+        patchSync({ last_quota_at: out.at });
+        emit('quota', out);
+        return out;
+      });
     });
   }
 
@@ -1499,7 +2000,7 @@
       configured: !!CLIENT_ID,
       connected: !!token(),
       expires_at: tokenExpiry(),
-      wasLinked: !!link.ts,
+      wasLinked: isLinked(),
       folder: FOLDER_NAME,
       folderId: link.folderId || '',
       last: readJSON(K_LAST, null),
@@ -1507,7 +2008,9 @@
       keyCount: Object.keys(EXPLICIT_KEYS).length,
       idbCount: IDB_NAMES.length,
       schema: SCHEMA,
-      busy: busy
+      busy: busy,
+      restoring: isRestoring,
+      auto: autoState()
     };
   }
 
@@ -1526,9 +2029,35 @@
     disconnect: disconnect,
     backup: backup,
     restore: restore,
+    quota: quota,
+    getQuota: quota,
+    autoState: autoState,
+    setAuto: setAuto,
+    autoPull: function (o) { return autoPull(o); },
+    syncNow: function () { return autoPull({ force: true, reason: 'manual' }); },
+    autoBackup: function () { return runAutoBackup('manual'); },
     message: message,
     fmtBytes: fmtBytes,
     lastBackup: function () { return readJSON(K_LAST, null); },
-    lastRestore: function () { return readJSON(K_LAST_RESTORE, null); }
+    lastRestore: function () { return readJSON(K_LAST_RESTORE, null); },
+    syncRecord: function () { return syncRec(); }
   };
+
+  /* ============================================================
+     자동 동기화 시작 — 화면을 그린 뒤 조용히
+     ============================================================ */
+  function bootAuto() {
+    hookStorage();
+    hookIdb();
+    try {
+      window.addEventListener('online', function () { autoPull({ reason: 'online' }); });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) autoPull({ reason: 'visible' });
+      });
+    } catch (e) { }
+    if (!isLinked()) return;
+    setTimeout(function () { autoPull({ reason: 'boot' }); }, 700);
+  }
+  if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', bootAuto);
+  else bootAuto();
 })();
