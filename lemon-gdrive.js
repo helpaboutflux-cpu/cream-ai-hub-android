@@ -9,8 +9,12 @@
              → 이 앱이 만든 파일·폴더만 다룰 수 있는 최소 권한.
    · 저장 구조
        Soft Hub Backup/                     (전용 폴더)
-         soft-hub-snapshot.json             lemon_* / flux_* 설정·작업물 한 덩어리
-         Flux Drive/<nodeId>_<이름>          Flux Drive 파일 내용 (1MB 초과 포함)
+         soft-hub-snapshot.json             설정·작업물·서비스 데이터 한 덩어리
+         Flux Drive/<nodeId>_<이름>          Flux Drive 파일 내용 (크기 제한 없음)
+         Service Media/<dbName>/<파일>       서비스 IndexedDB 안의 큰 이미지·음원·영상
+   · 백업 대상
+       localStorage  lemon_* · flux_*  +  프로젝트 키 6종(EXPLICIT_KEYS)
+       IndexedDB     Flux Drive(flux_drive_v1) · 서비스 저장소 28종 · 같은 출처의 나머지 DB
    · 백업 제외 : 비밀번호 금고(lemon_pass_vault) · AI API 키(flux_notebook_gemini_key)
                  · 이 엔진의 연결 토큰(lemon_gdrive_*)
    · 복원은 덮어쓰지 않는다 — 이 기기에 없는 항목만 채운다.
@@ -31,8 +35,9 @@
 
   var FOLDER_NAME = 'Soft Hub Backup';
   var DRIVE_FOLDER_NAME = 'Flux Drive';
+  var MEDIA_FOLDER_NAME = 'Service Media';
   var SNAP_NAME = 'soft-hub-snapshot.json';
-  var SCHEMA = 1;
+  var SCHEMA = 2;
 
   /* ---- 이 기기에만 두는 상태 키 ---- */
   var K_TOKEN = 'lemon_gdrive_token_v1';    /* {access_token, expires_at} */
@@ -55,6 +60,28 @@
   };
   var PREFIX = /^(lemon_|flux_)/i;
   var KEY_MAX = 4 * 1024 * 1024;            /* 항목 하나 4MB 까지 (그 이상은 건너뛴다) */
+
+  /* lemon_/flux_ 접두사가 없지만 함께 백업해야 하는 프로젝트 키 */
+  var EXPLICIT_KEYS = {
+    web_launcher_sites: 1,          /* Developer Hub — 웹런처 사이트 */
+    cream_apk_projects: 1,          /* Developer Hub — APK 프로젝트 */
+    cream_short_links: 1,           /* Developer Hub — 짧은 링크 */
+    lemon3d_archive__active: 1,     /* Lemon 3D — 보관함 */
+    lemonlogo_archive__active: 1,   /* Lemon Logo — 보관함 */
+    fluxgroups_nick: 1              /* Flux Groups — 닉네임 */
+  };
+
+  /* 서비스 IndexedDB — 서비스 코드가 여는 이름 그대로 (DB 버전은 백업 시 실측값을 쓴다) */
+  var IDB_NAMES = [
+    'lemon_bio_v2', 'lemon_builder_v1', 'flux_calendar_v1', 'lemon_clip_v1',
+    'flux_contacts_v1', 'lemon_dday_v1', 'lemon_grade_v1', 'flux_groups_plus_v1',
+    'flux_groups_v1', 'flux_mail_v1', 'flux_memo_v1', 'lemon_minutes_v1',
+    'flux_notebook_v1', 'flux_notes_v1', 'lemon_planner_v1', 'lemon_player_v1',
+    'lemon_prompt_v1', 'lemon_quiz_v1', 'lemon_shelf_media_v1', 'lemon_sketch_v1',
+    'lemon_studio_v1', 'flux_tasks_v1', 'flux_tempmail_v1', 'lemon_typing_v1',
+    'lemon_wallet_v1', 'lemon_weather_v1', 'lemon_zip_v1', 'lemon_kv_idb_v1'
+  ];
+  var IDB_MEDIA_MAX = 128 * 1024;           /* 이보다 큰 Blob·ArrayBuffer 는 Drive 파일로 따로 올린다 */
 
   /* ---- Flux Drive (IndexedDB flux_drive_v1 — lemon-cloud.js 와 같은 스키마) ---- */
   var DRIVE_DB = 'flux_drive_v1';
@@ -436,13 +463,685 @@
     return idbGet('blobs', id).then(function (rec) { return rec ? rec.blob : null; }, function () { return null; });
   }
 
+  /* ---------------- 값 직렬화 (Blob · Date · Map · TypedArray 보존) ---------------- */
+  function isBlob(v) { return typeof Blob !== 'undefined' && v instanceof Blob; }
+  function isFileType(v) { return typeof File !== 'undefined' && v instanceof File; }
+  function isBuffer(v) { return typeof ArrayBuffer !== 'undefined' && v instanceof ArrayBuffer; }
+  function isView(v) {
+    return typeof ArrayBuffer !== 'undefined' && !!ArrayBuffer.isView && ArrayBuffer.isView(v) && !isBuffer(v);
+  }
+  function ctorName(v) {
+    try { return Object.prototype.toString.call(v).slice(8, -1); } catch (e) { return ''; }
+  }
+  function bytesB64(buf) {
+    var bytes = new Uint8Array(buf || new ArrayBuffer(0)), out = '', chunk = 0x8000, i;
+    for (i = 0; i < bytes.length; i += chunk) {
+      out += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(out);
+  }
+  function b64Bytes(b64) {
+    var bin = atob(String(b64 || '')), len = bin.length, arr = new Uint8Array(len), i;
+    for (i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+  function blobToB64(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var s = String(fr.result || '');
+        var i = s.indexOf(',');
+        resolve(i >= 0 ? s.slice(i + 1) : '');
+      };
+      fr.onerror = function () { reject(gerr('read-failed')); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  function smallHash(str) {
+    var h = 5381, i;
+    str = String(str || '');
+    for (i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+  }
+  function extFor(mime, name) {
+    var n = String(name || '');
+    var dot = n.lastIndexOf('.');
+    if (dot > 0 && n.length - dot <= 6) return n.slice(dot).toLowerCase();
+    var m = String(mime || '').toLowerCase();
+    if (m.indexOf('image/png') === 0) return '.png';
+    if (m.indexOf('image/jpeg') === 0) return '.jpg';
+    if (m.indexOf('image/webp') === 0) return '.webp';
+    if (m.indexOf('image/gif') === 0) return '.gif';
+    if (m.indexOf('image/svg') === 0) return '.svg';
+    if (m.indexOf('audio/mpeg') === 0) return '.mp3';
+    if (m.indexOf('audio/') === 0) return '.audio';
+    if (m.indexOf('video/mp4') === 0) return '.mp4';
+    if (m.indexOf('video/') === 0) return '.video';
+    if (m.indexOf('application/pdf') === 0) return '.pdf';
+    if (m.indexOf('application/json') === 0) return '.json';
+    if (m.indexOf('text/') === 0) return '.txt';
+    return '.bin';
+  }
+  function keySig(k) {
+    if (k === null || k === undefined) return 'null';
+    var t = typeof k;
+    if (t === 'number') return 'n' + k;
+    if (t === 'string') return 's' + k;
+    if (t === 'boolean') return 'b' + k;
+    if (t === 'object' && k instanceof Date) return 'd' + k.getTime();
+    if (Array.isArray(k)) return 'a[' + k.map(keySig).join(',') + ']';
+    try { return 'o' + JSON.stringify(k); } catch (e) { return 'o' + String(k); }
+  }
+  function childCtx(ctx, part) {
+    return { db: ctx.db, store: ctx.store, key: ctx.key, path: ctx.path.concat([String(part)]), media: ctx.media };
+  }
+  function mediaId(ctx, size) {
+    return ctx.db + '|' + ctx.store + '|' + keySig(ctx.key) + '|' + ctx.path.join('/') + '|' + size;
+  }
+
+  /* 값 하나를 JSON 안전한 형태로. 큰 바이너리는 ctx.media 에 쌓아 두고 참조만 남긴다. */
+  function encVal(v, ctx) {
+    var t = typeof v;
+    if (v === undefined) return Promise.resolve({ __t: 'u' });
+    if (v === null) return Promise.resolve(null);
+    if (t === 'string' || t === 'boolean') return Promise.resolve(v);
+    if (t === 'number') return Promise.resolve(isFinite(v) ? v : { __t: 'num', v: String(v) });
+    if (t === 'bigint') return Promise.resolve({ __t: 'big', v: String(v) });
+    if (t !== 'object') return Promise.resolve({ __t: 'u' });
+
+    if (isBlob(v)) {
+      var bsize = Number(v.size || 0);
+      var bmime = String(v.type || '');
+      var bfile = isFileType(v);
+      var bname = bfile ? String(v.name || '') : '';
+      var blm = bfile ? Number(v.lastModified || 0) : 0;
+      var bid = mediaId(ctx, bsize);
+      if (bsize > IDB_MEDIA_MAX) {
+        ctx.media.push({ id: bid, blob: v, mime: bmime, name: bname, size: bsize });
+        return Promise.resolve({ __t: 'm', id: bid, size: bsize, mime: bmime, name: bname, file: bfile ? 1 : 0, lm: blm });
+      }
+      return blobToB64(v).then(function (b64) {
+        return { __t: 'b', b64: b64, mime: bmime, name: bname, file: bfile ? 1 : 0, lm: blm };
+      });
+    }
+    if (isBuffer(v)) {
+      var abId = mediaId(ctx, v.byteLength);
+      if (v.byteLength > IDB_MEDIA_MAX) {
+        ctx.media.push({ id: abId, blob: new Blob([v]), mime: 'application/octet-stream', name: '', size: v.byteLength });
+        return Promise.resolve({ __t: 'm', id: abId, size: v.byteLength, mime: 'application/octet-stream', name: '' });
+      }
+      return Promise.resolve({ __t: 'ab', b64: bytesB64(v) });
+    }
+    if (isView(v)) {
+      var exact = new Uint8Array(v.buffer, v.byteOffset, v.byteLength).slice();
+      var taId = mediaId(ctx, exact.length);
+      var taName = ctorName(v) || 'Uint8Array';
+      if (exact.length > IDB_MEDIA_MAX) {
+        ctx.media.push({ id: taId, blob: new Blob([exact]), mime: 'application/octet-stream', name: '', size: exact.length });
+        return Promise.resolve({ __t: 'm', id: taId, size: exact.length, mime: 'application/octet-stream', name: '', ta: taName });
+      }
+      return Promise.resolve({ __t: 'ta', c: taName, b64: bytesB64(exact.buffer) });
+    }
+    if (v instanceof Date) return Promise.resolve({ __t: 'd', v: v.getTime() });
+    if (typeof RegExp !== 'undefined' && v instanceof RegExp) {
+      return Promise.resolve({ __t: 're', v: String(v.source), f: String(v.flags || '') });
+    }
+    if (typeof Map !== 'undefined' && v instanceof Map) {
+      var ments = [], mp = Promise.resolve();
+      v.forEach(function (val, key) {
+        mp = mp.then(function () {
+          return Promise.all([encVal(key, childCtx(ctx, 'k')), encVal(val, childCtx(ctx, 'v'))])
+            .then(function (pair) { ments.push(pair); });
+        });
+      });
+      return mp.then(function () { return { __t: 'map', v: ments }; });
+    }
+    if (typeof Set !== 'undefined' && v instanceof Set) {
+      var sents = [], sp = Promise.resolve();
+      v.forEach(function (val) {
+        sp = sp.then(function () { return encVal(val, childCtx(ctx, 'v')).then(function (e) { sents.push(e); }); });
+      });
+      return sp.then(function () { return { __t: 'set', v: sents }; });
+    }
+    if (typeof Error !== 'undefined' && v instanceof Error) {
+      return Promise.resolve({ __t: 'err', name: String(v.name || ''), message: String(v.message || '') });
+    }
+    if (Array.isArray(v)) {
+      var arr = [], ap = Promise.resolve();
+      v.forEach(function (x, i) {
+        ap = ap.then(function () { return encVal(x, childCtx(ctx, i)).then(function (e) { arr.push(e); }); });
+      });
+      return ap.then(function () { return arr; });
+    }
+    var keys = Object.keys(v), obj = {}, op = Promise.resolve();
+    keys.forEach(function (k) {
+      op = op.then(function () { return encVal(v[k], childCtx(ctx, k)).then(function (e) { obj[k] = e; }); });
+    });
+    return op.then(function () { return obj; });
+  }
+
+  function decVal(e, media, out) {
+    if (e === null || e === undefined) return Promise.resolve(null);
+    var t = typeof e;
+    if (t === 'string' || t === 'number' || t === 'boolean') return Promise.resolve(e);
+    if (t !== 'object') return Promise.resolve(null);
+    var tag = e.__t;
+    if (!tag) {
+      if (Array.isArray(e)) {
+        var arr = [], ap = Promise.resolve();
+        e.forEach(function (x) { ap = ap.then(function () { return decVal(x, media, out).then(function (v) { arr.push(v); }); }); });
+        return ap.then(function () { return arr; });
+      }
+      var keys = Object.keys(e), obj = {}, op = Promise.resolve();
+      keys.forEach(function (k) {
+        op = op.then(function () { return decVal(e[k], media, out).then(function (v) { obj[k] = v; }); });
+      });
+      return op.then(function () { return obj; });
+    }
+    if (tag === 'u') return Promise.resolve(undefined);
+    if (tag === 'd') return Promise.resolve(new Date(Number(e.v) || 0));
+    if (tag === 'num') return Promise.resolve(Number(e.v));
+    if (tag === 'big') { try { return Promise.resolve(BigInt(e.v)); } catch (x) { return Promise.resolve(null); } }
+    if (tag === 're') { try { return Promise.resolve(new RegExp(e.v, e.f || '')); } catch (x) { return Promise.resolve(null); } }
+    if (tag === 'err') {
+      var er = new Error(String(e.message || ''));
+      er.name = String(e.name || 'Error');
+      return Promise.resolve(er);
+    }
+    if (tag === 'b') {
+      try {
+        var blob = new Blob([b64Bytes(e.b64)], { type: e.mime || '' });
+        if (e.file && typeof File === 'function') {
+          return Promise.resolve(new File([blob], e.name || 'file', { type: e.mime || '', lastModified: Number(e.lm) || Date.now() }));
+        }
+        return Promise.resolve(blob);
+      } catch (x) { return Promise.resolve(null); }
+    }
+    if (tag === 'ab') {
+      try { return Promise.resolve(b64Bytes(e.b64).buffer); } catch (x) { return Promise.resolve(null); }
+    }
+    if (tag === 'ta') {
+      try {
+        var bytes = b64Bytes(e.b64 || '');
+        var C = window[e.c];
+        if (!C || !C.BYTES_PER_ELEMENT) return Promise.resolve(bytes);
+        if (bytes.byteLength % C.BYTES_PER_ELEMENT) return Promise.resolve(bytes);
+        return Promise.resolve(new C(bytes.buffer));
+      } catch (x) { return Promise.resolve(null); }
+    }
+    if (tag === 'map') {
+      var pairs = [], mp = Promise.resolve();
+      (e.v || []).forEach(function (pair) {
+        mp = mp.then(function () {
+          return Promise.all([decVal(pair && pair[0], media, out), decVal(pair && pair[1], media, out)]);
+        }).then(function (p) { pairs.push(p); });
+      });
+      return mp.then(function () { try { return new Map(pairs); } catch (x) { return null; } });
+    }
+    if (tag === 'set') {
+      var items = [], sp = Promise.resolve();
+      (e.v || []).forEach(function (x) {
+        sp = sp.then(function () { return decVal(x, media, out).then(function (v) { items.push(v); }); });
+      });
+      return sp.then(function () { try { return new Set(items); } catch (x) { return null; } });
+    }
+    if (tag === 'm') {
+      var rec = media && media[e.id];
+      if (!rec || !rec.fileId) {
+        if (out) out.missingMedia = (out.missingMedia || 0) + 1;
+        return Promise.reject(gerr('media-missing'));
+      }
+      return downloadBlob(rec.fileId).then(function (blob) {
+        var mime = rec.mime || e.mime || '';
+        var b2 = new Blob([blob], { type: mime });
+        var nm = rec.name || e.name || 'file';
+        if (e.file && typeof File === 'function') {
+          return new File([b2], nm, { type: mime, lastModified: Number(e.lm) || Date.now() });
+        }
+        return b2;
+      }, function () {
+        if (out) out.missingMedia = (out.missingMedia || 0) + 1;
+        throw gerr('media-missing');
+      });
+    }
+    return Promise.resolve(null);
+  }
+
+  function encKey(k) {
+    if (k === null || k === undefined) return Promise.resolve({ t: 'null' });
+    var t = typeof k;
+    if (t === 'number') return Promise.resolve({ t: 'n', v: k });
+    if (t === 'string') return Promise.resolve({ t: 's', v: k });
+    if (t === 'boolean') return Promise.resolve({ t: 'b', v: k });
+    if (t === 'object' && k instanceof Date) return Promise.resolve({ t: 'd', v: k.getTime() });
+    if (Array.isArray(k)) {
+      var arr = [], p = Promise.resolve();
+      k.forEach(function (x) { p = p.then(function () { return encKey(x).then(function (e) { arr.push(e); }); }); });
+      return p.then(function () { return { t: 'a', v: arr }; });
+    }
+    return Promise.resolve({ t: 'null' });
+  }
+  function decKey(e) {
+    if (!e || typeof e !== 'object') return { ok: false, v: null };
+    if (e.t === 'n') return { ok: true, v: Number(e.v) };
+    if (e.t === 's') return { ok: true, v: String(e.v) };
+    if (e.t === 'b') return { ok: true, v: !!e.v };
+    if (e.t === 'd') return { ok: true, v: new Date(Number(e.v) || 0) };
+    if (e.t === 'a') {
+      var arr = [];
+      (e.v || []).forEach(function (x) { var d = decKey(x); arr.push(d.ok ? d.v : null); });
+      return { ok: true, v: arr };
+    }
+    return { ok: false, v: null };
+  }
+
+  /* ---------------- 서비스 IndexedDB 읽기 · 쓰기 ---------------- */
+  /* 열기가 영영 끝나지 않는 경우(다른 탭의 삭제 요청이 대기 중인 등)에
+     복원 전체가 멈추지 않도록 시간 제한을 둔다. */
+  function within(p, ms, code) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var t = setTimeout(function () { if (done) return; done = true; reject(gerr(code || 'idb-blocked')); }, ms || 8000);
+      p.then(function (v) { if (done) return; done = true; clearTimeout(t); resolve(v); },
+        function (e) { if (done) return; done = true; clearTimeout(t); reject(e); });
+    });
+  }
+
+  function openRaw(name, version, upgradeFn) {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(gerr('idb-unavailable')); return; }
+      var rq;
+      try { rq = version ? indexedDB.open(name, version) : indexedDB.open(name); } catch (e) { reject(gerr('idb-open-failed')); return; }
+      var created = false;
+      rq.onupgradeneeded = function () {
+        created = true;
+        if (upgradeFn) {
+          try { upgradeFn(rq.result, rq.transaction); }
+          catch (e) { try { rq.transaction.abort(); } catch (x) { } }
+        }
+      };
+      rq.onsuccess = function () { resolve({ db: rq.result, created: created }); };
+      rq.onerror = function () { reject(gerr('idb-open-failed')); };
+      rq.onblocked = function () { reject(gerr('idb-blocked')); };
+    });
+  }
+
+  /* 빈 DB 를 만들지 않고 존재 여부만 본다. */
+  function probeExists(name) {
+    return new Promise(function (resolve) {
+      var rq, created = false, done = false;
+      function fin(v) {
+        if (done) return;
+        done = true;
+        resolve(v);
+      }
+      function cleanup() { try { indexedDB.deleteDatabase(name); } catch (e) { } }
+      try { rq = indexedDB.open(name); } catch (e) { return fin(false); }
+      rq.onupgradeneeded = function () {
+        created = true;
+        try { rq.transaction.abort(); } catch (e) { }
+      };
+      rq.onsuccess = function () {
+        try { rq.result.close(); } catch (e) { }
+        if (created) cleanup();
+        fin(!created);
+      };
+      rq.onerror = function () {
+        if (created) cleanup();
+        fin(false);
+      };
+      setTimeout(function () { if (!done) { if (created) cleanup(); fin(false); } }, 4000);
+    });
+  }
+  function dbExists(name) {
+    if (!window.indexedDB) return Promise.resolve(false);
+    if (indexedDB.databases) {
+      return indexedDB.databases().then(function (list) {
+        var hit = false;
+        (list || []).forEach(function (d) { if (d && d.name === name) hit = true; });
+        return hit;
+      }, function () { return probeExists(name); });
+    }
+    return probeExists(name);
+  }
+
+  /* 백업할 DB 목록 — 고정 28종 + 같은 출처의 나머지(databases() 지원 시).
+     없는 DB 는 열지 않는다(빈 DB 오염 방지). Flux Drive 는 따로 다룬다. */
+  function listBackupDbs() {
+    if (!window.indexedDB) return Promise.resolve([]);
+    if (indexedDB.databases) {
+      return indexedDB.databases().then(function (list) {
+        var exist = {};
+        (list || []).forEach(function (d) { if (d && d.name) exist[d.name] = 1; });
+        var out = [];
+        IDB_NAMES.forEach(function (n) {
+          if (exist[n]) { out.push(n); delete exist[n]; }
+        });
+        Object.keys(exist).forEach(function (n) {
+          if (n && n !== DRIVE_DB && out.indexOf(n) < 0) out.push(n);
+        });
+        return out;
+      }, function () { return probeAllDbs(); });
+    }
+    return probeAllDbs();
+  }
+  function probeAllDbs() {
+    var out = [], i = 0;
+    function step() {
+      if (i >= IDB_NAMES.length) return Promise.resolve(out);
+      var n = IDB_NAMES[i++];
+      return dbExists(n).then(function (yes) {
+        if (yes) out.push(n);
+        return step();
+      });
+    }
+    return step();
+  }
+
+  function readSchema(db) {
+    var names = [].slice.call(db.objectStoreNames);
+    if (!names.length) return [];
+    var tx, out = [];
+    try { tx = db.transaction(names, 'readonly'); } catch (e) { return []; }
+    names.forEach(function (n) {
+      var st = tx.objectStore(n);
+      var idx = [].slice.call(st.indexNames).map(function (i) {
+        var x = st.index(i);
+        return { name: i, keyPath: x.keyPath, unique: !!x.unique, multiEntry: !!x.multiEntry };
+      });
+      out.push({
+        name: n,
+        keyPath: st.keyPath === undefined ? null : st.keyPath,
+        autoIncrement: !!st.autoIncrement,
+        indexes: idx
+      });
+    });
+    return out;
+  }
+
+  function readStore(db, storeName) {
+    return new Promise(function (resolve, reject) {
+      var rows = [], tx;
+      try { tx = db.transaction(storeName, 'readonly'); } catch (e) { return reject(gerr('idb-read-failed')); }
+      var rq = tx.objectStore(storeName).openCursor();
+      rq.onsuccess = function () {
+        var c = rq.result;
+        if (!c) return;
+        rows.push({ k: c.primaryKey, v: c.value });
+        c.continue();
+      };
+      tx.oncomplete = function () { resolve(rows); };
+      tx.onerror = function () { reject(gerr('idb-read-failed')); };
+      tx.onabort = function () { reject(gerr('idb-read-failed')); };
+    });
+  }
+
+  /* DB 하나를 읽어 스냅샷 조각으로 만든다. 값은 encVal 로 타입을 보존한다. */
+  function readDbSnapshot(name) {
+    return openRaw(name, 0, null).then(function (o) {
+      var db = o.db;
+      if (o.created) {
+        /* 없는 DB 를 열어 버렸다 — 비어 있는 DB 를 남기지 않는다 */
+        try { db.close(); } catch (e) { }
+        try { indexedDB.deleteDatabase(name); } catch (e) { }
+        return null;
+      }
+      var stores = readSchema(db);
+      var rec = { name: name, version: Number(db.version) || 1, stores: stores, records: [], pending: [], count: 0, skipped: 0 };
+      var chain = Promise.resolve();
+      stores.forEach(function (st) {
+        chain = chain.then(function () {
+          return readStore(db, st.name).then(function (rows) {
+            var s = Promise.resolve();
+            rows.forEach(function (row) {
+              s = s.then(function () {
+                var ctx = { db: name, store: st.name, key: row.k, path: [], media: [] };
+                return encVal(row.v, ctx).then(function (enc) {
+                  return encKey(row.k).then(function (ek) {
+                    rec.records.push({ s: st.name, k: ek, v: enc });
+                    rec.pending = rec.pending.concat(ctx.media);
+                    rec.count++;
+                  });
+                }, function () { rec.skipped++; });
+              });
+            });
+            return s;
+          }, function () { rec.skipped++; });
+        });
+      });
+      return chain.then(function () {
+        try { db.close(); } catch (e) { }
+        return rec;
+      }, function () {
+        try { db.close(); } catch (e) { }
+        return null;
+      });
+    }, function () { return null; });
+  }
+
+  /* 바이너리 하나를 Service Media/<dbName>/ 아래 Drive 파일로 올린다. */
+  function uploadMedia(rootId, dbName, item, prevMedia, folderCache) {
+    var prev = prevMedia[item.id];
+    if (prev && prev.fileId && Number(prev.size) === Number(item.size)) {
+      return Promise.resolve({ rec: prev, uploaded: false, bytes: 0 });
+    }
+    var fp = folderCache[dbName];
+    if (!fp) {
+      fp = ensureFolder(MEDIA_FOLDER_NAME, rootId).then(function (mediaRoot) {
+        return ensureFolder(safeName(dbName), mediaRoot);
+      });
+      folderCache[dbName] = fp;
+    }
+    return fp.then(function (folderId) {
+      var nm = safeName('media_' + smallHash(item.id) + extFor(item.mime, item.name));
+      return createFile({
+        name: nm,
+        parents: [folderId],
+        mimeType: item.mime || 'application/octet-stream'
+      }, item.blob).then(function (d) {
+        var rec = { id: item.id, fileId: (d && d.id) || '', name: nm, size: Number(item.size) || 0, mime: item.mime || '' };
+        return { rec: rec, uploaded: true, bytes: rec.size };
+      });
+    });
+  }
+
+  /* 서비스 DB 전부를 백업한다. */
+  function backupIdb(rootId, prevSnap, progress) {
+    var out = { dbs: [], records: 0, skipped: 0, media: [], bytes: 0, uploaded: 0 };
+    var prevMedia = {};
+    ((prevSnap && Array.isArray(prevSnap.media)) ? prevSnap.media : []).forEach(function (m) {
+      if (m && m.id) prevMedia[m.id] = m;
+    });
+    var folderCache = {}, names = [], i = 0;
+
+    function uploadPending(dbName, pending) {
+      var j = 0;
+      function step() {
+        if (j >= pending.length) return Promise.resolve(true);
+        var item = pending[j++];
+        progress('media', j - 1, pending.length, dbName);
+        return uploadMedia(rootId, dbName, item, prevMedia, folderCache).then(function (r) {
+          if (r && r.rec) {
+            out.media.push(r.rec);
+            if (r.uploaded) { out.uploaded++; out.bytes += r.bytes; }
+          }
+        }, function () { /* 파일 하나가 실패해도 나머지는 계속 */ }).then(function () {
+          progress('media', j, pending.length, dbName);
+          return step();
+        });
+      }
+      return step();
+    }
+
+    function step() {
+      if (i >= names.length) return Promise.resolve(true);
+      var name = names[i];
+      progress('idb', i, names.length, name);
+      return readDbSnapshot(name).then(function (rec) {
+        if (!rec || !rec.stores.length) return Promise.resolve(true);
+        return uploadPending(name, rec.pending).then(function () {
+          out.dbs.push({ name: rec.name, version: rec.version, stores: rec.stores, records: rec.records });
+          out.records += rec.count;
+          out.skipped += rec.skipped;
+        });
+      }, function () { }).then(function () {
+        i++;
+        progress('idb', i, names.length, name);
+        return step();
+      });
+    }
+
+    return listBackupDbs().then(function (list) {
+      names = list || [];
+      return step();
+    }).then(function () {
+      return out;
+    });
+  }
+
+  function createStores(db, stores) {
+    (stores || []).forEach(function (st) {
+      if (!st || !st.name || db.objectStoreNames.contains(st.name)) return;
+      var opt = { autoIncrement: !!st.autoIncrement };
+      if (st.keyPath !== null && st.keyPath !== undefined) opt.keyPath = st.keyPath;
+      var os;
+      try { os = db.createObjectStore(st.name, opt); } catch (e) { return; }
+      (st.indexes || []).forEach(function (ix) {
+        if (!ix || !ix.name || ix.keyPath === null || ix.keyPath === undefined) return;
+        try { os.createIndex(ix.name, ix.keyPath, { unique: !!ix.unique, multiEntry: !!ix.multiEntry }); } catch (e) { }
+      });
+    });
+  }
+
+  function readKeys(db, storeName) {
+    return new Promise(function (resolve) {
+      var tx, rq;
+      try {
+        tx = db.transaction(storeName, 'readonly');
+        rq = tx.objectStore(storeName).getAllKeys();
+      } catch (e) { return resolve([]); }
+      rq.onsuccess = function () { resolve(rq.result || []); };
+      rq.onerror = function () { resolve([]); };
+    });
+  }
+
+  function putRows(db, st, vals, out) {
+    return new Promise(function (resolve) {
+      var tx;
+      try { tx = db.transaction(st.name, 'readwrite'); } catch (e) { out.skippedRecords += vals.length; return resolve(); }
+      var os = tx.objectStore(st.name);
+      vals.forEach(function (x) {
+        try {
+          if (st.keyPath === null || st.keyPath === undefined) {
+            if (x.row.__k && x.row.__k.ok) os.put(x.val, x.row.__k.v);
+            else os.put(x.val);
+          } else {
+            os.put(x.val);
+          }
+          out.records++;
+        } catch (e) { out.skippedRecords++; }
+      });
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { resolve(); };
+      tx.onabort = function () { resolve(); };
+    });
+  }
+
+  function writeStoreRecords(db, st, rows, media, out) {
+    return readKeys(db, st.name).then(function (have) {
+      var haveMap = {};
+      (have || []).forEach(function (k) { haveMap[keySig(k)] = 1; });
+      var todo = [];
+      rows.forEach(function (row) {
+        if (!row || !row.s) return;
+        var dk = decKey(row.k);
+        row.__k = dk;
+        if (dk.ok && haveMap[keySig(dk.v)]) {
+          out.keptRecords = (out.keptRecords || 0) + 1;
+          return;
+        }
+        todo.push(row);
+      });
+      if (!todo.length) return null;
+      var chain = Promise.resolve(), vals = [];
+      todo.forEach(function (row) {
+        chain = chain.then(function () {
+          return decVal(row.v, media, out).then(function (val) {
+            vals.push({ row: row, val: val });
+          }, function () { out.skippedRecords++; });
+        });
+      });
+      return chain.then(function () { return within(putRows(db, st, vals, out), 8000, 'idb-blocked'); });
+    });
+  }
+
+  /* DB 하나를 되살린다. 이 기기에 이미 있는 DB·스토어·키는 건드리지 않는다. */
+  function restoreDb(rec, media, out) {
+    return dbExists(rec.name).then(function (exists) {
+      var ver = Math.max(1, Number(rec.version) || 1);
+      if (exists && ver < Number(rec.version || 0)) {
+        /* 이 기기의 DB 버전이 백업보다 높으면 그대로 쓴다 */
+      }
+      var opener = exists
+        ? openRaw(rec.name, 0, null)
+        : openRaw(rec.name, ver, function (db) { createStores(db, rec.stores); });
+      return within(opener, 8000, 'idb-blocked').then(function (o) {
+        var db = o.db;
+        var names = [].slice.call(db.objectStoreNames);
+        var chain = Promise.resolve();
+        (rec.stores || []).forEach(function (st) {
+          chain = chain.then(function () {
+            if (!st || !st.name) return null;
+            var rows = (rec.records || []).filter(function (r) { return r && r.s === st.name; });
+            if (!rows.length) return null;
+            if (names.indexOf(st.name) < 0) {
+              /* 이 기기의 같은 DB 에 없는 스토어 — 버전을 올리지 않고는 만들 수 없다 */
+              out.skippedRecords += rows.length;
+              return null;
+            }
+            return writeStoreRecords(db, st, rows, media, out);
+          });
+        });
+        return chain.then(function () {
+          try { db.close(); } catch (e) { }
+          if (!exists) out.dbs = (out.dbs || 0) + 1;
+        }, function () {
+          try { db.close(); } catch (e) { }
+        });
+      });
+    });
+  }
+
+  function restoreIdb(snap, out, progress) {
+    var dbs = (snap && snap.idb && Array.isArray(snap.idb.dbs)) ? snap.idb.dbs : [];
+    var media = {};
+    (Array.isArray(snap && snap.media) ? snap.media : []).forEach(function (m) {
+      if (m && m.id) media[m.id] = m;
+    });
+    out.dbs = 0;
+    out.records = 0;
+    out.keptRecords = 0;
+    out.skippedRecords = 0;
+    out.missingMedia = 0;
+    var i = 0;
+    function step() {
+      if (i >= dbs.length) return Promise.resolve(true);
+      var rec = dbs[i++];
+      if (!rec || !rec.name || !Array.isArray(rec.stores)) return step();
+      progress('idb', i, dbs.length, rec.name);
+      return restoreDb(rec, media, out).then(function () { return step(); }, function () { return step(); });
+    }
+    return step();
+  }
+
   /* ---------------- 이 기기의 백업 대상 ---------------- */
   function keyList() {
-    /* 백업 대상: lemon_* · flux_* (내부·민감 키 제외) */
+    /* 백업 대상: lemon_* · flux_* + 프로젝트 키 6종 (내부·민감 키 제외) */
     var out = [], seen = {};
     function add(k) {
       k = String(k === null || k === undefined ? '' : k);
-      if (!k || seen['#' + k] || SKIP[k] || !PREFIX.test(k)) return;
+      if (!k || seen['#' + k] || SKIP[k]) return;
+      if (!PREFIX.test(k) && !EXPLICIT_KEYS[k]) return;
       seen['#' + k] = 1;
       out.push(k);
     }
@@ -510,121 +1209,91 @@
     busy = true;
     progress('start', 0, 0, '폴더를 확인하는 중');
 
-    var result = { ok: false, keys: 0, nodes: 0, files: 0, uploaded: 0, bytes: 0, skippedKeys: [] };
+    var result = {
+      ok: false, keys: 0, nodes: 0, files: 0, uploaded: 0, bytes: 0, skippedKeys: [],
+      dbs: 0, records: 0, media: 0, skippedRecords: 0
+    };
     var rootId = '', driveId = '';
+    var prevSnap = null, prev = null, keys = null, nodes = null, fdrive = null;
 
     return ensureRoots().then(function (ids) {
       rootId = ids.root;
       driveId = ids.drive;
       progress('snapshot', 0, 0, '이전 백업을 확인하는 중');
       return readRemoteSnapshot(rootId);
-    }).then(function (prev) {
-      var prevSnap = prev.snap || null;
-      var prevMap = {};
-      if (prevSnap && prevSnap.drive && Array.isArray(prevSnap.drive.files)) {
-        prevSnap.drive.files.forEach(function (f) { if (f && f.nodeId) prevMap[f.nodeId] = f; });
-      }
-      var keys = collectKeys();
-      return driveNodes().then(function (nodes) {
-        var list = (nodes || []).filter(function (n) {
-          return n && n.id && n.kind === 'file' && !n.trashed && Number(n.size) > 0;
-        });
-        var fileRecs = [];
-        var idx = 0, uploaded = 0, bytes = 0;
-        function step() {
-          if (idx >= list.length) {
-            return Promise.resolve({ files: fileRecs, uploaded: uploaded, bytes: bytes });
-          }
-          var node = list[idx++];
-          var prevRec = prevMap[node.id] || null;
-          var name = driveFileName(node);
-          progress('files', idx - 1, list.length, node.name || '파일');
-          return driveBlob(node.id).then(function (blob) {
-            if (!blob) return null;
-            var size = Number(blob.size || node.size || 0);
-            var mime = node.mime || blob.type || 'application/octet-stream';
-            if (prevRec && prevRec.fileId && prevRec.size === size &&
-              prevRec.nodeUpdatedAt === node.updatedAt && prevRec.name === name) {
-              fileRecs.push(prevRec);
-              return null;
-            }
-            return uploadContent({
-              fileId: prevRec && prevRec.fileId ? prevRec.fileId : '',
-              name: name,
-              parentId: driveId,
-              blob: blob,
-              mime: mime
-            }).then(function (up) {
-              uploaded++;
-              bytes += size;
-              fileRecs.push({
-                nodeId: node.id, fileId: up.id, name: name, size: size,
-                mime: mime, nodeUpdatedAt: node.updatedAt
-              });
-            }, function (e) {
-              /* 파일 하나가 실패해도 나머지는 계속 올린다. */
-              fileRecs.push({
-                nodeId: node.id, fileId: (prevRec && prevRec.fileId) || '', name: name,
-                size: size, mime: mime, nodeUpdatedAt: node.updatedAt, error: (e && e.code) || 'upload-failed'
-              });
-            });
-          }, function () { return null; }).then(function () {
-            progress('files', idx, list.length, node.name || '파일');
-            return step();
-          });
+    }).then(function (pr) {
+      prev = pr || {};
+      prevSnap = (prev && prev.snap) || null;
+      keys = collectKeys();
+      progress('keys', 1, 1, Object.keys(keys.keys).length + '개 설정');
+      return driveNodes();
+    }).then(function (list) {
+      nodes = list || [];
+      return backupDriveFiles(driveId, prevSnap, nodes, progress);
+    }).then(function (fd) {
+      fdrive = fd || { files: [], uploaded: 0, bytes: 0 };
+      progress('idb', 0, 0, '서비스 저장소를 확인하는 중');
+      return backupIdb(rootId, prevSnap, progress);
+    }).then(function (idb) {
+      var snap = {
+        app: 'soft-hub',
+        schema: SCHEMA,
+        createdAt: (prevSnap && prevSnap.createdAt) || Date.now(),
+        updatedAt: Date.now(),
+        origin: location.origin,
+        folder: FOLDER_NAME,
+        driveFolderId: driveId,
+        keys: keys.keys,
+        drive: {
+          nodes: (nodes || []).map(function (n) {
+            return {
+              id: n.id, name: n.name || '', kind: n.kind || 'file', parentId: n.parentId || null,
+              mime: n.mime || '', size: Number(n.size || 0), updatedAt: Number(n.updatedAt || 0),
+              trashed: !!n.trashed
+            };
+          }),
+          files: fdrive.files
+        },
+        idb: { dbs: (idb && idb.dbs) || [] },
+        media: (idb && idb.media) || [],
+        counts: {
+          keys: Object.keys(keys.keys).length,
+          nodes: (nodes || []).length,
+          files: fdrive.files.length,
+          dbs: ((idb && idb.dbs) || []).length,
+          records: (idb && idb.records) || 0,
+          media: ((idb && idb.media) || []).length
         }
-        return step().then(function (out) {
-          var snap = {
-            app: 'soft-hub',
-            schema: SCHEMA,
-            createdAt: (prevSnap && prevSnap.createdAt) || Date.now(),
-            updatedAt: Date.now(),
-            origin: location.origin,
-            folder: FOLDER_NAME,
-            driveFolderId: driveId,
-            keys: keys.keys,
-            drive: {
-              nodes: (nodes || []).map(function (n) {
-                return {
-                  id: n.id, name: n.name || '', kind: n.kind || 'file', parentId: n.parentId || null,
-                  mime: n.mime || '', size: Number(n.size || 0), updatedAt: Number(n.updatedAt || 0),
-                  trashed: !!n.trashed
-                };
-              }),
-              files: out.files
-            },
-            counts: {
-              keys: Object.keys(keys.keys).length,
-              nodes: (nodes || []).length,
-              files: out.files.length
-            }
-          };
-          var json = JSON.stringify(snap);
-          var blob = new Blob([json], { type: 'application/json' });
-          result.keys = Object.keys(keys.keys).length;
-          result.nodes = (nodes || []).length;
-          result.files = out.files.length;
-          result.uploaded = out.uploaded;
-          result.bytes = out.bytes + blob.size;
-          result.skippedKeys = keys.skipped;
-          progress('snapshot', 0, 1, '설정 스냅샷을 올리는 중');
-          return uploadContent({
-            fileId: prev.fileId || '',
-            name: SNAP_NAME,
-            parentId: rootId,
-            blob: blob,
-            mime: 'application/json'
-          }).then(function () {
-            progress('snapshot', 1, 1, '완료');
-            return { snapBytes: blob.size };
-          });
-        });
+      };
+      var json = JSON.stringify(snap);
+      var blob = new Blob([json], { type: 'application/json' });
+      result.keys = Object.keys(keys.keys).length;
+      result.nodes = (nodes || []).length;
+      result.files = fdrive.files.length;
+      result.uploaded = fdrive.uploaded;
+      result.dbs = ((idb && idb.dbs) || []).length;
+      result.records = (idb && idb.records) || 0;
+      result.media = ((idb && idb.media) || []).length;
+      result.skippedRecords = (idb && idb.skipped) || 0;
+      result.bytes = fdrive.bytes + ((idb && idb.bytes) || 0) + blob.size;
+      result.skippedKeys = keys.skipped;
+      progress('snapshot', 0, 1, '설정 스냅샷을 올리는 중');
+      return uploadContent({
+        fileId: (prev && prev.fileId) || '',
+        name: SNAP_NAME,
+        parentId: rootId,
+        blob: blob,
+        mime: 'application/json'
+      }).then(function () {
+        progress('snapshot', 1, 1, '완료');
+        return { snapBytes: blob.size };
       });
     }).then(function (r) {
       busy = false;
       var rec = {
         ts: Date.now(), keys: result.keys, nodes: result.nodes, files: result.files,
         uploaded: result.uploaded, bytes: result.bytes, snapBytes: r.snapBytes,
+        dbs: result.dbs, records: result.records, media: result.media,
         skippedKeys: result.skippedKeys
       };
       writeJSON(K_LAST, rec);
@@ -642,6 +1311,62 @@
     });
   }
 
+  /* Flux Drive 파일 내용을 모두 올린다. 바뀐 파일은 내용만 교체한다. */
+  function backupDriveFiles(driveId, prevSnap, nodes, progress) {
+    var prevMap = {};
+    if (prevSnap && prevSnap.drive && Array.isArray(prevSnap.drive.files)) {
+      prevSnap.drive.files.forEach(function (f) { if (f && f.nodeId) prevMap[f.nodeId] = f; });
+    }
+    var list = (nodes || []).filter(function (n) {
+      return n && n.id && n.kind === 'file' && !n.trashed && Number(n.size) > 0;
+    });
+    var fileRecs = [];
+    var idx = 0, uploaded = 0, bytes = 0;
+    function step() {
+      if (idx >= list.length) {
+        return Promise.resolve({ files: fileRecs, uploaded: uploaded, bytes: bytes });
+      }
+      var node = list[idx++];
+      var prevRec = prevMap[node.id] || null;
+      var name = driveFileName(node);
+      progress('files', idx - 1, list.length, node.name || '파일');
+      return driveBlob(node.id).then(function (blob) {
+        if (!blob) return null;
+        var size = Number(blob.size || node.size || 0);
+        var mime = node.mime || blob.type || 'application/octet-stream';
+        if (prevRec && prevRec.fileId && prevRec.size === size &&
+          prevRec.nodeUpdatedAt === node.updatedAt && prevRec.name === name) {
+          fileRecs.push(prevRec);
+          return null;
+        }
+        return uploadContent({
+          fileId: prevRec && prevRec.fileId ? prevRec.fileId : '',
+          name: name,
+          parentId: driveId,
+          blob: blob,
+          mime: mime
+        }).then(function (up) {
+          uploaded++;
+          bytes += size;
+          fileRecs.push({
+            nodeId: node.id, fileId: up.id, name: name, size: size,
+            mime: mime, nodeUpdatedAt: node.updatedAt
+          });
+        }, function (e) {
+          /* 파일 하나가 실패해도 나머지는 계속 올린다. */
+          fileRecs.push({
+            nodeId: node.id, fileId: (prevRec && prevRec.fileId) || '', name: name,
+            size: size, mime: mime, nodeUpdatedAt: node.updatedAt, error: (e && e.code) || 'upload-failed'
+          });
+        });
+      }, function () { return null; }).then(function () {
+        progress('files', idx, list.length, node.name || '파일');
+        return step();
+      });
+    }
+    return step();
+  }
+
   /* ---------------- 복원 ---------------- */
   function restore(opts) {
     opts = opts || {};
@@ -652,7 +1377,10 @@
     if (busy) return Promise.resolve({ ok: false, error: 'busy' });
     busy = true;
     progress('find', 0, 0, '백업을 찾는 중');
-    var out = { ok: false, keys: 0, kept: 0, nodes: 0, files: 0, missing: 0, total: 0 };
+    var out = {
+      ok: false, keys: 0, kept: 0, nodes: 0, files: 0, missing: 0, total: 0,
+      dbs: 0, records: 0, keptRecords: 0, skippedRecords: 0, missingMedia: 0
+    };
 
     return findFolder(FOLDER_NAME, null).then(function (f) {
       if (!f || !f.id) throw gerr('no-backup');
@@ -710,12 +1438,18 @@
           });
           return chain2;
         });
+      }).then(function () {
+        /* 서비스 IndexedDB 28종 — 이 기기에 없는 DB·스토어·키만 채운다 */
+        progress('idb', 0, 0, '서비스 데이터를 복원하는 중');
+        return restoreIdb(snap, out, progress);
       });
     }).then(function () {
       busy = false;
       var rec = {
         ts: Date.now(), keys: out.keys, kept: out.kept, nodes: out.nodes,
-        files: out.files, missing: out.missing, total: out.total
+        files: out.files, missing: out.missing, total: out.total,
+        dbs: out.dbs, records: out.records, keptRecords: out.keptRecords,
+        skippedRecords: out.skippedRecords, missingMedia: out.missingMedia
       };
       writeJSON(K_LAST_RESTORE, rec);
       out.ok = true;
@@ -753,6 +1487,9 @@
     if (c === 'busy') return '다른 백업·복원 작업이 진행 중입니다. 끝난 뒤 다시 시도해 주세요.';
     if (c === 'forbidden') return 'Google Drive 접근이 거부되었습니다. 연결을 해제한 뒤 다시 연결해 주세요.';
     if (c === 'server-error') return 'Google 서버가 잠시 응답하지 않습니다. 잠시 뒤 다시 시도해 주세요.';
+    if (c === 'media-missing') return '큰 파일 일부를 내려받지 못했습니다. 백업을 다시 올린 뒤 복원해 주세요.';
+    if (c === 'folder-create-failed') return 'Google Drive에 백업 폴더를 만들지 못했습니다. 다시 시도해 주세요.';
+    if (c === 'read-failed') return '기기에 있는 파일을 읽지 못해 백업을 마치지 못했습니다.';
     return '작업을 마치지 못했습니다' + (c ? ' (' + c + ')' : '') + '.';
   }
 
@@ -767,6 +1504,9 @@
       folderId: link.folderId || '',
       last: readJSON(K_LAST, null),
       lastRestore: readJSON(K_LAST_RESTORE, null),
+      keyCount: Object.keys(EXPLICIT_KEYS).length,
+      idbCount: IDB_NAMES.length,
+      schema: SCHEMA,
       busy: busy
     };
   }
@@ -776,6 +1516,9 @@
     clientId: function () { return CLIENT_ID; },
     scope: function () { return SCOPE; },
     folderName: function () { return FOLDER_NAME; },
+    explicitKeys: function () { return Object.keys(EXPLICIT_KEYS); },
+    idbNames: function () { return IDB_NAMES.slice(); },
+    dbList: function () { return listBackupDbs(); },
     status: status,
     connected: function () { return !!token(); },
     connect: connect,

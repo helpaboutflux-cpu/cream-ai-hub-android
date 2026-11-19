@@ -318,7 +318,7 @@
     home: ['홈 배너', 'index.html 홈 최상단'],
     ads: ['광고 관리', 'Flux Feed 기사 사이에 노출'],
     push: ['푸시 알림', '구독 중인 사용자에게 즉시 발송'],
-    cloud: ['Supabase', '로그인 · 동기화 · 짧은 공유 링크'],
+    cloud: ['Supabase', '로그인 · 짧은 공유 링크 · 원격 설정'],
     security: ['보안', '관리자 비밀번호 · 숨김 점검']
   };
 
@@ -901,10 +901,6 @@
     $('cUrl').value = c.url || '';
     $('cKey').value = c.anonKey || '';
     updateCloudPills();
-    var ls = LemonCloud.lastSync();
-    $('kvLastSync').textContent = ls
-      ? new Date(ls.ts).toLocaleString('ko-KR') + ' · ' + (ls.dir === 'push' ? '백업 ' : '복원 ') + ls.count + '개'
-      : '없음';
   }
   function updateCloudPills() {
     var on = window.LemonCloud && LemonCloud.configured();

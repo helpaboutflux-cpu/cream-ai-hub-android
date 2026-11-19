@@ -10,7 +10,6 @@
 --  테이블
 --    site_config      사이트 상단 공지 · 홈 배너 · 광고 ON/OFF      (전 방문자 읽기)
 --    site_ads         Flux Feed 광고 목록                            (전 방문자 읽기)
---    user_sync_data   로그인 사용자의 lemon_* / flux_* 데이터 백업   (본인만)
 --    shared_pages     짧은 공유 링크(view.html?id=...)               (링크 보유자 읽기)
 --    admin_users      관리자 이메일 목록                             (관리자만 확인)
 --  모든 테이블에 RLS 가 켜져 있고, 쓰기는 관리자/본인으로 제한됩니다.
@@ -113,27 +112,13 @@ create policy "site_ads admin write"
   with check (public.is_site_admin());
 
 -- ------------------------------------------------------------
--- 3. user_sync_data — 로그인 사용자 클라우드 백업
+-- 3. (계정 작업물 저장 없음)
+--    개인 작업물(메모·일정·가계부·사진 등)은 서버에 올리지 않는다.
+--    백업·복원은 이용자 본인의 Google Drive(lemon-gdrive.js)로만 한다.
+--    예전 버전이 만들던 user_sync_data 테이블은 쓰지 않는다.
+--    직접 정리하려면 아래 한 줄을 실행한다(되돌릴 수 없음).
+--    drop table if exists public.user_sync_data;
 -- ------------------------------------------------------------
-create table if not exists public.user_sync_data (
-  user_id    uuid not null references auth.users (id) on delete cascade,
-  key        text not null,
-  value      jsonb,
-  updated_at timestamptz not null default now(),
-  primary key (user_id, key)
-);
-
-create index if not exists user_sync_data_user_idx on public.user_sync_data (user_id);
-
-alter table public.user_sync_data enable row level security;
-
-drop policy if exists "sync own rows" on public.user_sync_data;
-
-create policy "sync own rows"
-  on public.user_sync_data for all
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
 
 -- ------------------------------------------------------------
 -- 4. shared_pages — 짧은 공유 링크 (view.html?id=짧은코드)
@@ -217,60 +202,12 @@ drop trigger if exists site_ads_touch on public.site_ads;
 create trigger site_ads_touch before update on public.site_ads
   for each row execute function public.touch_updated_at();
 
-drop trigger if exists user_sync_touch on public.user_sync_data;
-create trigger user_sync_touch before update on public.user_sync_data
-  for each row execute function public.touch_updated_at();
 
 -- ------------------------------------------------------------
--- 6. 클라우드 저장 한도 (1인당 5MB) — 서버 보호
---    클라이언트(lemon-cloud.js)가 먼저 막지만, 다른 경로로 들어오는
---    대용량 업로드를 DB 에서도 막는다. 무료 플랜 DB 500MB 를 지키기 위한 장치다.
---    한도를 바꾸려면 아래 5242880(5MB) 숫자만 고쳐 다시 실행하면 된다.
+-- 6. 계정 저장 한도 — 없음
+--    계정에는 짧은 공유 링크와 원격 설정만 저장하므로 별도 용량 규칙을 두지 않는다.
+--    개인 작업물 용량은 이용자 본인의 Google Drive 몫을 따른다.
 -- ------------------------------------------------------------
--- 행마다 실제 저장 바이트를 기록한다.
--- lemon-cloud.js 가 이 컬럼을 읽어 "서버 기준 사용량"을 보여준다.
-alter table public.user_sync_data
-  add column if not exists size_bytes bigint not null default 0;
-
-create index if not exists user_sync_data_size_idx on public.user_sync_data (user_id, size_bytes);
-
-create or replace function public.enforce_user_sync_quota()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-  declare
-    quota  bigint := 5242880;   -- 5MB
-    used   bigint;
-    mine   bigint;
-  begin
-    mine := octet_length(coalesce(new.value::text, ''));
-    new.size_bytes := mine;
-
-    select coalesce(sum(octet_length(coalesce(value::text, ''))), 0)
-      into used
-      from public.user_sync_data
-     where user_id = new.user_id
-       and (tg_op = 'INSERT' or key <> new.key);
-
-    if used + mine > quota then
-      raise exception 'cloud-quota-exceeded: % + % > %', used, mine, quota
-        using errcode = 'check_violation',
-              hint = '클라우드 저장 한도(5MB)를 초과했습니다. 불필요한 파일/항목을 정리해 주세요.';
-    end if;
-    return new;
-  end;
-$$;
-
-update public.user_sync_data
-   set size_bytes = octet_length(coalesce(value::text, ''))
- where size_bytes = 0;
-
-drop trigger if exists user_sync_quota on public.user_sync_data;
-create trigger user_sync_quota
-  before insert or update on public.user_sync_data
-  for each row execute function public.enforce_user_sync_quota();
 
 -- ------------------------------------------------------------
 -- 7. 권한 (Supabase 기본 권한 위에 명시)
@@ -280,7 +217,6 @@ grant select on public.site_config to anon, authenticated;
 grant select on public.site_ads    to anon, authenticated;
 grant select, insert, update, delete on public.site_config to authenticated;
 grant select, insert, update, delete on public.site_ads    to authenticated;
-grant select, insert, update, delete on public.user_sync_data to authenticated;
 
 -- ------------------------------------------------------------
 -- 8. 관리자 등록 — 아래 주석을 풀고 본인 이메일을 넣어 한 번 실행하세요.

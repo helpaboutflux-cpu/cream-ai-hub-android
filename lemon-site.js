@@ -530,14 +530,6 @@
     st.textContent = POP_CSS;
     (doc.head || doc.documentElement).appendChild(st);
   }
-  function fmtMB(n) { return ((Number(n) || 0) / 1048576).toFixed(1) + ' MB'; }
-  function fmtB(n) {
-    try { if (window.LemonCloud && LemonCloud.fmtBytes) return LemonCloud.fmtBytes(n); } catch (e) { }
-    return fmtMB(n);
-  }
-  function hhmmss(ts) {
-    try { return new Date(ts).toLocaleTimeString('ko-KR', { hour12: false }); } catch (e) { return ''; }
-  }
   function closePop() {
     if (!popLayer) return;
     var node = popLayer;
@@ -570,14 +562,10 @@
       '</div>' +
       '<div class="lkpop-body">' +
       '<div class="lkpop-kv"><span>계정 상태</span><b>' + (ok ? '이메일 인증 완료' : '이메일 인증 대기') + '</b></div>' +
-      '<div class="lkpop-swrow"><span>클라우드 저장</span><label class="lkpop-sw"><input type="checkbox" data-pop-sync aria-label="클라우드 저장 켜기"><i></i></label></div>' +
-      '<div class="lkpop-urow"><span>클라우드 저장 공간</span><b data-pop-use>-</b></div>' +
-      '<div class="lkpop-track"><i data-pop-fill></i></div>' +
-      '<div class="lkpop-urow" style="margin-top:11px"><span>Drive 개인 백업</span><b data-pop-gd>-</b></div>' +
+      '<div class="lkpop-urow"><span>Drive 개인 백업</span><b data-pop-gd>-</b></div>' +
       '<p class="lkpop-msg" data-pop-msg role="status" aria-live="polite"></p>' +
-      '<button type="button" class="lkpop-btn lkpop-btn--solid" data-pop-backup>지금 클라우드 백업</button>' +
-      '<a class="lkpop-btn" href="drive.html#cloud">Google Drive 개인 백업</a>' +
-      '<a class="lkpop-btn" data-pop-settings href="' + esc(authHref()) + '">LK ID 계정 설정</a>' +
+      '<a class="lkpop-btn lkpop-btn--solid" href="drive.html#cloud">Google Drive 백업 · 복원</a>' +
+      '<a class="lkpop-btn" data-pop-settings href="' + esc(authHref(true)) + '">LK ID 계정 설정</a>' +
       '<button type="button" class="lkpop-btn lkpop-btn--ghost" data-pop-out>로그아웃</button>' +
       '</div></div>';
   }
@@ -633,53 +621,19 @@
       msgEl.className = 'lkpop-msg' + (text ? ' on' : '') + (kind === 'err' ? ' is-err' : '');
     }
 
-    function paintUsage(u) {
-      if (!u) return;
-      var use = box.querySelector('[data-pop-use]');
-      var fill = box.querySelector('[data-pop-fill]');
-      var pct = u.limit ? Math.min(100, (Number(u.bytes) || 0) / u.limit * 100) : 0;
-      if (use) use.textContent = fmtMB(u.bytes) + ' / ' + fmtMB(u.limit);
-      if (fill) fill.style.width = pct + '%';
-      box.classList.toggle('is-full', !!u.limit && (u.bytes || 0) >= u.limit * 0.95);
-    }
-    function refreshUsage() {
-      var c = window.LemonCloud;
-      if (!c || !c.usage) return;
-      (c.init ? c.init() : Promise.resolve()).then(function () { return c.usage(); })
-        .then(function (u) { if (popLayer === layer) paintUsage(u); }, function () { });
-    }
-
     var gdEl = box.querySelector('[data-pop-gd]');
     if (gdEl) gdEl.textContent = gdLinkState();
 
-    var bk = box.querySelector('[data-pop-backup]');
-    if (bk) {
-      bk.addEventListener('click', function () {
-        if (bk.disabled) return;
-        var label = bk.textContent;
-        bk.disabled = true;
-        bk.innerHTML = '<span class="lkpop-spin" aria-hidden="true"></span>백업 중';
-        setMsg('클라우드로 올리는 중입니다.');
-        window.LemonCloud.backupNow().then(function (r) {
-          bk.disabled = false;
-          bk.textContent = label;
-          if (r && r.ok) {
-            setMsg('백업 완료 · ' + hhmmss(r.ts) + ' · ' + r.count + '개 항목 (' + fmtB(r.bytes) + ')');
-          } else if (r && r.error === 'quota-exceeded') {
-            setMsg('클라우드 저장 한도(' + fmtB(r.limit) + ')를 초과해 백업할 수 없습니다. 불필요한 항목을 정리해 주세요.', 'err');
-          } else if (r && r.error === 'sync-off') {
-            setMsg('클라우드 저장이 꺼져 있어 백업하지 않았습니다.', 'err');
-          } else if (r && r.error === 'login-required') {
-            setMsg('로그인이 풀렸습니다. 다시 로그인해 주세요.', 'err');
-          } else {
-            setMsg('백업하지 못했습니다: ' + ((r && r.error) || '알 수 없는 오류'), 'err');
-          }
-          refreshUsage();
-        }, function () {
-          bk.disabled = false;
-          bk.textContent = label;
-          setMsg('백업하지 못했습니다.', 'err');
-        });
+    /* 계정 설정 링크는 팝오버를 닫은 뒤 이동한다(겹친 레이어가 클릭을 가로채지 않도록). */
+    var toSettings = box.querySelector('[data-pop-settings]');
+    if (toSettings) {
+      toSettings.addEventListener('click', function (e) {
+        var href = toSettings.getAttribute('href');
+        if (!href) return;
+        if (e && e.metaKey) return;
+        e.preventDefault();
+        closePop();
+        location.href = href;
       });
     }
 
@@ -701,37 +655,18 @@
       });
     }
 
-    var sw = box.querySelector('[data-pop-sync]');
-    function paintMode() {
-      var c = window.LemonCloud;
-      var on = c && c.syncEnabled ? c.syncEnabled() : true;
-      if (sw) sw.checked = on;
-      box.classList.toggle('is-off', !on);
-      if (bk) {
-        bk.disabled = !on;
-        bk.title = on ? '' : '클라우드 저장이 꺼져 있습니다';
-      }
-      var use = box.querySelector('[data-pop-use]');
-      if (!on && use) use.textContent = '꺼짐 · 기기에만 저장';
-      if (on) refreshUsage();
-      setMsg(on ? '' : '클라우드 저장이 꺼져 있습니다. 데이터는 이 기기에만 저장됩니다.');
-    }
-    if (sw) {
-      sw.addEventListener('change', function () {
-        var on = window.LemonCloud.setSyncEnabled(!!sw.checked);
-        paintMode();
-        if (on) setMsg('클라우드 저장을 켰습니다.');
-      });
-    }
-    paintMode();
-    setTimeout(function () { if (bk) { try { bk.focus({ preventScroll: true }); } catch (e) { } } }, 40);
+    setMsg('');
+    setTimeout(function () { if (toSettings) { try { toSettings.focus({ preventScroll: true }); } catch (e) { } } }, 40);
   }
 
   /* ---------------- 허브 로그인 상태 (LK ID) ---------------- */
   var ICON_LK = '<svg viewBox="0 0 46 32" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true"><path d="M3 5V27H17"></path><path d="M24 5V27"></path><path d="M42 5L26.5 16L42 27"></path></svg>';
 
-  /* 지금 보고 있는 페이지로 돌아올 수 있도록 ?next= 를 붙인다. */
-  function authHref() {
+  /* 지금 보고 있는 페이지로 돌아올 수 있도록 ?next= 를 붙인다.
+     settings=true 는 '계정 설정을 보겠다'는 뜻이라 next 를 붙이지 않는다
+     (auth.html 이 로그인된 상태에서 next 로 되돌려 보내면 설정 화면이 안 열린다). */
+  function authHref(settings) {
+    if (settings) return 'auth.html?settings=1';
     var file = '';
     try { file = String(location.pathname || '').split('/').pop() || 'index.html'; } catch (e) { file = ''; }
     if (!/\.html$/i.test(file)) file = 'index.html';
@@ -818,6 +753,9 @@
       s.onerror = function () { resolve(); };
       (doc.head || doc.documentElement).appendChild(s);
     }).then(function () {
+      /* 저장된 세션이 있으면 상단 계정 버튼을 이메일로 다시 그린다.
+         (처음 그릴 때는 LemonCloud.init() 이 끝나기 전이라 '로그인'으로 남는다) */
+      renderAuth();
       try {
         if (!window.LemonCloud || !LemonCloud.configured || !LemonCloud.configured()) return;
         return LemonCloud.fetchSiteData().then(function (data) {

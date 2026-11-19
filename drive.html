@@ -899,14 +899,7 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
 .fab:active { transform: scale(.93); }
 .dock { display: none; }
 
-/* ---------- cloud backup (LK ID) ---------- */
-.cloud-pill .cl-bar {
-  display: block; width: 42px; height: 4px; border-radius: 99px;
-  background: var(--chip); overflow: hidden; flex: none;
-}
-.cloud-pill .cl-bar b { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--brand); transition: width .45s cubic-bezier(.22, 1, .36, 1); }
-.cloud-pill.is-full { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.cloud-pill.is-full .cl-bar b { background: var(--danger); }
+/* ---------- backup sheet (Google Drive) ---------- */
 .cl-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .cl-num { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .cl-num b { font-size: 22px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
@@ -1179,9 +1172,8 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
         <button class="pill" id="tbUpload"><svg class="i"><use href="#i-upload"></use></svg>파일 올리기</button>
         <button class="pill" id="tbNewFolder"><svg class="i"><use href="#i-folder-plus"></use></svg>새 폴더</button>
         <button class="pill" id="tbZip"><svg class="i"><use href="#i-archive"></use></svg>ZIP 백업</button>
-        <button class="pill cloud-pill" id="tbCloud" title="클라우드 백업 (LK ID)">
-          <svg class="i"><use href="#i-cloud"></use></svg><span id="cloudLabel">클라우드</span>
-          <i class="cl-bar" aria-hidden="true"><b id="cloudFill"></b></i>
+        <button class="pill cloud-pill" id="tbCloud" title="Google Drive 백업·복원">
+          <svg class="i"><use href="#i-cloud"></use></svg><span id="cloudLabel">Drive 백업</span>
         </button>
         <button class="pill" id="tbExample"><svg class="i"><use href="#i-spark"></use></svg>예시로 둘러보기</button>
         <button class="pill danger" id="tbEmpty" hidden><svg class="i"><use href="#i-trash"></use></svg>휴지통 비우기</button>
@@ -3662,219 +3654,31 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     render();
   }
 
-  /* ================= 클라우드 백업 (LK ID) =================
-     드라이브는 원래 이 기기에만 저장한다. 아래 기능은 사용자가 직접 누를 때만
-     폴더 구조와 작은 파일 내용을 LK ID 계정으로 올린다. 한도는 계정당 5MB 이다. */
-  var CLOUD_FILE_MAX = 1024 * 1024;            /* 파일 하나의 내용은 1MB 까지만 올린다 (lemon-cloud.js 와 동일) */
-  var cloudBusy = false;
-  var cloudInfo = null;
-  var cloudUI = {};
-
-  function cloudApi() { return window.LemonCloud || null; }
-  function cloudUser() {
-    var c = cloudApi();
-    try { return c && c.sessionUser ? c.sessionUser() : null; } catch (e) { return null; }
+  /* ================= 백업·복원 (Google Drive) =================
+     개인 작업물은 이용자 본인의 Google Drive(15GB)로만 백업한다.
+     Supabase 계정에는 작업물을 올리지 않는다(계정 저장은 공유 링크용). */
+  function gdWhenShort(ts) {
+    try { return new Date(ts).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; }
   }
-  function fmtMB(n) { return ((Number(n) || 0) / 1048576).toFixed(1) + ' MB'; }
-  function bytesOf(v) {
-    try { if (window.TextEncoder) return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { }
-    try { return JSON.stringify(v).length; } catch (e) { return 0; }
-  }
-  function hhmm(ts) {
-    try { return new Date(ts).toLocaleTimeString('ko-KR', { hour12: false }); } catch (e) { return ''; }
-  }
-  function authNext() { return 'auth.html?next=' + encodeURIComponent('drive.html'); }
-
-  function lastCloudText() {
-    var c = cloudApi(), ts = 0, count = 0;
-    try {
-      var ls = c && c.lastBackup ? c.lastBackup() : null;
-      if (ls) { ts = ls.ts; count = ls.count || 0; }
-    } catch (e) { }
-    if (!ts) {
-      try {
-        var book = JSON.parse(localStorage.getItem('lemon_cloud_usage_v1') || 'null');
-        if (book && book.drive && book.drive.ts) { ts = book.drive.ts; count = book.drive.count || 0; }
-      } catch (e) { }
-    }
-    return ts ? (fullDate(ts) + (count ? ' · ' + count + '개' : '')) : '없음';
-  }
-  function localOnlyText() {
-    var n = 0, b = 0;
-    S.nodes.forEach(function (x) {
-      if (x.kind !== 'file' || x.trashed) return;
-      if ((x.size || 0) > CLOUD_FILE_MAX) { n++; b += (x.size || 0); }
-    });
-    return n ? n + '개 · ' + fmtBytes(b) : '없음';
-  }
-
-  function paintCloudChip(u) {
-    var pill = $('#tbCloud'), label = $('#cloudLabel'), fill = $('#cloudFill');
+  function driveChip() {
+    var pill = $('#tbCloud'), label = $('#cloudLabel');
     if (!pill || !label) return;
-    var c = cloudApi();
-    if (c && c.syncEnabled && !c.syncEnabled()) {
-      label.textContent = '클라우드 꺼짐';
-      if (fill) fill.style.width = '0%';
-      pill.classList.remove('is-full');
-      pill.title = '클라우드 저장이 꺼져 있습니다 — 이 기기에만 저장';
-      return;
+    var g = window.LemonGDrive, st = null;
+    try { st = g && g.status ? g.status() : null; } catch (e) { }
+    if (!st) { label.textContent = 'Drive 백업'; pill.title = 'Google Drive 백업을 쓸 수 없습니다'; return; }
+    if (st.connected) {
+      var last = st.last;
+      label.textContent = last && last.ts ? ('Drive · ' + gdWhenShort(last.ts)) : 'Drive 연결됨';
+      pill.title = 'Google Drive 백업·복원 — 눌러서 열기';
+    } else if (st.wasLinked) {
+      label.textContent = 'Drive 다시 연결';
+      pill.title = 'Google Drive 연결이 만료되었습니다 — 눌러서 다시 연결';
+    } else {
+      label.textContent = 'Drive 백업';
+      pill.title = 'Google Drive 백업·복원 — 내 드라이브 15GB로 직접 백업';
     }
-    if (!cloudUser()) {
-      label.textContent = '클라우드';
-      if (fill) fill.style.width = '0%';
-      pill.classList.remove('is-full');
-      pill.title = '클라우드 백업 — LK ID 로그인 후 사용할 수 있습니다';
-      return;
-    }
-    if (!u) { label.textContent = '클라우드'; return; }
-    var pct = u.limit ? Math.min(100, (Number(u.bytes) || 0) / u.limit * 100) : 0;
-    label.textContent = fmtMB(u.bytes) + ' / ' + fmtMB(u.limit);
-    if (fill) fill.style.width = pct + '%';
-    pill.classList.toggle('is-full', !!u.limit && (u.bytes || 0) >= u.limit * 0.95);
-    pill.title = '클라우드 ' + fmtMB(u.bytes) + ' / ' + fmtMB(u.limit) + ' — 눌러서 지금 백업';
-  }
-  function paintCloudSheet(u) {
-    if (u && cloudUI.box) {
-      var c2 = cloudApi();
-      if (c2 && c2.syncEnabled && !c2.syncEnabled()) {
-        cloudUI.box.classList.add('is-off');
-      }
-    }
-    if (!u || !cloudUI.box) return;
-    var pct = u.limit ? Math.min(100, (Number(u.bytes) || 0) / u.limit * 100) : 0;
-    if (cloudUI.fill) cloudUI.fill.style.width = pct + '%';
-    if (cloudUI.used) cloudUI.used.textContent = fmtMB(u.bytes);
-    cloudUI.box.classList.toggle('full', !!u.limit && (u.bytes || 0) >= u.limit * 0.95);
-    if (cloudUI.last) cloudUI.last.textContent = lastCloudText();
-    if (cloudUI.localOnly) cloudUI.localOnly.textContent = localOnlyText();
-  }
-  function cloudRefresh() {
-    var c = cloudApi();
-    if (!c) return Promise.resolve(null);
-    return (c.init ? c.init() : Promise.resolve()).then(function () {
-      return c.usage ? c.usage() : null;
-    }).then(function (u) {
-      cloudInfo = u;
-      paintCloudChip(u);
-      paintCloudSheet(u);
-      return u;
-    }, function () { return null; });
   }
 
-  function cloudStatus(text, pct) {
-    if (!cloudUI.status) return;
-    if (!text) { cloudUI.status.hidden = true; return; }
-    cloudUI.status.hidden = false;
-    if (cloudUI.text) cloudUI.text.textContent = text;
-    if (cloudUI.prog) cloudUI.prog.style.width = Math.max(0, Math.min(100, pct === undefined ? 0 : pct)) + '%';
-  }
-
-  /* ---------------- 백업 (엔진: lemon-cloud.js) ---------------- */
-  function cloudBackup(btn) {
-    if (cloudBusy) return;
-    var c = cloudApi();
-    if (!c || !c.syncDrive) { toast('클라우드 모듈을 불러오지 못했습니다.', 'err'); return; }
-    if (!cloudUser()) { location.href = authNext(); return; }
-    cloudBusy = true;
-    var oldHTML = btn ? btn.innerHTML : '';
-    var oldDisabled = btn ? btn.disabled : false;
-    if (btn) { btn.disabled = true; btn.innerHTML = icon('i-cloud') + '백업 중'; }
-    cloudStatus('폴더와 파일 정보를 모으는 중', 4);
-    c.syncDrive({
-      force: true,
-      onProgress: function (i, n) {
-        cloudStatus('파일 내용을 준비하는 중 ' + i + ' / ' + n, n ? 4 + (i / n) * 76 : 4);
-      }
-    }).then(function (r) {
-      cloudBusy = false;
-      if (btn) { btn.disabled = oldDisabled; btn.innerHTML = oldHTML; }
-      if (r && r.ok) {
-        var extra = '';
-        if (r.skippedBig && r.skippedBig.length) extra = ' · 1MB 초과 ' + r.skippedBig.length + '개는 기기에만 보관';
-        cloudStatus('백업 완료 · ' + hhmm(r.ts) + ' · 파일 ' + (r.files || 0) + '개 · ' + fmtBytes(r.bytes) + extra, 100);
-        toast('클라우드에 파일 ' + (r.files || 0) + '개를 백업했습니다.');
-      } else if (r && r.error === 'quota-exceeded') {
-        cloudStatus('클라우드 저장 한도를 넘어 백업을 멈췄습니다.', 0);
-        cloudQuotaNote(r);
-      } else if (r && r.error === 'sync-off') {
-        cloudStatus('클라우드 저장이 꺼져 있어 백업하지 않았습니다.', 0);
-      } else if (r && r.error === 'login-required') {
-        cloudStatus('로그인이 풀렸습니다. 다시 로그인해 주세요.', 0);
-      } else if (r && r.error === 'idb-unavailable') {
-        cloudStatus('이 브라우저에서는 드라이브 저장소를 열 수 없습니다.', 0);
-      } else {
-        cloudStatus('백업 실패: ' + ((r && r.error) || '알 수 없는 오류'), 0);
-        toast('백업하지 못했습니다.', 'err');
-      }
-      cloudRefresh();
-    }, function (err) {
-      cloudBusy = false;
-      if (btn) { btn.disabled = oldDisabled; btn.innerHTML = oldHTML; }
-      cloudStatus('백업 실패: ' + ((err && err.message) || '알 수 없는 오류'), 0);
-      toast('백업하지 못했습니다.', 'err');
-    });
-  }
-
-  function cloudQuotaNote(r) {
-    var big = S.nodes.filter(function (n) { return n.kind === 'file' && !n.trashed; })
-      .sort(function (a, b) { return (b.size || 0) - (a.size || 0); }).slice(0, 4);
-    var html = '<p class="cl-note" style="color:var(--danger)">클라우드 저장 한도(' + fmtBytes(r.limit) +
-      ')를 초과해 백업할 수 없습니다. 불필요한 파일/항목을 정리해 주세요. (이번 백업 ' + fmtBytes(r.bytes) +
-      (r.used ? ' + 이미 사용 ' + fmtBytes(r.used) : '') + ')</p>';
-    if (big.length) {
-      html += '<ul class="cl-list">' + big.map(function (n) {
-        return '<li><span>' + esc(n.name) + '</span><b>' + fmtBytes(n.size || 0) + '</b></li>';
-      }).join('') + '</ul>';
-    }
-    var box = cloudUI.box;
-    if (box) {
-      var old = box.querySelector('.cl-quota');
-      if (old && old.parentNode) old.parentNode.removeChild(old);
-      var div = doc.createElement('div');
-      div.className = 'cl-quota';
-      div.innerHTML = html;
-      box.appendChild(div);
-    }
-    toast('클라우드 저장 한도를 넘었습니다.', 'err');
-  }
-
-  /* ---------------- 복원 ---------------- */
-  function cloudRestore(btn) {
-    if (cloudBusy) return;
-    var c = cloudApi();
-    if (!c || !c.restoreDrive) { toast('클라우드 모듈을 불러오지 못했습니다.', 'err'); return; }
-    if (!cloudUser()) { location.href = authNext(); return; }
-    cloudBusy = true;
-    var oldHTML = btn ? btn.innerHTML : '';
-    var oldDisabled = btn ? btn.disabled : false;
-    if (btn) { btn.disabled = true; btn.innerHTML = icon('i-restore') + '확인 중'; }
-    cloudStatus('클라우드에서 목록을 받는 중', 8);
-    c.restoreDrive({
-      onProgress: function (i, n) {
-        cloudStatus('되살리는 중 ' + i + ' / ' + n, n ? 8 + (i / n) * 86 : 8);
-      }
-    }).then(function (r) {
-      cloudBusy = false;
-      if (btn) { btn.disabled = oldDisabled; btn.innerHTML = oldHTML; }
-      if (!r || !r.ok) {
-        cloudStatus('복원 실패: ' + ((r && r.error) || '알 수 없는 오류'), 0);
-        toast('복원하지 못했습니다.', 'err');
-        return null;
-      }
-      if (!r.total) {
-        cloudStatus('클라우드에 백업된 항목이 없습니다.', 0);
-        return null;
-      }
-      cloudStatus('복원 완료 · 폴더 ' + r.nodes + '개 · 파일 ' + r.files + '개', 100);
-      toast('클라우드에서 파일 ' + r.files + '개를 되살렸습니다.');
-      return loadAll().then(function () { render(); renderChrome(); cloudRefresh(); });
-    }, function (err) {
-      cloudBusy = false;
-      if (btn) { btn.disabled = oldDisabled; btn.innerHTML = oldHTML; }
-      cloudStatus('복원 실패: ' + ((err && err.message) || '알 수 없는 오류'), 0);
-      toast('복원하지 못했습니다.', 'err');
-    });
-  }
 
   /* ================= Google Drive 개인 백업 (lemon-gdrive.js) =================
      이용자 본인 드라이브(15GB)로 직접 백업·복원한다. 서버를 거치지 않는다.
@@ -3894,6 +3698,19 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     var last = st && st.last;
     return (last && last.ts) ? gdWhen(last.ts) + ' · 파일 ' + (last.files || 0) + '개' : '없음';
   }
+  function gdCountsText() {
+    var g = gdApi();
+    var st = g ? g.status() : null;
+    var last = st && st.last;
+    if (!last || !last.ts) return '설정 · 서비스 저장소 · Flux Drive 파일';
+    return '설정 ' + (last.keys || 0) + '개 · 서비스 ' + (last.dbs || 0) + '개 ' + (last.records || 0) + '건 · 파일 ' + (last.files || 0) + '개 · ' + gdFmt(last.bytes || 0);
+  }
+  function gdRestoreText() {
+    var g = gdApi();
+    var st = g ? g.status() : null;
+    var lr = st && st.lastRestore;
+    return (lr && lr.ts) ? gdWhen(lr.ts) + ' · 파일 ' + (lr.files || 0) + '개' : '없음';
+  }
   function gdBlockHTML() {
     var g = gdApi();
     if (!g) return '';
@@ -3903,17 +3720,18 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
       '<div class="gd-head"><span class="gd-t">Google Drive 개인 백업</span>' +
       '<span class="gd-badge' + (st.connected ? ' on' : '') + '" id="gdBadge">' + badge + '</span></div>' +
       '<div class="cl-row"><span>저장 위치</span><b>내 드라이브 · Soft Hub Backup</b></div>' +
-      '<div class="cl-row"><span>마지막 Drive 백업</span><b id="gdLast">' + esc(gdLastText()) + '</b></div>' +
-      '<div class="cl-row"><span>백업 대상</span><b>설정 · Flux Drive 전체 파일</b></div>' +
+      '<div class="cl-row"><span>마지막 백업</span><b id="gdLast">' + esc(gdLastText()) + '</b></div>' +
+      '<div class="cl-row"><span>마지막 복원</span><b id="gdRestoreLast">' + esc(gdRestoreText()) + '</b></div>' +
+      '<div class="cl-row"><span>백업 항목</span><b id="gdCounts">' + esc(gdCountsText()) + '</b></div>' +
       '<div class="cl-row"><span>Drive 제외</span><b>비밀번호 금고 · AI API 키</b></div>' +
       '<div class="gd-actions">' +
       '<button class="btn-primary" id="gdConnect" type="button">' + icon('i-link') + (st.wasLinked ? '다시 연결' : 'Drive 연결') + '</button>' +
-      '<button class="btn-ghost" id="gdBackup" type="button">' + icon('i-cloud') + '백업</button>' +
+      '<button class="btn-ghost" id="gdBackup" type="button">' + icon('i-cloud') + '지금 백업</button>' +
       '<button class="btn-ghost" id="gdRestore" type="button">' + icon('i-restore') + '복원</button>' +
       '<button class="btn-ghost" id="gdOff" type="button">' + icon('i-x') + '해제</button>' +
       '</div>' +
       '<div class="cl-status" id="gdStatus" hidden><span id="gdStatusText">준비 중</span></div>' +
-      '<p class="cl-note">내 Google 드라이브(15GB)로 직접 보내고 서버를 거치지 않습니다. 앱이 만든 전용 폴더만 다루는 최소 권한(drive.file)을 요청합니다. 아직 Google 앱 정식 검수 전이라 연결할 때 <b>Google에서 확인하지 않은 앱</b> 경고가 뜰 수 있습니다 — <b>고급</b>에서 <b>계속</b>을 누르면 됩니다. 1MB가 넘는 파일도 함께 백업합니다.</p>' +
+      '<p class="cl-note">내 Google 드라이브(15GB)로 직접 보내고 서버를 거치지 않습니다. 앱이 만든 전용 폴더만 다루는 최소 권한(drive.file)을 요청합니다. 아직 Google 앱 정식 검수 전이라 연결할 때 <b>Google에서 확인하지 않은 앱</b> 경고가 뜰 수 있습니다 — <b>고급</b>에서 <b>계속</b>을 누르면 됩니다. 크기가 큰 파일도 함께 백업합니다.</p>' +
       '</div>';
   }
   function gdPaint() {
@@ -3925,6 +3743,8 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
       gdUI.badge.classList.toggle('on', !!st.connected);
     }
     if (gdUI.last) gdUI.last.textContent = gdLastText();
+    if (gdUI.restoreLast) gdUI.restoreLast.textContent = gdRestoreText();
+    if (gdUI.counts) gdUI.counts.textContent = gdCountsText();
     if (gdUI.connect) {
       gdUI.connect.disabled = gdBusy;
       gdUI.connect.innerHTML = icon('i-link') + (st.wasLinked ? '다시 연결' : 'Drive 연결');
@@ -4069,99 +3889,49 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     gdPaint();
   }
 
-  /* ---------------- 클라우드 시트 ---------------- */
+  /* ---------------- 백업 시트 (Google Drive) ---------------- */
   function openCloudSheet() {
-    var user = cloudUser();
-    var body, foot;
-    if (!user) {
-      body = '<div class="cl-empty">' +
-        '<p>클라우드 백업은 LK ID 로그인 후 사용할 수 있습니다. 지금 파일들은 이 기기에만 저장되어 있습니다.</p>' +
-        '<p class="hint">로그인하면 폴더 구조와 1MB 이하 파일을 계정에 백업하고 다른 기기에서 되살릴 수 있습니다. 계정당 클라우드 저장 한도는 5MB 입니다.</p>' +
-        '</div>' + gdBlockHTML();
-      foot = '<div class="cl-grow"></div><button class="btn-ghost" data-close>닫기</button>' +
-        '<a class="btn-primary" href="' + authNext() + '" style="text-decoration:none">' + icon('i-link') + 'LK ID 로그인</a>';
-    } else {
-      var limit = (cloudInfo && cloudInfo.limit) || 5242880;
-      var bytes = (cloudInfo && cloudInfo.bytes) || 0;
-      body = '<div class="cl" id="clBox">' +
-        '<div class="cl-top"><div class="cl-num"><b id="clUsed">' + fmtMB(bytes) + '</b><span>/ ' + fmtMB(limit) + '</span></div>' +
-        '<span class="cl-tag">' + esc(String(user.email || 'LK ID').split('@')[0]) + '</span></div>' +
-        '<div class="cl-track"><i id="clFillSheet"></i></div>' +
-        '<div class="cl-row"><span>클라우드 저장</span><label class="cl-sw"><input type="checkbox" id="clSync" aria-label="클라우드 저장 켜기"><i aria-hidden="true"></i><b id="clSyncState">켜짐</b></label></div>' +
-        '<div class="cl-row"><span>마지막 클라우드 백업</span><b id="clLast">' + esc(lastCloudText()) + '</b></div>' +
-        '<div class="cl-row"><span>백업 대상</span><b>폴더 구조 · 1MB 이하 파일</b></div>' +
-        '<div class="cl-row"><span>기기에만 있는 파일</span><b id="clLocalOnly">' + esc(localOnlyText()) + '</b></div>' +
-        '<p class="cl-note">직접 누를 때만 전송합니다. 파일 내용은 내 계정에만 저장되고 다른 사람은 볼 수 없습니다. 1MB를 넘는 파일은 기기에만 남습니다.</p>' +
-        '<div class="cl-status" id="clStatus" hidden><span id="clStatusText">준비 중</span><div class="cl-track sm"><i id="clProg"></i></div></div>' +
-        '</div>' + gdBlockHTML();
-      foot = '<button class="btn-ghost" id="clRestore">' + icon('i-restore') + '복원</button>' +
-        '<button class="btn-ghost" id="clAccount">' + icon('i-link') + '계정</button>' +
-        '<div class="cl-grow"></div>' +
-        '<button class="btn-primary" id="clBackup">' + icon('i-cloud') + '지금 백업</button>';
-    }
+    var g = gdApi();
+    if (!g) { toast('Google Drive 백업 모듈을 불러오지 못했습니다.', 'err'); return; }
+    var st = g.status();
+    var body =
+      '<div class="cl" id="clBox">' +
+        '<p class="cl-note" style="margin:0 0 12px">내 Google 드라이브(15GB)로 이 기기의 작업물을 직접 백업하고 다른 기기에서 복원합니다. 서버를 거치지 않고 LK ID 로그인도 필요 없습니다.</p>' +
+      '</div>' +
+      gdBlockHTML() +
+      '<div style="margin-top:16px">' +
+        '<div class="cl-row"><span>공유 링크 계정</span><b>' +
+          (gdLinkedAccount() ? esc(gdLinkedAccount()) + ' 로그인됨' : '로그인하지 않음') +
+        '</b></div>' +
+        '<p class="cl-note">짧은 공유 링크를 만들 때만 LK ID 로그인을 씁니다. 작업물은 계정에 올리지 않습니다. 계정 설정은 <a href="auth.html?settings=1#backup" style="color:inherit;text-decoration:underline">auth.html</a>에서 바꿀 수 있습니다.</p>' +
+      '</div>';
+
+    var foot = '<a class="btn-ghost" href="auth.html?settings=1#backup" style="text-decoration:none">' + icon('i-link') + '계정 설정</a>' +
+      '<div class="cl-grow"></div>' +
+      '<button class="btn-ghost" type="button" data-close>닫기</button>';
 
     var wrap = openSheet({
-      title: '클라우드 백업',
-      sub: user ? 'LK ID 계정에 드라이브를 백업합니다' : 'LK ID 로그인이 필요합니다',
+      title: '백업 및 복원',
+      sub: 'Google Drive 개인 백업',
       size: 'mid',
       body: body,
       foot: foot,
       onMount: function (w) {
-        var box = $('#clBox', w);
-        if (box) {
-          cloudUI.box = box;
-          cloudUI.fill = $('#clFillSheet', w);
-          cloudUI.used = $('#clUsed', w);
-          cloudUI.last = $('#clLast', w);
-          cloudUI.localOnly = $('#clLocalOnly', w);
-          cloudUI.status = $('#clStatus', w);
-          cloudUI.text = $('#clStatusText', w);
-          cloudUI.prog = $('#clProg', w);
-          var pct = (cloudInfo && cloudInfo.limit) ? Math.min(100, (cloudInfo.bytes || 0) / cloudInfo.limit * 100) : 0;
-          if (cloudUI.fill) cloudUI.fill.style.width = pct + '%';
-          if (cloudInfo) paintCloudSheet(cloudInfo);
-        }
-        var b = $('#clBackup', w);
-        if (b) b.addEventListener('click', function () { cloudBackup(b); });
-        var r = $('#clRestore', w);
-        if (r) r.addEventListener('click', function () { cloudRestore(r); });
-
-        var sw = $('#clSync', w);
-        function paintMode() {
-          var c2 = cloudApi();
-          var on = c2 && c2.syncEnabled ? c2.syncEnabled() : true;
-          if (sw) sw.checked = on;
-          var st = $('#clSyncState', w);
-          if (st) st.textContent = on ? '켜짐' : '꺼짐';
-          var boxEl = $('#clBox', w);
-          if (boxEl) boxEl.classList.toggle('is-off', !on);
-          if (b) { b.disabled = !on; b.title = on ? '' : '클라우드 저장이 꺼져 있습니다'; }
-          if (r) { r.disabled = !on; r.title = on ? '' : '클라우드 저장이 꺼져 있습니다'; }
-          if (!on) cloudStatus('클라우드 저장이 꺼져 있습니다. 이 기기에만 저장됩니다.', 0);
-          else if (cloudUI.status) cloudUI.status.hidden = true;
-        }
-        if (sw) {
-          sw.addEventListener('change', function () {
-            var c3 = cloudApi();
-            if (!c3 || !c3.setSyncEnabled) return;
-            var on = c3.setSyncEnabled(!!sw.checked);
-            paintMode();
-            toast(on ? '클라우드 저장을 켰습니다.' : '클라우드 저장을 껐습니다. 이 기기에만 저장됩니다.');
-            cloudRefresh();
-          });
-        }
-        paintMode();
-        var a = $('#clAccount', w);
-        if (a) a.addEventListener('click', function () { location.href = authNext(); });
         bindGDrive(w);
-        cloudRefresh();
       }
     });
-    wrap.addEventListener('click', function () { });
     /* 시트를 닫으면 참조를 비운다. */
     var obs = setInterval(function () {
-      if (!wrap.parentNode) { clearInterval(obs); cloudUI = {}; gdUI = {}; }
+      if (!wrap.parentNode) { clearInterval(obs); gdUI = {}; }
     }, 500);
+  }
+
+  function gdLinkedAccount() {
+    try {
+      var c = window.LemonCloud;
+      var u = c && c.sessionUser ? c.sessionUser() : null;
+      return u && u.email ? String(u.email) : '';
+    } catch (e) { return ''; }
   }
 
   /* ================= boot ================= */
@@ -4176,28 +3946,17 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     attachRipple();
     var cloudBtn = $('#tbCloud');
     if (cloudBtn) cloudBtn.addEventListener('click', openCloudSheet);
-    cloudRefresh();
-    window.addEventListener('lemoncloud:backup', function (e) {
-      var d = (e && e.detail) || {};
-      if (d.source !== 'drive' && d.phase === 'done') cloudRefresh();
-    });
-    window.addEventListener('lemongdrive:change', function () { gdPaint(); });
+    driveChip();
+    window.addEventListener('lemongdrive:change', function () { gdPaint(); driveChip(); });
     window.addEventListener('lemongdrive:restored', function (e) {
       var d = (e && e.detail) || {};
       if (d.nodes || d.files) loadAll().then(function () { render(); renderChrome(); });
-    });
-    /* 다른 기기에서 올린 폴더·파일을 받아왔으면 화면을 다시 그린다. */
-    window.addEventListener('lemoncloud:pulled', function (e) {
-      var d = (e && e.detail) || {};
-      if (d.drive && (d.drive.nodes || d.drive.files)) {
-        loadAll().then(function () { render(); renderChrome(); cloudRefresh(); });
-      }
     });
     openDB().then(loadAll).then(function () {
       render();
       scanWorks().then(function () { renderChrome(); }, function () { renderChrome(); });
       checkHashImport();
-      /* 다른 페이지의 [Google Drive 개인 백업] 링크로 들어오면 클라우드 시트를 바로 연다. */
+      /* 다른 페이지의 [Google Drive 백업] 링크로 들어오면 백업 시트를 바로 연다. */
       if (/#?cloud$/.test(location.hash || '')) setTimeout(openCloudSheet, 320);
     }, function (err) {
       console.warn('[Flux Drive] 저장소 열기 실패', err);
