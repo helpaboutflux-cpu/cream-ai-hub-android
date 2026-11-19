@@ -3711,6 +3711,14 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     var lr = st && st.lastRestore;
     return (lr && lr.ts) ? gdWhen(lr.ts) + ' · 파일 ' + (lr.files || 0) + '개' : '없음';
   }
+  function gdAccountText(st) {
+    st = st || (gdApi() ? gdApi().status() : null);
+    if (!st) return '-';
+    if (st.accountEmail) return st.accountEmail + (st.accountName && st.accountName !== st.accountEmail ? ' (' +
+      st.accountName + ')' : '');
+    if (st.connected) return '확인할 수 없음 · 연결은 정상';
+    return st.wasLinked ? '다시 연결하면 다시 확인합니다' : '-';
+  }
   function gdBlockHTML() {
     var g = gdApi();
     if (!g) return '';
@@ -3719,6 +3727,7 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     return '<div class="gd" id="gdBox">' +
       '<div class="gd-head"><span class="gd-t">Google Drive 개인 백업</span>' +
       '<span class="gd-badge' + (st.connected ? ' on' : '') + '" id="gdBadge">' + badge + '</span></div>' +
+      '<div class="cl-row"><span>연결된 계정</span><b id="gdAccount">' + esc(gdAccountText(st)) + '</b></div>' +
       '<div class="cl-row"><span>저장 위치</span><b>내 드라이브 · Soft Hub Backup</b></div>' +
       '<div class="cl-row"><span>마지막 백업</span><b id="gdLast">' + esc(gdLastText()) + '</b></div>' +
       '<div class="cl-row"><span>마지막 복원</span><b id="gdRestoreLast">' + esc(gdRestoreText()) + '</b></div>' +
@@ -3726,6 +3735,7 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
       '<div class="cl-row"><span>Drive 제외</span><b>비밀번호 금고 · AI API 키</b></div>' +
       '<div class="gd-actions">' +
       '<button class="btn-primary" id="gdConnect" type="button">' + icon('i-link') + (st.wasLinked ? '다시 연결' : 'Drive 연결') + '</button>' +
+      '<button class="btn-ghost" id="gdSwitch" type="button">' + icon('i-link') + '계정 변경</button>' +
       '<button class="btn-ghost" id="gdBackup" type="button">' + icon('i-cloud') + '지금 백업</button>' +
       '<button class="btn-ghost" id="gdRestore" type="button">' + icon('i-restore') + '복원</button>' +
       '<button class="btn-ghost" id="gdOff" type="button">' + icon('i-x') + '해제</button>' +
@@ -3743,10 +3753,19 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
       gdUI.badge.classList.toggle('on', !!st.connected);
     }
     if (gdUI.last) gdUI.last.textContent = gdLastText();
+    if (gdUI.account) gdUI.account.textContent = gdAccountText(st);
     if (gdUI.restoreLast) gdUI.restoreLast.textContent = gdRestoreText();
     if (gdUI.counts) gdUI.counts.textContent = gdCountsText();
+    if (gdUI.switchBtn) {
+      gdUI.switchBtn.hidden = !st.connected;
+      gdUI.switchBtn.disabled = gdBusy;
+    }
+    if (st.connected && !st.accountEmail && g.refreshAccount) {
+      g.refreshAccount().then(function (a) { if (a && a.email) gdPaint(); }, function () { });
+    }
     if (gdUI.connect) {
       gdUI.connect.disabled = gdBusy;
+      gdUI.connect.hidden = !!st.connected;
       gdUI.connect.innerHTML = icon('i-link') + (st.wasLinked ? '다시 연결' : 'Drive 연결');
     }
     [['backup', !st.connected], ['restore', !st.connected], ['off', !st.connected]].forEach(function (pair) {
@@ -3847,6 +3866,41 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
       toast('Drive 복원 실패', 'err');
     });
   }
+  function gdSwitchAccount() {
+    var g = gdApi();
+    if (!g || gdBusy) return;
+    if (!g.switchAccount) { toast('계정 변경을 지원하지 않는 버전입니다. 화면을 새로고쳐 주세요.', 'err'); return; }
+    gdBusy = true;
+    gdPaint();
+    gdStatusSet('Google 창에서 백업에 사용할 계정을 선택해 주세요');
+    g.switchAccount().then(function (r) {
+      gdBusy = false;
+      gdPaint();
+      if (r && r.ok) {
+        if (r.accountChanged) {
+          gdStatusSet('백업 계정을 ' + (r.accountEmail || '다른 계정') + ' 로 바꿨습니다');
+          toast('Google Drive 백업 계정을 ' + (r.accountEmail || '다른 계정') + ' 로 바꿨습니다. 새 계정에서는 [지금 백업]으로 한 번 올려 주세요.');
+        } else if (r.accountKnown) {
+          gdStatusSet('백업 계정 ' + r.accountEmail + ' 로 다시 연결했습니다');
+          toast('백업 계정 ' + r.accountEmail + ' 로 다시 연결했습니다.');
+        } else {
+          gdStatusSet('백업 계정을 바꿨습니다');
+          toast('백업 계정을 바꿨습니다. drive.file 권한만 요청해 계정 주소를 읽지 못할 수 있습니다.');
+        }
+      } else if (r && r.restored) {
+        gdStatusSet('');
+        toast('계정 변경을 취소했습니다. 이전 계정 연결은 그대로입니다.');
+      } else {
+        gdStatusSet('');
+        toast('계정을 바꾸지 못했습니다: ' + g.message((r && r.error) || 'switch-failed'), 'err');
+      }
+    }, function () {
+      gdBusy = false;
+      gdPaint();
+      gdStatusSet('');
+      toast('계정을 바꾸지 못했습니다.', 'err');
+    });
+  }
   function gdOff(btn) {
     var g = gdApi();
     if (!g || gdBusy) return;
@@ -3875,6 +3929,8 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     if (gdApi().prewarm) gdApi().prewarm();
     gdUI.box = box;
     gdUI.badge = $('#gdBadge', w);
+    gdUI.account = $('#gdAccount', w);
+    gdUI.switchBtn = $('#gdSwitch', w);
     gdUI.last = $('#gdLast', w);
     gdUI.status = $('#gdStatus', w);
     gdUI.statusText = $('#gdStatusText', w);
@@ -3883,6 +3939,7 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     gdUI.restore = $('#gdRestore', w);
     gdUI.off = $('#gdOff', w);
     if (gdUI.connect) gdUI.connect.addEventListener('click', function () { gdConnect(gdUI.connect); });
+    if (gdUI.switchBtn) gdUI.switchBtn.addEventListener('click', function () { gdSwitchAccount(); });
     if (gdUI.backup) gdUI.backup.addEventListener('click', function () { gdBackup(gdUI.backup); });
     if (gdUI.restore) gdUI.restore.addEventListener('click', function () { gdRestore(gdUI.restore); });
     if (gdUI.off) gdUI.off.addEventListener('click', function () { gdOff(gdUI.off); });
@@ -3948,6 +4005,9 @@ html[data-anim="off"] .empty-art::after { animation: none !important; }
     if (cloudBtn) cloudBtn.addEventListener('click', openCloudSheet);
     driveChip();
     window.addEventListener('lemongdrive:change', function () { gdPaint(); driveChip(); });
+    ['lemongdrive:account', 'lemon-gdrive:account'].forEach(function (n) {
+      window.addEventListener(n, function () { gdPaint(); });
+    });
     window.addEventListener('lemongdrive:restored', function (e) {
       var d = (e && e.detail) || {};
       if (d.nodes || d.files) loadAll().then(function () { render(); renderChrome(); });

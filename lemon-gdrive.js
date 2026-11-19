@@ -27,11 +27,20 @@
                 backup() 을 자동 실행한다. (복원 중 쓰기는 isRestoring 으로 막는다)
    · 설정     : lemon_gdrive_sync_v1 { pull, push, ... } — 기본 둘 다 켜짐.
    · 용량     : quota() — about.get(전체 드라이브) + Soft Hub Backup 폴더 합산.
+
+   계정 변경 (2026-11)
+   · switchAccount() — 기존 토큰을 비우고 GIS requestAccessToken({ prompt: 'select_account' }) 로
+     다른 Google 계정을 고르게 한다. 취소하면 이전 계정 연결을 조용히 되살린다.
+   · 연결 계정은 about.get(storageQuota,user) 의 user.emailAddress·displayName 을
+     lemon_gdrive_link_v1 에 남기고 status() 의 accountEmail·accountName 으로 노출한다.
+     drive.file 범위상 about 이 403 이면 폴더 소유자로 한 번 더 시도하고, 그래도 모르면 조용히 비운다.
+   · 계정이 실제로 바뀌면 이전 계정의 폴더 id·원격 기준(last_remote_at)·용량 캐시를 버리고
+     새 계정의 백업과 처음부터 동기화한다(이전 계정의 Drive 백업 파일은 지우지 않는다).
    ============================================================ */
 (function () {
   'use strict';
 
-  if (window.LemonGDrive && window.LemonGDrive.__v) return;
+  if (window.LemonGDrive && window.LemonGDrive.__v >= 2) return;
 
   var doc = document;
 
@@ -183,6 +192,49 @@
     writeJSON(K_LINK, cur);
   }
 
+  /* ---------------- 연결된 Google 계정 (이 기기에만) ----------------
+     drive.file 범위라도 about.get 이 user 를 돌려주면 이메일을 남긴다.
+     범위 밖(403)이면 조용히 알 수 없는 상태로 둔다 — 백업은 그대로 동작한다. */
+  function accountRec() {
+    var l = linkRec() || {};
+    return {
+      email: String(l.accountEmail || ''),
+      name: String(l.accountName || ''),
+      at: Number(l.accountAt) || 0
+    };
+  }
+  function account() {
+    var a = accountRec();
+    return { email: a.email, name: a.name, known: !!a.email, at: a.at };
+  }
+
+  /* 이전 계정의 폴더·원격 기준으로 새 계정을 다루지 않도록 기준을 버린다. */
+  function resetRemoteBase() {
+    saveLink({ folderId: '', driveFolderId: '' });
+    quotaCache = null;
+    acctTryAt = 0;
+    patchSync({
+      last_remote_at: 0, last_synced_at: 0, last_check_at: 0, last_quota_at: 0,
+      error: '', state: token() ? 'idle' : 'need-reconnect'
+    });
+  }
+
+  /* 확인된 계정을 저장한다. 실제로 다른 이메일이면 원격 기준을 초기화한다. */
+  function saveAccount(email, name) {
+    email = String(email || '').trim();
+    if (!email) return account();
+    var prev = accountRec();
+    var patch = { accountEmail: email, accountAt: Date.now() };
+    if (name) patch.accountName = String(name || '').trim();
+    saveLink(patch);
+    var changed = !!prev.email && prev.email.toLowerCase() !== email.toLowerCase();
+    if (changed) {
+      resetRemoteBase();
+      emit('account', { email: email, name: String(name || ''), previous: prev.email, changed: true });
+    }
+    return account();
+  }
+
   /* ---------------- Google Identity Services ---------------- */
   var gisP = null;
   function gisReady() { return !!(window.google && google.accounts && google.accounts.oauth2); }
@@ -225,7 +277,8 @@
             }
             if (!resp.access_token) return end({ ok: false, error: 'no-token' });
             saveToken(resp.access_token, resp.expires_in);
-            emit('change', { connected: true, expires_at: tokenExpiry() });
+            var acc0 = accountRec();
+            emit('change', { connected: true, expires_at: tokenExpiry(), accountEmail: acc0.email, accountName: acc0.name });
             end({ ok: true, expires_at: tokenExpiry(), scope: String(resp.scope || '') });
           },
           error_callback: function (err) {
@@ -235,8 +288,12 @@
       } catch (e) {
         return end({ ok: false, error: 'client-init-failed', detail: String((e && e.message) || e) });
       }
+      /* prompt: ''(조용한 갱신) · 'consent'(첫 연결) · 'select_account'(계정 변경) */
+      var prompt = (opts.prompt !== undefined)
+        ? String(opts.prompt)
+        : (opts.silent || opts.switchAccount ? '' : 'consent');
       try {
-        client.requestAccessToken({ prompt: opts.silent ? '' : 'consent' });
+        client.requestAccessToken({ prompt: prompt });
       } catch (e) {
         return end({ ok: false, error: 'popup-blocked' });
       }
@@ -247,9 +304,11 @@
   /* 팝업은 클릭 순간에 열려야 차단되지 않는다.
      GIS 가 이미 준비되어 있으면 그 자리에서 바로 띄우고, 아니면 먼저 불러온 뒤 띄운다. */
   function connect(opts) {
-    if (gisReady()) return startFlow(opts);
+    opts = opts || {};
+    var flow = (opts.switchAccount && opts.prompt === undefined) ? { prompt: 'select_account', silent: false } : opts;
+    if (gisReady()) return startFlow(flow);
     return loadGis().then(function () {
-      return startFlow(opts);
+      return startFlow(flow);
     }, function () {
       return { ok: false, error: 'gis-load-failed' };
     });
@@ -1876,19 +1935,154 @@
   function aboutStorage() {
     var url = 'https://www.googleapis.com/drive/v3/about?fields=' + encodeURIComponent('storageQuota,user');
     return gfetch(url).then(function (d) {
+      /* about 이 user 를 돌려주면 그 자리에서 연결 계정을 확인해 둔다. */
+      var u = (d && d.user) || null;
+      var acc = account();
+      if (u && u.emailAddress) acc = saveAccount(u.emailAddress, u.displayName);
+      var user = u && u.emailAddress
+        ? { email: String(u.emailAddress), name: String(u.displayName || '') }
+        : null;
       var q = (d && d.storageQuota) || null;
-      if (!q) return { ok: false, error: 'no-quota' };
+      if (!q) return { ok: false, error: 'no-quota', user: user, account: acc };
       return {
         ok: true,
         limit: Number(q.limit || 0),
         usage: Number(q.usage || 0),
         usageInDrive: Number(q.usageInDrive || 0),
-        usageInDriveTrash: Number(q.usageInDriveTrash || 0)
+        usageInDriveTrash: Number(q.usageInDriveTrash || 0),
+        user: user,
+        account: acc
       };
     }, function (e) {
       /* drive.file 범위 정책상 about.get 이 403 이어도 화면은 그대로 쓴다 */
-      return { ok: false, error: (e && e.code) || 'about-failed', status: Number((e && e.status) || 0) };
+      return { ok: false, error: (e && e.code) || 'about-failed', status: Number((e && e.status) || 0), user: null };
     });
+  }
+
+  /* about 이 막혔을 때의 보조 확인 — 앱이 만든 폴더의 소유자 정보.
+     이 길도 막혀 있으면 조용히 알 수 없는 상태로 남긴다. */
+  var acctTryAt = 0;
+  function ownerAccount() {
+    if (!token()) return Promise.resolve(account());
+    var now = Date.now();
+    if (now - acctTryAt < 60000) return Promise.resolve(account());
+    acctTryAt = now;
+    var link = linkRec() || {};
+    var idP = link.folderId
+      ? Promise.resolve(link.folderId)
+      : findFolder(FOLDER_NAME, null).then(function (f) { return (f && f.id) || ''; }, function () { return ''; });
+    return idP.then(function (fid) {
+      if (!fid) return account();
+      return gfetch(API + '/' + fid + '?fields=' + encodeURIComponent('owners(emailAddress,displayName)'))
+        .then(function (d) {
+          var o = (d && d.owners && d.owners[0]) || null;
+          if (o && o.emailAddress) return saveAccount(o.emailAddress, o.displayName);
+          return account();
+        }, function () { return account(); });
+    });
+  }
+
+  /* 연결 계정을 확인한다 — 이미 알고 있으면 그대로 돌려준다(60초에 한 번만 확인). */
+  var accountProbeP = null, probeAt = 0;
+  function probeAccount(opts) {
+    opts = opts || {};
+    if (!token()) return Promise.resolve(account());
+    var cur = account();
+    if (cur.email && !opts.force && (Date.now() - cur.at) < 60000) return Promise.resolve(cur);
+    if (!opts.force && probeAt && (Date.now() - probeAt) < 20000) return Promise.resolve(cur);
+    if (accountProbeP) return accountProbeP;
+    probeAt = Date.now();
+    accountProbeP = aboutStorage().then(function (a) {
+      if (a && a.user && a.user.email) return account();
+      return ownerAccount();
+    }, function () { return account(); }).then(function (acc) {
+      accountProbeP = null;
+      return acc;
+    }, function () { accountProbeP = null; return account(); });
+    return accountProbeP;
+  }
+
+  /* 계정 변경 — 기존 토큰을 비우고 Google 계정 선택 창을 띄운다.
+     취소하면 이전 계정으로 조용히 되살린다. */
+  var switchP = null;
+  function switchAccount() {
+    if (switchP) return switchP;
+    if (busy || isRestoring) return Promise.resolve({ ok: false, error: 'busy' });
+    var prev = account();
+    var hadToken = !!token();
+    dropToken();
+    quotaCache = null;
+    patchSync({ state: 'need-reconnect', error: '' });
+    emit('change', { connected: false, reason: 'switch-account', accountEmail: prev.email });
+
+    switchP = connect({ switchAccount: true }).then(function (r) {
+      if (!r || !r.ok) {
+        return reconnectPrevious(hadToken, prev).then(function (back) {
+          switchP = null;
+          var now = account();
+          if (back && now.email) emit('change', { connected: !!token(), accountEmail: now.email, accountName: now.name });
+          return {
+            ok: false, error: String((r && r.error) || 'switch-failed'),
+            restored: !!back, accountKnown: !!now.known,
+            accountEmail: now.email, previousEmail: prev.email
+          };
+        });
+      }
+      return probeAccount({ force: true }).then(function () {
+        var acc = account();
+        /* 방금 확인된 계정만 믿는다 — 확인이 안 됐다면 이전 계정 정보가 남아 있다. */
+        var confirmed = !!(acc.email && acc.at && (Date.now() - acc.at) < 30000);
+        var same = !!(confirmed && prev.email && prev.email.toLowerCase() === acc.email.toLowerCase());
+        if (!same) {
+          if (!confirmed) {
+            saveLink({ accountEmail: '', accountName: '', accountAt: Date.now() });
+            acc = account();
+          }
+          /* 이전 계정(또는 확인할 수 없는 계정)의 폴더·동기화 기준을 버리고 새로 시작한다. */
+          resetRemoteBase();
+        }
+        var changed = !!(confirmed && prev.email && prev.email.toLowerCase() !== acc.email.toLowerCase());
+        quotaCache = null;
+        switchP = null;
+        patchSync({ state: token() ? 'idle' : 'need-reconnect', error: '' });
+        emit('change', {
+          connected: !!token(), switched: true, accountChanged: changed,
+          accountEmail: acc.email, accountName: acc.name
+        });
+        return {
+          ok: true, accountChanged: changed, accountKnown: !!acc.email,
+          accountEmail: acc.email, accountName: acc.name, previousEmail: prev.email
+        };
+      });
+    }, function (e) {
+      return reconnectPrevious(hadToken, prev).then(function (back) {
+        switchP = null;
+        return { ok: false, error: String((e && (e.code || e.message)) || 'switch-failed'), restored: !!back };
+      });
+    });
+    return switchP;
+  }
+
+  /* 계정 선택을 그만둬도 이전 계정의 연결을 잃지 않게 조용히 되살린다. */
+  function reconnectPrevious(hadToken, prev) {
+    if (token()) return Promise.resolve(true);
+    var flow = (gisReady() ? Promise.resolve() : loadGis()).then(function () {
+      return startFlow({ silent: true });
+    }, function () {
+      return { ok: false, error: 'gis-load-failed' };
+    });
+    return flow.then(function (r) {
+      var ok = !!(r && r.ok && token());
+      if (ok) {
+        if (prev && prev.email) saveLink({ accountEmail: prev.email, accountName: prev.name || '', accountAt: prev.at || Date.now() });
+        patchSync({ state: 'idle', error: '' });
+      } else if (!hadToken) {
+        patchSync({ state: isLinked() ? 'need-reconnect' : 'off', error: 'need-reconnect' });
+      } else {
+        patchSync({ state: 'need-reconnect', error: 'need-reconnect' });
+      }
+      return ok;
+    }, function () { return false; });
   }
 
   function listChildrenAll(parentId, pageToken) {
@@ -1925,7 +2119,7 @@
   /* opts.force = true 면 캐시를 버리고 다시 센다 */
   function quota(opts) {
     opts = opts || {};
-    if (!token()) return Promise.resolve({ ok: false, error: 'not-linked' });
+    if (!token()) return Promise.resolve({ ok: false, error: 'not-linked', account: account() });
     var now = Date.now();
     if (!opts.force && quotaCache && (now - quotaCache.at) < 60000) return Promise.resolve(quotaCache);
     var rootUsed = '';
@@ -1947,6 +2141,7 @@
       }).then(function (acc) {
         var out = {
           ok: true, at: Date.now(),
+          account: account(),
           drive: about && about.ok ? {
             available: true,
             limit: about.limit, usage: about.usage,
@@ -1961,6 +2156,15 @@
         quotaCache = out;
         patchSync({ last_quota_at: out.at });
         emit('quota', out);
+        if (!out.account.email) {
+          /* about.get 이 권한 범위 밖이면 폴더 소유자로 한 번 더 확인한다 (60초 1회) */
+          ownerAccount().then(function (acc2) {
+            if (acc2 && acc2.email && quotaCache) {
+              quotaCache.account = acc2;
+              emit('quota', quotaCache);
+            }
+          }, function () { });
+        }
         return out;
       });
     });
@@ -1976,6 +2180,8 @@
     }
     if (c === 'popup-blocked' || c === 'popup_failed_to_open') return '브라우저가 연결 창을 막았습니다. 팝업을 허용한 뒤 다시 시도해 주세요.';
     if (c === 'access_denied') return 'Google Drive 연결을 취소했습니다.';
+    if (c === 'need-reconnect') return 'Google Drive 연결이 만료되었습니다. [Google Drive 연결]을 눌러 다시 연결해 주세요.';
+    if (c === 'switch-failed') return '계정을 바꾸지 못했습니다. 다시 시도해 주세요.';
     if (c === 'origin_mismatch' || c === 'idpiframe_initialization_failed') {
       return '이 사이트 주소가 Google OAuth 클라이언트의 승인된 JavaScript 원본에 등록되어 있지 않습니다. 관리자 설정(Google Cloud Console)에서 주소를 추가해야 합니다.';
     }
@@ -1996,6 +2202,7 @@
 
   function status() {
     var link = linkRec() || {};
+    var acc = account();
     return {
       configured: !!CLIENT_ID,
       connected: !!token(),
@@ -2003,6 +2210,11 @@
       wasLinked: isLinked(),
       folder: FOLDER_NAME,
       folderId: link.folderId || '',
+      accountEmail: acc.email,
+      accountName: acc.name,
+      accountKnown: acc.known,
+      accountAt: acc.at,
+      account: acc,
       last: readJSON(K_LAST, null),
       lastRestore: readJSON(K_LAST_RESTORE, null),
       keyCount: Object.keys(EXPLICIT_KEYS).length,
@@ -2015,7 +2227,7 @@
   }
 
   window.LemonGDrive = {
-    __v: 1,
+    __v: 2,
     clientId: function () { return CLIENT_ID; },
     scope: function () { return SCOPE; },
     folderName: function () { return FOLDER_NAME; },
@@ -2025,6 +2237,9 @@
     status: status,
     connected: function () { return !!token(); },
     connect: connect,
+    switchAccount: switchAccount,
+    account: account,
+    refreshAccount: function (o) { return probeAccount(o); },
     prewarm: prewarm,
     disconnect: disconnect,
     backup: backup,

@@ -671,6 +671,7 @@
         <div class="lks-card">
           <div class="lks-card__head"><span>Google Drive 개인 백업</span><span class="lks-badge" id="gdBadge">연결 안 됨</span></div>
           <p class="lks-card__desc">내 Google 계정의 드라이브(15GB)로 작업물을 직접 보냅니다. 서버를 거치지 않고 로그인도 필요 없습니다.</p>
+          <div class="lks-kv"><span>연결된 계정</span><b id="gdAccount">-</b></div>
           <div class="lks-kv"><span>저장 위치</span><b>내 드라이브 · Soft Hub Backup</b></div>
           <div class="lks-kv"><span>마지막 백업</span><b id="gdLast">없음</b></div>
           <div class="lks-kv"><span>마지막 복원</span><b id="gdLastRestore">없음</b></div>
@@ -679,6 +680,7 @@
           <div class="lks-kv"><span>자동 동기화</span><b id="gdAutoState">-</b></div>
           <div class="lks-actions">
             <button class="lk-btn lk-btn--solid" type="button" data-act="gd-connect" id="gdConnect">Google Drive 연결</button>
+            <button class="lk-btn lk-btn--line" type="button" data-act="gd-switch" id="gdSwitch">계정 변경</button>
             <button class="lk-btn lk-btn--line" type="button" data-act="gd-backup" id="gdBackup">지금 전체 백업</button>
             <button class="lk-btn lk-btn--line" type="button" data-act="gd-restore" id="gdRestore">다른 기기에서 복원</button>
             <button class="lk-btn lk-btn--line" type="button" data-act="gd-disconnect" id="gdDisconnect">연결 해제</button>
@@ -1185,6 +1187,14 @@
       c.classList.toggle('hidden', !!(st && st.connected));
       c.textContent = st && st.wasLinked ? 'Google Drive 다시 연결' : 'Google Drive 연결';
     }
+    var accEl = $('gdAccount');
+    if (accEl) accEl.textContent = gdAccountText(st);
+    var sw = $('gdSwitch');
+    if (sw) sw.classList.toggle('hidden', !(st && st.connected));
+    var gdEngine = gdApi();
+    if (st && st.connected && !st.accountEmail && gdEngine && gdEngine.refreshAccount) {
+      gdEngine.refreshAccount().then(function (a) { if (a && a.email) gdPaint(); }, function () { });
+    }
     ['gdBackup', 'gdRestore', 'gdDisconnect'].forEach(function (id) {
       var el = $(id);
       if (el) el.classList.toggle('hidden', !(st && st.connected));
@@ -1195,6 +1205,15 @@
     if (as) as.textContent = autoLabel(st);
     paintAuto(st);
     paintQuota(false);
+  }
+
+  /* 연결된 Google 계정 표시 — drive.file 범위라 about.get 이 막혀 있으면 확인할 수 없을 수 있다. */
+  function gdAccountText(st) {
+    st = st || gdStatus();
+    if (!st) return '-';
+    if (st.accountEmail) return st.accountEmail + (st.accountName && st.accountName !== st.accountEmail ? ' (' + st.accountName + ')' : '');
+    if (st.connected) return '확인할 수 없음 · 연결은 정상';
+    return st.wasLinked ? '다시 연결하면 다시 확인합니다' : '-';
   }
 
   /* ---------------- 자동 동기화 표시 ---------------- */
@@ -1616,6 +1635,40 @@
       sMsg('Drive 복원 실패: ' + ((err && err.message) || '알 수 없는 오류'), 'err');
     });
   }
+  function gdSwitch() {
+    var g = gdApi();
+    if (!g || gdBusy) return;
+    if (!g.switchAccount) { sMsg('계정 변경을 지원하지 않는 버전입니다. 화면을 새로고쳐 주세요.', 'err'); return; }
+    gdBusy = true;
+    setGdState('Google 창에서 백업에 사용할 계정을 선택해 주세요.');
+    g.switchAccount().then(function (r) {
+      gdBusy = false;
+      gdPaint();
+      if (r && r.ok) {
+        if (r.accountChanged) {
+          setGdState('백업 계정을 ' + (r.accountEmail || '다른 계정') + ' 로 바꿨습니다.');
+          sMsg('Google Drive 백업 계정을 ' + (r.accountEmail || '다른 계정') + ' 로 바꿨습니다. 이전 계정의 백업은 그대로 남습니다. 새 계정에는 [지금 전체 백업]으로 한 번 올려 주세요.', 'ok');
+        } else if (r.accountKnown) {
+          setGdState('백업 계정 ' + r.accountEmail + ' 로 다시 연결했습니다.');
+          sMsg('백업 계정 ' + r.accountEmail + ' 로 다시 연결했습니다.', 'ok');
+        } else {
+          setGdState('백업 계정을 바꿨습니다.');
+          sMsg('백업 계정을 바꿨습니다. 이 앱의 권한 범위(drive.file)에서는 계정 주소를 읽지 못해 주소는 표시하지 않습니다.', 'ok');
+        }
+      } else if (r && r.restored) {
+        setGdState('');
+        sMsg('계정 변경을 취소했습니다. 이전 계정 연결은 그대로입니다.', 'info');
+      } else {
+        setGdState('');
+        sMsg('계정을 바꾸지 못했습니다: ' + g.message((r && r.error) || 'switch-failed'), 'err');
+      }
+    }, function (err) {
+      gdBusy = false;
+      gdPaint();
+      setGdState('');
+      sMsg('계정을 바꾸지 못했습니다: ' + ((err && err.message) || '알 수 없는 오류'), 'err');
+    });
+  }
   function gdDisconnect() {
     var g = gdApi();
     if (!g || gdBusy) return;
@@ -1721,6 +1774,7 @@
     'anim': function (el, val) { setAnim(val); },
     'save-name': function () { saveName(); },
     'gd-connect': function () { gdConnect(); },
+    'gd-switch': function () { gdSwitch(); },
     'gd-backup': function () { gdBackup(); },
     'gd-restore': function () { gdRestore(); },
     'gd-disconnect': function () { gdDisconnect(); },
@@ -1792,6 +1846,9 @@
     applyRoute();
   });
   window.addEventListener('lemongdrive:change', function () { if (state.opened) gdPaint(); });
+  ['lemongdrive:account', 'lemon-gdrive:account'].forEach(function (n) {
+    window.addEventListener(n, function () { if (state.opened) gdPaint(); });
+  });
   ['lemongdrive:sync', 'lemongdrive:auto-backup', 'lemongdrive:backup', 'lemongdrive:restored',
     'lemongdrive:backup-error', 'lemongdrive:restore-error'].forEach(function (n) {
     window.addEventListener(n, function () {
