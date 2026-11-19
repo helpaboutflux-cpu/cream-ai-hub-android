@@ -312,6 +312,21 @@
     $('dirtyFlag').classList.add('hidden');
   }
 
+  function cloudOn() {
+    try { return !!(window.LemonCloud && LemonCloud.configured && LemonCloud.configured()); } catch (e) { return false; }
+  }
+
+  /* 원격이 기준인 사이트에서 옛 로컬 저장본은 원격과 어긋난 화면을 만든다.
+     원격 저장이 끝난 뒤에는 이 브라우저에 그 값을 남기지 않는다. */
+  function forgetLocalOverrides() {
+    try {
+      if (window.LemonSite && LemonSite.keys) {
+        localStorage.removeItem(LemonSite.keys.cfg);
+        localStorage.removeItem(LemonSite.keys.ads);
+      }
+    } catch (e) { }
+  }
+
   /* ---------------- 화면 전환 ---------------- */
   var TITLES = {
     notice: ['상단 공지 배너', '모든 서비스 상단에 표시'],
@@ -319,7 +334,8 @@
     ads: ['광고 관리', 'Flux Feed 기사 사이에 노출'],
     push: ['푸시 알림', '구독 중인 사용자에게 즉시 발송'],
     cloud: ['Supabase', '로그인 · 짧은 공유 링크 · 원격 설정'],
-    security: ['보안', '관리자 비밀번호 · 숨김 점검']
+    security: ['보안', '관리자 비밀번호 · 숨김 점검'],
+    accounts: ['LK ID 계정', 'Soft Hub LK ID 가입자 목록']
   };
 
   function switchView(name) {
@@ -336,6 +352,7 @@
     if (name === 'push' && window.FluxAdminPush) window.FluxAdminPush.onShow();
     if (name === 'cloud') refreshCloudPanel();
     if (name === 'security') checkAdminLinks();
+    if (name === 'accounts') loadAccounts();
   }
 
   /* ---------------- 색상 페어 ---------------- */
@@ -512,26 +529,35 @@
     cfg.notice = collectNotice();
     cfg.home = collectHome();
     cfg.ads = { enabled: $('adsEnabled').checked };
+
+    /* Supabase 가 연결된 사이트에서는 원격이 유일한 기준이다.
+       예전처럼 '로컬 저장 + 원격 저장'을 같이 하면, 원격 저장이 실패했을 때 이 브라우저에만
+       다른 값이 남아 다른 브라우저와 화면이 갈린다. 그래서 원격만 쓴다. */
+    if (cloudOn()) {
+      if (!LemonCloud.hasSession()) {
+        toast('LK ID 로그인이 없어 저장하지 못했습니다. 로그인한 뒤 다시 저장하세요.', 'err');
+        return;
+      }
+      LemonCloud.saveSiteData(cfg, state.ads).then(function () {
+        /* 원격 저장 성공 → 이 브라우저도 다른 방문자와 같은 상태로 맞춘다. */
+        if (window.LemonSite && LemonSite.setRemote) LemonSite.setRemote(cfg, state.ads);
+        forgetLocalOverrides();
+        stampSaved(which || 'notice');
+        clearDirty();
+        toast('저장했습니다. 모든 방문자에게 반영됩니다.');
+      }, function (e) {
+        toast('원격 저장 실패: ' + (e && e.message ? e.message : '오류'), 'err');
+      });
+      return;
+    }
+
+    if (!window.LemonSite || !LemonSite.keys) { toast('사이트 스크립트를 불러오지 못했습니다.', 'err'); return; }
     var ok1 = writeJSON(LemonSite.keys.cfg, cfg);
     var ok2 = writeJSON(LemonSite.keys.ads, state.ads);
     if (!ok1 || !ok2) { toast('저장 공간이 부족합니다. 브라우저 저장 공간을 확인하세요.', 'err'); return; }
     stampSaved(which || 'notice');
     clearDirty();
     toast('저장했습니다. 모든 서비스에 반영됩니다.');
-
-    try {
-      if (window.LemonCloud && LemonCloud.configured && LemonCloud.configured()) {
-        if (!LemonCloud.hasSession()) {
-          toast('원격 저장은 관리자 로그인 후 가능합니다 (로컬 저장 완료).', 'ok');
-        } else {
-          LemonCloud.saveSiteData(cfg, state.ads).then(function () {
-            toast('Supabase에도 저장했습니다.');
-          }, function (e) {
-            toast('원격 저장 실패: ' + (e && e.message ? e.message : '오류') + ' (로컬은 저장됨)', 'err');
-          });
-        }
-      }
-    } catch (e) { }
   }
 
   /* ---------------- 광고 ---------------- */
@@ -980,6 +1006,10 @@
       cfg.home = collectHome();
       cfg.ads = { enabled: $('adsEnabled').checked };
       LemonCloud.saveSiteData(cfg, state.ads).then(function () {
+        if (window.LemonSite && LemonSite.setRemote) LemonSite.setRemote(cfg, state.ads);
+        forgetLocalOverrides();
+        clearDirty();
+        stampSaved('ads');
         toast('Supabase에 저장했습니다. 전 방문자에게 반영됩니다.');
         refreshCloudPanel();
       }, function (e) {
@@ -991,16 +1021,21 @@
     window.addEventListener('lemoncloud:signed-out', updateCloudPills);
   }
 
+  var schemaLoaded = false;
   function loadSchema() {
+    if (schemaLoaded) { fillAccSql(); return; }
+    schemaLoaded = true;
     if (!/^https?:$/.test(location.protocol)) {
       $('sqlBox').value = '로컬 파일로 열려 있어 supabase_schema.sql 을 불러올 수 없습니다.\n저장소의 supabase_schema.sql 파일을 열어 복사하세요.';
+      fillAccSql();
       return;
     }
     fetch('supabase_schema.sql', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)); })
-      .then(function (t) { $('sqlBox').value = t; })
+      .then(function (t) { $('sqlBox').value = t; fillAccSql(); })
       .catch(function () {
         $('sqlBox').value = 'supabase_schema.sql 을 불러오지 못했습니다. 저장소 루트의 같은 파일을 직접 여세요.';
+        fillAccSql();
       });
   }
 
@@ -1028,7 +1063,9 @@
 
   /* ---------------- 콘솔 부트 ---------------- */
   var booted = false;
-  function bootConsole() {
+
+  /* 상태 → 화면. 원격 설정을 새로 받을 때마다 다시 부른다. */
+  function hydrateConsole() {
     loadState();
     fillNotice(state.cfg.notice);
     fillHome(state.cfg.home);
@@ -1044,10 +1081,42 @@
     loadSchema();
     $('kvAdminUrl').textContent = location.pathname.split('/').pop() || 'admin.html';
     checkAdminLinks();
+  }
 
-    if (booted) return;
-    booted = true;
+  /* 관리자 화면도 다른 방문자와 같은 원격 설정을 본다.
+     (사이트 레이어는 이 페이지에서 mount off 이므로 직접 받아 온다)
+     LemonCloud.init() 을 기다렸다가 받아야 공용 설정(lemon-cloud-config.js)이
+     늦게 로드된 경우에도 처음부터 같은 상태로 맞는다. */
+  function syncRemoteState() {
+    if (!window.LemonCloud) return Promise.resolve(false);
+    var ready = LemonCloud.init ? LemonCloud.init() : Promise.resolve();
+    return ready.then(function () {
+      if (!cloudOn()) return false;
+      return LemonCloud.fetchSiteData().then(function (data) {
+        if (!data) return false;
+        if (window.LemonSite && LemonSite.setRemote) LemonSite.setRemote(data.config, data.ads);
+        return true;
+      }, function () { return false; });
+    }, function () { return false; });
+  }
 
+  function bootConsole() {
+    hydrateConsole();
+
+    if (!booted) {
+      booted = true;
+      bindConsole();
+    }
+
+    /* 폼을 채운 뒤 원격 설정으로 한 번 더 맞춘다(그새 고친 값이 있으면 놔둔다). */
+    if (state.dirty) return;
+    syncRemoteState().then(function (ok) {
+      if (!ok || !state.unlocked || state.dirty) return;
+      hydrateConsole();
+    });
+  }
+
+  function bindConsole() {
     switchView('notice');
     Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function (b) {
       b.addEventListener('click', function () { switchView(b.getAttribute('data-view')); });
@@ -1087,6 +1156,12 @@
 
     bindAds();
     bindCloud();
+
+    /* 로그인/로그아웃하면 원격 설정을 다시 받아 이 화면을 맞춘다. */
+    window.addEventListener('lemoncloud:signed-in', function () {
+      if (!state.unlocked) return;
+      syncRemoteState().then(function (ok) { if (ok && !state.dirty) hydrateConsole(); });
+    });
 
     /* 사이트 보기 */
     $('siteBtn').addEventListener('click', function () {
@@ -1132,6 +1207,301 @@
       e.preventDefault();
       e.returnValue = '';
     });
+
+    bindAccounts();
+  }
+
+  /* ---------------- LK ID 계정 ---------------- */
+  /* auth.users 는 브라우저에서 직접 읽을 수 없다.
+     supabase_schema.sql 의 admin_list_lk_accounts() 가 관리자 세션에만 목록을 돌려준다. */
+  var ACC_SQL_FALLBACK = [
+    'create or replace function public.admin_list_lk_accounts()',
+    'returns table (',
+    '  id                 uuid,',
+    '  email              text,',
+    '  display_name       text,',
+    '  provider           text,',
+    '  created_at         timestamptz,',
+    '  last_sign_in_at    timestamptz,',
+    '  email_confirmed_at timestamptz',
+    ')',
+    'language plpgsql',
+    'stable',
+    'security definer',
+    'set search_path = public, auth',
+    'as $$',
+    'begin',
+    "  if not public.is_site_admin() then",
+    "    raise exception 'forbidden';",
+    '  end if;',
+    '  return query',
+    '    select u.id, u.email::text,',
+    "           coalesce(u.raw_user_meta_data ->> 'full_name', u.raw_user_meta_data ->> 'name')::text,",
+    "           (u.raw_app_meta_data ->> 'provider')::text,",
+    '           u.created_at, u.last_sign_in_at, u.email_confirmed_at',
+    '      from auth.users u',
+    '     order by u.created_at desc;',
+    'end;',
+    '$$;',
+    '',
+    'revoke all on function public.admin_list_lk_accounts() from public;',
+    'grant execute on function public.admin_list_lk_accounts() to authenticated;'
+  ].join('\n');
+
+  var acc = { rows: [], mode: '', loaded: false, loading: false, at: 0, q: '' };
+
+  function accDate(v) {
+    if (!v) return '—';
+    var d = new Date(v);
+    if (!d || isNaN(d.getTime())) return '—';
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate());
+  }
+  function accAgo(v) {
+    if (!v) return '—';
+    var t = new Date(v).getTime();
+    if (!isFinite(t)) return '—';
+    var diff = Math.max(0, Date.now() - t);
+    var m = Math.floor(diff / 60000);
+    if (m < 1) return '방금';
+    if (m < 60) return m + '분 전';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + '시간 전';
+    var dd = Math.floor(h / 24);
+    if (dd < 8) return dd + '일 전';
+    return accDate(v);
+  }
+  function accClock(ts) {
+    if (!ts) return '—';
+    var d = new Date(Number(ts));
+    if (isNaN(d.getTime())) return '—';
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function accProvider(v) {
+    var p = String(v || '').toLowerCase();
+    if (p === 'google') return { label: 'Google 가입', google: true };
+    if (!p || p === 'email') return { label: '이메일 가입', google: false };
+    return { label: p.charAt(0).toUpperCase() + p.slice(1) + ' 가입', google: false };
+  }
+  function accText(r) {
+    return String((r && r.email) || '') + ' ' + String((r && r.display_name) || '');
+  }
+  function accFiltered() {
+    var q = String(acc.q || '').trim().toLowerCase();
+    if (!q) return acc.rows.slice();
+    return acc.rows.filter(function (r) { return accText(r).toLowerCase().indexOf(q) >= 0; });
+  }
+
+  function accErrorKind(e) {
+    var msg = String((e && e.message) || '');
+    var st = e && e.status;
+    if (st === 404 || /could not find the function|function .* does not exist|schema cache|PGRST202|permission denied for function/i.test(msg)) return 'setup';
+    if (/forbidden/i.test(msg)) return 'forbidden';
+    if (st === 401 || /jwt|admin-login-required|not authenticated|no api key/i.test(msg)) return 'no-session';
+    return 'error';
+  }
+
+  function accountsSqlText() {
+    var full = ($('sqlBox') && $('sqlBox').value) || '';
+    var a = full.indexOf('-- >> admin_list_lk_accounts');
+    var b = full.indexOf('-- << admin_list_lk_accounts');
+    if (a >= 0 && b > a) {
+      var nl = full.indexOf('\n', a);
+      return nl > 0 ? full.slice(nl + 1, b).replace(/\s+$/, '') : '';
+    }
+    return ACC_SQL_FALLBACK;
+  }
+  function fillAccSql() {
+    var box = $('accSqlBox');
+    if (!box) return;
+    var txt = accountsSqlText();
+    if (txt && box.value !== txt) box.value = txt;
+  }
+  function accSqlUrl() {
+    try {
+      var u = (window.LemonCloud && LemonCloud.config().url) || '';
+      var m = /^https?:\/\/([a-z0-9-]+)\.supabase\.co/i.exec(u);
+      if (m) return 'https://supabase.com/dashboard/project/' + m[1] + '/sql/new';
+    } catch (e) { }
+    return 'https://supabase.com/dashboard';
+  }
+
+  function renderAccStats() {
+    var ok = acc.loaded && !acc.loading && acc.mode === 'ok';
+    var total = 0, mail = 0, google = 0, recent = 0;
+    var since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    if (ok) {
+      acc.rows.forEach(function (r) {
+        total++;
+        var isGoogle = String(r.provider || '').toLowerCase() === 'google';
+        if (isGoogle) google++; else mail++;
+        var t = r.last_sign_in_at ? new Date(r.last_sign_in_at).getTime() : 0;
+        if (t && t >= since) recent++;
+      });
+    }
+    $('accTotal').textContent = ok ? String(total) : '—';
+    $('accEmail').textContent = ok ? String(mail) : '—';
+    $('accGoogle').textContent = ok ? String(google) : '—';
+    $('accRecent').textContent = ok ? String(recent) : '—';
+    $('navAccCount').textContent = ok ? String(total) : '0';
+  }
+
+  function accMsg(title, desc, action) {
+    return '<div class="accmsg"><div class="accmsg__icon">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="10.5" x2="12" y2="16.5"></line><circle cx="12" cy="7.6" r=".9" fill="currentColor" stroke="none"></circle></svg>' +
+      '</div><b>' + esc(title) + '</b><span>' + esc(desc) + '</span>' + (action || '') + '</div>';
+  }
+
+  function renderAccTable() {
+    var box = $('accTable');
+    if (!box) return;
+    if (acc.loading) {
+      box.innerHTML = '<div class="emptybox">계정 목록을 불러오는 중입니다.</div>';
+      return;
+    }
+    if (!acc.loaded) {
+      box.innerHTML = '<div class="emptybox">아직 불러오지 않았습니다.</div>';
+      return;
+    }
+    if (acc.mode === 'err') {
+      var login = '<a class="btn btn--primary btn--sm" href="auth.html?next=admin.html" target="_blank" rel="noopener">LK ID 로그인</a>';
+      if (acc.error === 'setup') {
+        box.innerHTML = accMsg('아직 조회 함수가 없습니다', '위의 SQL을 Supabase SQL Editor에서 1회 실행한 뒤 [저장한 뒤 다시 확인] 을 눌러 주세요.');
+      } else if (acc.error === 'no-session') {
+        box.innerHTML = accMsg('LK ID 로그인이 필요합니다', '관리자 이메일(public.admin_users)로 로그인한 세션에서만 계정 목록을 볼 수 있습니다.', login);
+      } else if (acc.error === 'forbidden') {
+        box.innerHTML = accMsg('관리자 계정이 아닙니다', '지금 로그인한 이메일이 Supabase 의 public.admin_users 에 등록되어 있는지 확인해 주세요.', login);
+      } else if (acc.error === 'no-cloud') {
+        box.innerHTML = accMsg('Supabase 연결이 없습니다', 'Supabase 탭에서 Project URL 과 anon key 를 저장하면 계정 목록을 볼 수 있습니다.');
+      } else {
+        box.innerHTML = accMsg('불러오지 못했습니다', '잠시 뒤 [새로고침] 으로 다시 시도해 주세요.');
+      }
+      return;
+    }
+    var rows = accFiltered();
+    if (!acc.rows.length) {
+      box.innerHTML = '<div class="emptybox">아직 가입한 LK ID 계정이 없습니다.</div>';
+      return;
+    }
+    if (!rows.length) {
+      box.innerHTML = '<div class="emptybox">검색 결과가 없습니다.</div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (r) {
+      var prov = accProvider(r.provider);
+      var confirmed = !!r.email_confirmed_at;
+      return '<div class="accrow">' +
+        '<div class="accrow__id">' +
+        '<div class="accrow__mail" title="' + esc(r.email || '') + '">' + esc(r.email || '(이메일 없음)') + '</div>' +
+        '<div class="accrow__name">' + esc(r.display_name || '표시 이름 없음') + '</div>' +
+        '</div>' +
+        '<div class="accrow__tags">' +
+        '<span class="accbadge' + (prov.google ? ' accbadge--google' : '') + '">' + esc(prov.label) + '</span>' +
+        '<span class="accbadge' + (confirmed ? ' accbadge--ok' : ' accbadge--wait') + '">' + (confirmed ? '인증됨' : '미인증') + '</span>' +
+        '</div>' +
+        '<div class="accrow__col"><em>가입일</em><span>' + esc(accDate(r.created_at)) + '</span></div>' +
+        '<div class="accrow__col"><em>최근 로그인</em><span>' + esc(accAgo(r.last_sign_in_at)) + '</span></div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderAccounts() {
+    renderAccStats();
+    var pill = $('accPill');
+    var txt = $('accPillText');
+    var on = acc.loaded && !acc.loading && acc.mode === 'ok';
+    if (acc.loading) {
+      pill.className = 'pill pill--warn';
+      txt.textContent = '불러오는 중';
+    } else if (on) {
+      pill.className = 'pill pill--ok';
+      txt.textContent = '계정 ' + acc.rows.length + '개';
+    } else {
+      pill.className = 'pill pill--off';
+      txt.textContent = acc.loaded ? '확인 필요' : '불러오기 전';
+    }
+    $('accSyncPill').textContent = '최근 갱신 ' + accClock(acc.at);
+    var setup = acc.mode === 'err' && acc.error === 'setup';
+    /* 조회 함수가 아직 없을 때는 안내 카드만 보여 준다(빈 목록은 겹치지 않게 숨김). */
+    $('accSetupCard').style.display = setup ? '' : 'none';
+    $('accListCard').style.display = setup ? 'none' : '';
+    if (setup) {
+      fillAccSql();
+      var open = $('accSqlOpen');
+      if (open) open.setAttribute('href', accSqlUrl());
+    }
+    var note = $('accFootNote');
+    if (note) {
+      if (on) {
+        var shown = accFiltered().length;
+        note.textContent = acc.q ? ('검색 ' + shown + ' / 전체 ' + acc.rows.length + '개') : ('전체 ' + acc.rows.length + '개 · 최근 가입 순');
+      } else {
+        note.textContent = '';
+      }
+    }
+    renderAccTable();
+    var rf = $('accRefresh');
+    if (rf) rf.disabled = acc.loading;
+  }
+
+  function loadAccounts(force) {
+    if (acc.loading) return;
+    if (!force && acc.loaded && acc.mode === 'ok' && Date.now() - acc.at < 5 * 60 * 1000) {
+      renderAccounts();
+      return;
+    }
+    if (!cloudOn()) {
+      acc.loaded = true; acc.mode = 'err'; acc.error = 'no-cloud'; acc.at = Date.now();
+      renderAccounts();
+      return;
+    }
+    if (!LemonCloud.hasSession()) {
+      acc.loaded = true; acc.mode = 'err'; acc.error = 'no-session'; acc.at = Date.now();
+      renderAccounts();
+      return;
+    }
+    acc.loading = true;
+    acc.mode = 'loading';
+    renderAccounts();
+    LemonCloud.listAccounts().then(function (rows) {
+      acc.loading = false;
+      acc.loaded = true;
+      acc.at = Date.now();
+      acc.rows = Array.isArray(rows) ? rows : [];
+      acc.mode = 'ok';
+      acc.error = '';
+      renderAccounts();
+    }, function (e) {
+      acc.loading = false;
+      acc.loaded = true;
+      acc.at = Date.now();
+      acc.mode = 'err';
+      acc.error = accErrorKind(e);
+      renderAccounts();
+    });
+  }
+
+  function bindAccounts() {
+    var search = $('accSearch');
+    if (search) {
+      search.addEventListener('input', function () {
+        acc.q = search.value;
+        renderAccounts();
+      });
+    }
+    var rf = $('accRefresh');
+    if (rf) rf.addEventListener('click', function () { loadAccounts(true); });
+    var again = $('accSqlAgain');
+    if (again) again.addEventListener('click', function () { loadAccounts(true); });
+    var copy = $('accSqlCopy');
+    if (copy) copy.addEventListener('click', function () {
+      var txt = accountsSqlText();
+      if (!txt) { toast('SQL을 준비하지 못했습니다.', 'err'); return; }
+      copyText(txt).then(function (ok) { toast(ok ? 'SQL을 복사했습니다.' : '복사에 실패했습니다.', ok ? 'ok' : 'err'); });
+    });
+    window.addEventListener('lemoncloud:signed-in', function () { acc.loaded = false; acc.mode = ''; });
+    window.addEventListener('lemoncloud:signed-out', function () { acc.loaded = false; acc.mode = ''; acc.rows = []; });
   }
 
   /* ---------------- 부트 ---------------- */

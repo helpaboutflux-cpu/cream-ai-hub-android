@@ -12,6 +12,8 @@
 --    site_ads         Flux Feed 광고 목록                            (전 방문자 읽기)
 --    shared_pages     짧은 공유 링크(view.html?id=...)               (링크 보유자 읽기)
 --    admin_users      관리자 이메일 목록                             (관리자만 확인)
+--  관리자 전용 함수
+--    admin_list_lk_accounts()  LK ID 가입 계정 목록 (관리자 세션만, 9번 항목)
 --  모든 테이블에 RLS 가 켜져 있고, 쓰기는 관리자/본인으로 제한됩니다.
 --  여러 번 실행해도 안전합니다(if not exists / drop policy if exists).
 -- ============================================================
@@ -224,6 +226,53 @@ grant select, insert, update, delete on public.site_ads    to authenticated;
 -- ------------------------------------------------------------
 -- insert into public.admin_users (email) values ('helpaboutflux@gmail.com')
 --   on conflict (email) do nothing;
+
+-- ------------------------------------------------------------
+-- 9. 관리자 전용 — LK ID 계정 목록 조회
+--    브라우저(관리자 콘솔)는 auth.users 를 직접 읽을 수 없다.
+--    public.admin_users 에 등록된 관리자 이메일로 로그인한 세션만
+--    이 함수를 통해 계정 목록(id·이메일·이름·로그인 방식·가입일·최근 로그인)을 받는다.
+--    관리자 이메일이 등록되지 않은 상태에서 호출하면 'forbidden' 오류를 낸다.
+--    관리자 콘솔의 LK ID 계정 탭에서 안내되는 SQL 과 같은 내용이다.
+-- ------------------------------------------------------------
+-- >> admin_list_lk_accounts
+create or replace function public.admin_list_lk_accounts()
+returns table (
+  id                 uuid,
+  email              text,
+  display_name       text,
+  provider           text,
+  created_at         timestamptz,
+  last_sign_in_at    timestamptz,
+  email_confirmed_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = public, auth
+as $$
+begin
+  -- 관리자 세션이 아니면 어떤 줄도 돌려주지 않는다.
+  if not public.is_site_admin() then
+    raise exception 'forbidden';
+  end if;
+
+  return query
+    select u.id,
+           u.email::text,
+           coalesce(u.raw_user_meta_data ->> 'full_name', u.raw_user_meta_data ->> 'name')::text,
+           (u.raw_app_meta_data ->> 'provider')::text,
+           u.created_at,
+           u.last_sign_in_at,
+           u.email_confirmed_at
+      from auth.users u
+     order by u.created_at desc;
+end;
+$$;
+
+revoke all on function public.admin_list_lk_accounts() from public;
+grant execute on function public.admin_list_lk_accounts() to authenticated;
+-- << admin_list_lk_accounts
 
 -- 확인용
 select 'site_config'    as table_name, count(*) from public.site_config

@@ -11,10 +11,14 @@
    4) 허브 로그인 상태 — 우측 상단 / 모바일 메뉴의 로그인 버튼.
 
    저장 위치
-     localStorage['lemon_site_config_v1']  ← 관리자 콘솔이 저장 (이 브라우저)
-     localStorage['lemon_site_ads_v1']     ← 관리자 콘솔이 저장 (이 브라우저)
-     Supabase site_config / site_ads       ← 연결 시 원격 저장본 (전 방문자)
-   읽는 순서: 기본값 → 원격 → 이 브라우저 저장본
+     Supabase site_config / site_ads       ← 원격 저장본 (전 방문자) · 연결 시 유일한 기준
+     localStorage['lemon_site_remote_*']   ← 마지막으로 받은 원격본 캐시(첫 화면 깜빡임 방지)
+     localStorage['lemon_site_config_v1']  ← 로컬 모드에서만 쓰는 이 브라우저 저장본
+     localStorage['lemon_site_ads_v1']     ← 로컬 모드에서만 쓰는 이 브라우저 저장본
+   읽는 순서 (원격 전용 모드): 기본값 → 원격
+   읽는 순서 (로컬 모드): 기본값 → 이 브라우저 저장본
+   ※ Supabase 가 연결된 사이트에서는 원격이 항상 우선한다. 예전 버전이 남긴
+     로컬 저장본이 원격 설정을 덮어써서 브라우저마다 화면이 달라지던 문제를 막는다.
    Supabase 가 설정되지 않아도 모든 기능이 로컬만으로 동작한다.
    ============================================================ */
 (function () {
@@ -223,19 +227,34 @@
   function localCfg() { var v = readJSON(K_CFG, null); return v && typeof v === 'object' ? v : null; }
   function localAds() { var v = readJSON(K_ADS, null); return Array.isArray(v) ? v : null; }
 
+  /* 원격이 기준인 환경인가.
+     · Supabase 가 연결되어 있으면(공용 lemon-cloud-config.js 포함) 그 순간부터 원격 전용
+     · 아직 연결 전이어도 원격본을 받아 둔 상태면 원격 전용
+     이때는 이 브라우저에 남은 옛 로컬 저장본을 절대 쓰지 않는다. */
+  function remoteMode() {
+    try {
+      if (window.LemonCloud && LemonCloud.configured && LemonCloud.configured()) return true;
+    } catch (e) { }
+    return !!(remoteCfg || remoteAds);
+  }
+
   function getConfig() {
     var cfg = mergeDeep(DEFAULTS, remoteCfg || {});
+    if (remoteMode()) return cfg;
     var loc = localCfg();
     if (loc) cfg = mergeDeep(cfg, loc);
     return cfg;
   }
 
   function getAds() {
+    if (remoteMode()) {
+      /* 관리자가 원격에 광고를 저장했다면 빈 목록([])도 그대로 따른다.
+         (저장 전에는 기본 샘플 광고가 보인다.) */
+      if (Array.isArray(remoteAds)) return remoteAds.slice();
+      return clone(SAMPLE_ADS);
+    }
     var loc = localAds();
     if (loc) return loc.slice();
-    /* 관리자가 원격에 광고 설정을 저장한 뒤라면, 목록이 비어 있어도 그 상태를 따른다.
-       (저장 전에는 기본 샘플 광고가 보인다.) */
-    if (remoteCfg && remoteCfg.ads && Array.isArray(remoteAds)) return remoteAds.slice();
     return clone(SAMPLE_ADS);
   }
 
@@ -252,7 +271,16 @@
   }
 
   /* ---------------- 렌더: 상단 공지 배너 ---------------- */
+  /* 관리자 콘솔처럼 사이트 레이어를 그리지 않는 페이지(meta lemon-site-mount=off) */
+  function mountOff() {
+    try {
+      var meta = doc.querySelector('meta[name="lemon-site-mount"]');
+      return !!(meta && String(meta.getAttribute('content') || '').toLowerCase() === 'off');
+    } catch (e) { return false; }
+  }
+
   function renderNotice() {
+    if (mountOff()) return;
     var old = doc.getElementById('lemonNoticeBar');
     if (old && old.parentNode) old.parentNode.removeChild(old);
     var cfg = getConfig();
@@ -323,6 +351,7 @@
 
   /* ---------------- 렌더: Soft Hub 홈 배너 ---------------- */
   function renderHome() {
+    if (mountOff()) return;
     var host = doc.getElementById('lemonHomeBanner');
     if (!host) return;
     var cfg = getConfig();
@@ -802,6 +831,20 @@
     if (changed) refresh();
   }
 
+  /* 방금 저장한 원격본을 이 브라우저의 런타임·캐시에도 그대로 반영한다.
+     관리자 콘솔이 원격 저장에 성공한 직후 호출한다(그 화면이 곧바로 원격과 같아진다). */
+  function setRemote(cfg, ads) {
+    if (cfg && typeof cfg === 'object') {
+      remoteCfg = clone(cfg);
+      writeJSON(K_REMOTE_CFG, remoteCfg);
+    }
+    if (Array.isArray(ads)) {
+      remoteAds = clone(ads);
+      writeJSON(K_REMOTE_ADS, remoteAds);
+    }
+    refresh();
+  }
+
   function loadCloud() {
     if (loadP) return loadP;
     loadP = new Promise(function (resolve) {
@@ -827,8 +870,15 @@
         if (!window.LemonCloud || !LemonCloud.configured || !LemonCloud.configured()) return;
         return LemonCloud.fetchSiteData().then(function (data) {
           if (!data) return;
-          if (data.config) { remoteCfg = data.config; writeJSON(K_REMOTE_CFG, data.config); }
-          if (data.ads) { remoteAds = data.ads; writeJSON(K_REMOTE_ADS, data.ads); }
+          if (data.config && typeof data.config === 'object') {
+            remoteCfg = data.config;
+            writeJSON(K_REMOTE_CFG, data.config);
+          }
+          /* 빈 배열([])도 그대로 반영해야 꺼진 광고가 즉시 사라진다. */
+          if (Array.isArray(data.ads)) {
+            remoteAds = data.ads;
+            writeJSON(K_REMOTE_ADS, data.ads);
+          }
           refresh();
         }, function () { });
       } catch (e) { }
@@ -851,7 +901,9 @@
       loadCloud();
       loadGDrive();
       window.addEventListener('storage', function (e) {
-        if (e && (e.key === K_CFG || e.key === K_ADS)) refresh();
+        if (!e) return;
+        if (e.key === K_REMOTE_CFG || e.key === K_REMOTE_ADS) { applyCachedRemote(); refresh(); return; }
+        if (e.key === K_CFG || e.key === K_ADS) refresh();
       });
       /* 자동 동기화 상태가 바뀌면 계정 팝오버의 표시도 따라 바뀐다. */
       ['lemongdrive:sync', 'lemongdrive:backup', 'lemongdrive:auto-backup', 'lemongdrive:restored',
@@ -892,6 +944,8 @@
     feedAds: feedAds,
     mount: mount,
     refresh: refresh,
+    setRemote: setRemote,
+    remoteMode: remoteMode,
     onChange: onChange,
     openAccount: openAccountPop,
     closeAccount: closePop,

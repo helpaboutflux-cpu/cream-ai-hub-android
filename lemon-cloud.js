@@ -412,6 +412,21 @@
     });
   }
 
+  /* ---------------- 관리자 전용: LK ID 계정 목록 ---------------- */
+  /* auth.users 는 브라우저에서 직접 읽을 수 없다.
+     supabase_schema.sql 의 admin_list_lk_accounts() 가
+     관리자 이메일(public.admin_users)로 로그인한 세션에만 목록을 돌려준다. */
+  function listAccounts() {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) {
+      var err = new Error('admin-login-required');
+      err.status = 401;
+      return Promise.reject(err);
+    }
+    return rest('/rest/v1/rpc/admin_list_lk_accounts', { method: 'POST', body: {} });
+  }
+
   /* ---------------- 짧은 공유 링크 ---------------- */
   function shortId(n) {
     var abc = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -551,6 +566,7 @@
     saveSiteData: saveSiteData,
     getConfigRow: getConfigRow,
     saveConfigRow: saveConfigRow,
+    listAccounts: listAccounts,
 
     createShare: createShare,
     getShare: getShare,
