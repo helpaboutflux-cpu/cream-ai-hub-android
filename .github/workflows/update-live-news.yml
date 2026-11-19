@@ -1,0 +1,129 @@
+name: Update Live News Data
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '내용이 같아도 강제로 커밋/배포'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-live-news
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Refresh news-data.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Show current data state
+        run: |
+          echo "Branch: $(git rev-parse --abbrev-ref HEAD)  Commit: $(git rev-parse --short HEAD)"
+          python3 - <<'PY'
+          import json, os
+          p = 'news-data.json'
+          if not os.path.exists(p):
+              print('news-data.json: 없음 (새로 생성됩니다)')
+          else:
+              d = json.load(open(p, encoding='utf-8'))
+              print('이전 데이터:', d.get('updatedAtDisplay'), '| 기사', d.get('count'), '건')
+          PY
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Regenerate news-data.json from RSS
+        run: python3 generate_live_news.py
+
+      - name: Validate generated data
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open('news-data.json', encoding='utf-8'))
+          arts = d.get('articles') or []
+          bad = [a for a in arts if not a.get('title') or not a.get('link')]
+          print('updatedAt       :', d.get('updatedAt'))
+          print('updatedAtDisplay:', d.get('updatedAtDisplay'))
+          print('count           :', d.get('count'), '/ 실제 기사', len(arts), '건')
+          if not d.get('updatedAtDisplay') or len(arts) < 50:
+              sys.exit('생성된 기사가 너무 적습니다 (%d건). 배포를 중단합니다.' % len(arts))
+          if bad:
+              sys.exit('제목/링크가 비어 있는 기사 %d건이 있어 배포를 중단합니다.' % len(bad))
+          print('검증 통과')
+          PY
+
+      - name: Commit and push to gh-pages
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          DISPLAY=$(python3 -c "import json;print(json.load(open('news-data.json',encoding='utf-8'))['updatedAtDisplay'])")
+          COUNT=$(python3 -c "import json;print(json.load(open('news-data.json',encoding='utf-8'))['count'])")
+          STAMP=$(python3 -c "import json;print(json.load(open('news-data.json',encoding='utf-8'))['updatedAt'])")
+
+          echo "display=${DISPLAY}" >> "$GITHUB_OUTPUT"
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+
+          git add news-data.json
+
+          if git diff --cached --quiet; then
+            if [ "$FORCE" != "true" ]; then
+              echo "news-data.json 내용이 이전과 동일합니다. 커밋하지 않습니다."
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "변동 없음이지만 force 입력으로 커밋합니다."
+          fi
+
+          git commit -m "chore(news): 실시간 뉴스 데이터 갱신 ${DISPLAY} (${COUNT}건)" \
+                     -m "updatedAt=${STAMP}"
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:gh-pages; then
+              echo "푸시 완료 (${DISPLAY}, ${COUNT}건)"
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "푸시 실패, ${attempt}번째 재시도 전에 원격 변경사항을 반영합니다."
+            git pull --rebase --autostash origin gh-pages || true
+            sleep 5
+          done
+
+          echo "gh-pages 푸시에 실패했습니다."
+          exit 1
+        id: publish
+
+      - name: Summary
+        if: always()
+        env:
+          CHANGED: ${{ steps.publish.outputs.changed }}
+          DISPLAY: ${{ steps.publish.outputs.display }}
+          COUNT: ${{ steps.publish.outputs.count }}
+        run: |
+          {
+            echo "### 실시간 뉴스 데이터 갱신"
+            echo "- 갱신 시각: ${DISPLAY:-알 수 없음}"
+            echo "- 기사 수: ${COUNT:-알 수 없음}"
+            echo "- 커밋/배포: ${CHANGED:-false}"
+            echo "- 라이브: https://helpaboutflux-cpu.github.io/cream-ai-hub-android/news-data.json"
+          } >> "$GITHUB_STEP_SUMMARY"
