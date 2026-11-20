@@ -338,7 +338,9 @@
     accounts: ['LK ID 계정', 'Soft Hub LK ID 가입자 목록'],
     community: ['도구 · 배너 관리', '발견 탭 도구 승인 · 상단 배너'],
     reports: ['접수된 신고', 'LK 로그인 · 도구 신고 확인과 처리'],
-    'api-apps': ['API 앱 관리', 'OAuth 앱 공개 승인 · 정지 킬 스위치']
+    'api-apps': ['API 앱 관리', 'OAuth 앱 공개 승인 · 정지 킬 스위치'],
+    news: ['포털 소식', 'portal.html#news 공지 등록 · 삭제'],
+    controls: ['포털 · API 전역 제어', '새 앱 등록 막기 · API 사용 중지']
   };
 
   function switchView(name) {
@@ -359,6 +361,8 @@
     if (name === 'community') { loadCommunity(); loadCloudinaryConfig(); loadDc(); }
     if (name === 'reports') loadReports();
     if (name === 'api-apps') loadApiApps();
+    if (name === 'news') loadPnews();
+    if (name === 'controls') { loadControls(); loadPnews(); }
   }
 
   /* ---------------- 접수된 신고 ---------------- */
@@ -607,6 +611,269 @@
     });
   }
 
+
+  /* ---------------- 포털 소식 (site_config · portal_notices) ---------------- */
+  var pn = { items: [], loading: false, tag: 'notice', busy: false, wantDelete: '' };
+  var PN_LABEL = { notice: '공지', update: '업데이트', maintenance: '점검', event: '이벤트' };
+
+  function pnTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    function p(x) { return (x < 10 ? '0' : '') + x; }
+    return d.getFullYear() + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function pnNote(id, kind, text) {
+    var box = $(id);
+    if (!box) return;
+    if (!text) { box.style.display = 'none'; box.textContent = ''; return; }
+    box.style.display = '';
+    box.className = 'note' + (kind === 'ok' ? ' note--ok' : kind === 'bad' ? ' note--bad' : kind === 'warn' ? ' note--warn' : '');
+    box.textContent = text;
+  }
+
+  function pnCloudText(e) {
+    var m = String((e && e.message) || '');
+    if (/admin-login-required|jwt|401/i.test(m)) return '관리자 계정으로 로그인해야 저장할 수 있습니다. Supabase 탭에서 LK 로그인을 확인해 주세요.';
+    if (/permission|policy|42501|403/i.test(m)) return '이 계정에는 소식을 저장할 권한이 없습니다. 관리자 계정인지 확인해 주세요.';
+    if (/cloud-not-configured/i.test(m)) return 'Soft Hub 클라우드가 연결되지 않았습니다. Supabase 탭에서 연결을 확인해 주세요.';
+    return '저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+  }
+
+  function renderPnews() {
+    var host = $('pnList');
+    if (!host) return;
+    if ($('navNewsCount')) $('navNewsCount').textContent = String(pn.items.length);
+    if ($('pnCountPill')) $('pnCountPill').textContent = '소식 ' + pn.items.length + '건';
+    if (pn.loading) {
+      host.innerHTML = '<div class="note"><div>소식을 불러오는 중입니다…</div></div>';
+      $('pnEmpty').hidden = true;
+      return;
+    }
+    if (!pn.items.length) {
+      host.innerHTML = '';
+      $('pnEmpty').hidden = false;
+      return;
+    }
+    $('pnEmpty').hidden = true;
+    host.innerHTML = pn.items.map(function (n) {
+      var tag = PN_LABEL[n.tag] ? n.tag : 'notice';
+      var confirming = pn.wantDelete === n.id;
+      return '<div class="pnrow">' +
+        '<div class="pnrow__main">' +
+          '<div class="pnrow__meta">' +
+            '<span class="accbadge accbadge--' + (tag === 'update' ? 'ok' : tag === 'maintenance' ? 'wait' : '') + '">' + esc(PN_LABEL[tag]) + '</span>' +
+            '<span>' + esc(pnTime(n.at)) + '</span>' +
+          '</div>' +
+          '<div class="pnrow__title">' + esc(n.title) + '</div>' +
+          (n.body ? '<div class="pnrow__body">' + esc(n.body) + '</div>' : '') +
+        '</div>' +
+        '<div class="pnrow__acts">' +
+          '<button class="btn btn--sm ' + (confirming ? 'btn--danger' : '') + '" type="button" data-pn-del="' + esc(n.id) + '">' +
+            (confirming ? '삭제 확인' : '삭제') +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function loadPnews() {
+    if (!state.unlocked) return;
+    if (!cloudOn()) {
+      pn.items = [];
+      renderPnews();
+      pnNote('pnResult', 'warn', '클라우드가 연결되지 않아 소식을 읽을 수 없습니다.');
+      $('pnWarn').style.display = '';
+      return;
+    }
+    pn.loading = true;
+    renderPnews();
+    LemonCloud.getPortalNotices().then(function (list) {
+      pn.loading = false;
+      pn.items = Array.isArray(list) ? list : [];
+      renderPnews();
+      pnNote('pnResult', '', '');
+      $('pnWarn').style.display = '';
+    }, function () {
+      pn.loading = false;
+      pn.items = [];
+      renderPnews();
+      pnNote('pnResult', 'bad', '소식 목록을 불러오지 못했습니다. 잠시 뒤 새로고침해 주세요.');
+    });
+  }
+
+  function savePnews() {
+    if (pn.busy) return;
+    var title = String($('pnTitle').value || '').trim();
+    var body = String($('pnBody').value || '').trim();
+    if (!title) { pnNote('pnResult', 'warn', '제목을 입력해 주세요.'); $('pnTitle').focus(); return; }
+    if (!cloudOn()) { pnNote('pnResult', 'warn', pnCloudText(new Error('cloud-not-configured'))); return; }
+
+    var item = {
+      id: 'n' + Date.now().toString(36),
+      title: title.slice(0, 120),
+      tag: pn.tag,
+      body: body.slice(0, 4000),
+      at: new Date().toISOString()
+    };
+    var list = [item].concat(pn.items || []);
+
+    pn.busy = true;
+    $('pnSave').disabled = true;
+    pnNote('pnResult', '', '등록하는 중입니다…');
+    LemonCloud.savePortalNotices(list).then(function (saved) {
+      pn.busy = false;
+      $('pnSave').disabled = false;
+      pn.items = Array.isArray(saved) ? saved : list;
+      $('pnTitle').value = '';
+      $('pnBody').value = '';
+      renderPnews();
+      pnNote('pnResult', 'ok', '소식을 등록했습니다. 포털 소식 탭에 바로 보입니다.');
+      $('pnWarn').style.display = 'none';
+      toast('소식을 등록했습니다.');
+    }, function (e) {
+      pn.busy = false;
+      $('pnSave').disabled = false;
+      pnNote('pnResult', 'bad', pnCloudText(e));
+    });
+  }
+
+  function deletePnews(id) {
+    if (pn.busy) return;
+    var list = (pn.items || []).filter(function (n) { return n.id !== id; });
+    pn.busy = true;
+    pnNote('pnResult', '', '삭제하는 중입니다…');
+    LemonCloud.savePortalNotices(list).then(function (saved) {
+      pn.busy = false;
+      pn.wantDelete = '';
+      pn.items = Array.isArray(saved) ? saved : list;
+      renderPnews();
+      pnNote('pnResult', 'ok', '소식을 삭제했습니다.');
+      toast('소식을 삭제했습니다.');
+    }, function (e) {
+      pn.busy = false;
+      pn.wantDelete = '';
+      renderPnews();
+      pnNote('pnResult', 'bad', pnCloudText(e));
+    });
+  }
+
+  function bindPnews() {
+    if (!$('pnSave')) return;
+    $('pnSave').addEventListener('click', savePnews);
+    $('pnClear').addEventListener('click', function () {
+      $('pnTitle').value = '';
+      $('pnBody').value = '';
+      pnNote('pnResult', '', '');
+      $('pnTitle').focus();
+    });
+    $('pnReload').addEventListener('click', function () { loadPnews(); });
+    $('pnTagSeg').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-tag]') : null;
+      if (!b) return;
+      pn.tag = b.getAttribute('data-tag') || 'notice';
+      Array.prototype.forEach.call($('pnTagSeg').querySelectorAll('[data-tag]'), function (x) {
+        x.classList.toggle('on', x === b);
+      });
+    });
+    $('pnList').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-pn-del]') : null;
+      if (!b) return;
+      var id = b.getAttribute('data-pn-del');
+      if (pn.wantDelete !== id) { pn.wantDelete = id; renderPnews(); return; }
+      deletePnews(id);
+    });
+  }
+
+  /* ---------------- 포털 · API 전역 제어 (site_config · portal_controls) ---------------- */
+  var pctl = { loading: false, block: false, disable: false, busy: false };
+
+  function renderControls() {
+    if (!$('pcBlockApps')) return;
+    $('pcBlockApps').checked = pctl.block;
+    $('pcDisableApi').checked = pctl.disable;
+    $('pcAppsNote').style.display = pctl.block ? '' : 'none';
+    $('pcApiNote').style.display = pctl.disable ? '' : 'none';
+    if ($('navCtrlState')) $('navCtrlState').textContent = (pctl.block || pctl.disable) ? 'ON' : 'OFF';
+    if ($('pcPillText')) {
+      $('pcPillText').textContent = pctl.loading
+        ? '불러오는 중'
+        : ((pctl.block || pctl.disable) ? '일부 제한 중' : '모두 허용');
+    }
+  }
+
+  function loadControls() {
+    if (!state.unlocked) return;
+    if (!cloudOn()) {
+      pctl.loading = false;
+      renderControls();
+      pnNote('pcAppsResult', 'warn', '클라우드가 연결되지 않아 제어 값을 읽을 수 없습니다.');
+      return;
+    }
+    pctl.loading = true;
+    renderControls();
+    LemonCloud.getPortalControls().then(function (c) {
+      pctl.loading = false;
+      pctl.block = c.block_new_apps === true;
+      pctl.disable = c.disable_api === true;
+      renderControls();
+    }, function () {
+      pctl.loading = false;
+      renderControls();
+      pnNote('pcAppsResult', 'bad', '제어 값을 읽지 못했습니다. 잠시 뒤 새로고침해 주세요.');
+    });
+  }
+
+  function saveControls() {
+    if (pctl.busy) return;
+    if (!cloudOn()) {
+      pnNote('pcAppsResult', 'warn', '클라우드가 연결되지 않아 저장할 수 없습니다.');
+      return;
+    }
+    var next = {
+      block_new_apps: $('pcBlockApps').checked,
+      disable_api: $('pcDisableApi').checked
+    };
+    pctl.busy = true;
+    if ($('pcSaveApps')) $('pcSaveApps').disabled = true;
+    if ($('pcSaveApi')) $('pcSaveApi').disabled = true;
+    pnNote('pcAppsResult', '', '저장하는 중입니다…');
+    pnNote('pcApiResult', '', '저장하는 중입니다…');
+    LemonCloud.savePortalControls(next).then(function (saved) {
+      pctl.busy = false;
+      if ($('pcSaveApps')) $('pcSaveApps').disabled = false;
+      if ($('pcSaveApi')) $('pcSaveApi').disabled = false;
+      pctl.block = saved.block_new_apps === true;
+      pctl.disable = saved.disable_api === true;
+      renderControls();
+      var parts = [];
+      parts.push(pctl.block ? '새 앱 등록을 막았습니다.' : '새 앱 등록을 다시 열었습니다.');
+      parts.push(pctl.disable ? 'API를 중지했습니다.' : 'API를 다시 켰습니다.');
+      pnNote('pcAppsResult', 'ok', parts.join(' '));
+      pnNote('pcApiResult', 'ok', parts.join(' '));
+      toast('포털 · API 제어를 저장했습니다.');
+    }, function (e) {
+      pctl.busy = false;
+      if ($('pcSaveApps')) $('pcSaveApps').disabled = false;
+      if ($('pcSaveApi')) $('pcSaveApi').disabled = false;
+      pnNote('pcAppsResult', 'bad', pnCloudText(e));
+      pnNote('pcApiResult', 'bad', pnCloudText(e));
+    });
+  }
+
+  function bindControls() {
+    if (!$('pcSaveApps')) return;
+    $('pcSaveApps').addEventListener('click', saveControls);
+    $('pcSaveApi').addEventListener('click', saveControls);
+    $('pcBlockApps').addEventListener('change', function () {
+      pctl.block = $('pcBlockApps').checked;
+      $('pcAppsNote').style.display = pctl.block ? '' : 'none';
+    });
+    $('pcDisableApi').addEventListener('change', function () {
+      pctl.disable = $('pcDisableApi').checked;
+      $('pcApiNote').style.display = pctl.disable ? '' : 'none';
+    });
+  }
 
   /* ---------------- API 앱 관리 (승인 · 정지) ---------------- */
   var apiApps = { rows: [], loading: false };
@@ -1566,6 +1833,8 @@
     switchView('notice');
     bindReports();
     bindApiApps();
+    bindPnews();
+    bindControls();
     Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function (b) {
       b.addEventListener('click', function () { switchView(b.getAttribute('data-view')); });
     });

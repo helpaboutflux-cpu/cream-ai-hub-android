@@ -797,6 +797,85 @@
     return upsert('site_config', [{ id: id, value: value, updated_at: new Date().toISOString() }], 'id');
   }
 
+  /* ---------------- 개발자 포털 — 소식 · 전역 제어 -------------
+     site_config 의 공개 행 두 개를 쓴다(추가 표를 만들지 않는다).
+       portal_notices   { items: [ { id, title, tag, body, at } ] }  최신순
+       portal_controls  { block_new_apps, disable_api, updated_at }
+     두 행은 anon·authenticated 읽기 + is_site_admin() 쓰기 정책을 따른다.
+     값이 없거나 망가져 있으면 기본값으로 돌려주므로 화면은 항상 뜬다. */
+  var NOTICE_TAGS = ['notice', 'update', 'maintenance', 'event'];
+
+  function noticeTag(tag) {
+    var t = String(tag || '').trim().toLowerCase();
+    return NOTICE_TAGS.indexOf(t) >= 0 ? t : 'notice';
+  }
+
+  function normNoticeObj(n) {
+    if (!n || typeof n !== 'object') return null;
+    var title = String(n.title || '').trim().slice(0, 120);
+    var body = String(n.body || '').trim().slice(0, 4000);
+    if (!title && !body) return null;
+    var at = String(n.at || n.created_at || '').trim();
+    if (!at || isNaN(new Date(at).getTime())) at = new Date().toISOString();
+    return {
+      id: String(n.id || ('n' + new Date(at).getTime() + Math.random().toString(36).slice(2, 6))).slice(0, 40),
+      title: title || '제목 없는 소식',
+      tag: noticeTag(n.tag),
+      body: body,
+      at: at
+    };
+  }
+
+  function normNotices(value) {
+    var raw = value && typeof value === 'object' ? value : {};
+    var items = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : []);
+    var out = [], seen = {};
+    items.forEach(function (n) {
+      var v = normNoticeObj(n);
+      if (!v || seen[v.id]) return;
+      seen[v.id] = 1;
+      out.push(v);
+    });
+    out.sort(function (a, b) { return new Date(b.at).getTime() - new Date(a.at).getTime(); });
+    return out.slice(0, 200);
+  }
+
+  function normControls(value) {
+    var raw = value && typeof value === 'object' ? value : {};
+    return {
+      block_new_apps: raw.block_new_apps === true,
+      disable_api: raw.disable_api === true,
+      updated_at: typeof raw.updated_at === 'string' ? raw.updated_at : ''
+    };
+  }
+
+  function getPortalNotices() {
+    if (!cfgReady()) return Promise.resolve([]);
+    return getConfigRow('portal_notices').then(function (v) { return normNotices(v); }, function () { return []; });
+  }
+
+  function getPortalControls() {
+    if (!cfgReady()) return Promise.resolve(normControls(null));
+    return getConfigRow('portal_controls').then(function (v) { return normControls(v); }, function () { return normControls(null); });
+  }
+
+  function savePortalNotices(items) {
+    var list = normNotices(items);
+    return saveRemoteConfigRow('portal_notices', { items: list, updated_at: new Date().toISOString() })
+      .then(function () { return list; });
+  }
+
+  function savePortalControls(next) {
+    var v = normControls(next);
+    v.updated_at = new Date().toISOString();
+    return saveRemoteConfigRow('portal_controls', v).then(function () { return v; });
+  }
+
+  /* 지금 로그인한 계정이 사이트 관리자인지 — is_site_admin() 은 anon 도 호출할 수 있다. */
+  function isSiteAdmin() {
+    if (!cfgReady()) return Promise.resolve(false);
+    return rpc('is_site_admin', {}).then(function (v) { return v === true; }, function () { return false; });
+  }
   /* ---------------- LK 로그인 API (OAuth 앱) ----------------
      외부 정적 웹앱이 'LK 계정으로 로그인'을 붙일 때 쓰는 얇은 래퍼.
        · oauth_clients   앱 등록(내 것만 읽고 쓴다 · RLS)
@@ -1196,6 +1275,13 @@
     oauthListMyGrants: oauthListMyGrants,
     oauthRevokeGrant: oauthRevokeGrant,
     saveRemoteConfigRow: saveRemoteConfigRow,
+    getPortalNotices: getPortalNotices,
+    getPortalControls: getPortalControls,
+    savePortalNotices: savePortalNotices,
+    savePortalControls: savePortalControls,
+    isSiteAdmin: isSiteAdmin,
+    noticeTag: noticeTag,
+    NOTICE_TAGS: NOTICE_TAGS,
 
     oauthListMyClients: oauthListMyClients,
     oauthCreateClient: oauthCreateClient,

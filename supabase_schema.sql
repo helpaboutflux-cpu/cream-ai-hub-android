@@ -67,6 +67,8 @@ grant execute on function public.is_site_admin() to anon, authenticated;
 -- ------------------------------------------------------------
 -- 1. site_config — 상단 공지 · 홈 배너 · 광고 설정 · Cloudinary 연동
 --    id: 'notice' | 'home' | 'ads' | 'cloudinary'
+--        'portal_notices'  개발자 포털 소식 탭 공지 배열 { items: [...] }
+--        'portal_controls' 포털 전역 제어 { block_new_apps, disable_api }
 -- ------------------------------------------------------------
 create table if not exists public.site_config (
   id         text primary key,
@@ -84,7 +86,7 @@ drop policy if exists "site_config admin write"  on public.site_config;
 create policy "site_config public read"
   on public.site_config for select
   to anon, authenticated
-  using (id in ('notice', 'home', 'ads', 'cloudinary'));
+  using (id in ('notice', 'home', 'ads', 'cloudinary', 'portal_notices', 'portal_controls'));
 
 create policy "site_config admin read"
   on public.site_config for select
@@ -391,7 +393,7 @@ drop policy if exists "site_config public read" on public.site_config;
 create policy "site_config public read"
   on public.site_config for select
   to anon, authenticated
-  using (id in ('notice', 'home', 'ads', 'cloudinary'));
+  using (id in ('notice', 'home', 'ads', 'cloudinary', 'portal_notices', 'portal_controls'));
 
 -- ------------------------------------------------------------
 -- 11. tool_signals — 도구 '유용함' · '신고' (선택)
