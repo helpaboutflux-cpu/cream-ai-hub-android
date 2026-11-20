@@ -14,8 +14,21 @@
 --    admin_users      관리자 이메일 목록                             (관리자만 확인)
 --    community_apps   도구 전시 (portal.html 등록 → 관리자 승인)
 --    tool_signals     도구 '유용함' · '신고' 신호 (선택 · 없어도 화면은 동작)
+--    oauth_clients    LK 로그인 API — 앱 등록 (Client ID · Redirect URL)
+--    oauth_codes      LK 로그인 API — 5분짜리 일회용 코드 (함수만 접근)
+--    oauth_reports    LK 로그인 화면의 '이 서비스 신고' 접수 (관리자만 읽기)
 --  관리자 전용 함수
 --    admin_list_lk_accounts()  LK ID 가입 계정 목록 (관리자 세션만, 9번 항목)
+--    notifications      Soft Hub 알림 센터 — 앱이 보낸 알림 (본인만 읽기)
+--    notification_prefs 앱별 알림 차단 설정 (본인만)
+--  LK 로그인 API 함수
+--    oauth_client_public()      로그인 화면이 보는 앱 이름 · 허용 주소 (12번 항목)
+--    oauth_issue_code()         동의 후 일회용 code 발급 (로그인 세션)
+--    oauth_exchange_code()      외부 앱이 code 로 프로필 교환 (anon · 1회용)
+--  LK API 4종 (13~15번 항목)
+--    scope: drive:app · share:create · push:send · theme:read
+--    oauth_create_share()       짧은 공유 링크 만들기 (go.html?id=...)
+--    oauth_send_push()          사용자에게 알림 보내기 (push-center.html)
 --  모든 테이블에 RLS 가 켜져 있고, 쓰기는 관리자/본인으로 제한됩니다.
 --  여러 번 실행해도 안전합니다(if not exists / drop policy if exists).
 -- ============================================================
@@ -426,6 +439,1091 @@ grant select, insert on public.tool_signals to authenticated;
 grant usage, select on sequence public.tool_signals_id_seq to anon, authenticated;
 -- << community_apps
 
+-- ------------------------------------------------------------
+-- 12. LK 계정 로그인 API — oauth_clients · oauth_codes · oauth_reports
+--     외부 정적 웹앱이 'LK 계정으로 로그인'을 붙일 때 쓰는 표와 함수.
+--     흐름
+--       1) 앱이 oauth.html?client_id=..&redirect_uri=..&state=.. 로 보낸다
+--       2) oauth.html 이 oauth_client_public() 으로 앱 이름·허용 주소를 확인
+--       3) 동의하면 oauth_issue_code() 가 5분짜리 일회용 code 발급
+--       4) 앱의 콜백이 oauth_exchange_code() 로 프로필을 한 번만 받아 간다
+--     · 클라이언트 비밀(secret)은 쓰지 않는다 — 정적 웹앱은 비밀을 지킬 수 없으므로
+--       코드 교환을 client_id + redirect_uri 정확 일치로 묶는다.
+--     · 앱 정보는 소유자만 읽고 쓰며, 로그인 화면은 SECURITY DEFINER 함수로만
+--       앱 이름 · 허용 주소 · 스코프를 본다(소유자 ID 등은 노출되지 않는다).
+-- ------------------------------------------------------------
+-- >> oauth_clients
+create extension if not exists pgcrypto;
+
+create table if not exists public.oauth_clients (
+  id            uuid primary key default gen_random_uuid(),
+  client_id     text not null unique,
+  owner_id      uuid not null references auth.users (id) on delete cascade,
+  app_name      text not null,
+  app_url       text not null default '',
+  redirect_uris text[] not null default '{}',
+  scope         text not null default 'profile:basic',
+  is_active     boolean not null default true,
+  login_count   integer not null default 0,
+  last_used_at  timestamptz,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  constraint oauth_clients_id_format
+    check (client_id ~ '^lkc_[a-z0-9]{16,40}$'),
+  constraint oauth_clients_name_len
+    check (char_length(btrim(app_name)) between 1 and 60),
+  constraint oauth_clients_url
+    check (app_url = '' or app_url ~* '^https?://'),
+  constraint oauth_clients_uris_len
+    check (coalesce(array_length(redirect_uris, 1), 0) between 1 and 10),
+  constraint oauth_clients_scope
+    check (scope = 'profile:basic')
+);
+
+create index if not exists oauth_clients_owner_idx
+  on public.oauth_clients (owner_id, created_at desc);
+
+-- Redirect URL 은 https 이거나 로컬 테스트용 http://localhost 여야 한다.
+create or replace function public.oauth_clients_check_uris()
+returns trigger
+language plpgsql
+as $$
+declare u text;
+begin
+  if coalesce(array_length(new.redirect_uris, 1), 0) = 0 then
+    raise exception 'oauth-redirect-required';
+  end if;
+  if coalesce(array_length(new.redirect_uris, 1), 0) > 10 then
+    raise exception 'oauth-redirect-too-many';
+  end if;
+  foreach u in array new.redirect_uris loop
+    if u !~* '^https://[^[:space:]]+$'
+       and u !~* '^http://localhost(:[0-9]+)?(/[^[:space:]]*)?$' then
+      raise exception 'oauth-redirect-invalid';
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists oauth_clients_uris on public.oauth_clients;
+create trigger oauth_clients_uris
+  before insert or update of redirect_uris on public.oauth_clients
+  for each row execute function public.oauth_clients_check_uris();
+
+drop trigger if exists oauth_clients_touch on public.oauth_clients;
+create trigger oauth_clients_touch before update on public.oauth_clients
+  for each row execute function public.touch_updated_at();
+
+alter table public.oauth_clients enable row level security;
+
+drop policy if exists "oauth_clients owner read"   on public.oauth_clients;
+drop policy if exists "oauth_clients owner insert" on public.oauth_clients;
+drop policy if exists "oauth_clients owner update" on public.oauth_clients;
+drop policy if exists "oauth_clients owner delete" on public.oauth_clients;
+
+create policy "oauth_clients owner read"
+  on public.oauth_clients for select
+  to authenticated
+  using (auth.uid() = owner_id or public.is_site_admin());
+
+create policy "oauth_clients owner insert"
+  on public.oauth_clients for insert
+  to authenticated
+  with check (auth.uid() = owner_id);
+
+create policy "oauth_clients owner update"
+  on public.oauth_clients for update
+  to authenticated
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
+
+create policy "oauth_clients owner delete"
+  on public.oauth_clients for delete
+  to authenticated
+  using (auth.uid() = owner_id or public.is_site_admin());
+
+-- anon 에는 표 권한을 주지 않는다. 로그인 화면은 아래 함수만 쓴다.
+grant select, insert, update, delete on public.oauth_clients to authenticated;
+
+-- ------------------------------------------------------------
+-- 12-1. oauth_codes — 일회용 코드 (직접 접근 불가 · 함수만)
+-- ------------------------------------------------------------
+create table if not exists public.oauth_codes (
+  code             text primary key,
+  client_id        text not null
+                     references public.oauth_clients (client_id)
+                     on update cascade on delete cascade,
+  user_id          uuid not null references auth.users (id) on delete cascade,
+  redirect_uri     text not null,
+  scope            text not null default 'profile:basic',
+  profile_snapshot jsonb not null default '{}'::jsonb,
+  expires_at       timestamptz not null,
+  used_at          timestamptz,
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists oauth_codes_client_idx
+  on public.oauth_codes (client_id, created_at desc);
+
+alter table public.oauth_codes enable row level security;
+-- 정책을 만들지 않는다 → anon/authenticated 는 직접 읽고 쓸 수 없다.
+
+-- ------------------------------------------------------------
+-- 12-2. 프로필 색상 — 계정 ID 로 항상 같은 색을 만든다
+-- ------------------------------------------------------------
+create or replace function public.oauth_avatar_color(p_uid uuid)
+returns text
+language sql
+immutable
+as $$
+  select (array['#2563eb', '#0f766e', '#0f9d63', '#ca8a04',
+                '#ea580c', '#e11d48', '#9333ea', '#0891b2'])[
+    (get_byte(decode(substr(md5(coalesce(p_uid::text, '')), 1, 2), 'hex'), 0) % 8) + 1
+  ];
+$$;
+
+-- ------------------------------------------------------------
+-- 12-3. 로그인 화면용 공개 앱 정보 — 소유자 정보는 나오지 않는다
+-- ------------------------------------------------------------
+create or replace function public.oauth_client_public(p_client_id text)
+returns table (
+  app_name      text,
+  app_url       text,
+  redirect_uris text[],
+  scope         text,
+  is_active     boolean
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select c.app_name, c.app_url, c.redirect_uris, c.scope, c.is_active
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+   limit 1;
+$$;
+
+revoke all on function public.oauth_client_public(text) from public;
+grant execute on function public.oauth_client_public(text) to anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 12-4. 동의 → 일회용 code 발급 (로그인 세션 필요 · 5분 만료)
+-- ------------------------------------------------------------
+create or replace function public.oauth_issue_code(
+  p_client_id     text,
+  p_redirect_uri  text,
+  p_scope         text default 'profile:basic'
+)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_uid    uuid := auth.uid();
+  v_client public.oauth_clients%rowtype;
+  v_code   text;
+  v_nick   text;
+begin
+  if v_uid is null then
+    raise exception 'login-required';
+  end if;
+
+  select * into v_client
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+     and c.is_active
+   limit 1;
+
+  if not found then
+    raise exception 'invalid-client';
+  end if;
+
+  if not (p_redirect_uri = any (v_client.redirect_uris)) then
+    raise exception 'invalid-redirect-uri';
+  end if;
+
+  if coalesce(nullif(btrim(p_scope), ''), 'profile:basic') <> 'profile:basic'
+     or v_client.scope <> 'profile:basic' then
+    raise exception 'invalid-scope';
+  end if;
+
+  select coalesce(
+           nullif(btrim(u.raw_user_meta_data ->> 'full_name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'display_name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'nickname'), ''),
+           nullif(split_part(coalesce(u.email, ''), '@', 1), ''),
+           'LK 사용자'
+         )
+    into v_nick
+    from auth.users u
+   where u.id = v_uid;
+
+  v_nick := left(coalesce(v_nick, 'LK 사용자'), 40);
+  v_code := 'lk_' || encode(gen_random_bytes(20), 'hex');
+
+  insert into public.oauth_codes
+    (code, client_id, user_id, redirect_uri, scope, profile_snapshot, expires_at)
+  values
+    (v_code, v_client.client_id, v_uid, p_redirect_uri, 'profile:basic',
+     jsonb_build_object(
+       'sub', v_uid,
+       'nickname', v_nick,
+       'avatar_color', public.oauth_avatar_color(v_uid),
+       'avatar_text', upper(left(v_nick, 1))
+     ),
+     now() + interval '5 minutes');
+
+  update public.oauth_clients
+     set login_count = login_count + 1,
+         last_used_at = now()
+   where id = v_client.id;
+
+  -- 하루 지난 코드는 조용히 정리한다.
+  delete from public.oauth_codes where expires_at < now() - interval '1 day';
+
+  return v_code;
+end;
+$$;
+
+revoke all on function public.oauth_issue_code(text, text, text) from public;
+grant execute on function public.oauth_issue_code(text, text, text) to authenticated;
+
+-- ------------------------------------------------------------
+-- 12-5. code → 프로필 교환 (외부 정적 앱이 anon 키로 호출 · 1회용)
+--       성공하면 코드는 즉시 만료되고, 같은 코드로 다시 부르면 invalid-code.
+-- ------------------------------------------------------------
+create or replace function public.oauth_exchange_code(
+  p_code          text,
+  p_client_id     text,
+  p_redirect_uri  text
+)
+returns table (
+  sub          uuid,
+  nickname     text,
+  avatar_color text,
+  avatar_text  text,
+  scope        text
+)
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.oauth_codes%rowtype;
+begin
+  select * into v_row
+    from public.oauth_codes c
+   where c.code = p_code
+     and c.client_id = p_client_id
+     and c.redirect_uri = p_redirect_uri
+     and c.used_at is null
+   for update;
+
+  if not found then
+    raise exception 'invalid-code';
+  end if;
+
+  if v_row.expires_at <= now() then
+    delete from public.oauth_codes where code = v_row.code;
+    raise exception 'expired-code';
+  end if;
+
+  update public.oauth_codes
+     set used_at = now()
+   where code = v_row.code;
+
+  return query
+    select (v_row.profile_snapshot ->> 'sub')::uuid,
+           v_row.profile_snapshot ->> 'nickname',
+           v_row.profile_snapshot ->> 'avatar_color',
+           v_row.profile_snapshot ->> 'avatar_text',
+           v_row.scope;
+end;
+$$;
+
+revoke all on function public.oauth_exchange_code(text, text, text) from public;
+grant execute on function public.oauth_exchange_code(text, text, text) to anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 12-6. oauth_reports — 의심스러운 서비스 신고 (로그인 화면 우측 아래 버튼)
+--       누구나 한 줄 남길 수 있고, 내용은 관리자만 읽는다.
+-- ------------------------------------------------------------
+create table if not exists public.oauth_reports (
+  id           bigserial primary key,
+  client_id    text not null default '',
+  redirect_uri text not null default '',
+  reason       text not null default 'other',
+  note         text not null default '',
+  status       text not null default 'open',
+  handled_at   timestamptz,
+  created_at   timestamptz not null default now(),
+  constraint oauth_reports_status
+    check (status in ('open', 'done')),
+  constraint oauth_reports_reason
+    check (reason in ('phishing', 'impersonation', 'overreach', 'malware', 'other')),
+  constraint oauth_reports_note
+    check (char_length(note) <= 300),
+  constraint oauth_reports_client
+    check (char_length(client_id) <= 120),
+  constraint oauth_reports_uri
+    check (char_length(redirect_uri) <= 300)
+);
+
+-- 이미 만들어진 표에도 두 칸을 더한다(여러 번 실행해도 안전).
+alter table public.oauth_reports add column if not exists status text not null default 'open';
+alter table public.oauth_reports add column if not exists handled_at timestamptz;
+
+create index if not exists oauth_reports_created_idx
+  on public.oauth_reports (created_at desc);
+create index if not exists oauth_reports_status_idx
+  on public.oauth_reports (status, created_at desc);
+
+alter table public.oauth_reports enable row level security;
+
+drop policy if exists "oauth_reports anyone insert" on public.oauth_reports;
+drop policy if exists "oauth_reports admin read"    on public.oauth_reports;
+drop policy if exists "oauth_reports admin update"  on public.oauth_reports;
+
+create policy "oauth_reports anyone insert"
+  on public.oauth_reports for insert
+  to anon, authenticated
+  with check (true);
+
+create policy "oauth_reports admin read"
+  on public.oauth_reports for select
+  to authenticated
+  using (public.is_site_admin());
+
+-- 관리자 콘솔(admin.html)이 '처리 완료'로 표시할 수 있다.
+create policy "oauth_reports admin update"
+  on public.oauth_reports for update
+  to authenticated
+  using (public.is_site_admin())
+  with check (public.is_site_admin());
+
+grant insert on public.oauth_reports to anon, authenticated;
+grant select, update on public.oauth_reports to authenticated;
+grant usage, select on sequence public.oauth_reports_id_seq to anon, authenticated;
+-- << oauth_clients
+
+
+-- ------------------------------------------------------------
+-- 13. LK API 스코프 확장 — drive:app · share:create · push:send · theme:read
+--     oauth_clients.scope 는 공백으로 구분한 목록이다.
+--     예) 'profile:basic drive:app share:create'
+--     · profile:basic  고유 ID·닉네임·프로필 색상
+--     · drive:app      이 앱 전용 Google Drive 폴더(SoftHub_Apps/{client_id})만 읽고 쓰기
+--     · share:create   짧은 공유 링크(go.html?id=...) 만들기
+--     · push:send      사용자에게 Soft Hub 알림 보내기
+--     · theme:read     현재 테마(dark/light/dynamic)와 브랜드 색 토큰 읽기
+-- ------------------------------------------------------------
+alter table public.oauth_clients drop constraint if exists oauth_clients_scope;
+alter table public.oauth_clients
+  add constraint oauth_clients_scope
+  check (scope ~ '^profile:basic( (drive:app|share:create|push:send|theme:read))*$');
+
+create or replace function public.oauth_has_scope(p_scope text, p_want text)
+returns boolean
+language sql
+immutable
+as $$
+  select coalesce(p_want = any (string_to_array(coalesce(p_scope, ''), ' ')), false);
+$$;
+
+revoke all on function public.oauth_has_scope(text, text) from public;
+grant execute on function public.oauth_has_scope(text, text) to anon, authenticated;
+
+-- 동의 화면이 요청 스코프를 그대로 보여 주고, 발급 함수가 앱 허용 목록과 대조한다.
+create or replace function public.oauth_issue_code(
+  p_client_id     text,
+  p_redirect_uri  text,
+  p_scope         text default 'profile:basic'
+)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_uid    uuid := auth.uid();
+  v_client public.oauth_clients%rowtype;
+  v_code   text;
+  v_nick   text;
+  v_want   text;
+  v_one    text;
+begin
+  if v_uid is null then
+    raise exception 'login-required';
+  end if;
+
+  select * into v_client
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+     and c.is_active
+   limit 1;
+
+  if not found then
+    raise exception 'invalid-client';
+  end if;
+
+  if not (p_redirect_uri = any (v_client.redirect_uris)) then
+    raise exception 'invalid-redirect-uri';
+  end if;
+
+  v_want := regexp_replace(btrim(coalesce(p_scope, '')), '\s+', ' ', 'g');
+  if v_want = '' then v_want := 'profile:basic'; end if;
+
+  if not public.oauth_has_scope(v_want, 'profile:basic') then
+    raise exception 'invalid-scope';
+  end if;
+
+  foreach v_one in array string_to_array(v_want, ' ') loop
+    if v_one not in ('profile:basic', 'drive:app', 'share:create', 'push:send', 'theme:read') then
+      raise exception 'invalid-scope';
+    end if;
+    if not public.oauth_has_scope(v_client.scope, v_one) then
+      raise exception 'scope-not-allowed';
+    end if;
+  end loop;
+
+  select coalesce(
+           nullif(btrim(u.raw_user_meta_data ->> 'full_name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'display_name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'nickname'), ''),
+           nullif(split_part(coalesce(u.email, ''), '@', 1), ''),
+           'LK 사용자'
+         )
+    into v_nick
+    from auth.users u
+   where u.id = v_uid;
+
+  v_nick := left(coalesce(v_nick, 'LK 사용자'), 40);
+  v_code := 'lk_' || encode(gen_random_bytes(20), 'hex');
+
+  insert into public.oauth_codes
+    (code, client_id, user_id, redirect_uri, scope, profile_snapshot, expires_at)
+  values
+    (v_code, v_client.client_id, v_uid, p_redirect_uri, v_want,
+     jsonb_build_object(
+       'sub', v_uid,
+       'nickname', v_nick,
+       'avatar_color', public.oauth_avatar_color(v_uid),
+       'avatar_text', upper(left(v_nick, 1))
+     ),
+     now() + interval '5 minutes');
+
+  update public.oauth_clients
+     set login_count = login_count + 1,
+         last_used_at = now()
+   where id = v_client.id;
+
+  delete from public.oauth_codes where expires_at < now() - interval '1 day';
+
+  return v_code;
+end;
+$$;
+
+revoke all on function public.oauth_issue_code(text, text, text) from public;
+grant execute on function public.oauth_issue_code(text, text, text) to authenticated;
+
+-- 교환 결과에 동의한 스코프를 그대로 돌려준다(앱이 자기 권한을 확인할 수 있게).
+create or replace function public.oauth_exchange_code(
+  p_code          text,
+  p_client_id     text,
+  p_redirect_uri  text
+)
+returns table (
+  sub          uuid,
+  nickname     text,
+  avatar_color text,
+  avatar_text  text,
+  scope        text
+)
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.oauth_codes%rowtype;
+begin
+  select * into v_row
+    from public.oauth_codes c
+   where c.code = p_code
+     and c.client_id = p_client_id
+     and c.redirect_uri = p_redirect_uri
+     and c.used_at is null
+   for update;
+
+  if not found then
+    raise exception 'invalid-code';
+  end if;
+
+  if v_row.expires_at <= now() then
+    delete from public.oauth_codes where code = v_row.code;
+    raise exception 'expired-code';
+  end if;
+
+  update public.oauth_codes set used_at = now() where code = v_row.code;
+
+  return query
+    select (v_row.profile_snapshot ->> 'sub')::uuid,
+           v_row.profile_snapshot ->> 'nickname',
+           v_row.profile_snapshot ->> 'avatar_color',
+           v_row.profile_snapshot ->> 'avatar_text',
+           v_row.scope;
+end;
+$$;
+
+revoke all on function public.oauth_exchange_code(text, text, text) from public;
+grant execute on function public.oauth_exchange_code(text, text, text) to anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 14. share:create — 짧은 공유 링크 API (go.html?id=...)
+--     외부 도구가 결과물을 링크 하나로 건넨다.
+--     · 앱이 share:create 스코프를 허용해야 하고,
+--     · 앱당 24시간 40개까지(남용 방지),
+--     · 본문은 160KB 까지.
+--     표는 기존 shared_pages 를 그대로 쓴다(짧은 링크·조회수 로직 재사용).
+-- ------------------------------------------------------------
+alter table public.shared_pages add column if not exists client_id text not null default '';
+create index if not exists shared_pages_client_idx
+  on public.shared_pages (client_id, created_at desc);
+
+create or replace function public.oauth_create_share(
+  p_client_id text,
+  p_title     text,
+  p_payload   jsonb,
+  p_kind      text default 'app'
+)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_client public.oauth_clients%rowtype;
+  v_id     text;
+  v_recent integer;
+  v_size   integer;
+begin
+  select * into v_client
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+     and c.is_active
+   limit 1;
+
+  if not found then
+    raise exception 'invalid-client';
+  end if;
+
+  if not public.oauth_has_scope(v_client.scope, 'share:create') then
+    raise exception 'scope-required';
+  end if;
+
+  v_size := pg_column_size(coalesce(p_payload, '{}'::jsonb));
+  if v_size > 160000 then
+    raise exception 'payload-too-large';
+  end if;
+
+  select count(*) into v_recent
+    from public.shared_pages s
+   where s.client_id = p_client_id
+     and s.created_at > now() - interval '24 hours';
+
+  if v_recent >= 40 then
+    raise exception 'rate-limited';
+  end if;
+
+  v_id := lower(substr(encode(gen_random_bytes(8), 'hex'), 1, 10));
+
+  insert into public.shared_pages
+    (id, kind, title, payload, owner, client_id, created_at, expires_at)
+  values
+    (v_id,
+     left(coalesce(nullif(btrim(p_kind), ''), 'app'), 20),
+     left(coalesce(nullif(btrim(p_title), ''), '공유'), 120),
+     coalesce(p_payload, '{}'::jsonb),
+     null,
+     p_client_id,
+     now(),
+     null);
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.oauth_create_share(text, text, jsonb, text) from public;
+grant execute on function public.oauth_create_share(text, text, jsonb, text) to anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 15. push:send — Soft Hub 알림 센터
+--     앱이 사용자에게 알림을 보낸다. 사용자는 push-center.html 에서 보고,
+--     앱별로 끌 수 있다. 앱당 사용자별 24시간 10건까지.
+-- ------------------------------------------------------------
+create table if not exists public.notifications (
+  id         bigserial primary key,
+  client_id  text not null default '',
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  title      text not null default '',
+  body       text not null default '',
+  url        text not null default '',
+  read_at    timestamptz,
+  created_at timestamptz not null default now(),
+  constraint notifications_title check (char_length(title) between 1 and 80),
+  constraint notifications_body check (char_length(body) <= 240),
+  constraint notifications_url check (url = '' or url ~* '^https?://')
+);
+
+create index if not exists notifications_user_idx
+  on public.notifications (user_id, created_at desc);
+create index if not exists notifications_client_idx
+  on public.notifications (client_id, user_id, created_at desc);
+
+alter table public.notifications enable row level security;
+
+drop policy if exists "notifications own read"   on public.notifications;
+drop policy if exists "notifications own update" on public.notifications;
+drop policy if exists "notifications own delete" on public.notifications;
+
+create policy "notifications own read"
+  on public.notifications for select
+  to authenticated
+  using (auth.uid() = user_id or public.is_site_admin());
+
+create policy "notifications own update"
+  on public.notifications for update
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "notifications own delete"
+  on public.notifications for delete
+  to authenticated
+  using (auth.uid() = user_id);
+
+grant select, update, delete on public.notifications to authenticated;
+
+create table if not exists public.notification_prefs (
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  client_id  text not null,
+  enabled    boolean not null default true,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, client_id)
+);
+
+alter table public.notification_prefs enable row level security;
+
+drop policy if exists "notification_prefs own" on public.notification_prefs;
+
+create policy "notification_prefs own"
+  on public.notification_prefs for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.notification_prefs to authenticated;
+
+create or replace function public.oauth_send_push(
+  p_client_id text,
+  p_sub       uuid,
+  p_title     text,
+  p_body      text,
+  p_url       text default ''
+)
+returns bigint
+language plpgsql
+volatile
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_client public.oauth_clients%rowtype;
+  v_recent integer;
+  v_off    boolean;
+  v_id     bigint;
+begin
+  select * into v_client
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+     and c.is_active
+   limit 1;
+
+  if not found then
+    raise exception 'invalid-client';
+  end if;
+
+  if not public.oauth_has_scope(v_client.scope, 'push:send') then
+    raise exception 'scope-required';
+  end if;
+
+  if p_sub is null or not exists (select 1 from auth.users u where u.id = p_sub) then
+    raise exception 'invalid-sub';
+  end if;
+
+  select coalesce((select not p.enabled from public.notification_prefs p
+                    where p.user_id = p_sub and p.client_id = p_client_id), false)
+    into v_off;
+  if v_off then
+    raise exception 'blocked-by-user';
+  end if;
+
+  select count(*) into v_recent
+    from public.notifications n
+   where n.client_id = p_client_id
+     and n.user_id = p_sub
+     and n.created_at > now() - interval '24 hours';
+
+  if v_recent >= 10 then
+    raise exception 'rate-limited';
+  end if;
+
+  insert into public.notifications (client_id, user_id, title, body, url)
+  values (p_client_id, p_sub,
+          left(coalesce(nullif(btrim(p_title), ''), 'Soft Hub 알림'), 80),
+          left(coalesce(p_body, ''), 240),
+          case when coalesce(p_url, '') ~* '^https?://' then left(p_url, 400) else '' end)
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.oauth_send_push(text, uuid, text, text, text) from public;
+grant execute on function public.oauth_send_push(text, uuid, text, text, text) to anon, authenticated;
+
+-- 관리자 확인용
+select 'oauth_clients' as table_name, count(*) from public.oauth_clients
+union all
+select 'notifications', count(*) from public.notifications
+union all
+select 'notification_prefs', count(*) from public.notification_prefs
+union all
+select 'oauth_grants', count(*) from public.oauth_grants;
+
+
+-- ------------------------------------------------------------
+-- 16. 하이브리드 승인 · 사용자 연결 관리(oauth_grants)
+--     · 앱을 만든 본인은 승인 전에도 자기 계정으로 테스트할 수 있다.
+--     · 다른 사용자에게 열려면 관리자가 admin.html 에서 승인(is_approved)해야 한다.
+--     · 사용자는 auth.html 에서 자기가 허용한 앱 목록을 보고 권한을 해제할 수 있다.
+--       (해제하면 push:send 는 즉시 막히고, 다시 쓰려면 oauth.html 에서 재동의)
+-- ------------------------------------------------------------
+alter table public.oauth_clients add column if not exists is_approved boolean not null default false;
+alter table public.oauth_clients add column if not exists approved_at timestamptz;
+
+create index if not exists oauth_clients_approved_idx
+  on public.oauth_clients (is_approved, created_at desc);
+
+-- 로그인 화면이 보는 앱 정보에 승인 여부를 더한다(소유자 정보는 여전히 감춘다).
+drop function if exists public.oauth_client_public(text);
+create or replace function public.oauth_client_public(p_client_id text)
+returns table (
+  app_name      text,
+  app_url       text,
+  redirect_uris text[],
+  scope         text,
+  is_active     boolean,
+  is_approved   boolean
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select c.app_name, c.app_url, c.redirect_uris, c.scope, c.is_active, c.is_approved
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+   limit 1;
+$$;
+
+revoke all on function public.oauth_client_public(text) from public;
+grant execute on function public.oauth_client_public(text) to anon, authenticated;
+
+-- 지금 로그인한 사람이 이 앱의 주인인가 — 승인 전 테스트 허용 판단용
+create or replace function public.oauth_is_owner(p_client_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.oauth_clients c
+     where c.client_id = p_client_id
+       and c.owner_id = auth.uid()
+  );
+$$;
+
+revoke all on function public.oauth_is_owner(text) from public;
+grant execute on function public.oauth_is_owner(text) to authenticated;
+
+create table if not exists public.oauth_grants (
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  client_id    text not null,
+  scopes       text not null default 'profile:basic',
+  granted_at   timestamptz not null default now(),
+  last_used_at timestamptz,
+  revoked_at   timestamptz,
+  primary key (user_id, client_id)
+);
+
+create index if not exists oauth_grants_client_idx
+  on public.oauth_grants (client_id, granted_at desc);
+
+alter table public.oauth_grants enable row level security;
+
+drop policy if exists "oauth_grants own read"   on public.oauth_grants;
+drop policy if exists "oauth_grants own write"  on public.oauth_grants;
+drop policy if exists "oauth_grants own update" on public.oauth_grants;
+drop policy if exists "oauth_grants own delete" on public.oauth_grants;
+
+create policy "oauth_grants own read"
+  on public.oauth_grants for select
+  to authenticated
+  using (auth.uid() = user_id or public.is_site_admin());
+
+create policy "oauth_grants own write"
+  on public.oauth_grants for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+create policy "oauth_grants own update"
+  on public.oauth_grants for update
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "oauth_grants own delete"
+  on public.oauth_grants for delete
+  to authenticated
+  using (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.oauth_grants to authenticated;
+
+-- 내가 허용한 앱 목록 + 앱 이름 — auth.html '연결된 앱' 화면용
+create or replace function public.oauth_my_grants()
+returns table (
+  client_id    text,
+  app_name     text,
+  app_url      text,
+  scopes       text,
+  granted_at   timestamptz,
+  revoked_at   timestamptz,
+  is_active    boolean,
+  is_approved  boolean
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select g.client_id,
+         coalesce(c.app_name, '알 수 없는 앱'),
+         coalesce(c.app_url, ''),
+         g.scopes,
+         g.granted_at,
+         g.revoked_at,
+         coalesce(c.is_active, false),
+         coalesce(c.is_approved, false)
+    from public.oauth_grants g
+    left join public.oauth_clients c on c.client_id = g.client_id
+   where g.user_id = auth.uid()
+   order by g.granted_at desc;
+$$;
+
+revoke all on function public.oauth_my_grants() from public;
+grant execute on function public.oauth_my_grants() to authenticated;
+
+-- 승인 전에는 소유자만 / 승인 뒤에는 모든 사용자가 동의할 수 있다. 동의하면 grant 를 남긴다.
+create or replace function public.oauth_issue_code(
+  p_client_id     text,
+  p_redirect_uri  text,
+  p_scope         text default 'profile:basic'
+)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_uid    uuid := auth.uid();
+  v_client public.oauth_clients%rowtype;
+  v_code   text;
+  v_nick   text;
+  v_want   text;
+  v_one    text;
+begin
+  if v_uid is null then
+    raise exception 'login-required';
+  end if;
+
+  select * into v_client
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+     and c.is_active
+   limit 1;
+
+  if not found then
+    raise exception 'invalid-client';
+  end if;
+
+  if not v_client.is_approved and v_client.owner_id <> v_uid then
+    raise exception 'app-not-approved';
+  end if;
+
+  if not (p_redirect_uri = any (v_client.redirect_uris)) then
+    raise exception 'invalid-redirect-uri';
+  end if;
+
+  v_want := regexp_replace(btrim(coalesce(p_scope, '')), '\s+', ' ', 'g');
+  if v_want = '' then v_want := 'profile:basic'; end if;
+
+  if not public.oauth_has_scope(v_want, 'profile:basic') then
+    raise exception 'invalid-scope';
+  end if;
+
+  foreach v_one in array string_to_array(v_want, ' ') loop
+    if v_one not in ('profile:basic', 'drive:app', 'share:create', 'push:send', 'theme:read') then
+      raise exception 'invalid-scope';
+    end if;
+    if not public.oauth_has_scope(v_client.scope, v_one) then
+      raise exception 'scope-not-allowed';
+    end if;
+  end loop;
+
+  select coalesce(
+           nullif(btrim(u.raw_user_meta_data ->> 'full_name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'display_name'), ''),
+           nullif(btrim(u.raw_user_meta_data ->> 'nickname'), ''),
+           nullif(split_part(coalesce(u.email, ''), '@', 1), ''),
+           'LK 사용자'
+         )
+    into v_nick
+    from auth.users u
+   where u.id = v_uid;
+
+  v_nick := left(coalesce(v_nick, 'LK 사용자'), 40);
+  v_code := 'lk_' || encode(gen_random_bytes(20), 'hex');
+
+  insert into public.oauth_codes
+    (code, client_id, user_id, redirect_uri, scope, profile_snapshot, expires_at)
+  values
+    (v_code, v_client.client_id, v_uid, p_redirect_uri, v_want,
+     jsonb_build_object(
+       'sub', v_uid,
+       'nickname', v_nick,
+       'avatar_color', public.oauth_avatar_color(v_uid),
+       'avatar_text', upper(left(v_nick, 1))
+     ),
+     now() + interval '5 minutes');
+
+  insert into public.oauth_grants (user_id, client_id, scopes, granted_at, last_used_at, revoked_at)
+  values (v_uid, v_client.client_id, v_want, now(), now(), null)
+  on conflict (user_id, client_id) do update
+    set scopes = excluded.scopes,
+        granted_at = now(),
+        last_used_at = now(),
+        revoked_at = null;
+
+  update public.oauth_clients
+     set login_count = login_count + 1,
+         last_used_at = now()
+   where id = v_client.id;
+
+  delete from public.oauth_codes where expires_at < now() - interval '1 day';
+
+  return v_code;
+end;
+$$;
+
+revoke all on function public.oauth_issue_code(text, text, text) from public;
+grant execute on function public.oauth_issue_code(text, text, text) to authenticated;
+
+-- push:send 는 사용자가 그 앱에 push:send 를 허용했고 해제하지 않았을 때만.
+create or replace function public.oauth_send_push(
+  p_client_id text,
+  p_sub       uuid,
+  p_title     text,
+  p_body      text,
+  p_url       text default ''
+)
+returns bigint
+language plpgsql
+volatile
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_client public.oauth_clients%rowtype;
+  v_recent integer;
+  v_grant  public.oauth_grants%rowtype;
+  v_id     bigint;
+begin
+  select * into v_client
+    from public.oauth_clients c
+   where c.client_id = p_client_id
+     and c.is_active
+   limit 1;
+
+  if not found then
+    raise exception 'invalid-client';
+  end if;
+
+  if not public.oauth_has_scope(v_client.scope, 'push:send') then
+    raise exception 'scope-required';
+  end if;
+
+  if p_sub is null or not exists (select 1 from auth.users u where u.id = p_sub) then
+    raise exception 'invalid-sub';
+  end if;
+
+  select * into v_grant
+    from public.oauth_grants g
+   where g.user_id = p_sub and g.client_id = p_client_id
+   limit 1;
+
+  if not found or v_grant.revoked_at is not null
+     or not public.oauth_has_scope(v_grant.scopes, 'push:send') then
+    raise exception 'grant-required';
+  end if;
+
+  select count(*) into v_recent
+    from public.notifications n
+   where n.client_id = p_client_id
+     and n.user_id = p_sub
+     and n.created_at > now() - interval '24 hours';
+
+  if v_recent >= 10 then
+    raise exception 'rate-limited';
+  end if;
+
+  insert into public.notifications (client_id, user_id, title, body, url)
+  values (p_client_id, p_sub,
+          left(coalesce(nullif(btrim(p_title), ''), 'Soft Hub 알림'), 80),
+          left(coalesce(p_body, ''), 240),
+          case when coalesce(p_url, '') ~* '^https?://' then left(p_url, 400) else '' end)
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.oauth_send_push(text, uuid, text, text, text) from public;
+grant execute on function public.oauth_send_push(text, uuid, text, text, text) to anon, authenticated;
+
+
 -- 확인용
 select 'site_config'    as table_name, count(*) from public.site_config
 union all
@@ -435,4 +1533,16 @@ select 'shared_pages',  count(*) from public.shared_pages
 union all
 select 'admin_users',   count(*) from public.admin_users
 union all
-select 'community_apps', count(*) from public.community_apps;
+select 'community_apps', count(*) from public.community_apps
+union all
+select 'oauth_clients', count(*) from public.oauth_clients
+union all
+select 'oauth_codes',   count(*) from public.oauth_codes
+union all
+select 'oauth_reports', count(*) from public.oauth_reports
+union all
+select 'notifications', count(*) from public.notifications
+union all
+select 'notification_prefs', count(*) from public.notification_prefs
+union all
+select 'oauth_grants', count(*) from public.oauth_grants;

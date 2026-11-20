@@ -88,6 +88,19 @@ textarea.inp { height: auto; min-height: 84px; padding: 10px 12px; resize: verti
 .preview .pv-t svg { width: 14px; height: 14px; color: var(--brand); }
 .preview .pv-b { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; white-space: pre-wrap; }
 .note { font-size: 11.5px; color: var(--warn); margin-top: 10px; }
+.inbox { list-style: none; padding: 0; margin: 0; }
+.inbox li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+.inbox li:last-child { border-bottom: 0; }
+.inbox .ib { flex: 1 1 auto; min-width: 0; }
+.inbox .ib b { display: block; font-size: 12.5px; font-weight: 800; }
+.inbox .ib p { margin: 2px 0 0; font-size: 11.5px; color: var(--ink-2); line-height: 1.6; word-break: break-word; }
+.inbox .im { flex: none; font-size: 10px; color: var(--ink-3); }
+.inbox .unread { display: inline-block; width: 6px; height: 6px; border-radius: 99px; background: var(--brand); margin-right: 5px; vertical-align: 1px; }
+.approw { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line-2); }
+.approw:last-child { border-bottom: 0; }
+.approw .an { flex: 1 1 auto; min-width: 0; font-size: 12.5px; font-weight: 700; }
+.approw .an small { display: block; font-size: 10px; font-weight: 500; color: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tag { display: inline-block; padding: 2px 7px; border-radius: 99px; border: 1px solid var(--line); font-size: 9.5px; font-weight: 800; color: var(--ink-3); }
 @media (max-width: 520px) { .wrap { padding: 18px 14px 40px; } .card { padding: 16px; } }
 </style>
 </head>
@@ -129,6 +142,23 @@ textarea.inp { height: auto; min-height: 84px; padding: 10px 12px; resize: verti
     <div class="hint" id="sendHint">Supabase Realtime 채널 <b>soft_hub_push</b> 로 보냅니다. 구독 중인 페이지가 열려 있으면 즉시 표시됩니다.</div>
   </div>
 
+  <div class="card" id="inboxCard">
+    <h2>내 알림함 <span class="tag" id="inboxCount">0</span></h2>
+    <p class="sub">LK 로그인에서 <b>push:send</b>를 허용한 앱이 보낸 알림입니다. 이 기기에서 보고, 앱별로 끌 수 있습니다.</p>
+    <ul class="inbox" id="inboxList"><li><div class="ib"><b>로그인하면 알림이 여기에 모입니다.</b><p>Soft Hub LK ID로 로그인하면 앱이 보낸 알림을 이 자리에서 확인할 수 있습니다.</p></div></li></ul>
+    <div class="row" style="margin-top:12px">
+      <button class="btn btn-sm" id="inboxRefresh">알림 새로고침</button>
+      <a class="btn btn-sm" href="auth.html#sharing">연결된 앱 관리</a>
+    </div>
+    <div class="hint" id="inboxHint">알림은 앱당 하루 10건까지 전달됩니다. 받기 싫으면 아래에서 앱을 끄세요.</div>
+  </div>
+
+  <div class="card" id="prefCard">
+    <h2>앱별 알림 관리</h2>
+    <p class="sub">끄면 그 앱은 나에게 알림을 보낼 수 없습니다(서버가 거부합니다).</p>
+    <div id="prefList"><p class="hint">로그인하면 연결된 앱 목록이 나옵니다.</p></div>
+  </div>
+
   <div class="card">
     <h2>최근 발송</h2>
     <p class="sub">이 브라우저에서 보낸 기록입니다.</p>
@@ -145,6 +175,7 @@ textarea.inp { height: auto; min-height: 84px; padding: 10px 12px; resize: verti
 
 <script src="supabase-js.min.js"></script>
 <script src="lemon-push.js"></script>
+<script src="lemon-cloud.js"></script>
 <script>
 (function () {
   var sent = 0;
@@ -228,6 +259,107 @@ textarea.inp { height: auto; min-height: 84px; padding: 10px 12px; resize: verti
     });
     refresh();
   }
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
+  function when(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return (d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function paintInbox(rows) {
+    var host = $('#inboxList');
+    if (!host) return;
+    rows = rows || [];
+    var unread = rows.filter(function (r) { return !r.read_at; }).length;
+    $('#inboxCount').textContent = String(rows.length) + (unread ? ' · 새 ' + unread : '');
+    if (!rows.length) {
+      host.innerHTML = '<li><div class="ib"><b>아직 받은 알림이 없습니다.</b><p>앱이 push:send를 허용받아 보내면 이 자리에 쌓입니다.</p></div></li>';
+      return;
+    }
+    host.innerHTML = rows.map(function (r) {
+      var t = when(r.created_at);
+      return '<li data-nid="' + esc(r.id) + '"' + (r.read_at ? '' : ' class="is-new"') + '>' +
+        '<div class="ib"><b>' + (r.read_at ? '' : '<span class="unread"></span>') + esc(r.title || '알림') + '</b>' +
+        '<p>' + esc(r.body || '') + '</p>' +
+        (r.url ? '<p><a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="text-decoration:underline">열기</a></p>' : '') +
+        '</div><div class="im">' + esc(t) + '</div></li>';
+    }).join('');
+  }
+
+  function paintPrefs(grants, prefs) {
+    var host = $('#prefList');
+    if (!host) return;
+    var off = {};
+    (prefs || []).forEach(function (p) { if (p.enabled === false) off[p.client_id] = 1; });
+    var rows = (grants || []).filter(function (g) { return !g.revoked_at; });
+    if (!rows.length) {
+      host.innerHTML = '<p class="hint">아직 알림을 허용한 앱이 없습니다. 앱에서 LK 로그인을 하고 <b>push:send</b>에 동의하면 여기에 나옵니다.</p>';
+      return;
+    }
+    host.innerHTML = rows.map(function (g) {
+      var hasPush = (' ' + String(g.scopes || '') + ' ').indexOf(' push:send ') >= 0;
+      if (!hasPush) return '';
+      var isOff = !!off[g.client_id];
+      return '<div class="approw" data-client="' + esc(g.client_id) + '">' +
+        '<div class="an">' + esc(g.app_name || '알 수 없는 앱') + '<small>' + esc(g.client_id) + '</small></div>' +
+        '<span class="tag">' + (isOff ? '꺼짐' : '받는 중') + '</span>' +
+        '<button class="btn btn-sm" type="button" data-toggle="' + (isOff ? '1' : '0') + '">' + (isOff ? '다시 켜기' : '알림 끄기') + '</button>' +
+        '</div>';
+    }).join('');
+    if (!host.innerHTML) {
+      host.innerHTML = '<p class="hint">알림(push:send)을 허용한 앱이 없습니다.</p>';
+    }
+  }
+
+  function load() {
+    if (!window.LemonCloud) return;
+    LemonCloud.init().then(function () {
+      if (!LemonCloud.sessionUser()) {
+        $('#inboxHint').textContent = '로그인하지 않아 이 기기의 알림함을 볼 수 없습니다. auth.html에서 LK ID로 로그인해 주세요.';
+        return;
+      }
+      LemonCloud.oauthListNotifications(40).then(paintInbox, function () {
+        $('#inboxHint').textContent = '알림 표가 아직 없습니다. 관리자가 supabase_schema.sql 15번 항목을 실행하면 쌓입니다.';
+      });
+      Promise.all([
+        LemonCloud.oauthListMyGrants().catch(function () { return []; }),
+        LemonCloud.oauthListNotifyPrefs().catch(function () { return []; })
+      ]).then(function (r) { paintPrefs(r[0], r[1]); });
+    }, function () { });
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.id === 'inboxRefresh') { load(); return; }
+    var b = t.closest ? t.closest('[data-toggle]') : null;
+    if (!b) return;
+    var row = b.closest('.approw');
+    var cid = row ? row.getAttribute('data-client') : '';
+    if (!cid) return;
+    var isOff = b.getAttribute('data-toggle') === '1';
+    b.disabled = true;
+    LemonCloud.oauthSetNotifyPref(cid, isOff).then(function () {
+      $('#inboxHint').textContent = isOff ? '다시 켰습니다.' : '이 앱의 알림을 껐습니다.';
+      load();
+    }, function () {
+      b.disabled = false;
+      $('#inboxHint').textContent = '변경하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+    });
+  });
+
+  load();
 })();
 </script>
 </body>

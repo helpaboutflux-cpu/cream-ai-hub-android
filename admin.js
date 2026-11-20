@@ -336,7 +336,9 @@
     cloud: ['Supabase', '로그인 · 짧은 공유 링크 · 원격 설정'],
     security: ['보안', '관리자 비밀번호 · 숨김 점검'],
     accounts: ['LK ID 계정', 'Soft Hub LK ID 가입자 목록'],
-    community: ['도구 · 배너 관리', '발견 탭 도구 승인 · 상단 배너']
+    community: ['도구 · 배너 관리', '발견 탭 도구 승인 · 상단 배너'],
+    reports: ['접수된 신고', 'LK 로그인 · 도구 신고 확인과 처리'],
+    'api-apps': ['API 앱 관리', 'OAuth 앱 공개 승인 · 정지 킬 스위치']
   };
 
   function switchView(name) {
@@ -355,6 +357,409 @@
     if (name === 'security') checkAdminLinks();
     if (name === 'accounts') loadAccounts();
     if (name === 'community') { loadCommunity(); loadCloudinaryConfig(); loadDc(); }
+    if (name === 'reports') loadReports();
+    if (name === 'api-apps') loadApiApps();
+  }
+
+  /* ---------------- 접수된 신고 ---------------- */
+  var rep = { oauth: [], tools: [], clients: [], apps: [], loading: false, filter: 'all', confirm: '', err: '' };
+
+  var REP_REASONS = {
+    phishing: '피싱·사기',
+    impersonation: '다른 서비스 사칭',
+    overreach: '개인정보 과다 요구',
+    malware: '악성 링크',
+    other: '기타'
+  };
+
+  function repReason(r) { return REP_REASONS[r] || '기타'; }
+
+  function repTime(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function repMsg(kind, text) {
+    var box = $('repMsg');
+    if (!box) return;
+    if (!text) { box.hidden = true; return; }
+    box.hidden = false;
+    box.className = 'notice' + (kind === 'ok' ? ' notice--ok' : kind === 'bad' ? ' notice--bad' : ' notice--warn');
+    $('repMsgText').textContent = text;
+  }
+
+  function repIsSetup(e) {
+    var m = String((e && e.message) || '');
+    return !!(e && (e.status === 404 || /could not find the table|does not exist|schema cache|PGRST20[25]/i.test(m)));
+  }
+
+  function loadReports() {
+    if (!state.unlocked) return;
+    if (!window.LemonCloud || !LemonCloud.configured || !LemonCloud.configured()) {
+      repMsg('warn', '클라우드가 연결되지 않아 신고 내역을 읽을 수 없습니다. Supabase 탭에서 연결해 주세요.');
+      renderReports();
+      return;
+    }
+    rep.loading = true;
+    rep.err = '';
+    repMsg('', '');
+    renderReports();
+
+    var pOauth = LemonCloud.adminListOauthReports().then(function (r) { return r || []; }, function (e) {
+      if (repIsSetup(e)) rep.err = 'setup';
+      return [];
+    });
+    var pTools = LemonCloud.adminListToolReports().then(function (r) { return r || []; }, function (e) {
+      if (repIsSetup(e)) rep.err = 'setup';
+      return [];
+    });
+    var pClients = LemonCloud.adminListOauthClients().then(function (r) { return r || []; }, function () { return []; });
+    var pApps = LemonCloud.adminListCommunityApps('all').then(function (r) { return r || []; }, function () { return []; });
+
+    Promise.all([pOauth, pTools, pClients, pApps]).then(function (r) {
+      rep.loading = false;
+      rep.oauth = r[0] || [];
+      rep.tools = r[1] || [];
+      rep.clients = r[2] || [];
+      rep.apps = r[3] || [];
+      if (!$('repSqlCopy')) { } else { $('repSqlCopy').hidden = rep.err !== 'setup'; }
+      renderReports();
+    });
+  }
+
+  function repClientOf(clientId) {
+    for (var i = 0; i < rep.clients.length; i++) if (String(rep.clients[i].client_id) === String(clientId)) return rep.clients[i];
+    return null;
+  }
+  function repAppOf(appId) {
+    for (var i = 0; i < rep.apps.length; i++) if (String(rep.apps[i].id) === String(appId)) return rep.apps[i];
+    return null;
+  }
+
+  function repRows() {
+    var out = [];
+    rep.oauth.forEach(function (r) {
+      var c = repClientOf(r.client_id);
+      out.push({
+        kind: 'oauth',
+        id: 'o' + r.id,
+        at: r.created_at,
+        open: r.status !== 'done',
+        reason: repReason(r.reason),
+        title: c ? c.app_name : '등록되지 않은 앱',
+        clientId: r.client_id || '',
+        redirect: r.redirect_uri || '',
+        note: r.note || '',
+        clientActive: c ? c.is_active !== false : false,
+        known: !!c,
+        raw: r
+      });
+    });
+    rep.tools.forEach(function (r) {
+      var a = repAppOf(r.app_id);
+      out.push({
+        kind: 'tool',
+        id: 't' + r.id,
+        at: r.created_at,
+        open: true,
+        reason: '도구 신고',
+        title: a ? a.name : '삭제되었거나 알 수 없는 도구',
+        appId: String(r.app_id || ''),
+        appStatus: a ? a.status : '',
+        note: r.note || '',
+        known: !!a,
+        raw: r
+      });
+    });
+    out.sort(function (x, y) { return new Date(y.at || 0) - new Date(x.at || 0); });
+    return out;
+  }
+
+  function renderReports() {
+    if (!$('repList')) return;
+    var rows = repRows();
+    var oauthOpen = rows.filter(function (r) { return r.kind === 'oauth' && r.open; }).length;
+    var toolN = rows.filter(function (r) { return r.kind === 'tool'; }).length;
+
+    if ($('navRepCount')) $('navRepCount').textContent = String(oauthOpen + toolN);
+    $('repTotal').textContent = rep.loading ? '—' : String(rows.length);
+    $('repOauthN').textContent = rep.loading ? '—' : String(rows.filter(function (r) { return r.kind === 'oauth'; }).length);
+    $('repToolN').textContent = rep.loading ? '—' : String(toolN);
+    $('repOpenN').textContent = rep.loading ? '—' : String(oauthOpen + toolN);
+    $('repAll').textContent = String(rows.length);
+    $('repOauth').textContent = String(rows.filter(function (r) { return r.kind === 'oauth'; }).length);
+    $('repTool').textContent = String(toolN);
+
+    var shown = rows.filter(function (r) {
+      return rep.filter === 'all' || r.kind === rep.filter;
+    });
+
+    var host = $('repList');
+    if (rep.loading) {
+      host.innerHTML = '<div class="notice"><div>신고 내역을 불러오는 중입니다…</div></div>';
+      $('repEmpty').hidden = true;
+      return;
+    }
+    if (rep.err === 'setup') {
+      repMsg('warn', '신고 표(oauth_reports)가 아직 없습니다. 아래 [신고 표 SQL 복사]로 12번 항목을 실행하면 신고가 이 화면에 쌓입니다.');
+    }
+    if (!shown.length) {
+      host.innerHTML = '';
+      $('repEmpty').hidden = false;
+      $('repEmptyText').textContent = rows.length
+        ? '이 종류의 신고가 없습니다. 다른 필터를 눌러 보세요.'
+        : '아직 접수된 신고가 없습니다.';
+      return;
+    }
+    $('repEmpty').hidden = true;
+
+    host.innerHTML = shown.map(function (r) {
+      var confirming = rep.confirm === (r.kind === 'tool' ? ('app:' + r.appId) : r.id);
+      var klazz = r.kind === 'oauth' ? 'login' : 'tool';
+      var meta, acts = '';
+
+      if (r.kind === 'oauth') {
+        meta = '<span class="accbadge accbadge--' + (r.clientActive ? 'ok' : 'bad') + '">' +
+            (r.clientActive ? '앱 사용 중' : '앱 중지됨') + '</span>' +
+          '<span>' + esc(r.clientId || '클라이언트 없음') + '</span>';
+        acts =
+          (r.known
+            ? '<button class="btn btn--sm" type="button" data-rep-toggle="' + esc(r.clientId) + '" data-rep-active="' + (r.clientActive ? '1' : '0') + '">' +
+                (r.clientActive ? '앱 사용 중지' : '앱 다시 켜기') + '</button>'
+            : '') +
+          (r.open
+            ? '<button class="btn btn--sm btn--ghost" type="button" data-rep-resolve="' + esc(String(r.raw.id)) + '">처리 완료</button>'
+            : '<span class="accbadge accbadge--ok">처리 완료</span>');
+      } else {
+        var st = r.appStatus === 'approved' ? '게시 중' : r.appStatus === 'pending' ? '승인 대기' : r.appStatus === 'rejected' ? '반려됨' : '상태 없음';
+        meta = '<span class="accbadge">' + esc(st) + '</span><span>도구 ID ' + esc(r.appId.slice(0, 8)) + '</span>';
+        acts =
+          (r.known && r.appStatus !== 'rejected'
+            ? '<button class="btn btn--sm btn--danger" type="button" data-rep-reject="' + esc(r.appId) + '">도구 반려</button>'
+            : '') +
+          (r.known
+            ? '<a class="btn btn--sm btn--ghost" href="tool.html?id=' + encodeURIComponent(r.appId) + '" target="_blank" rel="noopener">상세 열기</a>'
+            : '');
+      }
+
+      return '<div class="repcard repcard--' + (r.open ? 'open' : 'done') + '">' +
+        '<div class="repcard__top">' +
+          '<span class="cmicon" aria-hidden="true" style="--c:' + (klazz === 'login' ? '#7c3aed' : '#e11d48') + '">' +
+            (klazz === 'login'
+              ? '<svg viewBox="0 0 24 24"><path d="M10 13.8a4.2 4.2 0 0 0 6.3.5l2.4-2.4a4.2 4.2 0 0 0-5.9-5.9l-1.4 1.4"/><path d="M14 10.2a4.2 4.2 0 0 0-6.3-.5l-2.4 2.4a4.2 4.2 0 0 0 5.9 5.9l1.4-1.4"/></svg>'
+              : '<svg viewBox="0 0 24 24"><path d="M5 3.4v17.2"/><path d="M5 4.6h11.4l-1.8 3.4 1.8 3.4H5"/></svg>') +
+          '</span>' +
+          '<div class="cmcard__head">' +
+            '<div class="repcard__name">' + esc(r.title) +
+              '<span class="repreason">' + esc(r.reason) + '</span>' +
+              '<span class="accbadge">' + (klazz === 'login' ? '로그인 신고' : '도구 신고') + '</span>' +
+            '</div>' +
+            '<div class="repcard__meta">' + meta + '<i>·</i><span>' + esc(repTime(r.at)) + ' 접수</span></div>' +
+            (r.kind === 'oauth'
+              ? '<div class="repcard__id">' + esc(r.redirect || '돌아갈 주소 기록 없음') + '</div>'
+              : '') +
+          '</div>' +
+          '<div class="cmcard__acts">' + acts + '</div>' +
+        '</div>' +
+        (r.note ? '<div class="repcard__note">' + esc(r.note) + '</div>' : '<div class="repcard__note">메모 없이 접수된 신고입니다.</div>') +
+        (confirming
+          ? '<div class="repconfirm">' +
+              '<span>「' + esc(r.title) + '」을(를) 반려할까요? 발견 탭에서 즉시 내려갑니다.</span>' +
+              '<span class="actions__spacer"></span>' +
+              '<button class="btn btn--sm btn--danger" type="button" data-rep-reject-go="' + esc(r.appId) + '">반려</button>' +
+              '<button class="btn btn--sm btn--ghost" type="button" data-rep-reject-cancel="1">취소</button>' +
+            '</div>'
+          : '') +
+      '</div>';
+    }).join('');
+  }
+
+  function toggleRepClient(clientId, active) {
+    LemonCloud.adminSetOauthClientActive(clientId, active).then(function () {
+      repMsg('ok', active ? '앱을 다시 켰습니다. 이제 LK 로그인이 동작합니다.' : '앱을 중지했습니다. oauth.html이 "사용이 중지된 서비스" 화면을 보여 줍니다.');
+      toast(active ? '앱을 다시 켰습니다.' : '앱을 중지했습니다.');
+      loadReports();
+    }, function (e) {
+      repMsg('bad', repIsSetup(e) ? '앱 표가 아직 없습니다.' : '앱 상태를 바꾸지 못했습니다. 관리자 로그인을 확인해 주세요.');
+    });
+  }
+
+  function resolveReport(id) {
+    LemonCloud.adminResolveOauthReport(id).then(function () {
+      repMsg('ok', '처리 완료로 표시했습니다.');
+      loadReports();
+    }, function (e) {
+      repMsg('bad', repIsSetup(e) ? '신고 표가 아직 없습니다.' : '처리 상태를 바꾸지 못했습니다.');
+    });
+  }
+
+  function rejectApp(appId) {
+    LemonCloud.adminReviewCommunityApp(appId, 'rejected', '신고 접수로 인한 관리자 반려').then(function () {
+      rep.confirm = '';
+      repMsg('ok', '도구를 반려했습니다. 발견 탭에서 내려갔습니다.');
+      toast('도구를 반려했습니다.');
+      loadReports();
+    }, function () {
+      repMsg('bad', '도구를 반려하지 못했습니다.');
+    });
+  }
+
+
+  /* ---------------- API 앱 관리 (승인 · 정지) ---------------- */
+  var apiApps = { rows: [], loading: false };
+
+  function apiAppsMsg(kind, text) {
+    var box = $('apiAppsMsg');
+    if (!box) return;
+    if (!text) { box.hidden = true; return; }
+    box.hidden = false;
+    box.className = 'notice' + (kind === 'ok' ? ' notice--ok' : kind === 'bad' ? ' notice--bad' : ' notice--warn');
+    $('apiAppsMsgText').textContent = text;
+  }
+
+  function loadApiApps() {
+    if (!state.unlocked) return;
+    if (!window.LemonCloud || !LemonCloud.configured || !LemonCloud.configured()) {
+      apiAppsMsg('warn', '클라우드가 연결되지 않아 앱 목록을 읽을 수 없습니다.');
+      return;
+    }
+    apiApps.loading = true;
+    renderApiApps();
+    LemonCloud.adminListOauthClients().then(function (rows) {
+      apiApps.loading = false;
+      apiApps.rows = rows || [];
+      apiAppsMsg('', '');
+      renderApiApps();
+    }, function (e) {
+      apiApps.loading = false;
+      apiApps.rows = [];
+      renderApiApps();
+      apiAppsMsg('warn', repIsSetup(e)
+        ? 'OAuth 앱 표가 아직 없습니다. Supabase 탭의 SQL 복사 영역(12번 항목)을 먼저 실행해 주세요.'
+        : '앱 목록을 불러오지 못했습니다. 관리자 로그인을 확인해 주세요.');
+    });
+  }
+
+  function renderApiApps() {
+    var host = $('apiAppList');
+    if (!host) return;
+    if ($('navAppCount')) $('navAppCount').textContent = String((apiApps.rows || []).length);
+    if (apiApps.loading) {
+      host.innerHTML = '<div class="notice"><div>앱 목록을 불러오는 중입니다…</div></div>';
+      $('apiAppsEmpty').hidden = true;
+      return;
+    }
+    var rows = apiApps.rows || [];
+    if (!rows.length) {
+      host.innerHTML = '';
+      $('apiAppsEmpty').hidden = false;
+      return;
+    }
+    $('apiAppsEmpty').hidden = true;
+    host.innerHTML = rows.map(function (c) {
+      var active = c.is_active !== false;
+      var approved = c.is_approved === true;
+      var scopes = String(c.scope || 'profile:basic').split(/\s+/).filter(Boolean);
+      return '<div class="repcard">' +
+        '<div class="repcard__top">' +
+          '<span class="cmicon" aria-hidden="true" style="--c:#2563eb">' +
+            '<svg viewBox="0 0 24 24"><path d="M10 13.8a4.2 4.2 0 0 0 6.3.5l2.4-2.4a4.2 4.2 0 0 0-5.9-5.9l-1.4 1.4"/><path d="M14 10.2a4.2 4.2 0 0 0-6.3-.5l-2.4 2.4a4.2 4.2 0 0 0 5.9 5.9l1.4-1.4"/></svg>' +
+          '</span>' +
+          '<div class="cmcard__head">' +
+            '<div class="repcard__name">' + esc(c.app_name) +
+              '<span class="accbadge accbadge--' + (active ? 'ok' : 'bad') + '">' + (active ? '사용 중' : '정지됨') + '</span>' +
+              '<span class="accbadge accbadge--' + (approved ? 'ok' : 'wait') + '">' + (approved ? '공개 승인' : '승인 대기') + '</span>' +
+            '</div>' +
+            '<div class="repcard__meta"><span>' + esc(c.client_id) + '</span></div>' +
+            '<div class="repcard__meta" style="margin-top:4px">' +
+              scopes.map(function (s) { return '<span class="accbadge">' + esc(s) + '</span>'; }).join('') +
+            '</div>' +
+          '</div>' +
+          '<div class="cmcard__acts">' +
+            (approved
+              ? '<button class="btn btn--sm btn--ghost" type="button" data-app-approve="' + esc(c.client_id) + '" data-app-approved="1">승인 해제</button>'
+              : '<button class="btn btn--sm" type="button" data-app-approve="' + esc(c.client_id) + '" data-app-approved="0">공개 승인</button>') +
+            '<button class="btn btn--sm ' + (active ? 'btn--danger' : '') + '" type="button" data-app-active="' + esc(c.client_id) + '" data-app-on="' + (active ? '1' : '0') + '">' +
+              (active ? '정지' : '다시 켜기') + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function setAppApproved(clientId, approved) {
+    LemonCloud.adminSetOauthClientApproved(clientId, approved).then(function () {
+      apiAppsMsg('ok', approved ? '공개 승인했습니다. 이제 모든 사용자가 이 앱으로 로그인할 수 있습니다.' : '공개 승인을 해제했습니다. 만든 본인만 테스트할 수 있습니다.');
+      toast(approved ? '공개 승인했습니다.' : '승인을 해제했습니다.');
+      loadApiApps();
+    }, function () {
+      apiAppsMsg('bad', '승인 상태를 바꾸지 못했습니다.');
+    });
+  }
+
+  function setAppActive(clientId, active) {
+    LemonCloud.adminSetOauthClientActive(clientId, active).then(function () {
+      apiAppsMsg(active ? 'ok' : 'ok', active
+        ? '앱을 다시 켰습니다.'
+        : '앱을 정지했습니다. 로그인·Drive·공유·알림 API가 모두 즉시 막힙니다.');
+      toast(active ? '앱을 다시 켰습니다.' : '앱을 정지했습니다.');
+      loadApiApps();
+    }, function () {
+      apiAppsMsg('bad', '앱 상태를 바꾸지 못했습니다.');
+    });
+  }
+
+  function bindApiApps() {
+    if (!$('apiAppsRefresh')) return;
+    $('apiAppsRefresh').addEventListener('click', function () { loadApiApps(); });
+    $('apiAppList').addEventListener('click', function (e) {
+      var t = e.target;
+      var ap = t.closest ? t.closest('[data-app-approve]') : null;
+      if (ap) { setAppApproved(ap.getAttribute('data-app-approve'), ap.getAttribute('data-app-approved') !== '1'); return; }
+      var ac = t.closest ? t.closest('[data-app-active]') : null;
+      if (ac) { setAppActive(ac.getAttribute('data-app-active'), ac.getAttribute('data-app-on') !== '1'); return; }
+    });
+  }
+
+  function bindReports() {
+    if (!$('repRefresh')) return;
+    $('repRefresh').addEventListener('click', function () { loadReports(); });
+    $('repSqlCopy').addEventListener('click', function () {
+      var box = $('oauthSqlBox');
+      var txt = box ? box.value : '';
+      if (!txt) { repMsg('bad', 'SQL을 불러오지 못했습니다. Supabase 탭에서 스키마 파일을 확인해 주세요.'); return; }
+      copyText(txt).then(function (ok) {
+        repMsg(ok ? 'ok' : 'bad', ok ? 'SQL을 복사했습니다. SQL Editor에 붙여넣어 실행하세요.' : '복사하지 못했습니다.');
+      });
+    });
+    $('repFilter').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-rep]') : null;
+      if (!b) return;
+      rep.filter = b.getAttribute('data-rep');
+      [].forEach.call($('repFilter').querySelectorAll('[data-rep]'), function (x) {
+        x.classList.toggle('on', x.getAttribute('data-rep') === rep.filter);
+      });
+      renderReports();
+    });
+    $('repList').addEventListener('click', function (e) {
+      var t = e.target;
+      var tg = t.closest ? t.closest('[data-rep-toggle]') : null;
+      if (tg) {
+        var nowActive = tg.getAttribute('data-rep-active') === '1';
+        toggleRepClient(tg.getAttribute('data-rep-toggle'), !nowActive);
+        return;
+      }
+      var rs = t.closest ? t.closest('[data-rep-resolve]') : null;
+      if (rs) { resolveReport(rs.getAttribute('data-rep-resolve')); return; }
+      var rj = t.closest ? t.closest('[data-rep-reject]') : null;
+      if (rj) { rep.confirm = 'app:' + rj.getAttribute('data-rep-reject'); renderReports(); return; }
+      var go = t.closest ? t.closest('[data-rep-reject-go]') : null;
+      if (go) { rejectApp(go.getAttribute('data-rep-reject-go')); return; }
+      if (t.closest && t.closest('[data-rep-reject-cancel]')) { rep.confirm = ''; renderReports(); }
+    });
   }
 
   /* ---------------- 색상 페어 ---------------- */
@@ -1001,6 +1406,23 @@
       copyText(txt).then(function (ok) { toast(ok ? 'SQL을 복사했습니다.' : '복사에 실패했습니다.', ok ? 'ok' : 'err'); });
     });
 
+    if ($('oauthSqlCopy')) {
+      $('oauthSqlCopy').addEventListener('click', function () {
+        var txt = $('oauthSqlBox') ? $('oauthSqlBox').value : '';
+        if (!txt) { toast('API 표 SQL을 불러오지 못했습니다.', 'err'); return; }
+        copyText(txt).then(function (ok) { toast(ok ? 'API 표 SQL을 복사했습니다.' : '복사에 실패했습니다.', ok ? 'ok' : 'err'); });
+      });
+    }
+    if ($('oauthSqlOpen')) {
+      $('oauthSqlOpen').addEventListener('click', function () {
+        try {
+          var u = (window.LemonCloud && LemonCloud.config().url) || '';
+          var m = /^https?:\/\/([a-z0-9-]+)\.supabase\.co/i.exec(u);
+          if (m) $('oauthSqlOpen').href = 'https://supabase.com/dashboard/project/' + m[1] + '/sql/new';
+        } catch (e) { }
+      });
+    }
+
     $('cfgDownload').addEventListener('click', function () {
       var c = LemonCloud.config();
       var body = '/* Soft Hub · 공용 Supabase 설정 (배포용)\n' +
@@ -1142,6 +1564,8 @@
 
   function bindConsole() {
     switchView('notice');
+    bindReports();
+    bindApiApps();
     Array.prototype.forEach.call(document.querySelectorAll('.navbtn'), function (b) {
       b.addEventListener('click', function () { switchView(b.getAttribute('data-view')); });
     });
@@ -1341,8 +1765,30 @@
   }
   function fillAccSql() {
     var box = $('accSqlBox');
+    if (box) {
+      var txt = accountsSqlText();
+      if (txt && box.value !== txt) box.value = txt;
+    }
+    fillOauthSql();
+  }
+
+  /* LK 로그인 API 표(12번 항목)만 뽑아 보여 준다. */
+  function oauthSqlText() {
+    var full = ($('sqlBox') && $('sqlBox').value) || '';
+    var a = full.indexOf('-- >> oauth_clients');
+    var b = full.indexOf('-- << oauth_clients');
+    if (a >= 0 && b > a) {
+      var start = full.lastIndexOf('\n', a);
+      var nl = full.indexOf('\n', a);
+      var head = full.slice(start > 0 ? start : a, a);
+      return (head ? head.replace(/^\s*$/, '') : '') + full.slice(nl + 1, b).replace(/\s+$/, '');
+    }
+    return '';
+  }
+  function fillOauthSql() {
+    var box = $('oauthSqlBox');
     if (!box) return;
-    var txt = accountsSqlText();
+    var txt = oauthSqlText();
     if (txt && box.value !== txt) box.value = txt;
   }
   function accSqlUrl() {

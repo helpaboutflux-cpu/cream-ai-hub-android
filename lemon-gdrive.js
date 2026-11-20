@@ -2226,6 +2226,116 @@
     };
   }
 
+
+  /* ============================================================
+     LK Drive API (drive:app) — 앱 전용 폴더
+     ------------------------------------------------------------
+     외부 도구는 Google 토큰을 직접 받지 않는다. 이 출처의
+     drive-bridge.html 이 대신 읽고 쓰며, 폴더는 언제나
+       SoftHub_Apps/{client_id}/
+     안으로 고정된다. 파일 이름도 영숫자·-_. 만 허용한다.
+     ============================================================ */
+  var APP_ROOT = 'SoftHub_Apps';
+  var appFolderCache = {};
+
+  function appSafeKey(key) {
+    var k = String(key || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(k)) {
+      var e = gerr('invalid-key', '키는 영문·숫자·-·_ 64자 이내만 쓸 수 있습니다.');
+      throw e;
+    }
+    return k;
+  }
+
+  function appRootFolder() {
+    return ensureFolder(APP_ROOT, null);
+  }
+
+  function appFolder(clientId) {
+    var cid = String(clientId || '').trim();
+    if (!/^lkc_[a-z0-9]{16,40}$/.test(cid)) return Promise.reject(gerr('invalid-client'));
+    if (appFolderCache[cid]) {
+      return gfetch(API + '/' + appFolderCache[cid] + '?fields=id,trashed').then(function (d) {
+        if (d && d.id && !d.trashed) return appFolderCache[cid];
+        delete appFolderCache[cid];
+        return appRootFolder().then(function (root) {
+          return ensureFolder(cid, root);
+        }).then(function (id) { appFolderCache[cid] = id; return id; });
+      }, function () {
+        delete appFolderCache[cid];
+        return appRootFolder().then(function (root) { return ensureFolder(cid, root); })
+          .then(function (id) { appFolderCache[cid] = id; return id; });
+      });
+    }
+    return appRootFolder().then(function (root) {
+      return ensureFolder(cid, root);
+    }).then(function (id) {
+      appFolderCache[cid] = id;
+      return id;
+    });
+  }
+
+  function appFilePath(clientId, key) {
+    return appSafeKey(key) + '.json';
+  }
+
+  function appList(clientId) {
+    return appFolder(clientId).then(function (folderId) {
+      return listFiles("'" + folderId + "' in parents and trashed=false", '&orderBy=modifiedTime desc');
+    }).then(function (files) {
+      return (files || []).map(function (f) {
+        return {
+          key: String(f.name || '').replace(/\.json$/i, ''),
+          size: Number(f.size) || 0,
+          updated: f.modifiedTime || ''
+        };
+      }).filter(function (f) { return /^[A-Za-z0-9_-]{1,64}$/.test(f.key); });
+    });
+  }
+
+  function appGet(clientId, key) {
+    var name = appFilePath(clientId, key);
+    return appFolder(clientId).then(function (folderId) {
+      return findFile(name, folderId);
+    }).then(function (f) {
+      if (!f || !f.id) return null;
+      return downloadBlob(f.id).then(function (blob) { return blob.text(); }).then(function (txt) {
+        try { return JSON.parse(txt); } catch (e) { return txt; }
+      });
+    });
+  }
+
+  function appPut(clientId, key, value) {
+    var name = appFilePath(clientId, key);
+    var text = typeof value === 'string' ? value : JSON.stringify(value);
+    if (utf8Bytes(text) > 256000) return Promise.reject(gerr('too-large', '한 파일은 256KB 까지입니다.'));
+    return appFolder(clientId).then(function (folderId) {
+      return findFile(name, folderId).then(function (f) {
+        return uploadContent({
+          fileId: f && f.id ? f.id : '',
+          name: name,
+          parentId: folderId,
+          blob: new Blob([text], { type: 'application/json' }),
+          mime: 'application/json'
+        });
+      });
+    }).then(function (res) {
+      return { ok: true, key: appSafeKey(key), id: res && res.id ? res.id : '', size: utf8Bytes(text) };
+    });
+  }
+
+  function appDelete(clientId, key) {
+    var name = appFilePath(clientId, key);
+    return appFolder(clientId).then(function (folderId) {
+      return findFile(name, folderId);
+    }).then(function (f) {
+      if (!f || !f.id) return { ok: true, removed: false };
+      return gfetch(API + '/' + f.id, { method: 'DELETE' }).then(function () {
+        return { ok: true, removed: true };
+      });
+    });
+  }
+
   window.LemonGDrive = {
     __v: 2,
     clientId: function () { return CLIENT_ID; },
@@ -2255,7 +2365,13 @@
     fmtBytes: fmtBytes,
     lastBackup: function () { return readJSON(K_LAST, null); },
     lastRestore: function () { return readJSON(K_LAST_RESTORE, null); },
-    syncRecord: function () { return syncRec(); }
+    syncRecord: function () { return syncRec(); },
+    appFolder: appFolder,
+    appList: appList,
+    appGet: appGet,
+    appPut: appPut,
+    appDelete: appDelete,
+    appRootName: function () { return APP_ROOT; }
   };
 
   /* ============================================================

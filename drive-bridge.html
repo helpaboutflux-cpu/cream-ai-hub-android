@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drive 브리지 — Soft Hub</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  html, body { margin: 0; background: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color: #0a0a0a; }
+  .box { padding: 10px 12px; font-size: 12px; }
+  @media (prefers-color-scheme: dark) { body { color: #fafafa; } }
+</style>
+</head>
+<body>
+<div class="box" id="box">Soft Hub Drive 브리지를 준비하는 중입니다.</div>
+<script src="lemon-cloud.js"></script>
+<script src="lemon-gdrive.js"></script>
+<script>
+/* ============================================================
+   drive-bridge.html — drive:app 전용 브리지
+   ------------------------------------------------------------
+   외부 도구(부모 창)는 이 페이지를 iframe 으로 띄우고 postMessage 로
+   get/put/list/delete/status 를 요청한다. 이 페이지는
+
+     1) client_id 가 실제로 등록된 앱인지,
+     2) 그 앱이 drive:app 스코프를 허용했는지,
+     3) 부모 창의 출처가 앱의 Redirect URL 출처와 같은지
+
+   를 확인한 뒤에만 응답한다. 실제 파일 경로는 언제나
+      SoftHub_Apps/{client_id}/
+   안으로 고정되므로 다른 앱 폴더나 사용자의 나머지 Drive 는 건드릴 수 없다.
+   Google 토큰은 이 출처(iframe) 안에만 있고 부모 창으로 전달되지 않는다.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var P = new URLSearchParams(location.search);
+  var clientId = String(P.get('client_id') || '').trim();
+  var parentOrigin = String(P.get('parent_origin') || '').trim();
+  var box = document.getElementById('box');
+  var allowedOrigin = '';
+  var appName = '';
+  var denied = '';
+
+  function reply(id, ok, data, error, message) {
+    var msg = { source: 'soft-hub-bridge', type: 'reply', id: id, ok: !!ok };
+    if (ok) msg.data = data;
+    else { msg.error = error || 'error'; msg.message = message || ''; }
+    try {
+      if (window.parent && window.parent !== window) window.parent.postMessage(msg, allowedOrigin || parentOrigin || '*');
+    } catch (e) { }
+  }
+
+  function originOf(u) {
+    try { return new URL(u).origin; } catch (e) { return ''; }
+  }
+
+  function allowedOriginsOf(c) {
+    var out = [];
+    (Array.isArray(c && c.redirect_uris) ? c.redirect_uris : []).forEach(function (u) {
+      var o = originOf(u);
+      if (o && out.indexOf(o) < 0) out.push(o);
+    });
+    return out;
+  }
+
+  function say(text) { if (box) box.textContent = text; }
+
+  function sendError(id, e) {
+    var code = (e && e.code) || 'error';
+    var msg = (e && e.message) || '';
+    if (code === 'not-linked') msg = 'Soft Hub에서 Google Drive를 먼저 연결해 주세요.';
+    reply(id, false, null, code, msg);
+  }
+
+  function guardScope() {
+    return LemonCloud.oauthClientPublic(clientId).then(function (c) {
+      if (!c) { denied = '이 Client ID는 등록되지 않았습니다.'; return false; }
+      if (c.is_active === false) { denied = '이 앱은 관리자에 의해 중지되었습니다.'; return false; }
+      if (!LemonCloud.hasScope(c.scope, 'drive:app')) { denied = '이 앱은 Drive 저장소 권한(drive:app)을 허용하지 않았습니다.'; return false; }
+      var origins = allowedOriginsOf(c);
+      allowedOrigin = origins.indexOf(parentOrigin) >= 0 ? parentOrigin : '';
+      if (!allowedOrigin) {
+        denied = '허용되지 않은 출처입니다. 앱의 Redirect URL 출처에서만 Drive를 쓸 수 있습니다.';
+        return false;
+      }
+      appName = c.app_name || '';
+      return true;
+    }, function (e) {
+      denied = 'Soft Hub 계정 서버에 연결하지 못했습니다.';
+      return false;
+    });
+  }
+
+  function handle(req) {
+    var id = req && req.id;
+    var op = String((req && req.op) || '');
+    var p = (req && req.payload) || {};
+
+    if (denied) { reply(id, false, null, 'denied', denied); return; }
+    if (!window.LemonGDrive) { reply(id, false, null, 'no-drive', 'Drive 모듈을 불러오지 못했습니다.'); return; }
+
+    if (op === 'status') {
+      reply(id, true, {
+        connected: LemonGDrive.connected(),
+        app: appName,
+        folder: 'SoftHub_Apps/' + clientId,
+        clientId: clientId
+      });
+      return;
+    }
+
+    if (!LemonGDrive.connected()) {
+      reply(id, false, null, 'not-connected', 'Soft Hub에서 Google Drive를 먼저 연결해 주세요. (auth.html → Google Drive 백업)');
+      return;
+    }
+
+    var key = String(p.key || '');
+    if (op !== 'list' && !/^[A-Za-z0-9_-]{1,64}$/.test(key)) {
+      reply(id, false, null, 'invalid-key', '키는 영문·숫자·-·_ 64자 이내만 쓸 수 있습니다.');
+      return;
+    }
+
+    var task;
+    if (op === 'get') task = LemonGDrive.appGet(clientId, key).then(function (v) { return { key: key, value: v }; });
+    else if (op === 'put') task = LemonGDrive.appPut(clientId, key, p.value);
+    else if (op === 'list') task = LemonGDrive.appList(clientId).then(function (files) { return { files: files }; });
+    else if (op === 'delete') task = LemonGDrive.appDelete(clientId, key);
+    else { reply(id, false, null, 'unknown-op', '알 수 없는 요청입니다.'); return; }
+
+    task.then(function (data) { reply(id, true, data); }, function (e) {
+      if (e && e.code === 'not-linked') e.code = 'not-connected';
+      sendError(id, e);
+    });
+  }
+
+  function boot() {
+    LemonCloud.init().then(guardScope).then(function (ok) {
+      if (!ok) {
+        say(denied);
+        /* 부모가 기다리지 않도록 즉시 알린다 */
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ source: 'soft-hub-bridge', type: 'ready', denied: denied }, parentOrigin || '*');
+          }
+        } catch (e) { }
+        return;
+      }
+      say(appName + ' · Drive 브리지 준비됨');
+      window.addEventListener('message', function (e) {
+        if (allowedOrigin && e.origin !== allowedOrigin) return;
+        var d = e.data || {};
+        if (d.source !== 'soft-hub-app' || d.type !== 'request') return;
+        handle(d);
+      });
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ source: 'soft-hub-bridge', type: 'ready', app: appName }, allowedOrigin || '*');
+        }
+      } catch (e) { }
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

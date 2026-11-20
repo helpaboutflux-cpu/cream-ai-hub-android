@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>테마 브리지 — Soft Hub</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  html, body { margin: 0; background: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+</style>
+</head>
+<body>
+<script src="lemon-cloud.js"></script>
+<script>
+/* ============================================================
+   theme-bridge.html — theme:read 전용 브리지
+   ------------------------------------------------------------
+   외부 도구는 이 페이지를 iframe 으로 띄우고 {op:'theme'} 을 보낸다.
+   돌려주는 값
+     { theme: 'dark' | 'light' | 'dynamic', dark: bool, brand: '#2563eb',
+       anim: 'full' | 'reduced' | 'off', source: 'soft-hub' }
+   앱 검증(등록·활성·theme:read 스코프·부모 출처)은 drive-bridge 와 같다.
+   읽는 값은 Soft Hub가 이미 이 브라우저에 저장한 테마 설정뿐이다.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var P = new URLSearchParams(location.search);
+  var clientId = String(P.get('client_id') || '').trim();
+  var parentOrigin = String(P.get('parent_origin') || '').trim();
+  var allowedOrigin = '';
+
+  function originOf(u) { try { return new URL(u).origin; } catch (e) { return ''; } }
+
+  function themes() {
+    var dark = true, anim = 'full';
+    try {
+      var t = localStorage.getItem('cream_theme');
+      dark = t ? t === 'dark' : true;
+    } catch (e) { }
+    try {
+      var a = localStorage.getItem('lemon_anim_mode');
+      if (a === 'reduced' || a === 'off' || a === 'full') anim = a;
+    } catch (e) { }
+    var brand = '#2563eb';
+    try {
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta && /^#[0-9a-fA-F]{6}$/.test(meta.getAttribute('content') || '')) brand = meta.getAttribute('content');
+    } catch (e) { }
+    return {
+      theme: 'dynamic',
+      dark: dark,
+      brand: brand,
+      anim: anim,
+      source: 'soft-hub'
+    };
+  }
+
+  function ready() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ source: 'soft-hub-bridge', type: 'ready' }, allowedOrigin || '*');
+      }
+    } catch (e) { }
+  }
+
+  function boot() {
+    LemonCloud.init().then(function () {
+      return LemonCloud.oauthClientPublic(clientId);
+    }).then(function (c) {
+      var ok = false;
+      if (c && c.is_active !== false && LemonCloud.hasScope(c.scope, 'theme:read')) {
+        var origins = [];
+        (Array.isArray(c.redirect_uris) ? c.redirect_uris : []).forEach(function (u) {
+          var o = originOf(u);
+          if (o && origins.indexOf(o) < 0) origins.push(o);
+        });
+        if (origins.indexOf(parentOrigin) >= 0) { allowedOrigin = parentOrigin; ok = true; }
+      }
+      if (!ok) { ready(); return; }
+
+      window.addEventListener('message', function (e) {
+        if (allowedOrigin && e.origin !== allowedOrigin) return;
+        var d = e.data || {};
+        if (d.source !== 'soft-hub-app' || d.type !== 'request') return;
+        var out = { source: 'soft-hub-bridge', type: 'reply', id: d.id, ok: true, data: themes() };
+        try { e.source.postMessage(out, allowedOrigin); } catch (err) { }
+      });
+      ready();
+    }, function () { ready(); });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

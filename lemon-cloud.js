@@ -259,12 +259,44 @@
     } catch (e) { return null; }
   }
 
-  function signUp(email, password) {
-    return request('/auth/v1/signup', { method: 'POST', body: { email: email, password: password } })
+  /* 회원가입 — 이메일 확인이 필요한지 확실히 구분해 돌려준다.
+     Supabase 는 확인이 필요하면 session(access_token) 없이 user 만 돌려주고,
+     이미 가입된 미확인 계정이면 identities 가 빈 배열로 온다. 두 경우 모두 pending. */
+  /* 인증 메일의 'Confirm email address' 링크가 돌아올 주소.
+     지정하지 않으면 이 페이지가 있는 폴더의 auth.html 로 돌려보낸다.
+     (Supabase 대시보드의 Redirect URLs 에 이 주소가 등록되어 있어야 한다) */
+  function defaultEmailRedirect() {
+    try {
+      var base = location.origin + location.pathname.replace(/[^/]*$/, '');
+      return base + 'auth.html';
+    } catch (e) { return 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/auth.html'; }
+  }
+
+  function signUp(email, password, opts) {
+    opts = opts || {};
+    var redirect = String(opts.emailRedirectTo || defaultEmailRedirect());
+    var body = { email: email, password: password };
+    body.options = { emailRedirectTo: redirect };
+    if (opts.data && typeof opts.data === 'object') body.data = opts.data;
+    return request('/auth/v1/signup', { method: 'POST', body: body })
       .then(function (d) {
-        if (d && d.access_token) { storeAuth(d); return { ok: true, user: d.user }; }
-        return { ok: true, pending: true, user: d && d.user };
+        var u = (d && d.user) || null;
+        var ids = (u && Array.isArray(u.identities)) ? u.identities : null;
+        var unconfirmed = !!(u && !u.email_confirmed_at && ids && ids.length === 0);
+        if (d && d.access_token && !unconfirmed) {
+          storeAuth(d);
+          return { ok: true, pending: false, user: u };
+        }
+        return { ok: true, pending: true, user: u, needsConfirm: true };
       });
+  }
+
+  /* 인증 메일 다시 보내기 */
+  function resendConfirm(email) {
+    return request('/auth/v1/resend', {
+      method: 'POST',
+      body: { type: 'signup', email: String(email || '').trim() }
+    });
   }
 
   function signIn(email, password) {
@@ -712,6 +744,325 @@
     return upsert('site_config', [{ id: id, value: value, updated_at: new Date().toISOString() }], 'id');
   }
 
+  /* ---------------- LK 로그인 API (OAuth 앱) ----------------
+     외부 정적 웹앱이 'LK 계정으로 로그인'을 붙일 때 쓰는 얇은 래퍼.
+       · oauth_clients   앱 등록(내 것만 읽고 쓴다 · RLS)
+       · oauth_codes     일회용 코드(직접 접근 불가 · 함수만)
+       · oauth_reports   의심 서비스 신고(누구나 한 줄, 관리자만 읽기)
+     표가 없으면 함수는 그대로 오류를 돌려주고 화면이 안내를 띄운다. */
+  function rpc(name, body) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    return rest('/rest/v1/rpc/' + name, { method: 'POST', body: body || {} });
+  }
+
+  var OAUTH_CLIENT_COLS = 'id,client_id,owner_id,app_name,app_url,redirect_uris,scope,is_active,is_approved,login_count,last_used_at,created_at';
+  var OAUTH_SCOPES = ['profile:basic', 'drive:app', 'share:create', 'push:send', 'theme:read'];
+
+  /* 허용 스코프 문자열 만들기 — profile:basic 은 항상 포함, 나머지는 고른 것만 */
+  function cleanScopes(list) {
+    var has = {};
+    (Array.isArray(list) ? list : []).forEach(function (x) { has[String(x)] = 1; });
+    has['profile:basic'] = 1;
+    var out = [];
+    OAUTH_SCOPES.forEach(function (s) { if (has[s]) out.push(s); });
+    return out.join(' ');
+  }
+
+  function hasScope(scope, want) {
+    return (' ' + String(scope || '') + ' ').indexOf(' ' + want + ' ') >= 0;
+  }
+
+  function oauthListMyClients() {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    var uid = currentUid();
+    if (!uid) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_clients?select=' + OAUTH_CLIENT_COLS +
+      '&owner_id=eq.' + encodeURIComponent(uid) + '&order=created_at.desc');
+  }
+
+  function newOauthClientId() {
+    var abc = 'abcdefghijkmnopqrstuvwxyz23456789';
+    var out = 'lkc_';
+    var arr = new Uint8Array(24);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(arr);
+    else for (var i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+    for (var j = 0; j < arr.length; j++) out += abc[arr[j] % abc.length];
+    return out;
+  }
+
+  function cleanUris(list) {
+    var out = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (u) {
+      var s = String(u || '').trim();
+      if (!s || seen[s]) return;
+      seen[s] = 1;
+      out.push(s.slice(0, 300));
+    });
+    return out.slice(0, 10);
+  }
+
+  function oauthCreateClient(p) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    var uid = currentUid();
+    if (!uid) return Promise.reject(loginRequired());
+    p = p || {};
+    var row = {
+      client_id: String(p.client_id || '').trim() || newOauthClientId(),
+      owner_id: uid,
+      app_name: String(p.app_name || '').trim().slice(0, 60),
+      app_url: String(p.app_url || '').trim().slice(0, 300),
+      redirect_uris: cleanUris(p.redirect_uris),
+      scope: cleanScopes(p.scopes || p.scope),
+      is_active: true
+    };
+    return rest('/rest/v1/oauth_clients', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: [row]
+    }).then(function (rows) { return rows && rows[0] ? rows[0] : row; });
+  }
+
+  function oauthUpdateClient(id, patch) {
+    id = String(id || '').trim();
+    if (!id) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!currentUid()) return Promise.reject(loginRequired());
+    patch = patch || {};
+    var row = {};
+    if (patch.app_name !== undefined) row.app_name = String(patch.app_name || '').trim().slice(0, 60);
+    if (patch.app_url !== undefined) row.app_url = String(patch.app_url || '').trim().slice(0, 300);
+    if (patch.redirect_uris !== undefined) row.redirect_uris = cleanUris(patch.redirect_uris);
+    if (patch.scopes !== undefined || patch.scope !== undefined) row.scope = cleanScopes(patch.scopes || patch.scope);
+    if (patch.is_active !== undefined) row.is_active = !!patch.is_active;
+    return rest('/rest/v1/oauth_clients?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: row
+    }).then(function (rows) { return rows && rows[0] ? rows[0] : row; });
+  }
+
+  function oauthRegenerateClientId(id, nextId) {
+    id = String(id || '').trim();
+    if (!id) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!currentUid()) return Promise.reject(loginRequired());
+    var row = { client_id: String(nextId || '').trim() || newOauthClientId() };
+    return rest('/rest/v1/oauth_clients?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: row
+    }).then(function (rows) { return rows && rows[0] ? rows[0] : row; });
+  }
+
+  function oauthDeleteClient(id) {
+    id = String(id || '').trim();
+    if (!id) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!currentUid()) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_clients?id=eq.' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: { Prefer: 'return=representation' }
+    });
+  }
+
+  /* 로그인·동의 화면(oauth.html)이 부르는 공개 정보 — 소유자 정보는 나오지 않는다. */
+  function oauthClientPublic(clientId) {
+    clientId = String(clientId || '').trim();
+    if (!clientId) return Promise.reject(new Error('invalid-client'));
+    return rpc('oauth_client_public', { p_client_id: clientId }).then(function (rows) {
+      return rows && rows[0] ? rows[0] : null;
+    });
+  }
+
+  /* 동의하면 일회용 code 를 받는다(로그인 세션 필요 · 5분 만료). */
+  function oauthIssueCode(clientId, redirectUri, scope) {
+    return rpc('oauth_issue_code', {
+      p_client_id: String(clientId || '').trim(),
+      p_redirect_uri: String(redirectUri || '').trim(),
+      p_scope: String(scope || 'profile:basic').trim()
+    });
+  }
+
+  /* 외부 앱(콜백)이 code 로 프로필을 받아 가는 함수 — 안내·예제용. */
+  function oauthExchangeCode(code, clientId, redirectUri) {
+    return rpc('oauth_exchange_code', {
+      p_code: String(code || '').trim(),
+      p_client_id: String(clientId || '').trim(),
+      p_redirect_uri: String(redirectUri || '').trim()
+    });
+  }
+
+  /* 의심 서비스 신고 — 로그인 없이도 한 줄 남길 수 있다. */
+  function oauthReport(payload) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    payload = payload || {};
+    var row = {
+      client_id: String(payload.client_id || '').slice(0, 120),
+      redirect_uri: String(payload.redirect_uri || '').slice(0, 300),
+      reason: String(payload.reason || 'other').slice(0, 30),
+      note: String(payload.note || '').slice(0, 300)
+    };
+    return rest('/rest/v1/oauth_reports', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: [row]
+    });
+  }
+
+
+
+  /* ---------------- LK API 4종 (외부 앱이 직접 호출) ----------------
+     share:create · push:send 는 anon 키로 RPC 를 부른다. 앱 검증·한도는 서버 함수가 한다.
+     drive:app · theme:read 는 이 출처의 브리지(drive-bridge.html · theme-bridge.html)를 거친다. */
+  function oauthCreateShare(clientId, title, payload, kind) {
+    return rpc('oauth_create_share', {
+      p_client_id: String(clientId || '').trim(),
+      p_title: String(title || '공유').slice(0, 120),
+      p_payload: (payload && typeof payload === 'object') ? payload : {},
+      p_kind: String(kind || 'app').slice(0, 20)
+    });
+  }
+
+  function oauthSendPush(clientId, sub, title, body, url) {
+    return rpc('oauth_send_push', {
+      p_client_id: String(clientId || '').trim(),
+      p_sub: String(sub || '').trim(),
+      p_title: String(title || '').slice(0, 80),
+      p_body: String(body || '').slice(0, 240),
+      p_url: String(url || '').slice(0, 400)
+    });
+  }
+
+  function oauthListNotifications(limit) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    var n = Math.min(Math.max(parseInt(limit, 10) || 40, 1), 200);
+    return rest('/rest/v1/notifications?select=id,client_id,title,body,url,read_at,created_at' +
+      '&order=created_at.desc&limit=' + n);
+  }
+
+  function oauthMarkNotificationRead(id) {
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/notifications?id=eq.' + encodeURIComponent(String(id)), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: { read_at: new Date().toISOString() }
+    });
+  }
+
+  function oauthListNotifyPrefs() {
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/notification_prefs?select=client_id,enabled,updated_at');
+  }
+
+  function oauthSetNotifyPref(clientId, enabled) {
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/notification_prefs?on_conflict=user_id,client_id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: [{
+        user_id: currentUid(),
+        client_id: String(clientId || ''),
+        enabled: !!enabled,
+        updated_at: new Date().toISOString()
+      }]
+    });
+  }
+
+
+  /* ---------------- 승인 · 연결(권한) 관리 ---------------- */
+  function oauthIsOwner(clientId) {
+    if (!session) return Promise.resolve(false);
+    return rpc('oauth_is_owner', { p_client_id: String(clientId || '') }).then(function (v) {
+      return v === true || v === 'true';
+    }, function () { return false; });
+  }
+
+  function oauthListMyGrants() {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    return rpc('oauth_my_grants', {});
+  }
+
+  function oauthRevokeGrant(clientId) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    var uid = currentUid();
+    if (!uid) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_grants?user_id=eq.' + encodeURIComponent(uid) +
+      '&client_id=eq.' + encodeURIComponent(String(clientId || '')), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: { revoked_at: new Date().toISOString() }
+    });
+  }
+
+  function adminSetOauthClientApproved(clientId, approved) {
+    clientId = String(clientId || '').trim();
+    if (!clientId) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_clients?client_id=eq.' + encodeURIComponent(clientId), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: { is_approved: !!approved, approved_at: approved ? new Date().toISOString() : null }
+    });
+  }
+
+  /* ---------------- 관리자: 접수된 신고 (OAuth 로그인 · 도구) ---------------- */
+  function adminListOauthReports() {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_reports?select=id,client_id,redirect_uri,reason,note,status,handled_at,created_at' +
+      '&order=created_at.desc&limit=300');
+  }
+
+  function adminResolveOauthReport(id) {
+    id = String(id || '').trim();
+    if (!id) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_reports?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: { status: 'done', handled_at: new Date().toISOString() }
+    });
+  }
+
+  function adminListToolReports() {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/tool_signals?select=id,app_id,note,created_at&kind=eq.report&order=created_at.desc&limit=300');
+  }
+
+  function adminListOauthClients() {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_clients?select=id,client_id,app_name,is_active,owner_id,created_at&limit=500');
+  }
+
+  function adminSetOauthClientActive(clientId, active) {
+    clientId = String(clientId || '').trim();
+    if (!clientId) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/rest/v1/oauth_clients?client_id=eq.' + encodeURIComponent(clientId), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: { is_active: !!active }
+    });
+  }
+
   /* ---------------- init ---------------- */
   function init() {
     if (initP) return initP;
@@ -752,6 +1103,8 @@
     testConnection: testConnection,
 
     signUp: signUp,
+    resendConfirm: resendConfirm,
+    defaultEmailRedirect: defaultEmailRedirect,
     signIn: signIn,
     signOut: signOut,
     recover: recover,
@@ -779,7 +1132,36 @@
     deleteCommunityApp: deleteCommunityApp,
     adminListCommunityApps: adminListCommunityApps,
     adminReviewCommunityApp: adminReviewCommunityApp,
+    adminListOauthReports: adminListOauthReports,
+    adminResolveOauthReport: adminResolveOauthReport,
+    adminListToolReports: adminListToolReports,
+    adminListOauthClients: adminListOauthClients,
+    adminSetOauthClientActive: adminSetOauthClientActive,
+    adminSetOauthClientApproved: adminSetOauthClientApproved,
+    oauthIsOwner: oauthIsOwner,
+    oauthListMyGrants: oauthListMyGrants,
+    oauthRevokeGrant: oauthRevokeGrant,
     saveRemoteConfigRow: saveRemoteConfigRow,
+
+    oauthListMyClients: oauthListMyClients,
+    oauthCreateClient: oauthCreateClient,
+    oauthUpdateClient: oauthUpdateClient,
+    oauthRegenerateClientId: oauthRegenerateClientId,
+    oauthDeleteClient: oauthDeleteClient,
+    oauthClientPublic: oauthClientPublic,
+    oauthIssueCode: oauthIssueCode,
+    oauthExchangeCode: oauthExchangeCode,
+    oauthReport: oauthReport,
+    oauthCreateShare: oauthCreateShare,
+    oauthSendPush: oauthSendPush,
+    oauthListNotifications: oauthListNotifications,
+    oauthMarkNotificationRead: oauthMarkNotificationRead,
+    oauthListNotifyPrefs: oauthListNotifyPrefs,
+    oauthSetNotifyPref: oauthSetNotifyPref,
+    oauthScopes: OAUTH_SCOPES,
+    hasScope: hasScope,
+    cleanScopes: cleanScopes,
+    newOauthClientId: newOauthClientId,
 
     createShare: createShare,
     getShare: getShare,
