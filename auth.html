@@ -214,6 +214,23 @@
   }
   .lk-confirm__d { margin: 11px auto 0; max-width: 330px; font-size: 12px; line-height: 1.75; color: var(--lk-ink-2); word-break: keep-all; }
   .lk-confirm__acts { margin-top: 16px; display: grid; gap: 8px; }
+  .lk-code { margin-top: 14px; text-align: left; }
+  .lk-code__label { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; color: var(--lk-muted); }
+  .lk-code__row { display: flex; gap: 8px; margin-top: 6px; }
+  .lk-code__in {
+    flex: 1; min-width: 0; height: 48px; padding: 0 8px 0 14px;
+    border: 1px solid var(--lk-ink); background: transparent; color: var(--lk-ink);
+    font-family: var(--lk-mono); font-size: 20px; font-weight: 700; letter-spacing: .34em;
+    text-align: center; outline: none;
+  }
+  .lk-code__in::placeholder { color: var(--lk-muted); letter-spacing: .3em; }
+  .lk-code__in:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lk-ink) 12%, transparent); }
+  .lk-code__btn {
+    flex: none; height: 48px; padding: 0 16px; border: 1px solid var(--lk-ink);
+    background: var(--lk-ink); color: var(--lk-inv); font-size: 12px; font-weight: 800; cursor: pointer;
+  }
+  .lk-code__btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .lk-code__hint { margin: 8px 0 0; font-size: 10.5px; color: var(--lk-muted); line-height: 1.6; }
   .lk-confirm__note { margin-top: 12px; font-size: 10.5px; color: var(--lk-ink-3); line-height: 1.6; }
 
   .lk-msg {
@@ -559,7 +576,18 @@
           </span>
           <h2 class="lk-confirm__t">이메일 주소를 확인해 주세요</h2>
           <p><span class="lk-confirm__mail" id="confirmMail">you@example.com</span></p>
-          <p class="lk-confirm__d">인증 메일을 보냈습니다. 메일함(또는 스팸함)에서 확인 링크를 누른 뒤 로그인해 주세요.</p>
+          <p class="lk-confirm__d">인증 메일을 보냈습니다. 메일함(또는 스팸함)에서 <b>6자리 인증 코드</b>를 확인해 아래에 넣거나, 메일의 확인 링크를 눌러 주세요.</p>
+
+          <div class="lk-code">
+            <label class="lk-code__label" for="codeInput">인증 코드 6자리</label>
+            <div class="lk-code__row">
+              <input class="lk-code__in" id="codeInput" type="text" inputmode="numeric" autocomplete="one-time-code"
+                     placeholder="000000" aria-label="6자리 인증 코드">
+              <button class="lk-code__btn" type="button" id="codeBtn" disabled>인증 완료</button>
+            </div>
+            <p class="lk-code__hint">숫자 6자리를 넣으면 바로 인증됩니다. 메일의 링크를 눌러도 인증할 수 있습니다.</p>
+            <p class="lk-msg" id="codeMsg" role="status" aria-live="polite"></p>
+          </div>
           <div class="lk-confirm__acts">
             <button class="lk-btn lk-btn--solid" type="button" id="resendBtn">
               <span class="lk-spin hidden" id="resendSpin" aria-hidden="true"></span>
@@ -1150,6 +1178,9 @@
     $('confirmMail').textContent = String(email || '').trim() || '입력한 이메일';
     $('confirmMsg').textContent = '';
     $('confirmMsg').className = 'lk-msg';
+    if ($('codeInput')) $('codeInput').value = '';
+    if ($('codeBtn')) { $('codeBtn').disabled = true; $('codeBtn').textContent = '인증 완료'; }
+    codeMsg('');
     box.classList.remove('hidden');
     $('authBox').classList.add('hidden');
     var b = $('benefits'); if (b) b.classList.add('hidden');
@@ -1157,6 +1188,15 @@
     var ttl = $('pageTitle'); if (ttl) ttl.textContent = '이메일 확인';
     var sub = $('pageSub'); if (sub) sub.textContent = '인증을 마치면 로그인해 주세요.';
     try { $('resendBtn').focus({ preventScroll: true }); } catch (e) { }
+  }
+
+  function paintVerifiedBanner() {
+    var b2 = $('verifyBanner2');
+    if (!b2) return;
+    b2.hidden = false;
+    b2.className = 'lk-verify lk-verify--ok';
+    b2.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg>' +
+      '<div><b>이메일 인증이 완료되었습니다!</b> 이제 LK 계정을 바로 사용할 수 있어요.</div>';
   }
 
   function hideVerify() {
@@ -1174,6 +1214,14 @@
     var ttl = $('pageTitle'); if (ttl) ttl.textContent = '로그인';
     var sub = $('pageSub'); if (sub) sub.textContent = '로그인은 짧은 공유 링크 관리와 관리자 화면에 씁니다.';
     msg('', '');
+  }
+
+  function codeMsg(text, kind) {
+    var el = $('codeMsg');
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = 'lk-msg' + (kind === 'err' ? ' err' : kind === 'ok' ? ' ok' : '');
+    if (text) el.style.display = 'block';
   }
 
   function confirmMsg(text, kind) {
@@ -2027,13 +2075,7 @@
           });
       } else if (u && (verifyInfo.hasToken || verifyInfo.type === 'signup')) {
         showVerify('ok', '<b>이메일 인증이 완료되었습니다!</b> 이제 LK 계정을 바로 사용할 수 있어요.');
-        var b2 = $('verifyBanner2');
-        if (b2) {
-          b2.hidden = false;
-          b2.className = 'lk-verify lk-verify--ok';
-          b2.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg>' +
-            '<div><b>이메일 인증이 완료되었습니다!</b> 이제 LK 계정을 바로 사용할 수 있어요.</div>';
-        }
+        paintVerifiedBanner();
       }
       if (u) {
         if (!wantsSettings && nextTarget) { goNext(120); return; }
@@ -2140,6 +2182,54 @@
         if (/rate|too many|security purposes/i.test(m)) confirmMsg('너무 자주 요청했습니다. 잠시(1분) 뒤 다시 시도해 주세요.', 'err');
         else if (/already confirmed/i.test(m)) confirmMsg('이미 인증된 이메일입니다. 로그인해 주세요.', 'ok');
         else confirmMsg('메일을 보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.', 'err');
+      });
+    });
+
+    var codeInput = $('codeInput');
+    if (codeInput) {
+      codeInput.addEventListener('input', function () {
+        var digits = String(codeInput.value || '').replace(/\D/g, '').slice(0, 6);
+        if (codeInput.value !== digits) codeInput.value = digits;
+        $('codeBtn').disabled = digits.length !== 6;
+      });
+      codeInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && String(codeInput.value || '').length === 6) {
+          e.preventDefault();
+          $('codeBtn').click();
+        }
+      });
+    }
+
+    $('codeBtn').addEventListener('click', function () {
+      var mail = ($('confirmMail').textContent || '').trim();
+      var code = String(($('codeInput') && $('codeInput').value) || '').replace(/\D/g, '');
+      var btn = $('codeBtn');
+      if (code.length !== 6) { codeMsg('6자리 코드를 넣어 주세요.', 'err'); return; }
+      btn.disabled = true;
+      btn.textContent = '확인 중…';
+      codeMsg('', '');
+      LemonCloud.verifySignupCode(mail, code).then(function (r) {
+        btn.textContent = '인증 완료';
+        btn.disabled = false;
+        var u = (r && r.user) || LemonCloud.sessionUser();
+        if (!u) { codeMsg('인증은 되었지만 세션을 받지 못했습니다. 로그인해 주세요.', 'err'); return; }
+        hideConfirm();
+        showVerify('ok', '<b>이메일 인증이 완료되었습니다!</b> 이제 LK 계정을 바로 사용할 수 있어요.');
+        paintVerifiedBanner();
+        rememberSignupEmail('');
+        if (!wantsSettings && goNext(420)) return;
+        openSettings(u);
+      }, function (err) {
+        btn.textContent = '인증 완료';
+        btn.disabled = false;
+        var m = String((err && err.message) || '');
+        if (/expired|invalid|not found/i.test(m)) {
+          codeMsg('코드가 맞지 않거나 만료되었습니다. 인증 코드를 다시 받아 주세요.', 'err');
+        } else if (/rate|too many/i.test(m)) {
+          codeMsg('시도가 너무 많습니다. 잠시 뒤 다시 시도해 주세요.', 'err');
+        } else {
+          codeMsg('인증하지 못했습니다. 코드를 확인하거나 다시 받아 주세요.', 'err');
+        }
       });
     });
 

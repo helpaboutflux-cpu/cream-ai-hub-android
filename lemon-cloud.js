@@ -291,6 +291,25 @@
       });
   }
 
+  /* 6자리 인증 코드 확인 — 성공하면 세션을 저장해 바로 로그인 상태가 된다.
+     Supabase 메일 템플릿에 {{ .Token }} 이 있어야 6자리 코드가 발송된다. */
+  function verifySignupCode(email, token) {
+    var mail = String(email || '').trim();
+    var code = String(token || '').replace(/\D/g, '').slice(0, 8);
+    if (!mail) return Promise.reject(new Error('email-required'));
+    if (!code) return Promise.reject(new Error('token-required'));
+    return request('/auth/v1/verify', {
+      method: 'POST',
+      body: { type: 'signup', email: mail, token: code }
+    }).then(function (d) {
+      if (d && d.access_token) {
+        storeAuth(d);
+        return { ok: true, user: d.user || null, session: true };
+      }
+      return { ok: true, user: (d && d.user) || null, session: false };
+    });
+  }
+
   /* 인증 메일 다시 보내기 */
   function resendConfirm(email) {
     return request('/auth/v1/resend', {
@@ -1104,6 +1123,7 @@
 
     signUp: signUp,
     resendConfirm: resendConfirm,
+    verifySignupCode: verifySignupCode,
     defaultEmailRedirect: defaultEmailRedirect,
     signIn: signIn,
     signOut: signOut,

@@ -318,6 +318,23 @@ html.dark .seg button[aria-pressed="true"] { background: #26262b; }
   font-size: 10px; color: var(--ink-2); word-break: break-all;
 }
 
+/* 인증 코드 입력 */
+.codebox { margin-top: 13px; text-align: left; }
+.codebox__label { display: block; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.codebox__row { display: flex; gap: 8px; margin-top: 6px; }
+.codebox__in {
+  flex: 1; min-width: 0; height: 46px; padding: 0 8px 0 12px;
+  border: 1px solid var(--line); background: var(--card-2); color: var(--ink);
+  border-radius: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 19px; font-weight: 700; letter-spacing: .3em; text-align: center; outline: none;
+  transition: border-color .16s, box-shadow .16s;
+}
+.codebox__in:focus { border-color: color-mix(in srgb, var(--brand) 60%, transparent); box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--brand) 13%, transparent); }
+.codebox__btn { flex: none; height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--ink); background: var(--ink); color: var(--card); font-size: 12px; font-weight: 800; cursor: pointer; }
+html.dark .codebox__btn { color: #0a0a0a; }
+.codebox__btn[disabled] { opacity: .45; cursor: not-allowed; }
+.codebox__hint { margin-top: 7px; font-size: 10.5px; color: var(--ink-3); line-height: 1.6; }
+
 /* 확인 대기(불러오는 중) */
 .loading { display: flex; flex-direction: column; align-items: center; gap: 11px; padding: 20px 0 8px; }
 .spinner {
@@ -507,10 +524,19 @@ html.dark .reportchip[aria-pressed="true"] { background: #fafafa; border-color: 
           <svg viewBox="0 0 24 24"><rect x="2.8" y="5.4" width="18.4" height="13.2" rx="2.8"/><path d="m3.6 7.2 8.4 6 8.4-6"/></svg>
         </span>
         <h1 class="state__t">이메일 주소를 확인해 주세요</h1>
-        <p class="state__d" id="confirmDesc">인증 메일을 보냈습니다. 메일함(또는 스팸함)에서 확인 링크를 누른 뒤 로그인해 주세요.</p>
+        <p class="state__d" id="confirmDesc">인증 메일을 보냈습니다. 메일함(또는 스팸함)에서 <b>6자리 인증 코드</b>를 확인해 넣거나, 확인 링크를 눌러 주세요.</p>
         <div class="redirect" style="text-align:left">
           <div class="redirect__k">보낸 주소</div>
           <div class="redirect__v" id="confirmMail">you@example.com</div>
+        </div>
+        <div class="codebox">
+          <label class="codebox__label" for="codeInput">인증 코드 6자리</label>
+          <div class="codebox__row">
+            <input class="codebox__in" id="codeInput" type="text" inputmode="numeric" autocomplete="one-time-code"
+                   placeholder="000000" aria-label="6자리 인증 코드">
+            <button class="codebox__btn" type="button" id="codeBtn" disabled>인증 완료</button>
+          </div>
+          <p class="codebox__hint">숫자 6자리를 넣으면 바로 인증됩니다. 메일의 링크를 눌러도 인증됩니다.</p>
         </div>
         <div class="msg" id="confirmMsg" role="status" aria-live="polite"></div>
         <div class="acts">
@@ -990,6 +1016,8 @@ html.dark .reportchip[aria-pressed="true"] { background: #fafafa; border-color: 
     $('confirmMail').textContent = String(email || '').trim() || '입력한 이메일';
     inlineMsg('confirmMsg', '', '');
     $('resendLabel').textContent = '인증 메일 다시 보내기';
+    if ($('codeInput')) $('codeInput').value = '';
+    if ($('codeBtn')) { $('codeBtn').disabled = true; $('codeBtn').textContent = '인증 완료'; }
     show('stConfirm');
     try { $('resendBtn').focus({ preventScroll: true }); } catch (e) { }
   }
@@ -1193,6 +1221,38 @@ html.dark .reportchip[aria-pressed="true"] { background: #fafafa; border-color: 
       this.setAttribute('aria-label', isPw ? '비밀번호 숨기기' : '비밀번호 표시 전환');
     });
     $('googleBtn').addEventListener('click', googleLogin);
+    $('codeInput').addEventListener('input', function () {
+      var d = String($('codeInput').value || '').replace(/\D/g, '').slice(0, 6);
+      if ($('codeInput').value !== d) $('codeInput').value = d;
+      $('codeBtn').disabled = d.length !== 6;
+    });
+    $('codeInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && String($('codeInput').value || '').length === 6) { e.preventDefault(); $('codeBtn').click(); }
+    });
+    $('codeBtn').addEventListener('click', function () {
+      var mail = ($('confirmMail').textContent || '').trim();
+      var code = String(($('codeInput') && $('codeInput').value) || '').replace(/\D/g, '');
+      if (code.length !== 6) { inlineMsg('confirmMsg', 'bad', '6자리 코드를 넣어 주세요.'); return; }
+      var btn = $('codeBtn');
+      btn.disabled = true; btn.textContent = '확인 중…';
+      inlineMsg('confirmMsg', '', '');
+      LemonCloud.verifySignupCode(mail, code).then(function (r) {
+        btn.textContent = '인증 완료'; btn.disabled = false;
+        view.user = currentUser();
+        if (!view.user && r && r.user) view.user = r.user;
+        if (!view.user) { inlineMsg('confirmMsg', 'bad', '인증은 되었지만 세션이 없습니다. 로그인해 주세요.'); return; }
+        paintWho();
+        inlineMsg('consentMsg', 'ok', '이메일 인증이 완료되었습니다. 아래에서 권한을 확인해 주세요.');
+        show('stConsent');
+      }, function (err) {
+        btn.textContent = '인증 완료'; btn.disabled = false;
+        var m = String((err && err.message) || '');
+        if (/expired|invalid|not found/i.test(m)) inlineMsg('confirmMsg', 'bad', '코드가 맞지 않거나 만료되었습니다. 인증 코드를 다시 받아 주세요.');
+        else if (/rate|too many/i.test(m)) inlineMsg('confirmMsg', 'bad', '시도가 너무 많습니다. 잠시 뒤 다시 시도해 주세요.');
+        else inlineMsg('confirmMsg', 'bad', '인증하지 못했습니다. 코드를 확인하거나 다시 받아 주세요.');
+      });
+    });
+
     $('resendBtn').addEventListener('click', function () {
       var mail = ($('confirmMail').textContent || '').trim();
       if (!mail || mail.indexOf('@') < 0) { inlineMsg('confirmMsg', 'bad', '이메일 주소를 다시 입력해 주세요.'); show('stLogin'); return; }
