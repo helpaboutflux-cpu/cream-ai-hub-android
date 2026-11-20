@@ -559,6 +559,61 @@
       '&status=eq.approved&order=created_at.desc&limit=' + n);
   }
 
+  /* 승인된 앱 한 건 — tool.html 전용 상세 페이지 */
+  function getApprovedCommunityApp(id) {
+    id = String(id || '').trim();
+    if (!/^[0-9a-zA-Z-]{1,40}$/.test(id)) return Promise.reject(new Error('invalid-id'));
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    return rest('/rest/v1/community_apps?select=' + COMMUNITY_COLS +
+      '&id=eq.' + encodeURIComponent(id) + '&status=eq.approved&limit=1')
+      .then(function (rows) { return rows && rows[0] ? rows[0] : null; });
+  }
+
+  /* ---------------- 발견 탭 배너 (site_config 'home' 행의 discover 값) ----------------
+     'home' 행은 이미 공개 읽기 대상이라 표를 새로 만들지 않아도 전 방문자가 읽는다. */
+  function getDiscoverBanner() {
+    if (!cfgReady()) return Promise.resolve(null);
+    return getConfigRow('home').then(function (v) {
+      var d = v && typeof v === 'object' ? v.discover : null;
+      return d && typeof d === 'object' ? d : null;
+    }, function () { return null; });
+  }
+
+  function saveDiscoverBanner(value) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    if (!session) return Promise.reject(new Error('admin-login-required'));
+    var v = (value && typeof value === 'object') ? value : {};
+    return getConfigRow('home').then(function (cur) {
+      var home = (cur && typeof cur === 'object') ? cur : {};
+      home.discover = v;
+      return upsert('site_config', [{ id: 'home', value: home, updated_at: new Date().toISOString() }], 'id')
+        .then(function () { return home.discover; });
+    });
+  }
+
+  /* ---------------- 도구 신호 (유용함 · 신고) ----------------
+     표(public.tool_signals)는 선택 사항이다. 없으면 조용히 실패하고 화면은 이 기기 기록으로 동작한다. */
+  function countUsefulSignals(appId) {
+    appId = String(appId || '').trim();
+    if (!cfgReady() || !appId) return Promise.resolve(null);
+    return rest('/rest/v1/tool_signals?select=id&kind=eq.useful&app_id=eq.' +
+      encodeURIComponent(appId) + '&limit=1000')
+      .then(function (rows) { return Array.isArray(rows) ? rows.length : null; }, function () { return null; });
+  }
+
+  function addToolSignal(appId, kind, note) {
+    appId = String(appId || '').trim();
+    kind = String(kind || 'useful');
+    if (!cfgReady() || !appId) return Promise.reject(new Error('cloud-not-configured'));
+    if (kind !== 'useful' && kind !== 'report') return Promise.reject(new Error('invalid-kind'));
+    return rest('/rest/v1/tool_signals', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: [{ app_id: appId, kind: kind, note: String(note || '').slice(0, 500) }]
+    });
+  }
+
   /* 내가 등록한 앱 — 로그인 필수 */
   function listMyCommunityApps() {
     if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
@@ -713,6 +768,11 @@
     listAccounts: listAccounts,
 
     listApprovedCommunityApps: listApprovedCommunityApps,
+    getApprovedCommunityApp: getApprovedCommunityApp,
+    getDiscoverBanner: getDiscoverBanner,
+    saveDiscoverBanner: saveDiscoverBanner,
+    countUsefulSignals: countUsefulSignals,
+    addToolSignal: addToolSignal,
     listMyCommunityApps: listMyCommunityApps,
     submitCommunityApp: submitCommunityApp,
     updateMyCommunityApp: updateMyCommunityApp,

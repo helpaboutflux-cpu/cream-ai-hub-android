@@ -336,7 +336,7 @@
     cloud: ['Supabase', '로그인 · 짧은 공유 링크 · 원격 설정'],
     security: ['보안', '관리자 비밀번호 · 숨김 점검'],
     accounts: ['LK ID 계정', 'Soft Hub LK ID 가입자 목록'],
-    community: ['커뮤니티 승인', '개발자 포털 등록 앱 승인 · 반려']
+    community: ['도구 · 배너 관리', '발견 탭 도구 승인 · 상단 배너']
   };
 
   function switchView(name) {
@@ -354,7 +354,7 @@
     if (name === 'cloud') refreshCloudPanel();
     if (name === 'security') checkAdminLinks();
     if (name === 'accounts') loadAccounts();
-    if (name === 'community') { loadCommunity(); loadCloudinaryConfig(); }
+    if (name === 'community') { loadCommunity(); loadCloudinaryConfig(); loadDc(); }
   }
 
   /* ---------------- 색상 페어 ---------------- */
@@ -458,6 +458,26 @@
     if (window.Lemon && Lemon.upgradeDropdowns) Lemon.upgradeDropdowns();
   }
   function collectHome() {
+    /* 저장한 홈 배너 값 위에 폼 값을 덮어쓴다.
+       discover 처럼 다른 화면이 같은 행에 넣어 둔 값이 지워지지 않게 한다. */
+    var out = {};
+    var prev = (state.cfg && state.cfg.home && typeof state.cfg.home === 'object') ? state.cfg.home : {};
+    Object.keys(prev).forEach(function (k) { out[k] = prev[k]; });
+    out.enabled = $('hEnabled').checked;
+    out.badge = $('hBadge').value.trim();
+    out.title = $('hTitle').value.trim();
+    out.subtitle = $('hSub').value.trim();
+    out.btnText = $('hBtn').value.trim();
+    out.btnUrl = $('hUrl').value.trim();
+    out.style = $('hStyle').value;
+    out.accent = $('hAccent').value;
+    out.bg = $('hBg').value;
+    out.fg = $('hFg').value;
+    out.dismissible = $('hDismiss').checked;
+    return out;
+  }
+
+  function legacyCollectHome() {
     return {
       enabled: $('hEnabled').checked,
       badge: $('hBadge').value.trim(),
@@ -1078,6 +1098,8 @@
     $('noticeSavedAt').textContent = savedAtLabel('notice');
     $('homeSavedAt').textContent = savedAtLabel('home');
     $('adsSavedAt').textContent = savedAtLabel('ads');
+    var dcAt = $('dcSavedAt');
+    if (dcAt) dcAt.textContent = savedAtLabel('discover');
     updateCloudPills();
     refreshCloudPanel();
     loadSchema();
@@ -1159,6 +1181,7 @@
     bindAds();
     bindCloud();
     bindCommunity();
+    bindDc();
     loadCloudinaryConfig();
 
     /* 로그인/로그아웃하면 원격 설정을 다시 받아 이 화면을 맞춘다. */
@@ -1842,6 +1865,150 @@
       var k = cmErrorKind(e);
       toast(k === 'no-session' || k === 'forbidden' ? '관리자 로그인이 필요합니다.' : '삭제하지 못했습니다.', 'err');
     });
+  }
+
+  /* ---------------- 발견 탭 상단 배너 ---------------- */
+  var DC_DEFAULT = { enabled: true, badge: '개발자 포털',
+    title: '내가 만든 도구도 Soft Hub 발견 탭에 올려 보세요',
+    subtitle: '이름·한 줄 소개·아이콘만 정하면 관리자 승인 뒤 도구 페이지가 만들어집니다.',
+    btnText: '개발자 포털 열기', url: 'portal.html' };
+  var dcLoaded = false;
+
+  function dcDefaults() {
+    var C = window.LemonCommunity;
+    return (C && C.DISCOVER_BANNER) ? C.DISCOVER_BANNER : DC_DEFAULT;
+  }
+
+  function fillDc(v) {
+    var d = (v && typeof v === 'object') ? v : {};
+    var base = dcDefaults();
+    $('dcEnabled').checked = d.enabled !== undefined ? !!d.enabled : base.enabled !== false;
+    $('dcBadge').value = d.badge !== undefined ? d.badge : base.badge;
+    $('dcTitle').value = d.title !== undefined ? d.title : base.title;
+    $('dcSub').value = d.subtitle !== undefined ? d.subtitle : base.subtitle;
+    $('dcBtnText').value = d.btnText !== undefined ? d.btnText : base.btnText;
+    $('dcUrl').value = d.url !== undefined ? d.url : base.url;
+    renderDcPreview();
+  }
+
+  function collectDc() {
+    return {
+      enabled: $('dcEnabled').checked,
+      badge: $('dcBadge').value.trim().slice(0, 24),
+      title: $('dcTitle').value.trim().slice(0, 80),
+      subtitle: $('dcSub').value.trim().slice(0, 140),
+      btnText: $('dcBtnText').value.trim().slice(0, 24),
+      url: $('dcUrl').value.trim().slice(0, 400)
+    };
+  }
+
+  function renderDcPreview() {
+    var box = $('dcPreview');
+    if (!box) return;
+    var d = collectDc();
+    if (!d.enabled) {
+      box.innerHTML = '<div class="dcprev__off">배너를 끄면 발견 탭에 이 줄이 나오지 않습니다.</div>';
+      return;
+    }
+    box.innerHTML =
+      '<div class="dcprev__banner">' +
+        '<span class="dcprev__icon"><svg viewBox="0 0 24 24"><path d="m12 3.2 8.4 4.4L12 12 3.6 7.6z"/><path d="m3.6 12.2 8.4 4.4 8.4-4.4"/><path d="m3.6 16.6 8.4 4.4 8.4-4.4"/></svg></span>' +
+        '<div class="dcprev__text">' +
+          (d.badge ? '<span class="dcprev__badge">' + esc(d.badge) + '</span>' : '') +
+          '<p class="dcprev__title">' + esc(d.title || '배너 제목을 입력하세요') + '</p>' +
+          (d.subtitle ? '<p class="dcprev__sub">' + esc(d.subtitle) + '</p>' : '') +
+        '</div>' +
+        (d.url ? '<span class="dcprev__cta">' + esc(d.btnText || '열기') +
+          '<svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="m12.5 5.5 6.5 6.5-6.5 6.5"/></svg></span>' : '') +
+      '</div>';
+  }
+
+  function loadDc(force) {
+    if (!window.LemonCloud) { fillDc(null); return; }
+    var warn = $('dcWarn');
+    if (warn) warn.style.display = (!cloudOn() || !LemonCloud.hasSession()) ? '' : 'none';
+    if (dcLoaded && !force) return;
+    if (!LemonCloud.configured || !LemonCloud.configured()) { fillDc(null); return; }
+    var ready = LemonCloud.init ? LemonCloud.init() : Promise.resolve();
+    ready.then(function () {
+      return LemonCloud.getDiscoverBanner();
+    }).then(function (v) {
+      dcLoaded = true;
+      if (state.cfg) {
+        state.cfg.home = (state.cfg.home && typeof state.cfg.home === 'object') ? state.cfg.home : {};
+        if (v) state.cfg.home.discover = v;
+      }
+      if (!state.dirty) fillDc(v || null);
+    }, function () { fillDc(null); });
+  }
+
+  function saveDc() {
+    var box = $('dcResult');
+    if (!box) return;
+    box.style.display = '';
+    box.className = 'note';
+    if (!window.LemonCloud || !cloudOn()) {
+      box.className = 'note note--warn';
+      box.innerHTML = '<div>Supabase 연결이 없어 저장할 수 없습니다. 먼저 Supabase 탭에서 연결하세요.</div>';
+      return;
+    }
+    if (!LemonCloud.hasSession()) {
+      box.className = 'note note--warn';
+      box.innerHTML = '<div>관리자 로그인이 필요합니다. <a href="auth.html?next=admin.html" target="_blank" rel="noopener">LK ID 로그인</a> 후 다시 저장해 주세요.</div>';
+      var w = $('dcWarn'); if (w) w.style.display = '';
+      return;
+    }
+    var val = collectDc();
+    box.innerHTML = '<div>저장하는 중...</div>';
+    $('dcSave').disabled = true;
+    LemonCloud.saveDiscoverBanner(val).then(function () {
+      return LemonCloud.getDiscoverBanner();
+    }).then(function (saved) {
+      $('dcSave').disabled = false;
+      var s = (saved && typeof saved === 'object') ? saved : null;
+      if (s) {
+        dcLoaded = true;
+        state.cfg = (state.cfg && typeof state.cfg === 'object') ? state.cfg : {};
+        state.cfg.home = (state.cfg.home && typeof state.cfg.home === 'object') ? state.cfg.home : {};
+        state.cfg.home.discover = s;
+        fillDc(s);
+      }
+      box.className = 'note';
+      box.innerHTML = s && s.enabled === false
+        ? '<div>저장했습니다. 발견 탭에서는 이 배너가 숨겨집니다.</div>'
+        : '<div>저장했습니다. 발견 탭 상단 배너가 <b>모든 방문자</b>에게 바로 반영됩니다.</div>';
+      var at = $('dcSavedAt'); if (at) at.textContent = '방금 저장됨';
+      toast('발견 탭 배너를 저장했습니다.');
+    }, function (e) {
+      $('dcSave').disabled = false;
+      box.className = 'note note--warn';
+      var msg = String((e && e.message) || '');
+      if (/row-level security|permission denied|admin-login-required/i.test(msg)) {
+        box.innerHTML = '<div>저장 권한이 없습니다. 관리자 이메일로 로그인했는지 확인해 주세요.</div>';
+      } else if (/cloud-not-configured/i.test(msg)) {
+        box.innerHTML = '<div>Supabase 연결이 없습니다. Supabase 탭에서 먼저 연결하세요.</div>';
+      } else {
+        box.innerHTML = '<div>저장하지 못했습니다. ' + esc(msg || '잠시 뒤 다시 시도해 주세요.') + '</div>';
+      }
+      toast('발견 탭 배너를 저장하지 못했습니다.', 'err');
+    });
+  }
+
+  function bindDc() {
+    ['dcEnabled', 'dcBadge', 'dcTitle', 'dcSub', 'dcBtnText', 'dcUrl'].forEach(function (id) {
+      var el = $(id);
+      if (!el) return;
+      el.addEventListener('input', renderDcPreview);
+      el.addEventListener('change', renderDcPreview);
+    });
+    $('dcSave').addEventListener('click', saveDc);
+    $('dcReset').addEventListener('click', function () {
+      fillDc(null);
+      var box = $('dcResult');
+      if (box) { box.style.display = 'none'; box.className = 'note'; }
+      toast('기본값을 채웠습니다. 저장해야 반영됩니다.');
+    });
+    renderDcPreview();
   }
 
   /* ---------------- Cloudinary 설정 ---------------- */

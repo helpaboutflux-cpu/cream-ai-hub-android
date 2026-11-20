@@ -82,6 +82,33 @@
     return '기타';
   }
 
+  /* 발견 탭·도구 상세가 함께 쓰는 6분류.
+     등록 분류(CATEGORIES)를 화면용 묶음으로 매핑한다(예전 Cube 카탈로그와 같은 순서). */
+  var GROUPS = [
+    { id: 'productivity', en: 'Productivity', ko: '생산성 · 개발', desc: '문서·메모·할 일·개발 도구', color: '#2563eb', match: ['productivity', 'dev'] },
+    { id: 'game', en: 'Game', ko: '게임 · 놀이', desc: '가볍게 즐기는 놀이', color: '#16a34a', match: ['game'] },
+    { id: 'design', en: 'Design', ko: '디자인 · 미디어', desc: '사진·영상·음악·디자인', color: '#db2777', match: ['media', 'design'] },
+    { id: 'education', en: 'Education', ko: '교육 · 학습', desc: '공부와 배움을 돕는 도구', color: '#7c3aed', match: ['education', 'edu', 'study'] },
+    { id: 'lifestyle', en: 'Lifestyle', ko: '생활 · 도구', desc: '돈·일정·여행·집안', color: '#ea580c', match: ['utility', 'lifestyle'] },
+    { id: 'other', en: 'Other', ko: '기타', desc: '그 밖의 도구', color: '#64748b', match: ['etc', 'other'] }
+  ];
+
+  function groupOf(category) {
+    var c = String(category || '').trim().toLowerCase();
+    for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i].match.indexOf(c) >= 0) return GROUPS[i];
+    return GROUPS[GROUPS.length - 1];
+  }
+
+  function groupById(id) {
+    for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i].id === id) return GROUPS[i];
+    return GROUPS[GROUPS.length - 1];
+  }
+
+  function groupLabel(category) {
+    var g = groupOf(category);
+    return g.en + ' · ' + g.ko;
+  }
+
   function statusMeta(status) {
     if (status === 'approved') return { id: 'approved', label: '게시 중', cls: 'ok' };
     if (status === 'rejected') return { id: 'rejected', label: '반려됨', cls: 'bad' };
@@ -134,6 +161,29 @@
     return '--c:' + c;
   }
 
+  /* 스크린샷 여러 장 — 줄바꿈·쉼표·파이프·세미콜론으로 이어 붙인 주소를 나눈다. */
+  function shotsOf(app) {
+    var raw = app && app.screenshot_url;
+    var single = Array.isArray(app && app.shots) ? app.shots : null;
+    var list = single ? single : String(raw || '').split(/[\n\r,|;]+/);
+    var out = [], seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var u = String(list[i] || '').trim();
+      if (!/^https?:\/\//i.test(u) || seen[u]) continue;
+      seen[u] = 1;
+      out.push(u);
+      if (out.length >= 8) break;
+    }
+    return out;
+  }
+
+  function dateFull(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+  }
+
   function daysAgo(iso) {
     var t = iso ? new Date(iso).getTime() : 0;
     if (!t) return '';
@@ -162,12 +212,99 @@
     return i < 0;
   }
 
+  /* ---------------- 발견 탭 상단 배너 기본값 ----------------
+     관리자(admin.html)가 site_config 'home' 행의 discover 값을 저장하면 그것이 이긴다. */
+  var DISCOVER_BANNER = {
+    enabled: true,
+    badge: '개발자 포털',
+    title: '내가 만든 도구도 Soft Hub 발견 탭에 올려 보세요',
+    subtitle: '이름·한 줄 소개·아이콘만 정하면 관리자 승인 뒤 도구 페이지가 만들어집니다.',
+    btnText: '개발자 포털 열기',
+    url: 'portal.html'
+  };
+
+  function discoverBanner(raw) {
+    var d = (raw && typeof raw === 'object') ? raw : {};
+    var url = normalizeUrl(d.url);
+    return {
+      enabled: d.enabled !== false,
+      badge: String(d.badge || DISCOVER_BANNER.badge).slice(0, 24),
+      title: String(d.title || DISCOVER_BANNER.title).slice(0, 80),
+      subtitle: String(d.subtitle || DISCOVER_BANNER.subtitle).slice(0, 140),
+      btnText: String(d.btnText || DISCOVER_BANNER.btnText).slice(0, 24),
+      url: url || DISCOVER_BANNER.url,
+      external: /^https?:\/\//i.test(url || '') && (url || '').indexOf(location.host) < 0
+    };
+  }
+
+  /* 공개 설정에서 배너를 읽는다. 실패하면 기본 배너를 그대로 쓴다. */
+  function loadDiscoverBanner() {
+    var fallback = discoverBanner(null);
+    if (!window.LemonCloud || !LemonCloud.getDiscoverBanner) return Promise.resolve(fallback);
+    return Promise.resolve()
+      .then(function () { return LemonCloud.init ? LemonCloud.init() : null; })
+      .then(function () { return LemonCloud.getDiscoverBanner(); })
+      .then(function (v) { return v ? discoverBanner(v) : fallback; }, function () { return fallback; });
+  }
+
+  /* ---------------- 이 기기 지표 (조회 · 사이트 열기) ---------------- */
+  var VIEW_KEY = 'soft_hub_tool_views_v1';
+  var CLICK_KEY = 'soft_hub_tool_clicks_v1';
+
+  function bumpCounter(key, id) {
+    id = String(id || '');
+    if (!id) return;
+    try {
+      var map = JSON.parse(localStorage.getItem(key) || '{}');
+      if (!map || typeof map !== 'object' || Array.isArray(map)) map = {};
+      var n = Number(map[id]) || 0;
+      if (n < 99999) map[id] = n + 1;
+      localStorage.setItem(key, JSON.stringify(map));
+    } catch (e) { }
+  }
+  function bumpView(id) { bumpCounter(VIEW_KEY, id); }
+  function bumpClick(id) { bumpCounter(CLICK_KEY, id); }
+
+  /* ---------------- 유용함 (이 기기 기록 + 가능 시 클라우드 집계) ---------------- */
+  var USEFUL_KEY = 'soft_hub_tool_useful_v1';
+  function usefulMap() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(USEFUL_KEY) || '{}');
+      return (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    } catch (e) { return {}; }
+  }
+  function isUseful(id) { return usefulMap()[String(id)] === 1; }
+  function toggleUseful(id) {
+    id = String(id);
+    var map = usefulMap();
+    var next = map[id] === 1 ? 0 : 1;
+    if (next) map[id] = 1; else delete map[id];
+    try { localStorage.setItem(USEFUL_KEY, JSON.stringify(map)); } catch (e) { }
+    return !!next;
+  }
+
   window.LemonCommunity = {
-    __v: 1,
+    __v: 2,
     ICONS: ICONS,
     ICON_KEYS: ICON_KEYS,
     CATEGORIES: CATEGORIES,
     catLabel: catLabel,
+    GROUPS: GROUPS,
+    groupOf: groupOf,
+    groupById: groupById,
+    groupLabel: groupLabel,
+    shotsOf: shotsOf,
+    dateFull: dateFull,
+    DISCOVER_BANNER: DISCOVER_BANNER,
+    discoverBanner: discoverBanner,
+    loadDiscoverBanner: loadDiscoverBanner,
+    isUseful: isUseful,
+    bumpView: bumpView,
+    bumpClick: bumpClick,
+    viewKey: VIEW_KEY,
+    clickKey: CLICK_KEY,
+    toggleUseful: toggleUseful,
+    usefulKey: USEFUL_KEY,
     statusMeta: statusMeta,
     esc: esc,
     normalizeUrl: normalizeUrl,

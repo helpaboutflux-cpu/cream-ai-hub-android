@@ -8,11 +8,12 @@
 --    2) 관리자 이메일 등록 (맨 아래 '관리자 등록' 주석 참고)
 --
 --  테이블
---    site_config      사이트 상단 공지 · 홈 배너 · 광고 ON/OFF      (전 방문자 읽기)
+--    site_config      상단 공지 · 홈 배너 · 발견 탭 배너 · 광고 ON/OFF (전 방문자 읽기)
 --    site_ads         Flux Feed 광고 목록                            (전 방문자 읽기)
 --    shared_pages     짧은 공유 링크(view.html?id=...)               (링크 보유자 읽기)
 --    admin_users      관리자 이메일 목록                             (관리자만 확인)
---    community_apps   커뮤니티 앱 전시 (portal.html 등록 → 관리자 승인)
+--    community_apps   도구 전시 (portal.html 등록 → 관리자 승인)
+--    tool_signals     도구 '유용함' · '신고' 신호 (선택 · 없어도 화면은 동작)
 --  관리자 전용 함수
 --    admin_list_lk_accounts()  LK ID 가입 계정 목록 (관리자 세션만, 9번 항목)
 --  모든 테이블에 RLS 가 켜져 있고, 쓰기는 관리자/본인으로 제한됩니다.
@@ -378,6 +379,51 @@ create policy "site_config public read"
   on public.site_config for select
   to anon, authenticated
   using (id in ('notice', 'home', 'ads', 'cloudinary'));
+
+-- ------------------------------------------------------------
+-- 11. tool_signals — 도구 '유용함' · '신고' (선택)
+--     · 표가 없어도 tool.html · portal.html 은 이 기기 기록만으로 동작한다.
+--     · 유용함은 누구나 읽어 집계하고, 신고 내용은 관리자만 읽는다.
+-- ------------------------------------------------------------
+create table if not exists public.tool_signals (
+  id         bigserial primary key,
+  app_id     uuid not null references public.community_apps (id) on delete cascade,
+  kind       text not null default 'useful',
+  note       text not null default '',
+  created_at timestamptz not null default now(),
+  constraint tool_signals_kind check (kind in ('useful', 'report')),
+  constraint tool_signals_note check (char_length(note) <= 500)
+);
+
+create index if not exists tool_signals_app_idx on public.tool_signals (app_id, kind);
+
+alter table public.tool_signals enable row level security;
+
+drop policy if exists "tool_signals public read"  on public.tool_signals;
+drop policy if exists "tool_signals admin read"   on public.tool_signals;
+drop policy if exists "tool_signals public insert" on public.tool_signals;
+
+-- 유용함 집계는 누구나 읽는다(신고 글은 이 정책에 걸리지 않는다).
+create policy "tool_signals public read"
+  on public.tool_signals for select
+  to anon, authenticated
+  using (kind = 'useful');
+
+-- 신고 내용은 관리자만 본다.
+create policy "tool_signals admin read"
+  on public.tool_signals for select
+  to authenticated
+  using (public.is_site_admin());
+
+-- 방문자는 유용함·신고를 한 줄씩 남길 수 있다.
+create policy "tool_signals public insert"
+  on public.tool_signals for insert
+  to anon, authenticated
+  with check (kind in ('useful', 'report') and char_length(note) <= 500);
+
+grant select, insert on public.tool_signals to anon;
+grant select, insert on public.tool_signals to authenticated;
+grant usage, select on sequence public.tool_signals_id_seq to anon, authenticated;
 -- << community_apps
 
 -- 확인용
