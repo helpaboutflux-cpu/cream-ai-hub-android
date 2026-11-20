@@ -931,7 +931,7 @@
   </div>
 </div>
 
-<script src="lemon-cloud.js"></script>
+<script src="lemon-cloud.js?v=20261120c"></script>
 <script src="lemon-gdrive.js"></script>
 <script src="lemon-site.js"></script>
 <script src="lemon-ui.js"></script>
@@ -2186,14 +2186,20 @@
     });
 
     var codeInput = $('codeInput');
+    function codeLen() {
+      return String((codeInput && codeInput.value) || '').replace(/\D/g, '').length;
+    }
+    /* 안내는 6자리 기준이지만, OTP 길이 설정이 달라 7~8자리가 와도 통과한다. */
+    function codeUsable(n) { return n >= 6 && n <= 8; }
     if (codeInput) {
       codeInput.addEventListener('input', function () {
-        var digits = String(codeInput.value || '').replace(/\D/g, '').slice(0, 6);
+        var digits = String(codeInput.value || '').replace(/\D/g, '').slice(0, 8);
         if (codeInput.value !== digits) codeInput.value = digits;
-        $('codeBtn').disabled = digits.length !== 6;
+        var btnEl = $('codeBtn');
+        if (btnEl) btnEl.disabled = !codeUsable(digits.length);
       });
       codeInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && String(codeInput.value || '').length === 6) {
+        if (e.key === 'Enter' && codeUsable(codeLen())) {
           e.preventDefault();
           $('codeBtn').click();
         }
@@ -2201,36 +2207,100 @@
     }
 
     $('codeBtn').addEventListener('click', function () {
-      var mail = ($('confirmMail').textContent || '').trim();
-      var code = String(($('codeInput') && $('codeInput').value) || '').replace(/\D/g, '');
       var btn = $('codeBtn');
-      if (code.length !== 6) { codeMsg('6자리 코드를 넣어 주세요.', 'err'); return; }
-      btn.disabled = true;
-      btn.textContent = '확인 중…';
-      codeMsg('', '');
-      LemonCloud.verifySignupCode(mail, code).then(function (r) {
+      var mail = ($('confirmMail').textContent || '').trim();
+      var code = String(($('codeInput') && $('codeInput').value) || '').replace(/\D/g, '').slice(0, 8);
+      var busy = false;   /* 중복 클릭 차단 */
+      var done = false;   /* 응답·오류·시간초과 중 먼저 온 것만 반영 */
+      var watchdog = null;
+
+      function restore() {
+        if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+        busy = false;
+        if (!btn) return;
         btn.textContent = '인증 완료';
         btn.disabled = false;
-        var u = (r && r.user) || LemonCloud.sessionUser();
-        if (!u) { codeMsg('인증은 되었지만 세션을 받지 못했습니다. 로그인해 주세요.', 'err'); return; }
-        hideConfirm();
-        showVerify('ok', '<b>이메일 인증이 완료되었습니다!</b> 이제 LK 계정을 바로 사용할 수 있어요.');
-        paintVerifiedBanner();
-        rememberSignupEmail('');
-        if (!wantsSettings && goNext(420)) return;
-        openSettings(u);
-      }, function (err) {
-        btn.textContent = '인증 완료';
-        btn.disabled = false;
-        var m = String((err && err.message) || '');
-        if (/expired|invalid|not found/i.test(m)) {
+      }
+
+      function fail(err) {
+        if (done) { restore(); return; }
+        done = true;
+        restore();
+        var m = String((err && (err.message || err.code)) || '');
+        if (/request-timeout|timeout|timed out/i.test(m)) {
+          codeMsg('서버 응답이 오지 않습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.', 'err');
+        } else if (/network|failed to fetch|load failed|abort/i.test(m)) {
+          codeMsg('네트워크 오류로 인증하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'err');
+        } else if (/cloud-not-configured|not-configured/i.test(m)) {
+          codeMsg('지금은 인증 서버에 연결할 수 없습니다. 잠시 뒤 다시 시도해 주세요.', 'err');
+        } else if (/expired|invalid|not found/i.test(m)) {
           codeMsg('코드가 맞지 않거나 만료되었습니다. 인증 코드를 다시 받아 주세요.', 'err');
         } else if (/rate|too many/i.test(m)) {
           codeMsg('시도가 너무 많습니다. 잠시 뒤 다시 시도해 주세요.', 'err');
         } else {
           codeMsg('인증하지 못했습니다. 코드를 확인하거나 다시 받아 주세요.', 'err');
         }
-      });
+      }
+
+      if (!codeUsable(code.length)) {
+        codeMsg('6자리 코드를 넣어 주세요.', 'err');
+        restore();
+        return;
+      }
+      if (busy) return;
+
+      var verify = (window.LemonCloud && typeof LemonCloud.verifySignupCode === 'function') ? LemonCloud.verifySignupCode : null;
+      if (!verify) {
+        codeMsg('인증 모듈을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.', 'err');
+        restore();
+        return;
+      }
+
+      busy = true;
+      done = false;
+      codeMsg('', '');
+      if (btn) { btn.disabled = true; btn.textContent = '확인 중…'; }
+
+      /* 응답이 아예 오지 않아도 20초 뒤에는 버튼과 안내를 되돌린다. */
+      watchdog = setTimeout(function () {
+        if (done) return;
+        done = true;
+        restore();
+        codeMsg('서버 응답이 오지 않습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.', 'err');
+      }, 20000);
+
+      try {
+        var pending = verify.call(LemonCloud, mail, code);
+        if (!pending || typeof pending.then !== 'function') throw new Error('verifier-unavailable');
+        Promise.resolve(pending).then(function (r) {
+          if (done) { restore(); return; }
+          done = true;
+          restore();
+          try {
+            var u = (r && r.user) || LemonCloud.sessionUser();
+            if (!u) {
+              codeMsg('인증은 되었지만 세션을 받지 못했습니다. 로그인해 주세요.', 'err');
+              return;
+            }
+            hideConfirm();
+            showVerify('ok', '<b>이메일 인증이 완료되었습니다!</b> 이제 LK 계정을 바로 사용할 수 있어요.');
+            paintVerifiedBanner();
+            rememberSignupEmail('');
+            if (!wantsSettings && goNext(420)) return;
+            openSettings(u);
+          } catch (e) {
+            codeMsg('인증은 되었지만 화면을 여는 중 문제가 생겼습니다. 새로고침 후 다시 시도해 주세요.', 'err');
+          }
+        }, function (err) { fail(err); });
+      } catch (e) {
+        if (/verifier-unavailable/.test(String((e && e.message) || ''))) {
+          done = true;
+          restore();
+          codeMsg('인증 모듈을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.', 'err');
+        } else {
+          fail(e);
+        }
+      }
     });
 
     $('backToLogin').addEventListener('click', function () {

@@ -102,7 +102,8 @@
     try {
       var cs = doc.currentScript;
       if (!cs || !cs.src) {
-        var list = doc.querySelectorAll('script[src$="lemon-cloud.js"]');
+        /* ?v= 같은 캐시 버스팅 쿼리가 붙어도 찾도록 부분 일치로 본다. */
+        var list = doc.querySelectorAll('script[src*="lemon-cloud.js"]');
         cs = list[list.length - 1];
       }
       return String(cs && cs.src || '').replace(/[?#].*$/, '').replace(/[^/]*$/, '');
@@ -174,6 +175,15 @@
     return h;
   }
 
+  var REQUEST_TIMEOUT_MS = 15000;
+
+  function timeoutError() {
+    var e = new Error('request-timeout');
+    e.status = 0;
+    e.code = 'request-timeout';
+    return e;
+  }
+
   function request(path, opts) {
     opts = opts || {};
     if (!cfgReady()) {
@@ -186,7 +196,15 @@
       cache: 'no-store'
     };
     if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
-    return fetch(url, init).then(function (r) {
+    var ms = (typeof opts.timeout === 'number' && opts.timeout > 0) ? opts.timeout : REQUEST_TIMEOUT_MS;
+    /* 응답이 끝나지 않아도 무한 대기하지 않도록 15초 상한을 둔다. */
+    var aborter = null;
+    if (typeof AbortController === 'function') {
+      try { aborter = new AbortController(); init.signal = aborter.signal; } catch (e) { aborter = null; delete init.signal; }
+    }
+    var timer = null;
+    var timedOut = false;
+    var work = fetch(url, init).then(function (r) {
       return r.text().then(function (txt) {
         var data = null;
         try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = txt; }
@@ -198,6 +216,21 @@
         }
         return data;
       });
+    });
+    var guard = new Promise(function (resolve, reject) {
+      timer = setTimeout(function () {
+        timedOut = true;
+        if (aborter) { try { aborter.abort(); } catch (e) { } }
+        reject(timeoutError());
+      }, ms);
+    });
+    return Promise.race([work, guard]).then(function (data) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      return data;
+    }, function (err) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (timedOut) throw timeoutError();
+      throw err;
     });
   }
 
@@ -291,8 +324,9 @@
       });
   }
 
-  /* 6자리 인증 코드 확인 — 성공하면 세션을 저장해 바로 로그인 상태가 된다.
-     Supabase 메일 템플릿에 {{ .Token }} 이 있어야 6자리 코드가 발송된다. */
+  /* 인증 코드 확인(6~8자리) — 성공하면 세션을 저장해 바로 로그인 상태가 된다.
+     Supabase 메일 템플릿에 {{ .Token }} 이 있어야 숫자 코드가 발송된다.
+     OTP 길이 설정이 8자리였던 시기에 발송된 코드도 들어올 수 있어 8자리까지 받는다. */
   function verifySignupCode(email, token) {
     var mail = String(email || '').trim();
     var code = String(token || '').replace(/\D/g, '').slice(0, 8);
