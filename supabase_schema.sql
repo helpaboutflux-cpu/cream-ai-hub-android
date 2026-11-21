@@ -1589,6 +1589,48 @@ create policy "user_sessions own delete"
 
 grant select, insert, update, delete on public.user_sessions to authenticated;
 
+-- 18. launcher_views — Web Launcher 방문자 통계
+--     · 배포한 정적 사이트에 심는 1KB 비콘이 방문마다 한 줄을 남긴다.
+--     · site_id 는 배포할 때 발급되는 무작위 값(ls_...)이라 주소를 아는 소유자만 조회할 수 있다.
+--     · 표가 없어도 Web Launcher 는 "통계 테이블 준비 후 실시간 집계됩니다" 안내만 보여 주고
+--       배포·미리보기·에디터는 그대로 동작한다.
+-- ------------------------------------------------------------
+create table if not exists public.launcher_views (
+  id          bigint generated always as identity primary key,
+  site_id     text not null,
+  device_type text not null default 'desktop',
+  referrer    text not null default '',
+  created_at  timestamptz not null default now(),
+  constraint launcher_views_site_len   check (char_length(site_id) between 6 and 64),
+  constraint launcher_views_device_chk check (device_type in ('mobile', 'tablet', 'desktop')),
+  constraint launcher_views_ref_len    check (char_length(referrer) <= 200)
+);
+
+create index if not exists idx_launcher_views_site_time
+  on public.launcher_views (site_id, created_at desc);
+
+alter table public.launcher_views enable row level security;
+
+drop policy if exists "launcher_views public insert" on public.launcher_views;
+drop policy if exists "launcher_views owner read"    on public.launcher_views;
+
+-- 배포된 사이트를 연 방문자는 한 줄만 남길 수 있다.
+create policy "launcher_views public insert"
+  on public.launcher_views for insert
+  to anon, authenticated
+  with check (char_length(site_id) between 6 and 64);
+
+-- 조회는 site_id 값을 아는 쪽(소유자의 Web Launcher)만 한다.
+create policy "launcher_views owner read"
+  on public.launcher_views for select
+  to anon, authenticated
+  using (char_length(site_id) between 6 and 64);
+
+grant select, insert on public.launcher_views to anon;
+grant select, insert on public.launcher_views to authenticated;
+grant usage, select on sequence public.launcher_views_id_seq to anon, authenticated;
+-- << launcher_views
+
 -- 확인용
 select 'site_config'    as table_name, count(*) from public.site_config
 union all
@@ -1609,6 +1651,8 @@ union all
 select 'notifications', count(*) from public.notifications
 union all
 select 'notification_prefs', count(*) from public.notification_prefs
+union all
+select 'launcher_views', count(*) from public.launcher_views
 union all
 select 'oauth_grants', count(*) from public.oauth_grants
 union all

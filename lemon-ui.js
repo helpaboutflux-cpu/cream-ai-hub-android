@@ -267,6 +267,24 @@
     isQuotaError: isQuotaError
   };
 
+  /* 한 번의 저장 결과를 그대로 돌려주는 안전 저장 함수.
+     · localStorage 에 들어가면  { ok:true, via:'ls' }  — 아무 안내도 필요 없다.
+     · localStorage 가 꽉 차 IndexedDB 로 넘겨 저장되면 { ok:true, via:'idb' }
+       — 저장은 성공했으므로 서비스는 경고를 띄우지 않는다.
+     · IndexedDB 저장까지 실패했을 때만 { ok:false } 이고, 이때만 경고 배너가 뜬다. */
+  function safeSave(key, value) {
+    var text;
+    if (typeof value === 'string') text = value;
+    else {
+      try { text = JSON.stringify(value); } catch (e) { lastStoreError = e; return { ok: false, via: null, error: e }; }
+      if (text === undefined) text = '';
+    }
+    var ok = writeKey(key, text);
+    if (!ok) return { ok: false, via: null, error: lastStoreError || new Error('storage-write-failed') };
+    var via = (idbSaved[key] || Object.prototype.hasOwnProperty.call(memText, key)) ? 'idb' : 'ls';
+    return { ok: true, via: via, error: null };
+  }
+
   /* ---------------- native localStorage access ----------------
      서비스 페이지 대부분은 Lemon.store 를 거치지 않고 localStorage 를 직접 부른다.
      그래서 아래에서 Storage.prototype 을 감싸고, 런타임 내부는 감싸기 전의 원본으로 접근한다. */
@@ -590,6 +608,12 @@
     opts = opts || {};
     /* 사용자가 '다시 보지 않기'를 눌렀다면 자동 경고는 쉰다. force(미리보기)는 예외. */
     if (!opts.force && warnMutedNow()) return null;
+    /* 이 키가 방금 IndexedDB 로 정상 저장됐다면 알릴 일이 없다:
+       localStorage 가 꽉 찼다는 이유만으로 경고를 띄우지 않는다. */
+    if (!opts.force && opts.key) {
+      var k0 = String(opts.key);
+      if (idbSaved[k0] || (store.source(k0) === 'idb')) return null;
+    }
     kitStyle();
     if (warnEl) { warnEl.classList.add('show'); return warnEl; }
     var now = Date.now();
@@ -1178,6 +1202,8 @@
 
   window.Lemon = {
     store: store,
+    storage: store,
+    safeSave: safeSave,
     keys: function () { return lsKeys().slice(); },
     ready: ready,
     hydrated: function () { return hydrated; },

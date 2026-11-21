@@ -1397,10 +1397,16 @@ html.dark .note::after { background: linear-gradient(112deg, transparent 32%, rg
       state.dbReady = true;
     }, function (err) {
       state.dbReady = false;
+      /* IndexedDB 사본이 실패해도 localStorage(또는 공용 런타임의 IndexedDB 전환)에
+         이미 저장됐다면 알릴 일이 없다. 둘 다 실패했을 때만 조용히 경고한다. */
+      var savedSomewhere = false;
+      try { savedSomewhere = localStorage.getItem(MIRROR) !== null; } catch (e) { savedSomewhere = false; }
+      if (!savedSomewhere && window.Lemon && Lemon.store) savedSomewhere = Lemon.store.source(MIRROR) !== null;
+      if (savedSomewhere) return;
       if (!state.dbWarned) {
         state.dbWarned = true;
-        console.warn('[Flux Memo] IndexedDB 저장 실패, 브라우저 저장소로 대체합니다.', err);
-        if (window.Lemon && Lemon.toast) Lemon.toast('저장 공간이 부족해 일부만 저장됐어요', 'warn');
+        console.warn('[Flux Memo] 저장 실패: 남은 저장 공간이 없습니다.', err);
+        if (window.Lemon && Lemon.toast) Lemon.toast('저장 공간이 부족해 방금 내용을 저장하지 못했어요', 'err');
       }
     });
   }

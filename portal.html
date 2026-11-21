@@ -2174,6 +2174,7 @@ html.dark .toast--err { background: #be123c; border-color: #be123c; color: #fff;
       $('pvAuthor').textContent = state.author || '—';
       if (!state.apps.length) loadMine();
       if (!$('apiWrap').hidden && !state.clients.length) loadClients();
+      if (LP_PREFILL.active) applyLauncherPrefill();
     }
     applyControls();
   }
@@ -4016,6 +4017,76 @@ html.dark .toast--err { background: #be123c; border-color: #be123c; color: #fff;
     });
   }
 
+  /* ---------------- Web Launcher 에서 넘어온 값 프리필 ---------------- */
+  /* index.html Web Launcher 의 [개발자 포털에 등록] 은
+     portal.html?from=launcher&name=...&url=... 로 넘어온다.
+     로그인 전에 넘어와도 값이 사라지지 않도록 sessionStorage 에 30분간 보관한다. */
+  var LP_PREFILL_KEY = 'portal_launcher_prefill_v1';
+
+  var LP_PREFILL = (function () {
+    var out = { active: false, name: '', url: '' };
+    try {
+      var p = new URLSearchParams(location.search);
+      if (p.get('from') === 'launcher') {
+        out.active = true;
+        out.name = String(p.get('name') || '').trim().slice(0, 60);
+        out.url = String(p.get('url') || '').trim().slice(0, 500);
+        try {
+          sessionStorage.setItem(LP_PREFILL_KEY, JSON.stringify({ name: out.name, url: out.url, at: Date.now() }));
+        } catch (e) { }
+        return out;
+      }
+    } catch (e) { }
+    try {
+      var raw = sessionStorage.getItem(LP_PREFILL_KEY);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        if (saved && (Date.now() - (saved.at || 0)) < 1800000) {
+          out.active = true;
+          out.name = String(saved.name || '').slice(0, 60);
+          out.url = String(saved.url || '').slice(0, 500);
+        }
+      }
+    } catch (e) { }
+    return out;
+  })();
+
+  function applyLauncherPrefill() {
+    if (!LP_PREFILL.active) return false;
+
+    /* 로그인 게이트에서 돌아올 때 원래 값까지 함께 돌아오게 한다. */
+    var loginLink = document.querySelector('#builderGate a[href^="auth.html"]');
+    if (loginLink) {
+      try {
+        var next = location.pathname.split('/').pop() + '?from=launcher&name=' +
+          encodeURIComponent(LP_PREFILL.name) + '&url=' + encodeURIComponent(LP_PREFILL.url);
+        loginLink.setAttribute('href', 'auth.html?next=' + encodeURIComponent(next));
+      } catch (e) { }
+    }
+
+    var nameEl = $('fName'), urlEl = $('fUrl');
+    var filled = false;
+    if (nameEl && LP_PREFILL.name && !nameEl.value.trim()) { nameEl.value = LP_PREFILL.name; filled = true; }
+    if (urlEl && LP_PREFILL.url && !urlEl.value.trim()) { urlEl.value = LP_PREFILL.url; filled = true; }
+
+    if (filled) {
+      try { paintPreview(); } catch (e) { }
+      inlineMsg('formMsg', 'ok', 'Web Launcher에서 배포한 사이트 정보를 채워 두었습니다. 소개와 카테고리를 고른 뒤 등록하면 발견 탭에 올라갑니다.');
+    }
+
+    var gate = $('builderGate');
+    if (gate && !$('lpPrefillNote')) {
+      var note = document.createElement('p');
+      note.id = 'lpPrefillNote';
+      note.className = 'gate__desc';
+      note.style.marginTop = '6px';
+      note.textContent = 'Web Launcher에서 넘어온 배포 주소(' + (LP_PREFILL.url || '주소 없음') + ')를 기억해 두었습니다. 로그인하면 등록 폼에 그대로 채워집니다.';
+      var desc = gate.querySelector('.gate__desc');
+      if (desc && desc.parentNode) desc.parentNode.insertBefore(note, desc.nextSibling);
+    }
+    return filled;
+  }
+
   /* ---------------- 시작 ---------------- */
   function boot() {
     buildCategories();
@@ -4030,6 +4101,10 @@ html.dark .toast--err { background: #be123c; border-color: #be123c; color: #fff;
     resetForm();
     paintCloudNote();
     switchView(viewFromHash(), { keepScroll: true });
+    if (LP_PREFILL.active) {
+      switchView('builder');
+      applyLauncherPrefill();
+    }
 
     if (window.Lemon && Lemon.upgradeColorPickers) { try { Lemon.upgradeColorPickers(document); } catch (e) { } }
 
