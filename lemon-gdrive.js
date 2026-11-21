@@ -1870,6 +1870,20 @@
     lang: '번역 설정', followed: '스포츠 팔로우', drive: 'Flux Drive',
     devhub: '개발자 허브', unlock: '앱 잠금', pop: 'Flux Pop',
     lemon3d: 'Lemon 3D', lemonlogo: 'Lemon Logo', fluxgroups: 'Flux Groups 닉네임',
+    autosave: 'Lemon QR 자동 저장', canvas: 'Lemon Canvas', chart: 'Lemon Chart',
+    diary: 'Lemon Diary', erase: 'Lemon Erase', grid: 'Lemon Grid',
+    habits: 'Lemon Habits', map: 'Lemon Map', mind: 'Lemon Mind',
+    publish: 'Flux Publish', push: '알림 설정', slides: 'Flux Slides',
+    table: 'Lemon Table', wall: 'Lemon Wall', 'keyval-store': '공통 저장소 (도구 캐시)',
+    clock: 'Lemon Clock', calculator: 'Lemon Calculator', cam: 'Lemon Cam',
+    card: 'Lemon Card', cube: 'Lemon Cube', blur: 'Lemon Blur', fridge: 'Lemon Fridge',
+    mark: 'Lemon Mark', ocr: 'Lemon OCR', reel: 'Lemon Reel', shorts: 'Flux Shorts',
+    sheets: 'Flux Sheets', speech: 'Lemon Speech', speed: 'Lemon Speed', spell: 'Lemon Spell',
+    start: 'Lemon Start', study: 'Flux Study', transit: 'Lemon Transit',
+    translate: 'Lemon Translate', trip: 'Lemon Trip', wallpaper: 'Lemon Wallpaper',
+    wiki: 'Lemon Wiki', link: 'Lemon Link', launcher: '웹런처', pack: 'Lemon Pack',
+    manager: 'Lemon Manager', feed: 'Flux Feed', cast: 'Flux Cast',
+    frame: 'Flux Frame', deploy: '배포 설정',
     etc: '기타 설정'
   };
   function svcToken(name) {
