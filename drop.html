@@ -74,13 +74,14 @@
       }
     }
   </script>
-  <!-- PeerJS for WebRTC P2P -->
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- PeerJS for WebRTC P2P: 저장소의 로컬 사본을 먼저 쓰고, 없을 때만 CDN -->
+  <script src="peerjs.min.js"></script>
+  <script>(function(){ if (window.Peer) return; var s=document.createElement("script"); s.src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"; s.async=true; document.head.appendChild(s); })();</script>
   <!-- QRCode.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto, "Noto Sans KR", system-ui, sans-serif;
       overflow-x: hidden;
     }
 
@@ -311,6 +312,258 @@
       box-shadow: 0 0 25px rgba(59, 130, 246, 0.25) !important;
     }
     
+
+    /* ---------- v1.2 polish: secret banner · queue · transfer meta · QR scan ---------- */
+    .drop-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.8rem;
+      padding: 0.9rem 1rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(8, 145, 178, 0.26);
+      background: linear-gradient(135deg, rgba(8, 145, 178, 0.09), rgba(37, 99, 235, 0.06) 55%, rgba(255, 255, 255, 0) 100%);
+    }
+    .dark .drop-banner {
+      border-color: rgba(34, 211, 238, 0.26);
+      background: linear-gradient(135deg, rgba(8, 145, 178, 0.2), rgba(37, 99, 235, 0.12) 60%, rgba(9, 9, 11, 0) 100%);
+    }
+    .drop-banner.is-hidden { display: none; }
+    .drop-banner .db-ico {
+      flex: none;
+      width: 2.1rem;
+      height: 2.1rem;
+      border-radius: 0.7rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0891b2;
+      background: rgba(8, 145, 178, 0.12);
+      border: 1px solid rgba(8, 145, 178, 0.22);
+    }
+    .dark .drop-banner .db-ico { color: #22d3ee; background: rgba(34, 211, 238, 0.12); border-color: rgba(34, 211, 238, 0.25); }
+    .drop-banner .db-ico svg { width: 1.1rem; height: 1.1rem; }
+    .drop-banner .db-body { flex: 1 1 auto; min-width: 0; }
+    .drop-banner .db-title { font-size: 0.82rem; font-weight: 800; letter-spacing: -0.01em; color: #0f172a; }
+    .dark .drop-banner .db-title { color: #f4f4f5; }
+    .drop-banner .db-sub { margin-top: 0.2rem; font-size: 0.72rem; line-height: 1.55; color: #475569; }
+    .dark .drop-banner .db-sub { color: #a1a1aa; }
+    .drop-banner .db-acts { flex: none; display: flex; align-items: center; gap: 0.35rem; }
+    .drop-banner .db-open {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.45rem 0.8rem;
+      border-radius: 0.65rem;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #fff;
+      background: linear-gradient(135deg, #0891b2, #2563eb);
+      box-shadow: 0 6px 14px -6px rgba(8, 145, 178, 0.55);
+      white-space: nowrap;
+    }
+    .drop-banner .db-close {
+      width: 1.7rem;
+      height: 1.7rem;
+      border-radius: 0.55rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      border: 1px solid transparent;
+    }
+    .drop-banner .db-close:hover { color: #0f172a; background: rgba(15, 23, 42, 0.06); }
+    .dark .drop-banner .db-close { color: #a1a1aa; }
+    .dark .drop-banner .db-close:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+    @media (max-width: 640px) {
+      .drop-banner { flex-wrap: wrap; }
+      .drop-banner .db-acts { width: 100%; justify-content: flex-end; }
+    }
+
+    .conn-badge {
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 0.16rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .conn-badge.wait { color: #475569; background: rgba(148, 163, 184, 0.18); border-color: rgba(148, 163, 184, 0.3); }
+    .dark .conn-badge.wait { color: #d4d4d8; background: rgba(148, 163, 184, 0.16); }
+    .conn-badge.ok { color: #047857; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); }
+    .dark .conn-badge.ok { color: #6ee7b7; background: rgba(16, 185, 129, 0.18); }
+    .conn-badge.err { color: #b91c1c; background: rgba(239, 68, 68, 0.13); border-color: rgba(239, 68, 68, 0.3); }
+    .dark .conn-badge.err { color: #fca5a5; background: rgba(239, 68, 68, 0.18); }
+
+    .inline-note {
+      display: none;
+      font-size: 0.72rem;
+      line-height: 1.55;
+      padding: 0.5rem 0.65rem;
+      border-radius: 0.6rem;
+      border: 1px solid transparent;
+      word-break: break-all;
+    }
+    .inline-note.show { display: block; }
+    .inline-note.ok { color: #047857; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.28); }
+    .dark .inline-note.ok { color: #6ee7b7; }
+    .inline-note.err { color: #b91c1c; background: rgba(239, 68, 68, 0.09); border-color: rgba(239, 68, 68, 0.28); }
+    .dark .inline-note.err { color: #fca5a5; }
+    .inline-note.warn { color: #b45309; background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); }
+    .dark .inline-note.warn { color: #fcd34d; }
+    .inline-note:not(.ok):not(.err):not(.warn) { color: #334155; background: rgba(148, 163, 184, 0.12); border-color: rgba(148, 163, 184, 0.3); }
+    .dark .inline-note:not(.ok):not(.err):not(.warn) { color: #d4d4d8; }
+
+    .st-ok { color: #047857; }
+    .dark .st-ok { color: #6ee7b7; }
+    .st-err { color: #b91c1c; }
+    .dark .st-err { color: #fca5a5; }
+    .st-warn { color: #b45309; }
+    .dark .st-warn { color: #fcd34d; }
+    .st-busy { color: #1d4ed8; }
+    .dark .st-busy { color: #93c5fd; }
+
+    .q-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: 0.8rem;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(248, 250, 252, 0.92);
+    }
+    .dark .q-row { border-color: rgba(63, 63, 70, 0.85); background: rgba(24, 24, 27, 0.85); }
+    .q-row .q-ico {
+      flex: none;
+      width: 1.9rem;
+      height: 1.9rem;
+      border-radius: 0.55rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #2563eb;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.18);
+    }
+    .dark .q-row .q-ico { color: #93c5fd; background: rgba(59, 130, 246, 0.14); }
+    .q-row .q-file { flex: 1 1 auto; min-width: 0; }
+    .q-row .q-name { font-size: 0.76rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .q-row .q-meta { font-size: 0.66rem; color: #64748b; margin-top: 0.08rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dark .q-row .q-meta { color: #a1a1aa; }
+    .q-state {
+      flex: none;
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 0.14rem 0.45rem;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .q-state.waiting { color: #475569; background: rgba(148, 163, 184, 0.18); }
+    .dark .q-state.waiting { color: #d4d4d8; background: rgba(148, 163, 184, 0.16); }
+    .q-state.sending { color: #1d4ed8; background: rgba(59, 130, 246, 0.16); }
+    .dark .q-state.sending { color: #93c5fd; background: rgba(59, 130, 246, 0.2); }
+    .q-state.done { color: #047857; background: rgba(16, 185, 129, 0.16); }
+    .dark .q-state.done { color: #6ee7b7; background: rgba(16, 185, 129, 0.18); }
+    .q-state.error, .q-state.canceled { color: #b91c1c; background: rgba(239, 68, 68, 0.14); }
+    .dark .q-state.error, .dark .q-state.canceled { color: #fca5a5; background: rgba(239, 68, 68, 0.18); }
+    .q-x {
+      flex: none;
+      width: 1.55rem;
+      height: 1.55rem;
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+    }
+    .q-x:hover { color: #dc2626; background: rgba(239, 68, 68, 0.1); }
+    .q-mini {
+      font-size: 0.68rem;
+      font-weight: 800;
+      padding: 0.32rem 0.6rem;
+      border-radius: 0.55rem;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: #334155;
+      background: transparent;
+      white-space: nowrap;
+    }
+    .dark .q-mini { color: #d4d4d8; border-color: rgba(82, 82, 91, 0.9); }
+    .q-mini:hover { border-color: #3b82f6; color: #1d4ed8; }
+    .dark .q-mini:hover { color: #93c5fd; }
+    .q-mini-danger:hover { border-color: #ef4444; color: #dc2626; }
+    .dark .q-mini-danger:hover { color: #fca5a5; }
+
+    .h-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.1rem;
+      color: #475569;
+    }
+    .dark .h-row { color: #a1a1aa; }
+    .h-row .h-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .h-row .h-size { flex: none; font-family: ui-monospace, Menlo, monospace; font-size: 0.64rem; }
+    .h-row .h-time { flex: none; font-family: ui-monospace, Menlo, monospace; font-size: 0.64rem; color: #94a3b8; }
+
+    .rx-thumb {
+      flex: none;
+      width: 1.9rem;
+      height: 1.9rem;
+      border-radius: 0.55rem;
+      object-fit: cover;
+      background: rgba(148, 163, 184, 0.2);
+    }
+    .rx-meta { max-width: 100%; }
+
+    .scan-stage {
+      position: relative;
+      border-radius: 0.9rem;
+      overflow: hidden;
+      background: #0f172a;
+      aspect-ratio: 4 / 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .scan-stage video { width: 100%; height: 100%; object-fit: cover; }
+    .scan-frame {
+      position: absolute;
+      width: 54%;
+      aspect-ratio: 1 / 1;
+      border-radius: 0.8rem;
+      border: 2px solid rgba(34, 211, 238, 0.9);
+      box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.42);
+      pointer-events: none;
+    }
+    .input-err { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.22) !important; }
+
+    /* Shared toast (lemon-ui.js 는 storage 전용 모드라 스타일을 주입하지 않으므로 이 페이지에 둔다) */
+    .lemon-toast {
+      position: fixed; left: 50%; bottom: 1.35rem;
+      transform: translate(-50%, 1.4rem) scale(.94);
+      z-index: 90;
+      display: flex; align-items: center; gap: .55rem;
+      padding: .7rem 1rem; border-radius: 1rem;
+      font-size: .78rem; font-weight: 700; color: #fff;
+      background: rgba(18, 18, 21, .94);
+      border: 1px solid rgba(255, 255, 255, .12);
+      box-shadow: 0 20px 45px -18px rgba(0, 0, 0, .65);
+      backdrop-filter: blur(14px);
+      opacity: 0; pointer-events: none;
+      transition: opacity .24s cubic-bezier(.16, 1, .3, 1), transform .24s cubic-bezier(.16, 1, .3, 1);
+      max-width: min(92vw, 26rem); text-align: left;
+    }
+    .lemon-toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    .lemon-toast .lt-ico {
+      width: 1.35rem; height: 1.35rem; border-radius: 9999px;
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+      background: rgba(255, 255, 255, .14); color: #fff;
+    }
+    .lemon-toast .lt-ico svg { width: .85rem; height: .85rem; }
+    .lemon-toast.ok .lt-ico { background: #16a34a; }
+    .lemon-toast.err .lt-ico { background: #e11d48; }
+    .lemon-toast.info .lt-ico { background: #2563eb; }
+
   </style>
 <link rel="stylesheet" href="anim-mode.css">
 <script src="anim-mode.js"></script>
@@ -335,7 +588,7 @@
         <div>
           <div class="flex items-center space-x-2">
             <span class="font-bold text-base tracking-tight text-neutral-900 dark:text-white">Lemon Drop</span>
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800/60">P2P v1.1</span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800/60">P2P v1.2</span>
           </div>
           <p class="text-[11px] text-neutral-500 dark:text-neutral-400">Lemon soft가 만든 무제한 파일 전송</p>
         </div>
@@ -484,6 +737,27 @@
 
     <!-- 1. SEND PANEL -->
     <section id="panelSend" class="space-y-6">
+
+      <!-- Lemon Secret cross-promo banner (inline, dismissible) -->
+      <div id="secretBanner" class="drop-banner">
+        <span class="db-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10" width="15" height="10.5" rx="2.6"></rect><path d="M8 10V7.4a4 4 0 0 1 8 0V10"></path><circle cx="12" cy="15" r="1.3"></circle></svg>
+        </span>
+        <div class="db-body">
+          <p class="db-title">더 안전하게 보내려면 Lemon Secret을 사용해보세요</p>
+          <p class="db-sub">AES-256으로 암호화해 한 번 열람하면 사라지는 링크로 보낼 수 있어요. 비밀번호나 계정 정보처럼 남으면 안 되는 내용에 잘 맞습니다.</p>
+        </div>
+        <div class="db-acts">
+          <a href="secret.html" class="db-open">
+            <span>Lemon Secret 열기</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </a>
+          <button type="button" class="db-close" onclick="dismissSecretBanner()" aria-label="배너 닫기" title="배너 닫기">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+      </div>
+
       <div class="p-6 sm:p-10 rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6">
         <div id="dropZone" onclick="document.getElementById('fileInput').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition flex flex-col items-center justify-center space-y-3 bg-neutral-50/50 dark:bg-neutral-950/50">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-blue-600 dark:text-blue-400">
@@ -493,33 +767,49 @@
           </svg>
           <div class="space-y-1">
             <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-200">전송할 파일을 끌어다 놓거나 클릭하여 선택</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">모든 파일 형식 지원 · 용량 무제한 · P2P 다이렉트 전송</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">여러 개 선택 가능 · 모든 파일 형식 · 용량 무제한 · P2P 다이렉트 전송</p>
           </div>
-          <input type="file" id="fileInput" onchange="handleFileSelect(event)" class="hidden">
+          <input type="file" id="fileInput" multiple onchange="handleFileSelect(event)" class="hidden">
         </div>
 
-        <!-- Selected File & Code Info -->
-        <div id="sendActiveBox" class="hidden space-y-6 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700/60 gap-3">
-            <div class="space-y-0.5">
-              <span class="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">선택된 파일</span>
-              <p id="sendFileName" class="text-sm font-bold truncate max-w-xs sm:max-w-md">-</p>
-              <p id="sendFileSize" class="text-xs text-neutral-500">-</p>
-            </div>
-            <button onclick="resetSend()" class="px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition self-start sm:self-auto">다시 선택</button>
-          </div>
+        <p id="sendNotice" class="inline-note"></p>
 
-          <!-- Pairing Code & QR -->
+        <!-- Selected file queue -->
+        <div id="sendQueueBox" class="hidden space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-neutral-800 dark:text-neutral-200">전송 대기열</span>
+              <span id="queueCount" class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold">0개</span>
+              <span id="queueTotal" class="text-[11px] font-mono text-neutral-500">0 B</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" class="q-mini" onclick="document.getElementById('fileInput').click()">파일 추가</button>
+              <button type="button" class="q-mini q-mini-danger" onclick="clearSendQueue()">전체 비우기</button>
+            </div>
+          </div>
+          <div id="sendQueueList" class="space-y-2" onclick="onQueueListClick(event)"></div>
+        </div>
+
+        <!-- Pairing + transfer session -->
+        <div id="sendActiveBox" class="hidden space-y-6 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
             <div class="space-y-4">
-              <span class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">받는 기기에서 입력할 6자리 코드</span>
-              <div class="flex items-center space-x-3">
-                <span id="displayPairCode" class="font-mono text-3xl sm:text-4xl font-black tracking-widest px-4 py-2.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400">------</span>
-                <button onclick="copyPairLink()" class="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>링크 복사</span></button>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">받는 기기에서 입력할 6자리 코드</span>
+                <span id="connBadge" class="conn-badge wait">연결 대기</span>
               </div>
-              <p class="text-xs text-neutral-500 leading-relaxed">
-                받는 기기에서 Lemon Drop을 열고 위 코드를 입력하거나, 옆의 QR코드를 카메라로 스캔하면 즉시 파일 전송이 시작됩니다.
+              <div class="flex flex-wrap items-center gap-3">
+                <span id="displayPairCode" class="font-mono text-3xl sm:text-4xl font-black tracking-widest px-4 py-2.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400">------</span>
+                <button type="button" onclick="copyPairLink()" class="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span>링크 복사</span>
+                </button>
+              </div>
+              <p class="text-xs text-neutral-500 leading-relaxed" id="sendHintText">
+                받는 기기에서 Lemon Drop을 열고 위 코드를 입력하거나 QR코드를 스캔하면 전송이 시작됩니다. 연결은 한 번만 하면 다음 파일도 이어서 보낼 수 있습니다.
               </p>
+              <p class="text-[11px] font-mono text-neutral-400 dark:text-neutral-500">ICE <span id="iceStateText">대기</span></p>
             </div>
             <div class="flex flex-col items-center justify-center p-4 rounded-2xl bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 space-y-2">
               <div id="sendQrContainer" class="p-2 bg-white rounded-xl"></div>
@@ -527,15 +817,32 @@
             </div>
           </div>
 
-          <!-- Status Indicator -->
+          <!-- Current transfer -->
           <div class="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 space-y-2">
-            <div class="flex items-center justify-between text-xs font-medium">
-              <span id="sendStatusText" class="text-neutral-600 dark:text-neutral-400">수신자 연결 대기 중...</span>
-              <span id="sendProgressPercent" class="font-mono text-neutral-900 dark:text-white">0%</span>
+            <div class="flex items-center justify-between gap-2 text-xs font-medium">
+              <span id="sendStatusText" class="text-neutral-700 dark:text-neutral-300 truncate">수신자 연결 대기 중...</span>
+              <span id="sendProgressPercent" class="font-mono text-neutral-900 dark:text-white flex-none">0%</span>
             </div>
             <div class="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
-              <div id="sendProgressBar" class="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-200 shadow-sm shadow-blue-500/50" style="width: 0%"></div>
+              <div id="sendProgressBar" class="progress-stripes bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-200 shadow-sm shadow-blue-500/50" style="width: 0%"></div>
             </div>
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <div class="flex items-center gap-3 text-[11px] font-mono text-neutral-500">
+                <span id="sendSpeedText">0 KB/s</span>
+                <span class="text-neutral-300 dark:text-neutral-700">|</span>
+                <span id="sendEtaText">-</span>
+              </div>
+              <button type="button" id="btnCancelSend" onclick="cancelTransfer()" class="hidden q-mini q-mini-danger">전송 취소</button>
+            </div>
+          </div>
+
+          <!-- Sent in this connection -->
+          <div id="sendHistoryBox" class="hidden space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-neutral-800 dark:text-neutral-200">이번 연결에서 보낸 항목</span>
+              <span id="sendHistoryCount" class="text-[11px] font-mono text-neutral-500">0건</span>
+            </div>
+            <div id="sendHistoryList" class="space-y-1.5"></div>
           </div>
         </div>
       </div>
@@ -543,54 +850,83 @@
 
     <!-- 2. RECEIVE PANEL -->
     <section id="panelReceive" class="hidden space-y-6">
-      <div class="p-6 sm:p-10 rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 max-w-lg mx-auto">
+      <div class="p-6 sm:p-10 rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 max-w-2xl mx-auto">
         <div class="space-y-2 text-center">
           <h2 class="text-lg font-bold">전송 코드 입력</h2>
-          <p class="text-xs text-neutral-500">보내는 기기에 표시된 6자리 코드를 입력하세요.</p>
+          <p class="text-xs text-neutral-500">보내는 기기에 표시된 6자리 코드를 입력하거나 QR코드를 스캔하세요.</p>
         </div>
 
         <div class="space-y-4">
-          <input type="text" id="inputPairCode" maxlength="6" placeholder="000000" class="w-full text-center font-mono text-3xl font-extrabold tracking-widest px-4 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white uppercase outline-none focus:border-blue-600 dark:focus:border-blue-400 transition">
-          <button id="btnConnectReceive" onclick="connectAndReceive()" class="w-full flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-md shadow-blue-500/20 transition"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span>연결 및 파일 받기</span></button>
+          <input type="text" id="inputPairCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" class="w-full text-center font-mono text-3xl font-extrabold tracking-widest px-4 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white uppercase outline-none focus:border-blue-600 dark:focus:border-blue-400 transition">
+          <div class="flex flex-col sm:flex-row gap-2">
+            <button type="button" id="btnConnectReceive" onclick="connectAndReceive()" class="flex-1 flex items-center justify-center space-x-2 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-md shadow-blue-500/20 transition">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              <span>연결 및 파일 받기</span>
+            </button>
+            <button type="button" id="btnQrScan" onclick="startQrScan()" class="flex items-center justify-center space-x-2 px-5 py-3.5 rounded-2xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-100 text-sm font-bold hover:border-blue-500 transition">
+              <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2"></path><path d="M16 4h2a2 2 0 0 1 2 2v2"></path><path d="M20 16v2a2 2 0 0 1-2 2h-2"></path><path d="M8 20H6a2 2 0 0 1-2-2v-2"></path><line x1="7" y1="12" x2="17" y2="12"></line></svg>
+              <span>QR 스캔</span>
+            </button>
+          </div>
+          <p id="receiveNotice" class="inline-note"></p>
         </div>
 
-        <!-- Receive Status & Download Box -->
+        <!-- QR scanner -->
+        <div id="qrScanBox" class="hidden space-y-3 p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-neutral-800 dark:text-neutral-200">QR코드 스캔</span>
+            <button type="button" class="q-mini" onclick="stopQrScan()">닫기</button>
+          </div>
+          <div class="scan-stage">
+            <video id="qrVideo" playsinline muted autoplay></video>
+            <div class="scan-frame" aria-hidden="true"></div>
+          </div>
+          <p id="qrScanStatus" class="text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-400">카메라를 준비하면 여기에 화면이 나옵니다.</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="q-mini cursor-pointer inline-flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              <span>QR 이미지 선택</span>
+              <input type="file" id="qrImageInput" accept="image/*" class="hidden" onchange="handleQrImage(event)">
+            </label>
+            <span class="text-[11px] text-neutral-500">카메라가 없으면 스크린샷이나 QR 이미지를 올려 주세요.</span>
+          </div>
+        </div>
+
+        <!-- Receive status -->
         <div id="receiveStatusBox" class="hidden space-y-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
           <div class="space-y-2">
-            <div class="flex items-center justify-between text-xs font-medium">
-              <span id="receiveStatusText" class="text-neutral-600 dark:text-neutral-400">보내는 기기에 연결 중...</span>
-              <span id="receiveProgressPercent" class="font-mono text-neutral-900 dark:text-white">0%</span>
+            <div class="flex items-center justify-between gap-2 text-xs font-medium">
+              <span id="receiveStatusText" class="text-neutral-700 dark:text-neutral-300 truncate">보내는 기기에 연결 중...</span>
+              <span id="receiveProgressPercent" class="font-mono text-neutral-900 dark:text-white flex-none">0%</span>
             </div>
             <div class="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
-              <div id="receiveProgressBar" class="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-200 shadow-sm shadow-blue-500/50" style="width: 0%"></div>
+              <div id="receiveProgressBar" class="progress-stripes bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-200 shadow-sm shadow-blue-500/50" style="width: 0%"></div>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+              <div class="flex items-center gap-3 text-[11px] font-mono text-neutral-500">
+                <span id="receiveSpeedText">0 KB/s</span>
+                <span class="text-neutral-300 dark:text-neutral-700">|</span>
+                <span id="receiveEtaText">-</span>
+              </div>
+              <button type="button" id="btnCancelReceive" onclick="cancelReceive()" class="hidden q-mini q-mini-danger">받기 취소</button>
             </div>
           </div>
+        </div>
 
-          <div id="receiveDownloadCard" class="hidden p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 space-y-3">
-            <div>
-              <p class="text-xs font-mono text-neutral-500">수신 완료된 파일</p>
-              <p id="receivedFileName" class="text-sm font-bold truncate mt-0.5">-</p>
-              <p id="receivedFileSize" class="text-xs text-neutral-500">-</p>
+        <!-- Received files -->
+        <div id="receiveListBox" class="hidden space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-neutral-800 dark:text-neutral-200">받은 파일</span>
+              <span id="rxCount" class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold">0개</span>
+              <span id="rxTotal" class="text-[11px] font-mono text-neutral-500">0 B</span>
             </div>
-            <a id="btnDownloadReceived" href="#" download class="block w-full text-center py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition flex items-center justify-center space-x-2"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg><span>내 기기에 파일 저장</span></a>
+            <button type="button" onclick="saveAllReceived()" class="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold shadow-sm transition">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>전체 저장</span>
+            </button>
           </div>
-
-          <!-- Instant Image Preview Box -->
-          <div id="receiveImagePreviewBox" class="hidden p-3.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 space-y-2">
-            <span class="text-xs font-semibold text-neutral-500">수신 이미지 미리보기</span>
-            <div class="rounded-xl overflow-hidden max-h-64 flex items-center justify-center bg-black/5 dark:bg-black/40 p-1">
-              <img id="receivedImageEl" src="" alt="수신 이미지" class="max-h-60 object-contain rounded-lg">
-            </div>
-          </div>
-
-          <!-- Received Text Preview Card -->
-          <div id="receiveTextPreviewBox" class="hidden p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-mono text-neutral-500">수신된 텍스트 내용</span>
-              <button onclick="copyReceivedText()" class="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline">텍스트 복사</button>
-            </div>
-            <textarea id="receivedTextContent" readonly rows="4" class="w-full p-3 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-xs font-mono select-all outline-none leading-relaxed"></textarea>
-          </div>
+          <div id="receiveFileList" class="space-y-2" onclick="onReceiveListClick(event)"></div>
         </div>
       </div>
     </section>
@@ -600,28 +936,33 @@
       <div class="p-6 sm:p-10 rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 max-w-2xl mx-auto">
         <div class="space-y-1">
           <h2 class="text-lg font-bold">텍스트 및 링크 즉시 전송</h2>
-          <p class="text-xs text-neutral-500">긴 웹 주소, 메모, 인증번호, 코드를 다른 기기로 간편하게 넘깁니다.</p>
+          <p class="text-xs text-neutral-500">긴 웹 주소, 메모, 인증번호, 코드를 다른 기기로 간편하게 넘깁니다. 이미 연결된 기기가 있으면 코드 입력 없이 바로 보냅니다.</p>
         </div>
 
         <textarea id="quickTextInput" rows="5" placeholder="전송할 텍스트나 링크를 입력하세요..." class="w-full p-4 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white text-xs sm:text-sm outline-none focus:border-blue-600 dark:focus:border-blue-400 transition font-mono leading-relaxed"></textarea>
 
         <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <button onclick="shareTextViaPair()" class="w-full sm:w-auto flex items-center justify-center space-x-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg><span>전송 코드 및 QR 생성</span></button>
+          <button type="button" onclick="shareTextViaPair()" class="w-full sm:w-auto flex items-center justify-center space-x-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>텍스트 전송</span>
+          </button>
           <span id="textCharCount" class="text-xs text-neutral-500 font-mono">0 글자</span>
         </div>
+
+        <p id="textNotice" class="inline-note"></p>
 
         <div id="textPairResult" class="hidden pt-6 border-t border-neutral-200 dark:border-neutral-800 space-y-4">
           <div class="flex flex-col sm:flex-row items-center justify-between p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 gap-4">
             <div class="space-y-1 text-center sm:text-left">
-              <span class="text-xs font-semibold text-neutral-600 dark:text-neutral-400">수신 코드</span>
+              <span class="text-xs font-semibold text-neutral-600 dark:text-neutral-400">연결 코드</span>
               <p id="textPairCode" class="font-mono text-2xl font-black tracking-widest text-neutral-900 dark:text-white">------</p>
+              <p id="textTransferStatus" class="text-[11px] text-neutral-500 leading-relaxed">받는 기기에서 코드를 입력하면 전송이 시작됩니다.</p>
             </div>
             <div id="textQrContainer" class="p-1.5 bg-white rounded-xl"></div>
           </div>
         </div>
       </div>
     </section>
-  
     </div></main>
 
   <!-- Footer -->
@@ -660,14 +1001,16 @@
 
   <!-- Script Logic -->
   <script>
-    // Theme Management
+    'use strict';
+
+    /* ============================= THEME ============================= */
     function initTheme() {
-      const savedTheme = localStorage.getItem('cream_theme') || 'dark';
+      var savedTheme = localStorage.getItem('cream_theme') || 'dark';
       applyTheme(savedTheme);
     }
 
     function toggleTheme() {
-      const isDark = document.documentElement.classList.contains('dark');
+      var isDark = document.documentElement.classList.contains('dark');
       applyTheme(isDark ? 'light' : 'dark');
     }
 
@@ -682,16 +1025,14 @@
       localStorage.setItem('cream_theme', theme);
     }
 
-    // Mode Switcher
-    
-    // ================= TAB MANAGEMENT (HOME / MAKER / PROJECTS) =================
-    let currentDropTab = 'home';
+    /* ============================= TABS ============================= */
+    var currentDropTab = 'home';
 
     function switchDropTab(tab) {
       currentDropTab = tab;
-      const vHome = document.getElementById('dropViewHome');
-      const vMaker = document.getElementById('dropViewMaker');
-      const vProjects = document.getElementById('dropViewProjects');
+      var vHome = document.getElementById('dropViewHome');
+      var vMaker = document.getElementById('dropViewMaker');
+      var vProjects = document.getElementById('dropViewProjects');
 
       if (vHome) {
         vHome.classList.toggle('hidden', tab !== 'home');
@@ -706,592 +1047,1422 @@
         if (tab === 'projects') { vProjects.classList.remove('tab-enter-active'); void vProjects.offsetWidth; vProjects.classList.add('tab-enter-active'); }
       }
 
-      // Update Nav Buttons
-      const btnHome = document.getElementById('dropTabBtnHome');
-      const btnMaker = document.getElementById('dropTabBtnMaker');
-      const btnProjects = document.getElementById('dropTabBtnProjects');
+      var btnHome = document.getElementById('dropTabBtnHome');
+      var btnMaker = document.getElementById('dropTabBtnMaker');
+      var btnProjects = document.getElementById('dropTabBtnProjects');
+      var on = "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold";
+      var off = "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium";
+      if (btnHome) btnHome.className = tab === 'home' ? on : off;
+      if (btnMaker) btnMaker.className = tab === 'maker' ? on : off;
+      if (btnProjects) btnProjects.className = tab === 'projects' ? on : off;
 
-      if (btnHome) btnHome.className = tab === 'home' 
-        ? "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold"
-        : "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium";
-
-      if (btnMaker) btnMaker.className = tab === 'maker'
-        ? "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold"
-        : "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium";
-
-      if (btnProjects) btnProjects.className = tab === 'projects'
-        ? "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 shadow-sm font-bold"
-        : "flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white font-medium";
-
-      if (tab === 'projects') {
-        renderDropProjects();
-      }
+      if (tab === 'projects') renderDropProjects();
     }
 
     function getStoredDrops() {
-      try {
-        return JSON.parse(localStorage.getItem('flux_drop_history') || '[]');
-      } catch (e) {
-        return [];
-      }
+      try { return JSON.parse(localStorage.getItem('flux_drop_history') || '[]'); }
+      catch (e) { return []; }
     }
 
     function saveStoredDrop(dropObj) {
-      const list = getStoredDrops();
-      list.unshift(dropObj);
-      if (list.length > 30) list.pop();
-      localStorage.setItem('flux_drop_history', JSON.stringify(list));
-      updateDropProjectsBadge();
+      try {
+        var list = getStoredDrops();
+        list.unshift(dropObj);
+        if (list.length > 30) list.pop();
+        localStorage.setItem('flux_drop_history', JSON.stringify(list));
+        updateDropProjectsBadge();
+      } catch (e) { console.warn('history save skipped', e); }
     }
 
     function deleteStoredDrop(id) {
-      const list = getStoredDrops().filter(d => d.id !== id);
-      localStorage.setItem('flux_drop_history', JSON.stringify(list));
+      var list = getStoredDrops().filter(function (d) { return d.id !== id; });
+      try { localStorage.setItem('flux_drop_history', JSON.stringify(list)); } catch (e) { }
       renderDropProjects();
       updateDropProjectsBadge();
     }
 
     function updateDropProjectsBadge() {
-      const count = getStoredDrops().length;
-      const b = document.getElementById('dropSavedCountBadge');
-      if (b) b.textContent = count;
+      var b = document.getElementById('dropSavedCountBadge');
+      if (b) b.textContent = getStoredDrops().length;
     }
 
     function renderDropProjects() {
-      const list = getStoredDrops();
-      const grid = document.getElementById('dropProjectsGrid');
+      var list = getStoredDrops();
+      var grid = document.getElementById('dropProjectsGrid');
       if (!grid) return;
       grid.innerHTML = '';
 
       if (list.length === 0) {
-        grid.innerHTML = `
-          <div class="col-span-full p-10 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-center space-y-3">
-            <svg class="w-10 h-10 text-neutral-400 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-            <p class="text-sm font-bold text-neutral-700 dark:text-neutral-300">아직 전송 내역이 없습니다.</p>
-            <p class="text-xs text-neutral-500">전송실에서 첫 대용량 파일이나 텍스트를 전송해 보세요.</p>
-            <button onclick="switchDropTab('maker')" class="mt-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow">새 파일 전송하기</button>
-          </div>
-        `;
+        grid.innerHTML = '<div class="col-span-full p-10 rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-center space-y-3">' +
+          '<svg class="w-10 h-10 text-neutral-400 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>' +
+          '<p class="text-sm font-bold text-neutral-700 dark:text-neutral-300">아직 전송 내역이 없습니다.</p>' +
+          '<p class="text-xs text-neutral-500">전송실에서 첫 대용량 파일이나 텍스트를 전송해 보세요.</p>' +
+          '<button onclick="switchDropTab(\'maker\')" class="mt-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow">새 파일 전송하기</button></div>';
         return;
       }
 
-      list.forEach(item => {
-        const card = document.createElement('div');
-        card.className = "p-5 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-white via-blue-50/40 to-indigo-50/20 dark:from-neutral-900 dark:to-blue-950/30 shadow-md shadow-blue-500/5 space-y-3";
-        card.innerHTML = `
-          <div class="flex items-start justify-between gap-2">
-            <div>
-              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold">${item.type === 'send' ? '보낸 파일' : (item.type === 'receive' ? '받은 파일' : '텍스트 전송')}</span>
-              <h3 class="font-bold text-sm text-neutral-900 dark:text-white mt-1.5 truncate max-w-[200px]">${item.name}</h3>
-              <p class="text-[11px] text-neutral-500 dark:text-neutral-400">${item.size} • ${item.date}</p>
-            </div>
-            <button onclick="deleteStoredDrop('${item.id}')" class="p-1.5 text-neutral-400 hover:text-red-600 transition" title="삭제">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            </button>
-          </div>
-        `;
+      list.forEach(function (item) {
+        var card = document.createElement('div');
+        card.className = 'p-5 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-gradient-to-br from-white via-blue-50/40 to-indigo-50/20 dark:from-neutral-900 dark:to-blue-950/30 shadow-md shadow-blue-500/5 space-y-3';
+        card.innerHTML = '<div class="flex items-start justify-between gap-2"><div>' +
+          '<span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 font-bold">' +
+          (item.type === 'send' ? '보낸 파일' : (item.type === 'receive' ? '받은 파일' : '텍스트 전송')) + '</span>' +
+          '<h3 class="font-bold text-sm text-neutral-900 dark:text-white mt-1.5 truncate max-w-[200px]">' + escHtml(item.name) + '</h3>' +
+          '<p class="text-[11px] text-neutral-500 dark:text-neutral-400">' + escHtml(String(item.size)) + ' · ' + escHtml(String(item.date)) + '</p></div>' +
+          '<button onclick="deleteStoredDrop(\'' + item.id + '\')" class="p-1.5 text-neutral-400 hover:text-red-600 transition" title="삭제">' +
+          '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></div>';
         grid.appendChild(card);
       });
     }
 
+    /* ============================= MODE ============================= */
     function switchMode(mode) {
-      const tabs = ['send', 'receive', 'text'];
-      tabs.forEach(t => {
-        const btn = document.getElementById('tabBtn' + capitalize(t));
-        const panel = document.getElementById('panel' + capitalize(t));
+      var tabs = ['send', 'receive', 'text'];
+      tabs.forEach(function (t) {
+        var btn = document.getElementById('tabBtn' + capitalize(t));
+        var panel = document.getElementById('panel' + capitalize(t));
+        if (!btn || !panel) return;
         if (t === mode) {
-          btn.className = 'px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition bg-white dark:bg-neutral-800 shadow-sm text-neutral-900 dark:text-white';
+          btn.className = 'flex items-center space-x-1.5 px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition bg-blue-600 text-white shadow-md shadow-blue-500/20';
           panel.classList.remove('hidden');
         } else {
           btn.className = 'px-5 py-2 rounded-xl text-xs sm:text-sm font-medium transition text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white';
           panel.classList.add('hidden');
         }
       });
+      if (mode === 'receive') stopQrScan();
     }
 
-    function capitalize(s) {
-      return s.charAt(0).toUpperCase() + s.slice(1);
-    }
+    function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
-    // WebRTC Peer Management
-    let senderPeer = null;
-    let senderConn = null;
-    let selectedFile = null;
-    let senderCode = null;
-
-    let receiverPeer = null;
-    let receiverConn = null;
-
-    function generate6DigitCode() {
-      return Math.floor(100000 + Math.random() * 900000).toString();
-    }
-
-    // Drag & Drop
-    function handleDragOver(e) {
-      e.preventDefault();
-      document.getElementById('dropZone').classList.add('border-neutral-900', 'dark:border-white', 'dropzone-dragover');
-    }
-
-    function handleDragLeave(e) {
-      e.preventDefault();
-      document.getElementById('dropZone').classList.remove('border-neutral-900', 'dark:border-white', 'dropzone-dragover');
-    }
-
-    function handleDrop(e) {
-      e.preventDefault();
-      document.getElementById('dropZone').classList.remove('border-neutral-900', 'dark:border-white', 'dropzone-dragover');
-      if (e.dataTransfer.files.length > 0) {
-        setupSendFile(e.dataTransfer.files[0]);
-      }
-    }
-
-    function handleFileSelect(e) {
-      if (e.target.files.length > 0) {
-        setupSendFile(e.target.files[0]);
-      }
+    /* ============================= HELPERS ============================= */
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
     }
 
     function formatFileSize(bytes) {
+      bytes = Number(bytes) || 0;
       if (bytes < 1024) return bytes + ' B';
       if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
       if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
       return (bytes / 1073741824).toFixed(2) + ' GB';
     }
 
-    function setupSendFile(file) {
-      selectedFile = file;
-      document.getElementById('sendFileName').textContent = file.name;
-      document.getElementById('sendFileSize').textContent = formatFileSize(file.size) + ' · ' + (file.type || '일반 파일');
-      document.getElementById('sendActiveBox').classList.remove('hidden');
-
-      senderCode = generate6DigitCode();
-      document.getElementById('displayPairCode').textContent = senderCode;
-
-      // QR Code
-      const qrBox = document.getElementById('sendQrContainer');
-      qrBox.innerHTML = '';
-      const pairUrl = window.location.origin + window.location.pathname + '?code=' + senderCode;
-      new QRCode(qrBox, {
-        text: pairUrl,
-        width: 130,
-        height: 130,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M
-      });
-
-      // Init Sender Peer
-      initSenderPeer(senderCode);
+    function formatSpeed(bps) {
+      if (!bps || !isFinite(bps) || bps <= 0) return '0 KB/s';
+      if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+      return Math.max(1, Math.round(bps / 1024)) + ' KB/s';
     }
 
-    function resetSend() {
-      if (senderPeer) senderPeer.destroy();
-      selectedFile = null;
-      document.getElementById('fileInput').value = '';
-      document.getElementById('sendActiveBox').classList.add('hidden');
-      document.getElementById('sendProgressBar').style.width = '0%';
-      document.getElementById('sendProgressPercent').textContent = '0%';
-      document.getElementById('sendStatusText').textContent = '수신자 연결 대기 중...';
+    function formatEta(sec) {
+      if (!sec || !isFinite(sec) || sec <= 0) return '-';
+      if (sec < 60) return Math.ceil(sec) + '초 남음';
+      var m = Math.floor(sec / 60);
+      var s = Math.round(sec % 60);
+      return m + '분' + (s ? ' ' + s + '초' : '') + ' 남음';
     }
 
-    function copyPairLink() {
-      const pairUrl = window.location.origin + window.location.pathname + '?code=' + senderCode;
-      navigator.clipboard.writeText(pairUrl).then(() => {
-        alert('전송 링크가 복사되었습니다: ' + pairUrl);
-      });
+    function showNote(id, msg, tone) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'inline-note show ' + (tone || '');
     }
 
-    const peerIceConfig = {
-      debug: 1,
+    function hideNote(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.className = 'inline-note';
+      el.textContent = '';
+    }
+
+    function setSendStatus(msg, tone) {
+      var el = document.getElementById('sendStatusText');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'truncate ' + toneClass(tone);
+    }
+
+    function setReceiveStatus(msg, tone) {
+      var el = document.getElementById('receiveStatusText');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'truncate ' + toneClass(tone);
+    }
+
+    function toneClass(tone) {
+      if (tone === 'ok') return 'st-ok';
+      if (tone === 'err') return 'st-err';
+      if (tone === 'warn') return 'st-warn';
+      if (tone === 'busy') return 'st-busy';
+      return 'text-neutral-700 dark:text-neutral-300';
+    }
+
+    function setBar(prefix, pct) {
+      pct = Math.max(0, Math.min(100, pct || 0));
+      var bar = document.getElementById(prefix + 'ProgressBar');
+      var label = document.getElementById(prefix + 'ProgressPercent');
+      if (bar) bar.style.width = pct + '%';
+      if (label) label.textContent = Math.round(pct) + '%';
+    }
+
+    function setConnBadge(state, label) {
+      var el = document.getElementById('connBadge');
+      if (!el) return;
+      el.className = 'conn-badge ' + state;
+      el.textContent = label;
+    }
+
+    function setIceState(state) {
+      var el = document.getElementById('iceStateText');
+      if (el) el.textContent = state || '-';
+    }
+
+    function newId() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+    function generate6DigitCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
+
+    function fileIcon(mime, name) {
+      var m = String(mime || '');
+      var n = String(name || '');
+      if (m.indexOf('image/') === 0) {
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+      }
+      if (m.indexOf('text/') === 0 || /\.(txt|md|json|csv)$/i.test(n)) {
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>';
+      }
+      return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+    }
+
+    function isTextMime(mime, name) {
+      return String(mime || '').indexOf('text/') === 0 || /\.(txt|md|json|csv|log)$/i.test(String(name || ''));
+    }
+
+    function clockOf(ts) {
+      var d = new Date(ts || Date.now());
+      return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+
+    /* ============================= SECRET BANNER ============================= */
+    function dismissSecretBanner() {
+      var el = document.getElementById('secretBanner');
+      if (el) el.classList.add('is-hidden');
+      try { localStorage.setItem('lemon_drop_secret_banner', '0'); } catch (e) { }
+    }
+
+    function initSecretBanner() {
+      var hidden = false;
+      try { hidden = localStorage.getItem('lemon_drop_secret_banner') === '0'; } catch (e) { }
+      var el = document.getElementById('secretBanner');
+      if (el && hidden) el.classList.add('is-hidden');
+    }
+
+    /* ============================= SENDER ============================= */
+    var senderPeer = null;
+    var senderConn = null;
+    var senderCode = null;
+    var sendQueue = [];
+    var currentSend = null;
+    var senderHistory = [];
+    var relistenTimer = null;
+    var relistenTries = 0;
+    var CHUNK_SIZE = 64 * 1024;
+    var BUFFER_LIMIT = 1024 * 1024;
+
+    var ICE_CONFIG = {
+      debug: 0,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
           { urls: 'stun:stun.cloudflare.com:3478' }
         ],
         iceCandidatePoolSize: 10
       }
     };
 
-    function copyReceivedText() {
-      const box = document.getElementById('receivedTextContent');
-      if (box) {
-        navigator.clipboard.writeText(box.value).then(() => {
-          alert('수신된 텍스트가 복사되었습니다.');
-        });
-      }
-    }
-
-    function initSenderPeer(code) {
-      const peerId = 'flux-drop-' + code;
-      if (senderPeer) {
-        try { senderPeer.destroy(); } catch (e) {}
-      }
-
-      senderPeer = new Peer(peerId, peerIceConfig);
-
-      senderPeer.on('open', (id) => {
-        document.getElementById('sendStatusText').textContent = '수신자 연결 대기 중... (코드: ' + code + ')';
-      });
-
-      senderPeer.on('connection', (conn) => {
-        senderConn = conn;
-        document.getElementById('sendStatusText').textContent = '수신자 연결됨! 파일 전송 준비 중...';
-
-        const startTransfer = () => {
-          if (conn._transferStarted) return;
-          conn._transferStarted = true;
-          sendFileChunks(conn);
-        };
-
-        // If connection is already open, start transfer immediately
-        if (conn.open) {
-          setTimeout(startTransfer, 50);
-        } else {
-          conn.on('open', startTransfer);
-        }
-
-        if (conn.dataChannel) {
-          if (conn.dataChannel.readyState === 'open') {
-            setTimeout(startTransfer, 50);
-          }
-          conn.dataChannel.addEventListener('open', startTransfer);
-        }
-
-        // Also start transfer if receiver sends ready ping
-        conn.on('data', (msg) => {
-          if (msg && msg.type === 'ready') {
-            startTransfer();
-          }
+    /* ---------- queue ---------- */
+    function addFiles(fileList) {
+      var files = Array.prototype.slice.call(fileList || []);
+      if (!files.length) return;
+      files.forEach(function (f) {
+        sendQueue.push({
+          id: newId(),
+          file: f,
+          name: f.name || '이름 없는 파일',
+          size: f.size || 0,
+          mime: f.type || '',
+          status: 'waiting',
+          sent: 0
         });
       });
-
-      senderPeer.on('error', (err) => {
-        console.warn('Sender Peer error:', err);
-      });
+      var active = document.getElementById('sendActiveBox');
+      if (active) active.classList.remove('hidden');
+      ensureSenderSession();
+      renderSendQueue();
+      hideNote('sendNotice');
+      if (senderConn && senderConn.open) startSendQueue();
     }
 
-    function sendFileChunks(conn) {
-      if (!selectedFile) return;
+    function ensureSenderSession() {
+      if (senderCode) { renderPairing(); return; }
+      senderCode = generate6DigitCode();
+      renderPairing();
+      initSenderPeer(senderCode);
+    }
 
-      document.getElementById('sendStatusText').textContent = '파일 전송 중... (' + selectedFile.name + ')';
-      conn.send({
-        type: 'meta',
-        name: selectedFile.name,
-        size: selectedFile.size,
-        mime: selectedFile.type
-      });
-
-      const chunkSize = 32 * 1024; // 32KB: optimal WebRTC SCTP chunk size for speed and stability
-      let offset = 0;
-      const reader = new FileReader();
-      const transferStartTime = Date.now();
-      let lastSpeedCalcTime = transferStartTime;
-      let lastSpeedCalcBytes = 0;
-
-      function sendSlice() {
-        if (!conn.open) {
-          console.warn('Connection closed during transfer');
-          return;
-        }
-
-        if (offset >= selectedFile.size) {
-          conn.send({ type: 'done' });
-          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-          document.getElementById('sendStatusText').textContent = '전송 완료되었습니다!';
-          triggerConfetti();
-          document.getElementById('sendProgressBar').style.width = '100%';
-          document.getElementById('sendProgressPercent').textContent = '100%';
-
-          saveStoredDrop({
-            id: 'drop_' + Date.now(),
-            type: 'send',
-            name: selectedFile.name,
-            size: selectedFile.size,
-            date: new Date().toLocaleDateString('ko-KR')
-          });
-          return;
-        }
-
-        // WebRTC bufferedAmount flow control (backpressure)
-        const dc = conn.dataChannel || conn._dc;
-        if (dc && dc.bufferedAmount > 256 * 1024) {
-          setTimeout(sendSlice, 20);
-          return;
-        }
-
-        const slice = selectedFile.slice(offset, offset + chunkSize);
-        reader.readAsArrayBuffer(slice);
+    function renderSendQueue() {
+      var box = document.getElementById('sendQueueBox');
+      var list = document.getElementById('sendQueueList');
+      if (!box || !list) return;
+      if (!sendQueue.length) {
+        box.classList.add('hidden');
+        list.innerHTML = '';
+        return;
       }
+      box.classList.remove('hidden');
+      var total = 0;
+      sendQueue.forEach(function (f) { total += f.size || 0; });
+      var cEl = document.getElementById('queueCount');
+      var tEl = document.getElementById('queueTotal');
+      if (cEl) cEl.textContent = sendQueue.length + '개';
+      if (tEl) tEl.textContent = formatFileSize(total);
 
-      reader.onload = function(e) {
+      list.innerHTML = sendQueue.map(function (f) {
+        var labels = { waiting: '대기', sending: '전송 중', done: '완료', canceled: '취소됨', error: '오류' };
+        var state = labels[f.status] || '대기';
+        var pct = f.size ? Math.min(100, Math.round(((f.sent || 0) / f.size) * 100)) : 0;
+        var meta = formatFileSize(f.size);
+        if (f.status === 'sending') meta += ' · ' + pct + '%';
+        if (f.status === 'done') meta += ' · 전송 완료';
+        var remove = f.status === 'sending' ? '' :
+          '<button type="button" class="q-x" data-qid="' + f.id + '" aria-label="목록에서 빼기" title="목록에서 빼기">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>';
+        return '<div class="q-row" data-row="' + f.id + '">' +
+          '<span class="q-ico">' + fileIcon(f.mime, f.name) + '</span>' +
+          '<div class="q-file"><div class="q-name" title="' + escHtml(f.name) + '">' + escHtml(f.name) + '</div>' +
+          '<div class="q-meta">' + meta + '</div></div>' +
+          '<span class="q-state ' + f.status + '">' + state + '</span>' + remove + '</div>';
+      }).join('');
+    }
+
+    function onQueueListClick(e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-qid]') : null;
+      if (!btn) return;
+      removeQueueFile(btn.getAttribute('data-qid'));
+    }
+
+    function removeQueueFile(id) {
+      for (var i = 0; i < sendQueue.length; i++) {
+        if (sendQueue[i].id === id) {
+          if (sendQueue[i].status === 'sending') { cancelTransfer(); return; }
+          sendQueue.splice(i, 1);
+          break;
+        }
+      }
+      renderSendQueue();
+    }
+
+    function clearSendQueue() {
+      if (currentSend) cancelTransfer();
+      sendQueue = [];
+      renderSendQueue();
+    }
+
+    /* ---------- pairing / QR ---------- */
+    function pairingUrl() {
+      return window.location.origin + window.location.pathname + '?code=' + senderCode;
+    }
+
+    function renderPairing() {
+      if (!senderCode) return;
+      var codeEl = document.getElementById('displayPairCode');
+      if (codeEl) codeEl.textContent = senderCode;
+      var textCode = document.getElementById('textPairCode');
+      if (textCode) textCode.textContent = senderCode;
+      paintQr('sendQrContainer', pairingUrl(), 130);
+      paintQr('textQrContainer', pairingUrl(), 100);
+    }
+
+    function paintQr(boxId, url, size) {
+      var box = document.getElementById(boxId);
+      if (!box) return;
+      box.innerHTML = '';
+      if (window.QRCode) {
         try {
-          conn.send({
-            type: 'chunk',
-            data: e.target.result
+          new QRCode(box, {
+            text: url,
+            width: size,
+            height: size,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
           });
-          offset += e.target.result.byteLength;
-          const percent = Math.min(100, Math.round((offset / selectedFile.size) * 100));
-          document.getElementById('sendProgressBar').style.width = percent + '%';
-          document.getElementById('sendProgressPercent').textContent = percent + '%';
-
-          const now = Date.now();
-          const timeDiff = (now - lastSpeedCalcTime) / 1000;
-          if (timeDiff >= 0.4) {
-            const bytesDiff = offset - lastSpeedCalcBytes;
-            const speedMBps = ((bytesDiff / timeDiff) / (1024 * 1024)).toFixed(1);
-            const remainingBytes = selectedFile.size - offset;
-            const etaSec = bytesDiff > 0 ? Math.ceil(remainingBytes / (bytesDiff / timeDiff)) : 0;
-            document.getElementById('sendStatusText').textContent = '파일 전송 중 (' + percent + '% · ' + speedMBps + ' MB/s · ' + etaSec + '초 남음): ' + selectedFile.name;
-            lastSpeedCalcTime = now;
-            lastSpeedCalcBytes = offset;
-          }
-        } catch (err) {
-          console.error('Send chunk error:', err);
-        }
-        sendSlice();
-      };
-
-      sendSlice();
+          return;
+        } catch (e) { }
+      }
+      box.innerHTML = '<div class="text-[10px] leading-snug text-neutral-500 max-w-[120px] text-center">QR 생성기를 불러오지 못했어요. 6자리 코드를 직접 입력해 주세요.</div>';
     }
 
-    // Receiver Logic
-    let receivedChunks = [];
-    let receivedMeta = null;
-    let receivedBytes = 0;
+    function copyPairLink() {
+      if (!senderCode) {
+        showNote('sendNotice', '먼저 전송할 파일을 선택해 주세요.', 'warn');
+        return;
+      }
+      var url = pairingUrl();
+      var ok = function () {
+        showNote('sendNotice', '링크를 복사했습니다: ' + url, 'ok');
+        if (window.Lemon) Lemon.toast('전송 링크를 복사했어요');
+      };
+      var fail = function () {
+        showNote('sendNotice', '링크를 자동으로 복사하지 못했습니다. 코드 ' + senderCode + '를 직접 알려 주세요.', 'err');
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(ok, fail);
+      } else { fail(); }
+    }
+
+    /* ---------- peer ---------- */
+    function initSenderPeer(code) {
+      if (relistenTimer) { clearTimeout(relistenTimer); relistenTimer = null; }
+      if (senderPeer) {
+        try { senderPeer.destroy(); } catch (e) { }
+        senderPeer = null;
+      }
+      setConnBadge('wait', '연결 대기');
+      setIceState('준비');
+      try {
+        senderPeer = new Peer('flux-drop-' + code, ICE_CONFIG);
+      } catch (e) {
+        setSendStatus('신호 서버를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'err');
+        return;
+      }
+
+      senderPeer.on('open', function () {
+        relistenTries = 0;
+        setConnBadge('wait', '연결 대기');
+        setSendStatus('수신자 연결 대기 중... (코드 ' + code + ')', 'idle');
+        if (!currentSend) {
+          var hint = document.getElementById('sendHintText');
+          if (hint) hint.classList.remove('hidden');
+        }
+      });
+
+      senderPeer.on('connection', function (conn) {
+        bindSenderConn(conn);
+      });
+
+      senderPeer.on('disconnected', function () {
+        try { senderPeer.reconnect(); } catch (e) { }
+        setConnBadge('wait', '신호 재연결 중');
+      });
+
+      senderPeer.on('error', function (err) {
+        var t = err && err.type;
+        if (t === 'unavailable-id') {
+          if (!senderConn) {
+            senderCode = generate6DigitCode();
+            renderPairing();
+            appendSendNotice('코드가 겹쳐 새 코드를 만들었습니다. 받는 기기에 새 코드 ' + senderCode + '를 알려 주세요.');
+          }
+          setTimeout(function () { initSenderPeer(senderCode); }, 700);
+          return;
+        }
+        if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') {
+          setConnBadge('err', '신호 서버 오류');
+          setSendStatus('신호 서버에 연결하지 못했습니다. 잠시 후 자동으로 다시 시도합니다.', 'err');
+          scheduleSenderRelisten();
+          return;
+        }
+        setSendStatus('연결 오류: ' + (t || '알 수 없는 오류'), 'err');
+      });
+    }
+
+    function appendSendNotice(msg) {
+      showNote('sendNotice', msg, 'warn');
+      setSendStatus(msg, 'warn');
+    }
+
+    function bindSenderConn(conn) {
+      senderConn = conn;
+      setConnBadge('wait', '연결 확인 중');
+      setSendStatus('받는 기기 연결을 확인하는 중...', 'busy');
+      setIceState('연결 중');
+
+      var opened = false;
+      var onOpen = function () {
+        if (opened) return;
+        opened = true;
+        senderConnected();
+      };
+      conn.on('open', onOpen);
+      if (conn.open) setTimeout(onOpen, 30);
+      if (conn.dataChannel) {
+        if (conn.dataChannel.readyState === 'open') setTimeout(onOpen, 30);
+        try { conn.dataChannel.addEventListener('open', onOpen); } catch (e) { }
+      }
+      conn.on('data', handleSenderData);
+      conn.on('iceStateChanged', function (st) { setIceState(st || '-'); });
+      conn.on('close', function () {
+        if (senderConn !== conn) return;
+        senderConn = null;
+        setConnBadge('err', '연결 끊김');
+        setIceState('closed');
+        if (currentSend) {
+          var lost = currentSend;
+          currentSend = null;
+          if (lost.reader) lost.reader.onload = null;
+          var item = lost.item;
+          item.sent = 0;
+          item.tries = (item.tries || 0) + 1;
+          if (item.tries < 3) {
+            item.status = 'waiting';
+          } else {
+            item.status = 'error';
+            pushHistory('send', item.name, item.size, 'error');
+          }
+          updateCancelButton(false);
+          renderSendQueue();
+        }
+        setSendStatus('연결이 끊겼습니다. 같은 코드로 다시 연결되면 남은 항목부터 다시 보냅니다.', 'err');
+        scheduleSenderRelisten();
+      });
+      conn.on('error', function (err) {
+        setSendStatus('연결 오류: ' + ((err && err.type) || '알 수 없음'), 'err');
+      });
+    }
+
+    function senderConnected() {
+      setConnBadge('ok', '연결됨');
+      setSendStatus('받는 기기와 연결되었습니다. 연결을 유지한 채 계속 보낼 수 있습니다.', 'ok');
+      // 받는 쪽이 ready 를 보내면 즉시 시작하고, 놓쳤을 때를 대비해 한 번 더 시도한다.
+      setTimeout(startSendQueue, 350);
+    }
+
+    function scheduleSenderRelisten() {
+      if (!senderCode || relistenTimer) return;
+      relistenTries++;
+      var delay = Math.min(1500 * relistenTries, 6000);
+      relistenTimer = setTimeout(function () {
+        relistenTimer = null;
+        if (senderConn && senderConn.open) return;
+        if (!senderCode) return;
+        initSenderPeer(senderCode);
+      }, delay);
+    }
+
+    function handleSenderData(msg) {
+      if (!msg || typeof msg !== 'object') return;
+      if (!senderConn || !senderConn.open) return;
+      if (msg.type === 'ready') {
+        setSendStatus('받는 기기가 준비되었습니다. 전송을 시작합니다.', 'ok');
+        startSendQueue();
+      } else if (msg.type === 'saved') {
+        setSendStatus('받는 기기가 저장을 확인했습니다. 다음 항목을 기다립니다.', 'ok');
+      } else if (msg.type === 'cancel') {
+        if (currentSend && (!msg.id || msg.id === currentSend.item.id)) {
+          setSendStatus('받는 기기가 전송을 취소했습니다.', 'warn');
+          cancelTransfer(true);
+        }
+      } else if (msg.type === 'bye') {
+        setSendStatus('받는 기기가 연결을 닫았습니다.', 'warn');
+      }
+    }
+
+    /* ---------- sending ---------- */
+    function startSendQueue() {
+      if (currentSend) return;
+      if (!senderConn || !senderConn.open) return;
+      var next = null;
+      for (var i = 0; i < sendQueue.length; i++) {
+        if (sendQueue[i].status === 'waiting') { next = sendQueue[i]; break; }
+      }
+      if (!next) {
+        if (senderConn && senderConn.open) setSendStatus('연결 유지 중 · 다음 파일이나 텍스트를 기다립니다', 'idle');
+        updateCancelButton(false);
+        return;
+      }
+      sendQueueItem(next);
+    }
+
+    function sendQueueItem(item) {
+      var cs = {
+        item: item,
+        canceled: false,
+        offset: 0,
+        startedAt: 0,
+        lastT: 0,
+        lastB: 0,
+        lastPaint: 0,
+        speed: 0,
+        reader: null
+      };
+      currentSend = cs;
+      item.status = 'sending';
+      item.sent = 0;
+      renderSendQueue();
+      updateCancelButton(true);
+      setBar('send', 0);
+      document.getElementById('sendSpeedText').textContent = '0 KB/s';
+      document.getElementById('sendEtaText').textContent = '남은 시간 계산 중';
+      setSendStatus('전송 준비 중 · ' + item.name, 'busy');
+
+      try {
+        senderConn.send({ type: 'meta', id: item.id, name: item.name, size: item.size, mime: item.mime });
+      } catch (e) {
+        return markSendError('연결이 끊겨 전송을 시작하지 못했습니다.');
+      }
+
+      cs.reader = new FileReader();
+      cs.reader.onload = function (ev) {
+        if (!currentSend || currentSend !== cs || cs.canceled) return;
+        try {
+          senderConn.send({ type: 'chunk', data: ev.target.result });
+        } catch (err) {
+          return markSendError('전송 중 연결이 끊겼습니다.');
+        }
+        cs.offset += ev.target.result.byteLength;
+        item.sent = cs.offset;
+        paintSendProgress();
+        pumpChunk();
+      };
+      cs.reader.onerror = function () {
+        markSendError('파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.');
+      };
+      pumpChunk();
+    }
+
+    function pumpChunk() {
+      var cs = currentSend;
+      if (!cs || cs.canceled) return;
+      var item = cs.item;
+      if (!senderConn || !senderConn.open) {
+        return markSendError('연결이 끊겼습니다. 다시 연결되면 이어서 보냅니다.');
+      }
+      if (cs.offset >= item.size) { finishSend(); return; }
+      var dc = senderConn.dataChannel || senderConn._dc;
+      if (dc && dc.bufferedAmount > BUFFER_LIMIT) {
+        setTimeout(pumpChunk, 16);
+        return;
+      }
+      var slice = item.file.slice(cs.offset, Math.min(cs.offset + CHUNK_SIZE, item.size));
+      cs.reader.readAsArrayBuffer(slice);
+    }
+
+    function paintSendProgress(force) {
+      var cs = currentSend;
+      if (!cs) return;
+      var now = Date.now();
+      if (!cs.startedAt) { cs.startedAt = now; cs.lastT = now; cs.lastB = 0; }
+      if (!force && now - cs.lastPaint < 180) return;
+      cs.lastPaint = now;
+
+      var elapsed = (now - cs.lastT) / 1000;
+      if (elapsed >= 0.35) {
+        cs.speed = (cs.offset - cs.lastB) / elapsed;
+        cs.lastT = now;
+        cs.lastB = cs.offset;
+      }
+      var pct = cs.item.size ? (cs.offset / cs.item.size) * 100 : 0;
+      setBar('send', pct);
+      var sp = document.getElementById('sendSpeedText');
+      var eta = document.getElementById('sendEtaText');
+      if (sp) sp.textContent = formatSpeed(cs.speed);
+      if (eta) eta.textContent = (cs.speed > 512) ? formatEta((cs.item.size - cs.offset) / cs.speed) : '남은 시간 계산 중';
+      var row = document.querySelector('[data-row="' + cs.item.id + '"]');
+      var meta = row ? row.querySelector('.q-meta') : null;
+      if (meta) meta.textContent = formatFileSize(cs.item.size) + ' · ' + Math.round(pct) + '%';
+      setSendStatus('전송 중 · ' + cs.item.name, 'busy');
+      setTextStatus('전송 중 ' + Math.round(pct) + '%');
+    }
+
+    function finishSend() {
+      var cs = currentSend;
+      if (!cs) return;
+      var item = cs.item;
+      currentSend = null;
+      try { senderConn.send({ type: 'done', id: item.id }); } catch (e) { }
+      item.status = 'done';
+      item.sent = item.size;
+      setBar('send', 100);
+      document.getElementById('sendSpeedText').textContent = formatSpeed(cs.speed || 0);
+      document.getElementById('sendEtaText').textContent = '완료';
+      setSendStatus('전송 완료 · ' + item.name, 'ok');
+      setTextStatus('전송 완료 (' + formatFileSize(item.size) + ')');
+      updateCancelButton(false);
+      pushHistory('send', item.name, item.size, 'done');
+      renderSendQueue();
+      if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+      triggerConfetti();
+      saveStoredDrop({
+        id: 'drop_' + Date.now(),
+        type: 'send',
+        name: item.name,
+        size: formatFileSize(item.size),
+        date: new Date().toLocaleDateString('ko-KR')
+      });
+
+      var more = sendQueue.some(function (f) { return f.status === 'waiting'; });
+      if (more) setTimeout(startSendQueue, 350);
+      else setTimeout(function () {
+        if (!currentSend && senderConn && senderConn.open) {
+          setSendStatus('연결 유지 중 · 다음 파일이나 텍스트를 기다립니다', 'idle');
+        }
+      }, 1500);
+    }
+
+    function markSendError(msg) {
+      var cs = currentSend;
+      if (!cs) return;
+      var item = cs.item;
+      currentSend = null;
+      if (cs.reader) cs.reader.onload = null;
+      updateCancelButton(false);
+      document.getElementById('sendEtaText').textContent = '중단됨';
+
+      var offline = !senderConn || !senderConn.open;
+      item.tries = (item.tries || 0) + 1;
+      if (offline && item.tries < 3) {
+        item.sent = 0;
+        item.status = 'waiting';
+        setSendStatus('연결이 끊겨 잠시 멈췄습니다. 다시 연결되면 이 파일부터 보냅니다.', 'warn');
+        renderSendQueue();
+        scheduleSenderRelisten();
+        return;
+      }
+
+      item.status = 'error';
+      setSendStatus(msg, 'err');
+      pushHistory('send', item.name, item.size, 'error');
+      renderSendQueue();
+      setTimeout(startSendQueue, 600);
+    }
+
+    function updateCancelButton(show) {
+      var b = document.getElementById('btnCancelSend');
+      if (b) b.classList.toggle('hidden', !show);
+    }
+
+    function cancelTransfer(silent) {
+      var cs = currentSend;
+      if (!cs) return;
+      cs.canceled = true;
+      try { if (senderConn && senderConn.open) senderConn.send({ type: 'cancel', id: cs.item.id }); } catch (e) { }
+      if (cs.reader) cs.reader.onload = null;
+      var item = cs.item;
+      item.status = 'canceled';
+      currentSend = null;
+      updateCancelButton(false);
+      if (!silent) {
+        setSendStatus('전송을 취소했습니다 · ' + item.name, 'warn');
+        document.getElementById('sendEtaText').textContent = '취소됨';
+      }
+      pushHistory('send', item.name, item.size, 'canceled');
+      renderSendQueue();
+      var more = sendQueue.some(function (f) { return f.status === 'waiting'; });
+      if (more) setTimeout(startSendQueue, 900);
+      else setTimeout(function () {
+        if (!currentSend && senderConn && senderConn.open) {
+          setSendStatus('연결 유지 중 · 다음 파일이나 텍스트를 기다립니다', 'idle');
+        }
+      }, 2400);
+    }
+
+    function pushHistory(dir, name, size, status) {
+      senderHistory.push({ dir: dir, name: name, size: size, status: status, at: Date.now() });
+      renderSendHistory();
+    }
+
+    function renderSendHistory() {
+      var box = document.getElementById('sendHistoryBox');
+      var list = document.getElementById('sendHistoryList');
+      if (!box || !list) return;
+      if (!senderHistory.length) {
+        box.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+      }
+      box.classList.remove('hidden');
+      var c = document.getElementById('sendHistoryCount');
+      if (c) c.textContent = senderHistory.length + '건';
+      list.innerHTML = senderHistory.slice().reverse().map(function (h) {
+        var tone = h.status === 'done' ? 'done' : (h.status === 'canceled' ? 'canceled' : 'error');
+        var label = h.status === 'done' ? '완료' : (h.status === 'canceled' ? '취소' : '오류');
+        return '<div class="h-row">' +
+          '<span class="q-state ' + tone + '">' + label + '</span>' +
+          '<span class="h-name" title="' + escHtml(h.name) + '">' + escHtml(h.name) + '</span>' +
+          '<span class="h-size">' + formatFileSize(h.size) + '</span>' +
+          '<span class="h-time">' + clockOf(h.at) + '</span></div>';
+      }).join('');
+    }
+
+    function setTextStatus(msg) {
+      var el = document.getElementById('textTransferStatus');
+      if (el) el.textContent = msg;
+    }
+
+    /* ---------- drag & drop / input ---------- */
+    function handleDragOver(e) {
+      e.preventDefault();
+      var z = document.getElementById('dropZone');
+      if (z) z.classList.add('dropzone-dragover');
+    }
+
+    function handleDragLeave(e) {
+      e.preventDefault();
+      var z = document.getElementById('dropZone');
+      if (z) z.classList.remove('dropzone-dragover');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      var z = document.getElementById('dropZone');
+      if (z) z.classList.remove('dropzone-dragover');
+      var dt = e.dataTransfer;
+      if (dt && dt.files && dt.files.length) addFiles(dt.files);
+    }
+
+    function handleFileSelect(e) {
+      var input = e.target;
+      if (input.files && input.files.length) addFiles(input.files);
+      try { input.value = ''; } catch (err) { }
+    }
+
+    /* ============================= RECEIVER ============================= */
+    var receiverPeer = null;
+    var receiverConn = null;
+    var receiverCode = null;
+    var incoming = null;
+    var rxItems = [];
+    var rxRetryTimer = null;
 
     function connectAndReceive() {
-      const code = document.getElementById('inputPairCode').value.trim();
-      if (!code || code.length !== 6) {
-        alert('6자리 코드를 정확히 입력해 주세요.');
+      var input = document.getElementById('inputPairCode');
+      if (!input) return;
+      var code = String(input.value || '').replace(/\D/g, '').slice(0, 6);
+      input.value = code;
+      if (code.length !== 6) {
+        showNote('receiveNotice', '6자리 코드를 정확히 입력해 주세요.', 'err');
+        input.classList.add('input-err');
+        setTimeout(function () { input.classList.remove('input-err'); }, 900);
         return;
       }
+      hideNote('receiveNotice');
+      receiverCode = code;
 
-      const targetPeerId = 'flux-drop-' + code;
-      document.getElementById('receiveStatusBox').classList.remove('hidden');
-      document.getElementById('receiveStatusText').textContent = '보내는 기기(' + code + ')에 연결 중...';
+      var box = document.getElementById('receiveStatusBox');
+      if (box) box.classList.remove('hidden');
+      setReceiveStatus('보내는 기기(' + code + ')에 연결하는 중...', 'busy');
+      setBar('receive', 0);
+      var rsp = document.getElementById('receiveSpeedText');
+      if (rsp) rsp.textContent = '0 KB/s';
+      var reta = document.getElementById('receiveEtaText');
+      if (reta) reta.textContent = '-';
 
+      if (rxRetryTimer) { clearTimeout(rxRetryTimer); rxRetryTimer = null; }
       if (receiverPeer) {
-        try { receiverPeer.destroy(); } catch (e) {}
+        try { receiverPeer.destroy(); } catch (e) { }
+        receiverPeer = null;
       }
-      receiverPeer = new Peer(peerIceConfig);
+      receiverConn = null;
 
-      receiverPeer.on('open', () => {
-        receiverConn = receiverPeer.connect(targetPeerId, { reliable: true });
-
-        const onConnected = () => {
-          document.getElementById('receiveStatusText').textContent = '연결 성공! 파일 수신 대기 중...';
-          try {
-            receiverConn.send({ type: 'ready' });
-          } catch (e) {}
-        };
-
-        if (receiverConn.open) {
-          onConnected();
-        } else {
-          receiverConn.on('open', onConnected);
-        }
-
-        if (receiverConn.dataChannel) {
-          if (receiverConn.dataChannel.readyState === 'open') {
-            onConnected();
-          }
-          receiverConn.dataChannel.addEventListener('open', onConnected);
-        }
-
-        receiverConn.on('data', (data) => {
-          if (!data) return;
-
-          if (data.type === 'meta') {
-            receivedMeta = data;
-            receivedChunks = [];
-            receivedBytes = 0;
-            document.getElementById('receiveStatusText').textContent = '수신 중: ' + data.name;
-          } else if (data.type === 'chunk') {
-            receivedChunks.push(data.data);
-            const chunkLen = (data.data && (data.data.byteLength || data.data.length)) || 0;
-            receivedBytes += chunkLen;
-
-            if (receivedMeta && receivedMeta.size > 0) {
-              const percent = Math.min(100, Math.round((receivedBytes / receivedMeta.size) * 100));
-              document.getElementById('receiveProgressBar').style.width = percent + '%';
-              document.getElementById('receiveProgressPercent').textContent = percent + '%';
-              document.getElementById('receiveStatusText').textContent = '수신 중 (' + percent + '%): ' + receivedMeta.name;
-            }
-          } else if (data.type === 'done') {
-            const blob = new Blob(receivedChunks, { type: (receivedMeta && receivedMeta.mime) || 'application/octet-stream' });
-            const url = URL.createObjectURL(blob);
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-            document.getElementById('receiveStatusText').textContent = '파일 수신 완료!';
-            triggerConfetti();
-            document.getElementById('receiveProgressBar').style.width = '100%';
-            document.getElementById('receiveProgressPercent').textContent = '100%';
-
-            document.getElementById('receivedFileName').textContent = receivedMeta ? receivedMeta.name : '수신 파일';
-            document.getElementById('receivedFileSize').textContent = formatFileSize(receivedBytes);
-            const dlBtn = document.getElementById('btnDownloadReceived');
-            dlBtn.href = url;
-            dlBtn.download = receivedMeta ? receivedMeta.name : 'flux-file';
-            document.getElementById('receiveDownloadCard').classList.remove('hidden');
-
-            if (receivedMeta && (receivedMeta.mime === 'text/plain' || receivedMeta.name.endsWith('.txt'))) {
-              blob.text().then(txt => {
-                const previewBox = document.getElementById('receiveTextPreviewBox');
-                const contentBox = document.getElementById('receivedTextContent');
-                if (previewBox && contentBox) {
-                  contentBox.value = txt;
-                  previewBox.classList.remove('hidden');
-                }
-              }).catch(e => {});
-            }
-
-            // Image instant preview
-            if (receivedMeta && (receivedMeta.mime && receivedMeta.mime.startsWith('image/') || receivedMeta.name.match(/\.(png|jpe?g|gif|webp|svg)$/i))) {
-              const previewBox = document.getElementById('receiveImagePreviewBox');
-              const previewImg = document.getElementById('receivedImageEl');
-              if (previewBox && previewImg) {
-                previewImg.src = url;
-                previewBox.classList.remove('hidden');
-              }
-            }
-
-            saveStoredDrop({
-              id: 'drop_' + Date.now(),
-              type: 'receive',
-              name: receivedMeta ? receivedMeta.name : '수신 파일',
-              size: receivedBytes,
-              date: new Date().toLocaleDateString('ko-KR')
-            });
-          }
-        });
-
-        receiverConn.on('close', () => {
-          console.log('Receiver connection closed');
-        });
-      });
-
-      receiverPeer.on('error', (err) => {
-        alert('연결 실패: 코드를 다시 확인하거나 보내는 기기가 켜져 있는지 확인해 주세요.');
-        document.getElementById('receiveStatusText').textContent = '연결 실패';
-      });
-    }
-
-    // Text Quick Share
-    function shareTextViaPair() {
-      const text = document.getElementById('quickTextInput').value.trim();
-      if (!text) {
-        alert('전송할 텍스트를 입력해 주세요.');
+      try {
+        receiverPeer = new Peer(ICE_CONFIG);
+      } catch (e) {
+        setReceiveStatus('연결을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'err');
         return;
       }
-      const code = generate6DigitCode();
-      document.getElementById('textPairCode').textContent = code;
-      document.getElementById('textPairResult').classList.remove('hidden');
 
-      // Create blob file from text
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const file = new File([blob], 'flux-text-' + code + '.txt', { type: 'text/plain' });
-      selectedFile = file;
+      receiverPeer.on('open', function () {
+        var conn;
+        try { conn = receiverPeer.connect('flux-drop-' + code, { reliable: true }); }
+        catch (e) { setReceiveStatus('연결을 만들지 못했습니다. 다시 시도해 주세요.', 'err'); return; }
+        receiverConn = conn;
 
-      // QR Code with direct URL
-      const qrBox = document.getElementById('textQrContainer');
-      qrBox.innerHTML = '';
-      const pairUrl = window.location.origin + window.location.pathname + '?code=' + code;
-      new QRCode(qrBox, {
-        text: pairUrl,
-        width: 100,
-        height: 100,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M
+        var opened = false;
+        var onOpen = function () {
+          if (opened) return;
+          opened = true;
+          setReceiveStatus('연결됨 · 받을 항목을 기다리는 중입니다.', 'ok');
+          try { conn.send({ type: 'ready' }); } catch (e) { }
+        };
+        conn.on('open', onOpen);
+        if (conn.open) setTimeout(onOpen, 30);
+        if (conn.dataChannel) {
+          if (conn.dataChannel.readyState === 'open') setTimeout(onOpen, 30);
+          try { conn.dataChannel.addEventListener('open', onOpen); } catch (e) { }
+        }
+        conn.on('data', handleReceiverData);
+        conn.on('iceStateChanged', function (st) {
+          if (st === 'failed' || st === 'disconnected') {
+            setReceiveStatus('연결 상태가 불안정합니다 (' + st + '). 잠시 기다려 주세요.', 'warn');
+          }
+        });
+        conn.on('close', function () {
+          if (receiverConn !== conn) return;
+          receiverConn = null;
+          if (incoming) { incoming = null; updateRxCancel(false); }
+          setReceiveStatus('연결이 끊겼습니다. 같은 코드로 다시 연결해 주세요.', 'err');
+          showNote('receiveNotice', '연결이 끊겼습니다. 위의 "연결 및 파일 받기"를 다시 눌러 주세요.', 'warn');
+        });
       });
 
-      initSenderPeer(code);
+      receiverPeer.on('error', function (err) {
+        var t = err && err.type;
+        if (t === 'peer-unavailable') {
+          setReceiveStatus('보내는 기기를 찾지 못했습니다. 코드를 확인해 주세요.', 'err');
+          showNote('receiveNotice', '그 코드로 열려 있는 보내는 기기가 없습니다. 코드를 다시 확인하거나 보내는 기기에서 전송실을 다시 열어 주세요.', 'err');
+        } else if (t === 'network' || t === 'server-error' || t === 'socket-error') {
+          setReceiveStatus('신호 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'err');
+        } else {
+          setReceiveStatus('연결 실패: ' + (t || '알 수 없는 오류'), 'err');
+        }
+      });
     }
 
-    // URL Param Check
-    
-    // Initialize Tab
-    
-    // Universal Animation Helpers
+    function handleReceiverData(data) {
+      if (!data || typeof data !== 'object') return;
+      if (!receiverConn || !receiverConn.open) return;
+
+      if (data.type === 'meta') {
+        incoming = {
+          id: data.id,
+          name: data.name || '받는 파일',
+          size: Number(data.size) || 0,
+          mime: data.mime || '',
+          chunks: [],
+          bytes: 0,
+          startedAt: 0,
+          lastT: 0,
+          lastB: 0,
+          lastPaint: 0,
+          speed: 0
+        };
+        setBar('receive', 0);
+        setReceiveStatus('수신 중 · ' + incoming.name, 'busy');
+        var sp = document.getElementById('receiveSpeedText');
+        var eta = document.getElementById('receiveEtaText');
+        if (sp) sp.textContent = '0 KB/s';
+        if (eta) eta.textContent = '남은 시간 계산 중';
+        updateRxCancel(true);
+        return;
+      }
+
+      if (data.type === 'chunk') {
+        if (!incoming) return;
+        incoming.chunks.push(data.data);
+        var len = (data.data && (data.data.byteLength || data.data.length)) || 0;
+        incoming.bytes += len;
+        paintReceiveProgress();
+        return;
+      }
+
+      if (data.type === 'done') {
+        finalizeIncoming();
+        return;
+      }
+
+      if (data.type === 'cancel') {
+        if (incoming && (!data.id || data.id === incoming.id)) {
+          var nm = incoming.name;
+          incoming = null;
+          updateRxCancel(false);
+          setReceiveStatus('상대가 전송을 취소했습니다 · ' + nm, 'warn');
+          var eta2 = document.getElementById('receiveEtaText');
+          if (eta2) eta2.textContent = '취소됨';
+        }
+        return;
+      }
+    }
+
+    function paintReceiveProgress(force) {
+      var it = incoming;
+      if (!it) return;
+      var now = Date.now();
+      if (!it.startedAt) { it.startedAt = now; it.lastT = now; it.lastB = 0; }
+      if (!force && now - it.lastPaint < 180) return;
+      it.lastPaint = now;
+
+      var elapsed = (now - it.lastT) / 1000;
+      if (elapsed >= 0.35) {
+        it.speed = (it.bytes - it.lastB) / elapsed;
+        it.lastT = now;
+        it.lastB = it.bytes;
+      }
+      var pct = it.size ? (it.bytes / it.size) * 100 : 0;
+      setBar('receive', pct);
+      var sp = document.getElementById('receiveSpeedText');
+      var eta = document.getElementById('receiveEtaText');
+      if (sp) sp.textContent = formatSpeed(it.speed);
+      if (eta) eta.textContent = (it.speed > 512 && it.size > it.bytes) ? formatEta((it.size - it.bytes) / it.speed) : '남은 시간 계산 중';
+      setReceiveStatus('수신 중 · ' + it.name + ' (' + Math.round(pct) + '%)', 'busy');
+    }
+
+    function finalizeIncoming() {
+      var it = incoming;
+      if (!it) return;
+      incoming = null;
+      var blob = new Blob(it.chunks, { type: it.mime || 'application/octet-stream' });
+      var url = URL.createObjectURL(blob);
+      var entry = {
+        id: it.id,
+        name: it.name,
+        size: it.bytes || it.size,
+        mime: it.mime,
+        blob: blob,
+        url: url,
+        at: Date.now(),
+        text: null
+      };
+      rxItems.push(entry);
+      updateRxCancel(false);
+      setBar('receive', 100);
+      document.getElementById('receiveSpeedText').textContent = it.speed ? formatSpeed(it.speed) : '-';
+      document.getElementById('receiveEtaText').textContent = '완료';
+      setReceiveStatus('수신 완료 · ' + it.name + ' (연결 유지 중)', 'ok');
+      renderRxList();
+      if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+      triggerConfetti();
+
+      if (isTextMime(it.mime, it.name)) {
+        blob.text().then(function (t) {
+          entry.text = t;
+          renderRxList();
+        }).catch(function () { });
+      }
+
+      saveStoredDrop({
+        id: 'drop_' + Date.now(),
+        type: 'receive',
+        name: it.name,
+        size: formatFileSize(entry.size),
+        date: new Date().toLocaleDateString('ko-KR')
+      });
+
+      try { if (receiverConn && receiverConn.open) receiverConn.send({ type: 'saved', id: it.id }); } catch (e) { }
+    }
+
+    function renderRxList() {
+      var box = document.getElementById('receiveListBox');
+      var list = document.getElementById('receiveFileList');
+      if (!box || !list) return;
+      if (!rxItems.length) { box.classList.add('hidden'); list.innerHTML = ''; return; }
+      box.classList.remove('hidden');
+      var total = rxItems.reduce(function (a, b) { return a + (b.size || 0); }, 0);
+      var c = document.getElementById('rxCount');
+      var t = document.getElementById('rxTotal');
+      if (c) c.textContent = rxItems.length + '개';
+      if (t) t.textContent = formatFileSize(total);
+
+      list.innerHTML = rxItems.map(function (it, i) {
+        var isImg = String(it.mime || '').indexOf('image/') === 0;
+        var isTxt = isTextMime(it.mime, it.name);
+        var thumb = isImg
+          ? '<img class="rx-thumb" src="' + it.url + '" alt="' + escHtml(it.name) + '">'
+          : '<span class="q-ico">' + fileIcon(it.mime, it.name) + '</span>';
+        var sub = formatFileSize(it.size) + ' · ' + clockOf(it.at);
+        if (isTxt && it.text) sub += ' · ' + escHtml(it.text.slice(0, 40).replace(/\s+/g, ' ')) + (it.text.length > 40 ? '...' : '');
+        return '<div class="q-row">' + thumb +
+          '<div class="q-file"><div class="q-name" title="' + escHtml(it.name) + '">' + escHtml(it.name) + '</div>' +
+          '<div class="q-meta rx-meta">' + sub + '</div></div>' +
+          '<button type="button" class="q-mini" data-rx="' + it.id + '" data-act="save">저장</button>' +
+          (isTxt ? '<button type="button" class="q-mini" data-rx="' + it.id + '" data-act="copy">복사</button>' : '') +
+          '</div>';
+      }).join('');
+    }
+
+    function onReceiveListClick(e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-rx]') : null;
+      if (!btn) return;
+      var id = btn.getAttribute('data-rx');
+      var act = btn.getAttribute('data-act');
+      if (act === 'save') saveRxItem(id);
+      else if (act === 'copy') copyRxText(id);
+    }
+
+    function findRx(id) {
+      for (var i = 0; i < rxItems.length; i++) if (rxItems[i].id === id) return rxItems[i];
+      return null;
+    }
+
+    function saveRxItem(id) {
+      var it = findRx(id);
+      if (!it || !it.url) return;
+      var a = document.createElement('a');
+      a.href = it.url;
+      a.download = it.name || 'lemon-drop-file';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (window.Lemon) Lemon.toast(it.name + ' 저장을 시작했어요');
+    }
+
+    function saveAllReceived() {
+      if (!rxItems.length) { showNote('receiveNotice', '아직 받은 파일이 없습니다.', 'warn'); return; }
+      rxItems.forEach(function (it, i) {
+        setTimeout(function () {
+          var a = document.createElement('a');
+          a.href = it.url;
+          a.download = it.name || 'lemon-drop-file';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }, i * 400);
+      });
+      showNote('receiveNotice', rxItems.length + '개 파일 저장을 시작합니다. 브라우저가 여러 파일 저장을 물으면 허용해 주세요.', 'ok');
+      if (window.Lemon) Lemon.toast(rxItems.length + '개 파일 저장을 시작했어요');
+    }
+
+    function copyRxText(id) {
+      var it = findRx(id);
+      if (!it) return;
+      var done = function () { if (window.Lemon) Lemon.toast('텍스트를 복사했어요'); };
+      if (it.text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(it.text).then(done, function () { showNote('receiveNotice', '복사하지 못했습니다. 저장한 파일을 열어 주세요.', 'err'); });
+        return;
+      }
+      it.blob.text().then(function (t) {
+        it.text = t;
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function () { });
+      }).catch(function () { });
+    }
+
+    function updateRxCancel(show) {
+      var b = document.getElementById('btnCancelReceive');
+      if (b) b.classList.toggle('hidden', !show);
+    }
+
+    function cancelReceive() {
+      if (!incoming) return;
+      var nm = incoming.name;
+      try { if (receiverConn && receiverConn.open) receiverConn.send({ type: 'cancel', id: incoming.id }); } catch (e) { }
+      incoming = null;
+      updateRxCancel(false);
+      setReceiveStatus('수신을 취소했습니다 · ' + nm + ' (연결 유지 중)', 'warn');
+      var eta = document.getElementById('receiveEtaText');
+      if (eta) eta.textContent = '취소됨';
+    }
+
+    /* ============================= TEXT SHARE ============================= */
+    function shareTextViaPair() {
+      var box = document.getElementById('quickTextInput');
+      var text = box ? box.value.trim() : '';
+      if (!text) {
+        showNote('textNotice', '전송할 텍스트를 입력해 주세요.', 'err');
+        return;
+      }
+      if (text.length > 500000) {
+        showNote('textNotice', '텍스트가 너무 깁니다. 50만 자 이하로 나눠 보내 주세요.', 'err');
+        return;
+      }
+      hideNote('textNotice');
+      var stamp = new Date();
+      var name = 'lemon-message-' + stamp.getFullYear() + ('0' + (stamp.getMonth() + 1)).slice(-2) + ('0' + stamp.getDate()).slice(-2) + '-' + ('0' + stamp.getHours()).slice(-2) + ('0' + stamp.getMinutes()).slice(-2) + '.txt';
+      var file = new File([new Blob([text], { type: 'text/plain;charset=utf-8' })], name, { type: 'text/plain' });
+      addFiles([file]);
+
+      var result = document.getElementById('textPairResult');
+      if (result) result.classList.remove('hidden');
+      if (senderConn && senderConn.open) {
+        showNote('textNotice', '연결된 기기로 바로 보냅니다. 이어서 더 보낼 수 있어요.', 'ok');
+        setTextStatus('전송 준비 중 (' + formatFileSize(file.size) + ')');
+      } else {
+        showNote('textNotice', '받는 기기에 코드 ' + senderCode + '를 입력하면 전송됩니다.', 'ok');
+        setTextStatus('받는 기기 연결을 기다리는 중');
+      }
+    }
+
+    /* ============================= QR SCANNER ============================= */
+    var qrStream = null;
+    var qrTimer = null;
+    var qrBusy = false;
+    var jsqrPromise = null;
+
+    function ensureJsQR() {
+      if (window.jsQR) return Promise.resolve(true);
+      if (jsqrPromise) return jsqrPromise;
+      jsqrPromise = new Promise(function (resolve) {
+        var s = document.createElement('script');
+        s.src = 'jsqr.js';
+        s.onload = function () { resolve(!!window.jsQR); };
+        s.onerror = function () { resolve(false); };
+        document.head.appendChild(s);
+      });
+      return jsqrPromise;
+    }
+
+    function setQrStatus(msg, tone) {
+      var el = document.getElementById('qrScanStatus');
+      if (!el) return;
+      el.textContent = msg;
+      el.className = 'text-[11px] leading-relaxed ' + (tone === 'err' ? 'st-err' : tone === 'warn' ? 'st-warn' : tone === 'ok' ? 'st-ok' : 'text-neutral-600 dark:text-neutral-400');
+    }
+
+    function extractCode(text) {
+      if (!text) return null;
+      var s = String(text);
+      var m = s.match(/[?&#]code=(\d{6})/i) || s.match(/(\d{6})/);
+      return m ? m[1] : null;
+    }
+
+    function startQrScan() {
+      var box = document.getElementById('qrScanBox');
+      if (box) box.classList.remove('hidden');
+      stopQrLoop();
+      setQrStatus('카메라를 준비하는 중...', '');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setQrStatus('이 브라우저에서는 카메라를 쓸 수 없어요. 아래에서 QR 이미지를 선택하거나 6자리 코드를 직접 입력해 주세요.', 'warn');
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+        .then(function (stream) {
+          qrStream = stream;
+          var v = document.getElementById('qrVideo');
+          if (v) {
+            v.srcObject = stream;
+            var p = v.play();
+            if (p && p.catch) p.catch(function () { });
+            setQrStatus('QR코드를 사각형 안에 맞춰 주세요.', 'ok');
+            startQrLoop(v);
+          }
+        })
+        .catch(function (err) {
+          var name = err && err.name;
+          var reason = name === 'NotAllowedError' || name === 'SecurityError' ? '카메라 권한이 꺼져 있어요'
+            : name === 'NotFoundError' || name === 'DevicesNotFoundError' ? '카메라를 찾지 못했어요'
+              : '카메라를 열지 못했어요';
+          setQrStatus(reason + '. 아래에서 QR 이미지를 선택하거나 6자리 코드를 직접 입력해 주세요.', 'warn');
+        });
+    }
+
+    function stopQrLoop() {
+      if (qrTimer) { clearTimeout(qrTimer); qrTimer = null; }
+      qrBusy = false;
+    }
+
+    function stopQrScan() {
+      stopQrLoop();
+      if (qrStream) {
+        try { qrStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { }
+        qrStream = null;
+      }
+      var v = document.getElementById('qrVideo');
+      if (v) { try { v.srcObject = null; } catch (e) { } }
+      var box = document.getElementById('qrScanBox');
+      if (box) box.classList.add('hidden');
+    }
+
+    function startQrLoop(video) {
+      var canvas = document.createElement('canvas');
+      var ctx = canvas.getContext('2d', { willReadFrequently: true });
+      var detector = null;
+      if ('BarcodeDetector' in window) {
+        try { detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { detector = null; }
+      }
+      var ready = !!detector;
+
+      function step() {
+        if (!qrStream) return;
+        if (qrBusy) return;
+        qrBusy = true;
+
+        if (!ready) {
+          ensureJsQR().then(function (ok) {
+            qrBusy = false;
+            if (!qrStream) return;
+            if (!ok) {
+              setQrStatus('이 브라우저는 카메라 QR 인식을 지원하지 않아요. 아래에서 QR 이미지를 선택하거나 6자리 코드를 직접 입력해 주세요.', 'warn');
+              return;
+            }
+            ready = true;
+            qrTimer = setTimeout(step, 180);
+          });
+          return;
+        }
+
+        var w = video.videoWidth || 0;
+        var h = video.videoHeight || 0;
+        if (!w || !h) { qrBusy = false; qrTimer = setTimeout(step, 220); return; }
+        canvas.width = w;
+        canvas.height = h;
+        try { ctx.drawImage(video, 0, 0, w, h); }
+        catch (e) { qrBusy = false; qrTimer = setTimeout(step, 220); return; }
+
+        if (detector) {
+          detector.detect(canvas).then(function (codes) {
+            qrBusy = false;
+            if (codes && codes.length) {
+              var c = extractCode(codes[0].rawValue);
+              if (c) return onQrCode(c);
+            }
+            qrTimer = setTimeout(step, 200);
+          }).catch(function () { qrBusy = false; qrTimer = setTimeout(step, 220); });
+        } else {
+          var found = null;
+          try {
+            var img = ctx.getImageData(0, 0, w, h);
+            var res = window.jsQR ? window.jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' }) : null;
+            if (res && res.data) found = extractCode(res.data);
+          } catch (e) { }
+          qrBusy = false;
+          if (found) return onQrCode(found);
+          qrTimer = setTimeout(step, 260);
+        }
+      }
+      step();
+    }
+
+    function onQrCode(code) {
+      stopQrScan();
+      var input = document.getElementById('inputPairCode');
+      if (input) input.value = code;
+      showNote('receiveNotice', 'QR에서 코드 ' + code + '를 확인했습니다. 연결합니다.', 'ok');
+      if (window.Lemon) Lemon.toast('QR에서 코드 ' + code + '를 인식했어요');
+      connectAndReceive();
+    }
+
+    function handleQrImage(ev) {
+      var input = ev.target;
+      var file = input && input.files && input.files[0];
+      try { input.value = ''; } catch (e) { }
+      if (!file) return;
+      setQrStatus('QR 이미지를 읽는 중...', '');
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+
+      var finish = function (code) {
+        URL.revokeObjectURL(url);
+        if (code) onQrCode(code);
+        else setQrStatus('QR에서 6자리 코드를 찾지 못했어요. 코드를 직접 입력해 주세요.', 'err');
+      };
+
+      img.onload = function () {
+        var canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        var ctx = canvas.getContext('2d', { willReadFrequently: true });
+        try { ctx.drawImage(img, 0, 0); }
+        catch (e) { finish(null); return; }
+
+        if ('BarcodeDetector' in window) {
+          try {
+            var det = new BarcodeDetector({ formats: ['qr_code'] });
+            det.detect(canvas).then(function (codes) {
+              if (codes && codes.length) {
+                var c = extractCode(codes[0].rawValue);
+                if (c) return finish(c);
+              }
+              decodeWithJsQR(canvas, finish);
+            }).catch(function () { decodeWithJsQR(canvas, finish); });
+            return;
+          } catch (e) { }
+        }
+        decodeWithJsQR(canvas, finish);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        setQrStatus('이미지를 읽지 못했어요. 다른 이미지를 선택해 주세요.', 'err');
+      };
+      img.src = url;
+    }
+
+    function decodeWithJsQR(canvas, done) {
+      ensureJsQR().then(function (ok) {
+        if (!ok) {
+          setQrStatus('이 브라우저에서는 QR 이미지 인식을 쓸 수 없어요. 6자리 코드를 직접 입력해 주세요.', 'warn');
+          return;
+        }
+        try {
+          var ctx = canvas.getContext('2d', { willReadFrequently: true });
+          var data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var res = window.jsQR(data.data, data.width, data.height, { inversionAttempts: 'attemptBoth' });
+          done(res && res.data ? extractCode(res.data) : null);
+        } catch (e) {
+          setQrStatus('QR 이미지를 해석하지 못했어요. 6자리 코드를 직접 입력해 주세요.', 'err');
+        }
+      });
+    }
+
+    /* ============================= ANIMATION HELPERS ============================= */
     function initUniversalAnimations() {
-      // 1. Click Ripple Effect on all interactive elements
-      document.addEventListener('click', (e) => {
-        const target = e.target.closest('button, .card-hover-lift, a, input');
+      document.addEventListener('click', function (e) {
+        var target = e.target.closest ? e.target.closest('button, .card-hover-lift, a, input') : null;
         if (!target) return;
-        const ripple = document.createElement('div');
+        var ripple = document.createElement('div');
         ripple.className = 'click-ripple';
         ripple.style.left = e.clientX + 'px';
         ripple.style.top = e.clientY + 'px';
         ripple.style.width = '70px';
         ripple.style.height = '70px';
         document.body.appendChild(ripple);
-        setTimeout(() => {
-          if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
-        }, 520);
+        setTimeout(function () { if (ripple.parentNode) ripple.parentNode.removeChild(ripple); }, 520);
       });
     }
 
-    // 2. High-Performance Confetti Burst Function
     function triggerConfetti(originX, originY) {
-      const x = originX !== undefined ? originX : window.innerWidth / 2;
-      const y = originY !== undefined ? originY : window.innerHeight / 2.5;
-      const colors = ['#3b82f6', '#60a5fa', '#2563eb', '#06b6d4', '#818cf8', '#ffffff'];
-      const count = 42;
-
-      for (let i = 0; i < count; i++) {
-        const p = document.createElement('div');
+      var x = originX !== undefined ? originX : window.innerWidth / 2;
+      var y = originY !== undefined ? originY : window.innerHeight / 2.5;
+      var colors = ['#3b82f6', '#60a5fa', '#2563eb', '#06b6d4', '#818cf8', '#ffffff'];
+      for (var i = 0; i < 42; i++) {
+        var p = document.createElement('div');
         p.className = 'confetti-particle';
-        const color = colors[Math.floor(Math.random() * colors.length)];
-        const size = Math.floor(Math.random() * 8) + 6;
+        var size = Math.floor(Math.random() * 8) + 6;
         p.style.width = size + 'px';
         p.style.height = (size * 1.3) + 'px';
-        p.style.backgroundColor = color;
+        p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
         p.style.left = x + 'px';
         p.style.top = y + 'px';
-
-        const angle = Math.random() * Math.PI * 2;
-        const velocity = Math.random() * 260 + 90;
-        const tx = Math.cos(angle) * velocity + (Math.random() * 80 - 40);
-        const ty = Math.sin(angle) * velocity + Math.random() * 180 + 60;
-        const rot = (Math.random() * 720 - 360) + 'deg';
-
-        p.style.setProperty('--tx', tx + 'px');
-        p.style.setProperty('--ty', ty + 'px');
-        p.style.setProperty('--rot', rot);
-
+        var angle = Math.random() * Math.PI * 2;
+        var velocity = Math.random() * 260 + 90;
+        p.style.setProperty('--tx', (Math.cos(angle) * velocity + (Math.random() * 80 - 40)) + 'px');
+        p.style.setProperty('--ty', (Math.sin(angle) * velocity + Math.random() * 180 + 60) + 'px');
+        p.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
         document.body.appendChild(p);
-        setTimeout(() => {
-          if (p.parentNode) p.parentNode.removeChild(p);
-        }, 2450);
+        setTimeout(function () { if (p.parentNode) p.parentNode.removeChild(p); }, 2450);
       }
     }
 
-    window.addEventListener('DOMContentLoaded', () => {
+    /* ============================= BOOT ============================= */
+    window.addEventListener('DOMContentLoaded', function () {
       initUniversalAnimations();
       initTheme();
+      initSecretBanner();
       updateDropProjectsBadge();
 
-      const textInput = document.getElementById('quickTextInput');
+      var textInput = document.getElementById('quickTextInput');
       if (textInput) {
-        textInput.addEventListener('input', () => {
-          const charEl = document.getElementById('textCharCount');
+        textInput.addEventListener('input', function () {
+          var charEl = document.getElementById('textCharCount');
           if (charEl) charEl.textContent = textInput.value.length + ' 글자';
         });
       }
 
-      const params = new URLSearchParams(window.location.search);
-      const hash = window.location.hash;
-      let code = params.get('code');
-      if (!code && hash && hash.includes('code=')) {
-        const m = hash.match(/code=([0-9]{6})/);
+      var codeInput = document.getElementById('inputPairCode');
+      if (codeInput) {
+        codeInput.addEventListener('input', function () {
+          codeInput.value = String(codeInput.value || '').replace(/\D/g, '').slice(0, 6);
+          hideNote('receiveNotice');
+        });
+        codeInput.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); connectAndReceive(); }
+        });
+      }
+
+      var params = new URLSearchParams(window.location.search);
+      var hash = window.location.hash;
+      var code = params.get('code');
+      if (!code && hash && hash.indexOf('code=') >= 0) {
+        var m = hash.match(/code=(\d{6})/);
         if (m) code = m[1];
       }
 
-      if (code && code.length === 6) {
+      if (code && String(code).length === 6) {
         switchDropTab('maker');
         switchMode('receive');
-        document.getElementById('inputPairCode').value = code;
+        var input = document.getElementById('inputPairCode');
+        if (input) input.value = code;
         connectAndReceive();
         return;
       }
@@ -1370,9 +2541,17 @@
       var filled = 0;
       for (var fk in fields) if (fields.hasOwnProperty(fk) && String(fields[fk]).length) filled++;
       if (!count && !filled) return;
-      localStorage.setItem(SK, JSON.stringify({ ts: Date.now(), svc: SVC, data: data, fields: fieldState() }));
+      var snap = { ts: Date.now(), svc: SVC, data: data, fields: fieldState() };
+      try {
+        localStorage.setItem(SK, JSON.stringify(snap));
+      } catch (err) {
+        /* localStorage와 IndexedDB 폴백(lemon-ui.js)까지 막힌 경우에도 화면 경고 없이 조용히 넘긴다. */
+        try { if (window.Lemon && Lemon.store && Lemon.store.set) Lemon.store.set(SK, snap); } catch (err2) { }
+        console.warn('autosave skipped', err);
+        return;
+      }
       pill('자동 저장됨 ' + stamp());
-    } catch (e) { pill('저장 공간 부족', 'err'); }
+    } catch (e) { console.warn('autosave failed', e); }
   }
   function schedule() {
     if (timer) clearTimeout(timer);
