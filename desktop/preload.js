@@ -68,6 +68,19 @@ const fullBridge = {
   shell: {
     external: function (url) { return ipcRenderer.invoke('shell:external', url); }
   },
+  sync: {
+    getState: function () { return ipcRenderer.invoke('sync:get-state'); },
+    startAuth: function () { return ipcRenderer.invoke('sync:start-auth'); },
+    cancelAuth: function () { return ipcRenderer.invoke('sync:cancel-auth'); },
+    run: function (input) { return ipcRenderer.invoke('sync:run', input || {}); },
+    logout: function () { return ipcRenderer.invoke('sync:logout'); },
+    setPassSync: function (enabled) { return ipcRenderer.invoke('sync:set-pass-sync', enabled === true); },
+    onUpdate: function (cb) { on('sync:updated', cb); }
+  },
+  pass: {
+    getVault: function () { return ipcRenderer.invoke('pass:get-vault'); },
+    saveVault: function (raw) { return ipcRenderer.invoke('pass:save-vault', raw); }
+  },
   app: {
     version: function () { return ipcRenderer.invoke('app:version'); }
   },

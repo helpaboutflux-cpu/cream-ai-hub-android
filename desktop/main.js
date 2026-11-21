@@ -7,8 +7,10 @@ const http = require('http');
 const { execFile, spawn } = require('child_process');
 const { setupAdblock } = require('./adblock');
 const { translateTexts } = require('./translate');
+const { createSync } = require('./sync');
 
 let mainWindow = null;
+let sync = null;
 
 function userDataPath() {
   return app.getPath('userData');
@@ -525,6 +527,8 @@ function parseRssItems(xml, limit) {
 }
 
 function registerIpc() {
+  initSync();
+
   // webview의 preload 속성에 쓸 경로. 샌드박스 프리로드는 __filename을 쓸 수 없어 여기서 넘긴다.
   ipcMain.handle('env:preload-path', function () {
     return path.join(__dirname, 'preload.js');
@@ -611,6 +615,77 @@ function registerIpc() {
     }
     isLocked = true;
     return { ok: true, state: lockState() };
+  });
+
+  /* ---------- LK 계정 · Google Drive 동기화 ---------- */
+
+  function initSync() {
+    sync = createSync({
+      userDataPath: userDataPath,
+      openExternal: function (url) { shell.openExternal(url); },
+      focusWindow: function () {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      },
+      onUpdate: function (snapshot) { sendToRenderer('sync:updated', snapshot); },
+      apiBase: process.env.CREAMY_DRIVE_API_BASE || undefined,
+      authUrl: process.env.CREAMY_AUTH_URL || undefined,
+      timeoutMs: process.env.CREAMY_AUTH_TIMEOUT_MS ? Number(process.env.CREAMY_AUTH_TIMEOUT_MS) : undefined
+    });
+    sync.load();
+  }
+
+  ipcMain.handle('sync:get-state', function () {
+    if (!sync) {
+      return {
+        linked: false, lkUser: null,
+        drive: { connected: false, wasConnected: false, expired: false, email: '', expiresAt: 0 },
+        passSyncEnabled: false, passVaultCount: 0, lastSyncAt: 0, lastSync: null,
+        lastError: 'sync-unavailable', busy: false, pendingAuth: false
+      };
+    }
+    return sync.state();
+  });
+
+  ipcMain.handle('sync:start-auth', async function () {
+    if (!sync) return { ok: false, error: 'sync-unavailable' };
+    try {
+      return await sync.startAuth();
+    } catch (err) {
+      return { ok: false, error: (err && err.code) || 'start-failed' };
+    }
+  });
+
+  ipcMain.handle('sync:cancel-auth', function () {
+    if (!sync) return { ok: false, error: 'sync-unavailable' };
+    return sync.cancelAuth();
+  });
+
+  ipcMain.handle('sync:run', function (event, input) {
+    if (!sync) return { ok: false, error: 'sync-unavailable' };
+    return sync.run(input || {});
+  });
+
+  ipcMain.handle('sync:logout', function () {
+    if (!sync) return { ok: false, error: 'sync-unavailable' };
+    return sync.logout();
+  });
+
+  ipcMain.handle('sync:set-pass-sync', function (event, enabled) {
+    if (!sync) return { ok: false, error: 'sync-unavailable' };
+    return sync.setPassSync(enabled === true);
+  });
+
+  ipcMain.handle('pass:get-vault', function () {
+    if (!sync) return { ok: false, error: 'sync-unavailable', vault: '', count: 0, updatedAt: 0, passSyncEnabled: false };
+    return sync.getVault();
+  });
+
+  ipcMain.handle('pass:save-vault', function (event, raw) {
+    if (!sync) return { ok: false, error: 'sync-unavailable' };
+    return sync.saveVault(raw);
   });
 
   ipcMain.handle('settings:get', function () { return settings; });

@@ -62,6 +62,11 @@
     mainSettings: {},
     preloadPath: '',
     lock: { locked: false, enabled: false, hasPassword: false },
+    sync: null,
+    pass: {
+      loaded: false, loading: false, view: 'loading', meta: null, key: null, items: [],
+      msg: '', msgKind: '', formOpen: false, reveal: {}, confirmDelete: '', lockTimer: null
+    },
     history: [],
     bookmarks: [],
     bag: [],
@@ -697,6 +702,9 @@
       btn.classList.toggle('active', btn.getAttribute('data-panel') === name);
     });
     renderPanel(name);
+    if (name === 'pass' && state.pass.view !== 'open') {
+      safeRun('금고 상태', function () { loadPassVault(true); });
+    }
   }
 
   function closePanel() {
@@ -716,6 +724,7 @@
     creamy: 'Creamy AI',
     bag: 'My Bag',
     bookmarks: '북마크',
+    pass: 'Lemon Pass',
     downloads: '다운로드',
     menu: '전체 메뉴',
     settings: '설정'
@@ -728,6 +737,7 @@
     if (name === 'creamy') renderCreamyPanel(body);
     else if (name === 'bag') renderBagPanel(body);
     else if (name === 'bookmarks') renderBookmarksPanel(body);
+    else if (name === 'pass') renderPassPanel(body);
     else if (name === 'downloads') renderDownloadsPanel(body);
     else if (name === 'menu') renderMenuPanel(body);
     else if (name === 'settings') renderSettingsPanel(body);
@@ -1117,6 +1127,596 @@
     });
   }
 
+  /* ---------- LK 계정 · Google Drive 동기화 ---------- */
+
+  function syncApiGroup() { return bridgeGroup('sync', ['getState', 'run']); }
+
+  function syncErrorText(code) {
+    var map = {
+      'sync-unavailable': '동기화 기능을 사용할 수 없습니다.',
+      'not-linked': '먼저 LK 계정을 연결해 주세요.',
+      'drive-missing': 'Google Drive 연결이 필요합니다.',
+      'drive-expired': 'Google Drive 연결이 만료되었습니다. 계정을 다시 연결해 주세요.',
+      'busy': '다른 동기화가 진행 중입니다. 잠시 뒤 다시 시도하세요.',
+      'timeout': '연결 시간이 지났습니다. 계정 연결을 다시 눌러 주세요.',
+      'network': '네트워크 오류로 Google Drive에 연결하지 못했습니다.',
+      'forbidden': 'Google Drive 접근이 거부되었습니다. 계정을 다시 연결해 주세요.',
+      'rate-limit': 'Google 요청이 잠시 제한되었습니다. 잠시 뒤 다시 시도하세요.',
+      'folder-create-failed': 'Drive에 백업 폴더를 만들지 못했습니다.',
+      'server-error': 'Google 서버가 잠시 응답하지 않습니다.',
+      'open-failed': '브라우저를 열지 못했습니다. 기본 브라우저 설정을 확인해 주세요.',
+      'bad-state': '연결 요청이 만료되었습니다. 계정 연결을 다시 눌러 주세요.'
+    };
+    if (!code) return '동기화를 마치지 못했습니다.';
+    return map[code] || ('동기화를 마치지 못했습니다 (' + code + ').');
+  }
+
+  function syncTimeText(ts) {
+    if (!ts) return '없음';
+    try { return new Date(ts).toLocaleString('ko-KR'); } catch (err) { return '없음'; }
+  }
+
+  function syncApplySnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    state.sync = snapshot;
+    if (state.activePanel === 'settings') safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
+  }
+
+  async function loadSyncState() {
+    var api = bridgeGroup('sync', ['getState']);
+    if (!api) {
+      state.sync = {
+        linked: false, lkUser: null, unavailable: true,
+        drive: { connected: false, email: '', expired: false, expiresAt: 0 },
+        passSyncEnabled: false, passVaultCount: 0, lastSyncAt: 0, lastSync: null, lastError: '', busy: false
+      };
+      return state.sync;
+    }
+    try {
+      var s = await api.getState();
+      if (s && typeof s === 'object') state.sync = s;
+    } catch (err) {
+      console.error('[creamy] sync.getState 실패:', err);
+    }
+    return state.sync;
+  }
+
+  function startSyncAuth(btn) {
+    var api = bridgeGroup('sync', ['startAuth']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    var label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '브라우저에서 연결 중'; }
+    showToast('기본 브라우저에서 계정 연결을 마쳐 주세요.');
+    api.startAuth().then(function (res) {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+      if (res && res.ok) {
+        state.sync = res.state || state.sync;
+        showToast('LK 계정과 Google Drive를 연결했습니다.');
+        safeRun('연결 후 동기화', function () {
+          if (state.sync && state.sync.drive && state.sync.drive.connected) syncRunNow(null, { silent: false });
+        });
+      } else {
+        showToast(syncErrorText(res && res.error));
+      }
+      safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
+    }, function (err) {
+      console.error('[creamy] sync.startAuth 실패:', err);
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+      showToast(BRIDGE_GONE_TEXT);
+    });
+  }
+
+  function syncRunNow(btn, opts) {
+    var api = bridgeGroup('sync', ['run']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    var options = opts || {};
+    var label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '동기화 중'; }
+    var input = {
+      bookmarks: state.bookmarks,
+      history: state.history,
+      passOnly: options.passOnly === true
+    };
+    api.run(input).then(function (res) {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+      var done = function () {
+        loadSyncState().then(function () {
+          if (!options.silent) safeRun('설정 다시 그리기', function () { renderPanel(state.activePanel || 'settings'); });
+        });
+      };
+      if (!res || !res.ok) {
+        if (!options.silent) showToast(syncErrorText(res && res.error));
+        done();
+        return;
+      }
+      if (!options.passOnly) {
+        state.bookmarks = Array.isArray(res.bookmarks) ? res.bookmarks : state.bookmarks;
+        state.history = Array.isArray(res.history) ? res.history : state.history;
+        lsSet('bookmarks', state.bookmarks);
+        lsSet('history', state.history);
+      }
+      if (res.passVault && state.pass.view !== 'open') {
+        var meta = CreamyPassVault.parse(res.passVault);
+        if (meta) {
+          state.pass.meta = meta;
+          state.pass.view = 'locked';
+          state.pass.loaded = true;
+        }
+      }
+      if (!options.silent) {
+        var bits = [];
+        if (!options.passOnly) {
+          bits.push('북마크 ' + state.bookmarks.length + '개');
+          bits.push('방문기록 ' + state.history.length + '개');
+        }
+        if (res.passAction && res.passAction !== 'off') bits.push('금고 ' + (res.passAction === 'pull' ? '가져옴' : (res.passAction === 'push' ? '올림' : '최신')));
+        showToast('동기화 완료 · ' + (bits.length ? bits.join(' · ') : '변경 없음'));
+      }
+      done();
+    }, function (err) {
+      console.error('[creamy] sync.run 실패:', err);
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+      if (!options.silent) showToast(BRIDGE_GONE_TEXT);
+    });
+  }
+
+  function syncLogout() {
+    var api = bridgeGroup('sync', ['logout']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    api.logout().then(function (res) {
+      if (res && res.state) state.sync = res.state;
+      showToast('LK 계정 연결을 해제했습니다. 이 기기의 데이터는 그대로 남습니다.');
+      safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
+    }, function () { showToast(BRIDGE_GONE_TEXT); });
+  }
+
+  function syncSetPass(enabled) {
+    var api = bridgeGroup('sync', ['setPassSync']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    api.setPassSync(enabled === true).then(function (res) {
+      if (res && res.state) state.sync = res.state;
+      showToast(enabled
+        ? 'Lemon Pass 금고를 Drive 백업에 포함합니다.'
+        : '금고 동기화를 껐습니다. 금고는 이 PC에만 남습니다.');
+      safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
+      if (enabled) syncRunNow(null, { passOnly: true, silent: false });
+    }, function () { showToast(BRIDGE_GONE_TEXT); });
+  }
+
+  /* ---------- Lemon Pass panel ---------- */
+
+  function passApiGroup() { return bridgeGroup('pass', ['getVault', 'saveVault']); }
+
+  function passCurrentHost() {
+    var tab = activeTab();
+    if (!tab || !tab.url || tab.url.indexOf('http') !== 0) return '';
+    return CreamyPassVault.hostOf(tab.url);
+  }
+
+  async function loadPassVault(force) {
+    var p = state.pass;
+    if (p.loading) return;
+    if (p.loaded && !force) return;
+    p.loading = true;
+    var api = passApiGroup();
+    if (!api) {
+      p.loading = false;
+      p.loaded = true;
+      p.view = 'setup';
+      p.msg = BRIDGE_GONE_TEXT;
+      p.msgKind = 'err';
+      if (state.activePanel === 'pass') renderPanel('pass');
+      return;
+    }
+    try {
+      var res = await api.getVault();
+      var meta = res && res.vault ? CreamyPassVault.parse(res.vault) : null;
+      p.meta = meta || null;
+      p.key = null;
+      p.items = [];
+      p.confirmDelete = '';
+      p.formOpen = false;
+      p.view = p.meta ? 'locked' : 'setup';
+      p.loaded = true;
+      p.msg = '';
+    } catch (err) {
+      console.error('[creamy] pass.getVault 실패:', err);
+      p.loaded = true;
+      p.view = 'setup';
+      p.msg = '금고를 불러오지 못했습니다.';
+      p.msgKind = 'err';
+    }
+    p.loading = false;
+    if (state.activePanel === 'pass') renderPanel('pass');
+  }
+
+  function passTouch() {
+    var p = state.pass;
+    if (p.lockTimer) { clearTimeout(p.lockTimer); p.lockTimer = null; }
+    p.lockTimer = setTimeout(function () {
+      if (state.pass.view === 'open') passLock(true);
+    }, 10 * 60 * 1000);
+  }
+
+  function passLock(silent) {
+    var p = state.pass;
+    p.key = null;
+    p.items = [];
+    p.formOpen = false;
+    p.confirmDelete = '';
+    p.view = p.meta ? 'locked' : 'setup';
+    if (p.lockTimer) { clearTimeout(p.lockTimer); p.lockTimer = null; }
+    if (!silent) showToast('금고를 잠갔습니다.');
+    if (state.activePanel === 'pass') renderPanel('pass');
+  }
+
+  async function passCreate() {
+    var p = state.pass;
+    var pw = (document.querySelector('#passNew') || {}).value || '';
+    var pw2 = (document.querySelector('#passNew2') || {}).value || '';
+    var hint = (document.querySelector('#passHint') || {}).value || '';
+    function fail(text) { p.msg = text; p.msgKind = 'err'; renderPanel('pass'); }
+    if (!CreamyPassVault.subtleOK()) { fail('이 환경에서는 암호화를 쓸 수 없습니다.'); return; }
+    if (pw.length < 8) { fail('마스터 비밀번호는 8자 이상으로 정하세요.'); return; }
+    if (pw !== pw2) { fail('두 입력이 일치하지 않습니다.'); return; }
+    var api = passApiGroup();
+    if (!api) { fail(BRIDGE_GONE_TEXT); return; }
+    try {
+      var created = await CreamyPassVault.create(pw, hint);
+      var res = await api.saveVault(JSON.stringify(created.meta));
+      if (!res || !res.ok) { fail('금고를 저장하지 못했습니다.'); return; }
+      p.meta = created.meta;
+      p.key = created.key;
+      p.items = [];
+      p.view = 'open';
+      p.msg = '';
+      passTouch();
+      showToast('금고를 만들었습니다.');
+      renderPanel('pass');
+    } catch (err) {
+      console.error('[creamy] pass.create 실패:', err);
+      fail('금고를 만들지 못했습니다.');
+    }
+  }
+
+  async function passUnlock() {
+    var p = state.pass;
+    var input = document.querySelector('#passPw');
+    var pw = (input && input.value) || '';
+    function fail(text) { p.msg = text; p.msgKind = 'err'; renderPanel('pass'); }
+    if (!pw) { fail('마스터 비밀번호를 입력하세요.'); return; }
+    if (!p.meta) { fail('금고가 없습니다.'); return; }
+    try {
+      var opened = await CreamyPassVault.unlock(pw, p.meta);
+      p.key = opened.key;
+      p.items = opened.items;
+      p.view = 'open';
+      p.msg = '';
+      passTouch();
+      showToast('금고를 열었습니다.');
+      renderPanel('pass');
+    } catch (err) {
+      fail('마스터 비밀번호가 맞지 않습니다.');
+    }
+  }
+
+  async function passPersist() {
+    var p = state.pass;
+    if (!p.key || !p.meta) return false;
+    var api = passApiGroup();
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return false; }
+    try {
+      var meta = await CreamyPassVault.seal(p.key, p.meta, p.items);
+      var res = await api.saveVault(JSON.stringify(meta));
+      if (!res || !res.ok) { showToast('금고를 저장하지 못했습니다.'); return false; }
+      p.meta = meta;
+      passTouch();
+      if (state.sync && state.sync.passSyncEnabled) {
+        safeRun('금고 동기화', function () { syncRunNow(null, { passOnly: true, silent: true }); });
+      }
+      return true;
+    } catch (err) {
+      console.error('[creamy] pass.saveVault 실패:', err);
+      showToast('금고를 저장하지 못했습니다.');
+      return false;
+    }
+  }
+
+  async function passAddItem() {
+    var p = state.pass;
+    function val(id) { var el = document.querySelector(id); return el ? String(el.value || '').trim() : ''; }
+    var site = val('#passSite');
+    var url = val('#passUrl');
+    var user = val('#passUser');
+    var pass = val('#passPass');
+    var memo = val('#passMemo');
+    if (!site) { p.msg = '사이트 이름을 입력하세요.'; p.msgKind = 'err'; renderPanel('pass'); return; }
+    if (!pass) { p.msg = '비밀번호를 입력하세요.'; p.msgKind = 'err'; renderPanel('pass'); return; }
+    p.items.unshift({
+      id: CreamyPassVault.itemId(),
+      type: 'login',
+      site: site,
+      url: url,
+      user: user,
+      pass: pass,
+      env: '',
+      memo: memo,
+      ts: Date.now(),
+      upd: Date.now()
+    });
+    p.formOpen = false;
+    p.msg = '';
+    var ok = await passPersist();
+    showToast(ok ? '항목을 암호화해 저장했습니다.' : '항목을 저장하지 못했습니다.');
+    renderPanel('pass');
+  }
+
+  async function passDeleteItem(id) {
+    var p = state.pass;
+    p.items = p.items.filter(function (it) { return it.id !== id; });
+    p.confirmDelete = '';
+    var ok = await passPersist();
+    showToast(ok ? '항목을 삭제했습니다.' : '삭제하지 못했습니다.');
+    renderPanel('pass');
+  }
+
+  function passCopy(text, label) {
+    if (!text) { showToast('복사할 값이 없습니다.'); return; }
+    function done() { showToast(label + '를 복사했습니다.'); }
+    function fallback() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+        document.body.removeChild(ta);
+        if (ok) done(); else showToast('복사하지 못했습니다.');
+      } catch (err) { showToast('복사하지 못했습니다.'); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function passFillScript(user, pass) {
+    var payload = JSON.stringify({ user: String(user || ''), pass: String(pass || '') });
+    return [
+      '(function(){',
+      '  var d = ' + payload + ';',
+      '  function setNative(el, v){',
+      '    if (!el) return false;',
+      '    var desc = null;',
+      '    try { desc = Object.getOwnPropertyDescriptor(el.constructor.prototype, "value"); } catch (e) { desc = null; }',
+      '    try { if (desc && desc.set) desc.set.call(el, v); else el.value = v; } catch (e) { try { el.value = v; } catch (e2) { } }',
+      '    try { el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) { }',
+      '    return true;',
+      '  }',
+      '  var pws = Array.prototype.slice.call(document.querySelectorAll("input[type=password]")).filter(function (el) { return el.offsetParent !== null && !el.disabled && !el.readOnly; });',
+      '  var pw = pws[0] || document.querySelector("input[type=password]");',
+      '  if (!pw) return { ok: false, reason: "no-password-field" };',
+      '  var scope = pw.form || document;',
+      '  var cands = Array.prototype.slice.call(scope.querySelectorAll("input[type=text],input[type=email],input[type=tel],input[name*=user i],input[name*=mail i],input[id*=user i],input[id*=mail i],input:not([type])"));',
+      '  var uf = null;',
+      '  for (var i = 0; i < cands.length; i++) {',
+      '    var c = cands[i];',
+      '    if (c === pw || c.offsetParent === null || c.disabled || c.readOnly) continue;',
+      '    uf = c; break;',
+      '  }',
+      '  if (uf && d.user) setNative(uf, d.user);',
+      '  setNative(pw, d.pass);',
+      '  try { pw.focus(); } catch (e) { }',
+      '  return { ok: true, user: !!uf };',
+      '})()'
+    ].join('\n');
+  }
+
+  async function passFillActive(item) {
+    var tab = activeTab();
+    if (!tab) { showToast('먼저 로그인할 탭을 열어 주세요.'); return; }
+    try {
+      var res = await tab.webview.executeJavaScript(passFillScript(item.user, item.pass), false);
+      if (res && res.ok) showToast('현재 페이지의 로그인 칸을 채웠습니다.');
+      else showToast('이 페이지에서 로그인 입력칸을 찾지 못했습니다.');
+    } catch (err) {
+      console.error('[creamy] pass 자동 입력 실패:', err);
+      showToast('현재 페이지에 입력하지 못했습니다.');
+    }
+  }
+
+  var PASS_KEY_SVG = '<svg viewBox="0 0 22 22" width="19" height="19"><circle cx="7.5" cy="11" r="3.6" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M11 11h7.5M16 11v3M18.5 11v2.2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>';
+
+  function passItemRow(it, host, reveal, confirmId) {
+    var matched = host && CreamyPassVault.hostMatches(it.url, host);
+    var sub = it.user || '아이디 없음';
+    var pwText = reveal ? String(it.pass || '') : '••••••••';
+    var id = escapeHtml(it.id);
+    return '<div class="pass-item' + (matched ? ' matched' : '') + '" data-item="' + id + '">' +
+      '<div class="pass-item-head">' +
+        '<span class="pass-item-site">' + escapeHtml(it.site || '이름 없음') + '</span>' +
+        (matched ? '<span class="pass-badge">현재 사이트</span>' : '') +
+      '</div>' +
+      '<div class="pass-item-sub">' + escapeHtml(sub) + '</div>' +
+      '<div class="pass-item-pw">' + escapeHtml(pwText) + '</div>' +
+      (it.memo ? '<div class="pass-item-memo">' + escapeHtml(it.memo) + '</div>' : '') +
+      '<div class="pass-item-actions">' +
+        '<button class="pass-mini" data-act="fill">자동 입력</button>' +
+        '<button class="pass-mini" data-act="copy-user">아이디</button>' +
+        '<button class="pass-mini" data-act="copy-pass">비밀번호</button>' +
+        '<button class="pass-mini" data-act="reveal">' + (reveal ? '숨기기' : '보기') + '</button>' +
+        (confirmId === it.id
+          ? '<button class="pass-mini danger" data-act="delete-confirm">정말 삭제</button>' +
+            '<button class="pass-mini" data-act="delete-cancel">취소</button>'
+          : '<button class="pass-mini danger" data-act="delete">삭제</button>') +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderPassPanel(body) {
+    var p = state.pass;
+    if (!p.loaded && !p.loading) {
+      body.innerHTML = '<div class="empty-note">금고를 확인하는 중입니다.</div>';
+      loadPassVault();
+      return;
+    }
+
+    var host = passCurrentHost();
+    var wrap = document.createElement('div');
+    wrap.className = 'pass-wrap';
+
+    var head = document.createElement('div');
+    head.className = 'pass-head';
+    head.innerHTML =
+      '<span class="pass-head-icon">' + PASS_KEY_SVG + '</span>' +
+      '<div class="pass-head-text">' +
+        '<div class="pass-head-title">Lemon Pass</div>' +
+        '<div class="pass-head-sub">' +
+          (p.view === 'open'
+            ? (p.items.length + '개 항목 · 이 PC에 암호화 저장')
+            : (p.meta ? '잠김 · 마스터 비밀번호 필요' : '아직 만든 금고가 없습니다')) +
+        '</div>' +
+      '</div>' +
+      (p.view === 'open' ? '<button class="btn ghost pass-head-btn" id="passLock">잠그기</button>' : '');
+    wrap.appendChild(head);
+
+    if (p.msg) {
+      var m = document.createElement('div');
+      m.className = 'pass-msg' + (p.msgKind === 'err' ? ' err' : '');
+      m.textContent = p.msg;
+      wrap.appendChild(m);
+    }
+
+    if (p.view === 'setup') {
+      var setup = document.createElement('div');
+      setup.className = 'set-inline';
+      setup.innerHTML =
+        '<div class="set-inline-title">금고를 처음 만듭니다</div>' +
+        '<input class="set-input" id="passNew" type="password" autocomplete="new-password" placeholder="마스터 비밀번호 (8자 이상)">' +
+        '<input class="set-input" id="passNew2" type="password" autocomplete="new-password" placeholder="같은 값 다시 입력">' +
+        '<input class="set-input" id="passHint" type="text" maxlength="40" placeholder="힌트 (선택)">' +
+        '<button class="btn" id="passCreate">금고 만들기</button>';
+      wrap.appendChild(setup);
+      var note = document.createElement('p');
+      note.className = 'set-hint';
+      note.textContent = 'pass.html과 같은 형식(PBKDF2 250,000회 · AES-256-GCM)으로 이 PC에만 암호화해 저장합니다. 마스터 비밀번호를 잊으면 되살릴 수 없습니다.';
+      wrap.appendChild(note);
+    } else if (p.view === 'locked') {
+      var locked = document.createElement('div');
+      locked.className = 'set-inline';
+      locked.innerHTML =
+        '<div class="set-inline-title">마스터 비밀번호로 금고를 엽니다</div>' +
+        '<input class="set-input" id="passPw" type="password" autocomplete="current-password" placeholder="마스터 비밀번호">' +
+        '<button class="btn" id="passOpen">금고 열기</button>';
+      wrap.appendChild(locked);
+      if (p.meta && p.meta.hint) {
+        var hint = document.createElement('p');
+        hint.className = 'set-hint';
+        hint.textContent = '힌트: ' + p.meta.hint;
+        wrap.appendChild(hint);
+      }
+      var lnote = document.createElement('p');
+      lnote.className = 'set-hint';
+      lnote.textContent = '금고는 암호문으로만 저장되어 있어 마스터 비밀번호 없이는 열 수 없습니다.';
+      wrap.appendChild(lnote);
+    } else {
+      var bar = document.createElement('div');
+      bar.className = 'panel-actions';
+      var addBtn = document.createElement('button');
+      addBtn.className = 'btn';
+      addBtn.id = 'passAdd';
+      addBtn.textContent = p.formOpen ? '닫기' : '새 항목';
+      bar.appendChild(addBtn);
+      var syncNow = document.createElement('button');
+      syncNow.className = 'btn ghost';
+      syncNow.id = 'passSyncNow';
+      syncNow.textContent = state.sync && state.sync.drive && state.sync.drive.connected ? 'Drive 동기화' : 'Drive 미연결';
+      syncNow.disabled = !(state.sync && state.sync.drive && state.sync.drive.connected);
+      bar.appendChild(syncNow);
+      wrap.appendChild(bar);
+
+      if (p.formOpen) {
+        var form = document.createElement('div');
+        form.className = 'set-inline';
+        form.innerHTML =
+          '<div class="set-inline-title">새 항목</div>' +
+          '<input class="set-input" id="passSite" type="text" placeholder="사이트 이름 (예: 네이버)">' +
+          '<input class="set-input" id="passUrl" type="text" placeholder="주소 (예: naver.com)">' +
+          '<input class="set-input" id="passUser" type="text" autocomplete="off" placeholder="아이디">' +
+          '<input class="set-input" id="passPass" type="password" autocomplete="new-password" placeholder="비밀번호">' +
+          '<input class="set-input" id="passMemo" type="text" maxlength="200" placeholder="메모 (선택)">' +
+          '<div class="set-inline-actions"><button class="btn ghost" id="passCancel">취소</button><button class="btn" id="passSave">저장</button></div>';
+        wrap.appendChild(form);
+      }
+
+      var list = p.items.slice().sort(function (a, b) {
+        var am = host && CreamyPassVault.hostMatches(a.url, host) ? 1 : 0;
+        var bm = host && CreamyPassVault.hostMatches(b.url, host) ? 1 : 0;
+        if (am !== bm) return bm - am;
+        return ((b.upd || b.ts) || 0) - ((a.upd || a.ts) || 0);
+      });
+      if (list.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'empty-note';
+        empty.textContent = '저장된 항목이 없습니다. 새 항목을 눌러 첫 사이트를 저장하세요.';
+        wrap.appendChild(empty);
+      } else {
+        var box = document.createElement('div');
+        box.className = 'pass-list';
+        box.innerHTML = list.map(function (it) {
+          return passItemRow(it, host, p.reveal && p.reveal[it.id] === true, p.confirmDelete);
+        }).join('');
+        wrap.appendChild(box);
+
+        box.addEventListener('click', function (e) {
+          var btn = e.target.closest ? e.target.closest('[data-act]') : null;
+          if (!btn) return;
+          var row = btn.closest('.pass-item');
+          var id = row ? row.getAttribute('data-item') : '';
+          var item = p.items.filter(function (x) { return x.id === id; })[0];
+          if (!item) return;
+          var act = btn.getAttribute('data-act');
+          passTouch();
+          if (act === 'fill') { passFillActive(item); return; }
+          if (act === 'copy-user') { passCopy(item.user, '아이디'); return; }
+          if (act === 'copy-pass') { passCopy(item.pass, '비밀번호'); return; }
+          if (act === 'reveal') {
+            p.reveal = p.reveal || {};
+            p.reveal[id] = !p.reveal[id];
+            renderPanel('pass');
+            return;
+          }
+          if (act === 'delete') { p.confirmDelete = id; renderPanel('pass'); return; }
+          if (act === 'delete-cancel') { p.confirmDelete = ''; renderPanel('pass'); return; }
+          if (act === 'delete-confirm') { passDeleteItem(id); return; }
+        });
+      }
+
+      var footNote = document.createElement('p');
+      footNote.className = 'set-hint';
+      footNote.textContent = state.sync && state.sync.passSyncEnabled
+        ? '금고 동기화가 켜져 있습니다. 저장하면 암호문 그대로 Drive 백업에도 반영됩니다.'
+        : '금고는 이 PC에만 저장됩니다. 설정에서 Lemon Pass 비밀번호 동기화를 켜면 Drive 백업에도 포함됩니다.';
+      wrap.appendChild(footNote);
+    }
+
+    body.appendChild(wrap);
+
+    if ($('#passLock')) $('#passLock').addEventListener('click', function () { passLock(false); });
+    if ($('#passCreate')) $('#passCreate').addEventListener('click', passCreate);
+    if ($('#passNew2')) $('#passNew2').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); passCreate(); } });
+    if ($('#passOpen')) $('#passOpen').addEventListener('click', passUnlock);
+    if ($('#passPw')) $('#passPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); passUnlock(); } });
+    if ($('#passAdd')) $('#passAdd').addEventListener('click', function () { state.pass.formOpen = !state.pass.formOpen; state.pass.msg = ''; renderPanel('pass'); });
+    if ($('#passCancel')) $('#passCancel').addEventListener('click', function () { state.pass.formOpen = false; renderPanel('pass'); });
+    if ($('#passSave')) $('#passSave').addEventListener('click', passAddItem);
+    if ($('#passSyncNow')) $('#passSyncNow').addEventListener('click', function () { syncRunNow(this, { passOnly: true }); });
+  }
+
   /* ---------- Settings panel ---------- */
 
   function applyTheme() {
@@ -1376,6 +1976,74 @@
       Promise.resolve(bridgeCall('settings', 'set', 'creamyModel', modelInput.value.trim())).then(function (u) { state.mainSettings = u || state.mainSettings; });
     });
     modelRow.appendChild(modelInput);
+
+    var gSync = group();
+    var syncState = state.sync || {};
+    var syncDrive = syncState.drive || {};
+    var syncUser = syncState.lkUser || null;
+    var syncLinked = !!syncUser;
+    var syncConnected = syncDrive.connected === true;
+
+    var lkRow = row(gSync, 'LK 계정', syncLinked
+      ? (escapeHtml(syncUser.email || '연결됨') + (syncUser.name ? ' · ' + escapeHtml(syncUser.name) : ''))
+      : 'LK 계정을 연결하면 북마크·방문 기록·Lemon Pass 금고를 다른 기기와 맞춥니다.');
+    var lkCtrl = document.createElement('div');
+    lkCtrl.className = 'set-control';
+    var lkTag = document.createElement('span');
+    lkTag.className = 'li-badge';
+    lkTag.textContent = syncLinked ? '연결됨' : '연결 필요';
+    lkCtrl.appendChild(lkTag);
+    var lkBtn = document.createElement('button');
+    lkBtn.className = 'btn ghost';
+    lkBtn.id = 'syncAuthBtn';
+    lkBtn.textContent = syncLinked ? '다시 연결' : '계정 연결';
+    lkCtrl.appendChild(lkBtn);
+    if (syncLinked) {
+      var outBtn = document.createElement('button');
+      outBtn.className = 'btn ghost';
+      outBtn.id = 'syncLogoutBtn';
+      outBtn.textContent = '로그아웃';
+      lkCtrl.appendChild(outBtn);
+    }
+    lkRow.classList.add('column');
+    lkRow.appendChild(lkCtrl);
+
+    var driveRow = row(gSync, 'Google Drive', syncConnected
+      ? ('연결됨' + (syncDrive.email ? ' · ' + escapeHtml(syncDrive.email) : '') + ' · Soft Hub Backup 폴더')
+      : (syncDrive.expired
+        ? '연결이 만료되었습니다. 계정을 다시 연결해 주세요.'
+        : '계정 연결을 마치면 Google Drive도 함께 연결됩니다.'));
+    driveRow.classList.add('column');
+    var driveCtrl = document.createElement('div');
+    driveCtrl.className = 'set-control';
+    driveCtrl.style.gap = '6px';
+    var driveTag = document.createElement('span');
+    driveTag.className = 'li-badge';
+    driveTag.textContent = syncConnected ? 'Drive 연결됨' : (syncDrive.expired ? 'Drive 만료' : 'Drive 미연결');
+    driveCtrl.appendChild(driveTag);
+    var runBtn = document.createElement('button');
+    runBtn.className = 'btn ghost';
+    runBtn.id = 'syncRunBtn';
+    runBtn.textContent = syncState.busy ? '동기화 중' : '지금 동기화';
+    runBtn.disabled = !syncConnected || !!syncState.busy;
+    driveCtrl.appendChild(runBtn);
+    driveRow.appendChild(driveCtrl);
+
+    switchRow(gSync, 'Lemon Pass 비밀번호 동기화',
+      '금고를 마스터 비밀번호로 암호화한 암호문 그대로 Drive 백업에 포함합니다. 기본은 꺼짐입니다.',
+      syncState.passSyncEnabled === true,
+      function (next) { syncSetPass(next); });
+
+    var syncHint = document.createElement('div');
+    syncHint.className = 'set-hint';
+    var lastText = syncState.lastSyncAt ? ('마지막 동기화 ' + escapeHtml(syncTimeText(syncState.lastSyncAt))) : '아직 동기화한 적이 없습니다.';
+    var errText = syncState.lastError ? '<br>' + escapeHtml(syncErrorText(syncState.lastError)) : '';
+    syncHint.innerHTML = lastText + '<br>계정을 연결하면 브라우저를 열 때 한 번 조용히 맞춥니다. 토큰과 금고 암호문은 이 PC의 <b>creamy-sync.json</b>에만 저장됩니다.' + errText;
+    gSync.appendChild(syncHint);
+
+    if ($('#syncAuthBtn')) $('#syncAuthBtn').addEventListener('click', function () { startSyncAuth(this); });
+    if ($('#syncLogoutBtn')) $('#syncLogoutBtn').addEventListener('click', syncLogout);
+    if ($('#syncRunBtn')) $('#syncRunBtn').addEventListener('click', function () { syncRunNow(this); });
 
     var gLock = group();
     var lockInfo = state.lock || { enabled: false, hasPassword: false };
@@ -1918,6 +2586,23 @@
     safeRun('테마 적용', function () { applyTheme(); });
     safeRun('세션 복원', function () { restoreSession(); });
     safeRun('툴바 갱신', function () { updateToolbar(); });
+
+    // LK 계정 · Drive 상태는 화면이 뜬 뒤에 읽고, 연결돼 있으면 조용히 한 번 맞춘다.
+    safeRun('동기화 구독', function () {
+      if (bridge && bridge.sync && typeof bridge.sync.onUpdate === 'function') {
+        bridge.sync.onUpdate(function (snapshot) { syncApplySnapshot(snapshot); });
+      }
+    });
+    safeRun('동기화 상태', function () {
+      loadSyncState().then(function () {
+        if (state.sync && state.sync.linked && state.sync.drive && state.sync.drive.connected) {
+          setTimeout(function () { syncRunNow(null, { silent: true }); }, 1200);
+        }
+      }, function () { /* ignore */ });
+    });
+
+    // 금고 메타는 미리 읽어 둔다(패널을 열 때 바로 상태를 보여 주기 위해).
+    safeRun('금고 상태', function () { loadPassVault(false); });
   }
 
   /* ---------- Wiring ---------- */
