@@ -200,6 +200,7 @@
           크리미 브라우저로 연결 완료 보내기
         </button>
       </div>
+      <p class="da-note" id="sendLnaNote">처음 보낼 때 브라우저가 <b>로컬 네트워크 접근</b>을 물으면 <b>허용</b>을 눌러 주세요. 이 PC의 크리미 브라우저로만 전송합니다.</p>
       <p class="da-msg hidden" id="sendMsg"></p>
       <div class="da-hidden" id="sendDone">
         <div class="da-done" style="margin-top:12px">
@@ -419,6 +420,17 @@
       msg('sendMsg', detail, 'err');
     }
 
+    function localNetState() {
+      return new Promise(function (resolve) {
+        try {
+          if (!navigator.permissions || !navigator.permissions.query) return resolve('unknown');
+          navigator.permissions.query({ name: 'local-network-access' }).then(function (s) {
+            resolve((s && s.state) || 'unknown');
+          }, function () { resolve('unknown'); });
+        } catch (e) { resolve('unknown'); }
+      });
+    }
+
     var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctrl) { try { ctrl.abort(); } catch (e) { } } }, 15000);
     var init = {
@@ -447,8 +459,14 @@
       try {
         if (navigator.sendBeacon) sent = navigator.sendBeacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
       } catch (e) { sent = false; }
-      if (sent) fail('전송을 한 번 더 시도했습니다. 브라우저 창으로 돌아가 연결 상태를 확인해 주세요. 그대로면 이 페이지에서 다시 보내 주세요.');
-      else fail('이 브라우저가 로컬 연결을 막았습니다. 크리미 브라우저 설정에서 계정 연결을 다시 누르고, 주소창의 로컬 네트워크 권한을 허용해 주세요.');
+      if (sent) { fail('전송을 한 번 더 시도했습니다. 브라우저 창으로 돌아가 연결 상태를 확인해 주세요. 그대로면 이 페이지에서 다시 보내 주세요.'); return; }
+      localNetState().then(function (perm) {
+        if (perm === 'denied') {
+          fail('이 브라우저가 이 사이트의 로컬 연결을 막고 있습니다. 주소창 옆 사이트 정보 > 로컬 네트워크 접근을 ‘허용’으로 바꾼 뒤 다시 보내 주세요.');
+          return;
+        }
+        fail('크리미 브라우저에 닿지 못했습니다. 크리미 브라우저 설정 > LK 계정 · 동기화에서 계정 연결을 다시 누른 뒤, 이 화면에서 보내기를 다시 시도해 주세요. (브라우저가 로컬 네트워크 접근을 물으면 허용)' );
+      });
     });
   }
 
