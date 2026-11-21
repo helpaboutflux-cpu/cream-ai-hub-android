@@ -60,6 +60,7 @@
       translateTarget: 'ko'
     },
     mainSettings: {},
+    preloadPath: '',
     lock: { locked: false, enabled: false, hasPassword: false },
     history: [],
     bookmarks: [],
@@ -107,8 +108,10 @@
     state.tabSeq = state.tabSeq + 1;
     var webview = document.createElement('webview');
     webview.setAttribute('src', tab.url);
-    if (bridge && bridge.env && bridge.env.preloadPath) {
-      webview.setAttribute('preload', bridge.env.preloadPath);
+    // 프리로드 경로는 부팅 때 메인 프로세스에서 받아 둔다. 아직 없으면 속성 없이 그대로 연다.
+    var tabPreload = state.preloadPath || (bridge && bridge.env && bridge.env.preloadPath) || '';
+    if (tabPreload) {
+      webview.setAttribute('preload', tabPreload);
     }
     webview.classList.add('offscreen');
     tab.webview = webview;
@@ -1474,7 +1477,7 @@
       }, 60);
     }
 
-    if (!bridge || !bridge.lock) {
+    if (!bridgeGroup('lock', ['enable', 'disable'])) {
       // Lock bridge unavailable: keep the section read-only.
       lockSwitch.disabled = true;
     }
@@ -1486,26 +1489,10 @@
           settingsLockForm = 'disable';
           renderPanel('settings');
         } else {
-          lockSwitch.disabled = true;
-          bridge.lock.disable('').then(function (res) {
-            lockSwitch.disabled = false;
-            if (res && res.state) applyLockState(res.state);
-            settingsLockForm = '';
-            if (res && res.ok) showToast('브라우저 잠금을 껐습니다.');
-            else showToast((res && res.error) || '요청을 처리하지 못했습니다.');
-            renderPanel('settings');
-          });
+          lockToggle(lockSwitch, 'disable', [''], '브라우저 잠금을 껐습니다.', '요청을 처리하지 못했습니다.');
         }
       } else if (lockInfo.hasPassword) {
-        lockSwitch.disabled = true;
-        bridge.lock.enable().then(function (res) {
-          lockSwitch.disabled = false;
-          if (res && res.state) applyLockState(res.state);
-          settingsLockForm = '';
-          if (res && res.ok) showToast('브라우저 잠금을 켰습니다.');
-          else showToast((res && res.error) || '요청을 처리하지 못했습니다.');
-          renderPanel('settings');
-        });
+        lockToggle(lockSwitch, 'enable', [], '브라우저 잠금을 켰습니다.', '요청을 처리하지 못했습니다.');
       } else {
         settingsLockForm = 'setup';
         renderPanel('settings');
@@ -1519,10 +1506,7 @@
         var next = setupNew.value;
         if (next.length < 4) { ctx.fail('비밀번호는 4자 이상이어야 합니다.'); return; }
         if (next !== setupConfirm.value) { ctx.fail('새 비밀번호가 서로 일치하지 않습니다.'); return; }
-        ctx.busy(true);
-        bridge.lock.setPassword('', next).then(function (res) {
-          ctx.finish(res, '브라우저 잠금을 켰습니다.');
-        }, function () { ctx.finish(null); });
+        lockSubmit(ctx, 'setPassword', ['', next], '브라우저 잠금을 켰습니다.');
       });
     } else if (settingsLockForm === 'change') {
       var changeCurrent = lockField('현재 비밀번호', 'current-password');
@@ -1533,19 +1517,13 @@
         if (changeNew.value.length < 4) { ctx.fail('새 비밀번호는 4자 이상이어야 합니다.'); return; }
         if (changeNew.value !== changeConfirm.value) { ctx.fail('새 비밀번호가 서로 일치하지 않습니다.'); return; }
         if (changeNew.value === changeCurrent.value) { ctx.fail('현재 비밀번호와 다른 비밀번호를 입력하세요.'); return; }
-        ctx.busy(true);
-        bridge.lock.setPassword(changeCurrent.value, changeNew.value).then(function (res) {
-          ctx.finish(res, '비밀번호를 변경했습니다.');
-        }, function () { ctx.finish(null); });
+        lockSubmit(ctx, 'setPassword', [changeCurrent.value, changeNew.value], '비밀번호를 변경했습니다.');
       });
     } else if (settingsLockForm === 'disable') {
       var disableCurrent = lockField('현재 비밀번호', 'current-password');
       lockFormBox('현재 비밀번호를 확인한 뒤 잠금을 끕니다. 저장된 비밀번호는 유지됩니다.', [disableCurrent], '잠금 끄기', function (ctx) {
         if (!disableCurrent.value) { ctx.fail('현재 비밀번호를 입력하세요.'); return; }
-        ctx.busy(true);
-        bridge.lock.disable(disableCurrent.value).then(function (res) {
-          ctx.finish(res, '브라우저 잠금을 껐습니다.');
-        }, function () { ctx.finish(null); });
+        lockSubmit(ctx, 'disable', [disableCurrent.value], '브라우저 잠금을 껐습니다.');
       });
     } else {
       var lockActions = document.createElement('div');
@@ -1558,9 +1536,22 @@
         lockNowBtn.className = 'btn ghost';
         lockNowBtn.textContent = '지금 바로 잠그기';
         lockNowBtn.addEventListener('click', function () {
-          if (!bridge || !bridge.lock) return;
+          var lock = bridgeGroup('lock', ['lockNow']);
+          if (!lock) { showToast(BRIDGE_GONE_TEXT); return; }
           lockNowBtn.disabled = true;
-          bridge.lock.lockNow().then(function (res) {
+          var pending = null;
+          try {
+            pending = lock.lockNow();
+          } catch (err) {
+            console.error('[creamy] lock.lockNow 호출 실패:', err);
+            pending = null;
+          }
+          if (!pending || typeof pending.then !== 'function') {
+            lockNowBtn.disabled = false;
+            showToast(BRIDGE_GONE_TEXT);
+            return;
+          }
+          pending.then(function (res) {
             if (res && res.ok) {
               saveSession();
               window.location.reload();
@@ -1568,6 +1559,10 @@
             }
             lockNowBtn.disabled = false;
             showToast((res && res.error) || '잠금을 실행하지 못했습니다.');
+          }, function (err) {
+            console.error('[creamy] lock.lockNow 실패:', err);
+            lockNowBtn.disabled = false;
+            showToast('잠금을 실행하지 못했습니다.');
           });
         });
         lockActionRow.appendChild(lockNowBtn);
@@ -1855,8 +1850,16 @@
     submit.disabled = true;
     submit.textContent = '확인 중';
     var res = null;
+    var lockApi = bridgeGroup('lock', ['unlock']);
+    if (!lockApi) {
+      unlockBusy = false;
+      submit.disabled = false;
+      submit.textContent = '잠금 해제';
+      setLockError(BRIDGE_GONE_TEXT);
+      return;
+    }
     try {
-      res = await bridge.lock.unlock(password);
+      res = await lockApi.unlock(password);
     } catch (err) {
       res = { ok: false, error: '잠금 상태를 확인하지 못했습니다. 다시 시도하세요.' };
     }
@@ -1891,6 +1894,18 @@
     // 복원이나 테마에서 무슨 일이 생겨도 버튼은 살아 있어야 한다.
     safeRun('브라우저 버튼', function () { bindChrome(); });
     safeRun('테마 적용', function () { applyTheme(); });
+
+    // webview가 쓸 preload 경로를 먼저 받아 둔다. 샌드박스 프리로드는 이 값을 스스로 만들 수 없다.
+    try {
+      if (bridge && bridge.env && typeof bridge.env.getPreloadPath === 'function') {
+        var preloadPath = await bridge.env.getPreloadPath();
+        if (typeof preloadPath === 'string' && preloadPath) state.preloadPath = preloadPath;
+      } else if (bridge && bridge.env && typeof bridge.env.preloadPath === 'string' && bridge.env.preloadPath) {
+        state.preloadPath = bridge.env.preloadPath;
+      }
+    } catch (err) {
+      console.error('Preload path error:', err);
+    }
 
     try {
       if (bridge && bridge.settings && typeof bridge.settings.get === 'function') {
@@ -1934,6 +1949,74 @@
 
   function winApi() {
     return bridge && bridge.win ? bridge.win : null;
+  }
+
+  // 브리지가 없거나 일부 API가 빠져 있어도 화면이 '처리 중'에 멈추지 않게 쓴다.
+  function bridgeGroup(group, names) {
+    var svc = bridge ? bridge[group] : null;
+    if (!svc) return null;
+    var list = names || [];
+    for (var i = 0; i < list.length; i++) {
+      if (typeof svc[list[i]] !== 'function') return null;
+    }
+    return svc;
+  }
+
+  var BRIDGE_GONE_TEXT = '브라우저 연결을 사용할 수 없습니다.';
+
+  // 잠금 폼 제출: 브리지 호출이 없거나 던져도 버튼이 '처리 중'으로 남지 않는다.
+  function lockSubmit(ctx, method, args, okMessage) {
+    function refuse() {
+      if (ctx && ctx.busy) ctx.busy(false);
+      if (ctx && ctx.fail) ctx.fail(BRIDGE_GONE_TEXT);
+    }
+    var lock = bridgeGroup('lock', [method]);
+    if (!lock) { refuse(); return; }
+    if (ctx && ctx.busy) ctx.busy(true);
+    var pending = null;
+    try {
+      pending = lock[method].apply(lock, args || []);
+    } catch (err) {
+      console.error('[creamy] lock.' + method + ' 호출 실패:', err);
+      pending = null;
+    }
+    if (!pending || typeof pending.then !== 'function') { refuse(); return; }
+    pending.then(function (res) {
+      if (ctx && ctx.finish) ctx.finish(res, okMessage);
+    }, function (err) {
+      console.error('[creamy] lock.' + method + ' 실패:', err);
+      if (ctx && ctx.finish) ctx.finish(null);
+    });
+  }
+
+  // 설정의 잠금 스위치: 실패해도 스위치가 꺼진 채로 남지 않는다.
+  function lockToggle(button, method, args, okMessage, failMessage) {
+    function refuse() {
+      if (button) button.disabled = false;
+      showToast(BRIDGE_GONE_TEXT);
+    }
+    var lock = bridgeGroup('lock', [method]);
+    if (!lock) { refuse(); return; }
+    if (button) button.disabled = true;
+    var pending = null;
+    try {
+      pending = lock[method].apply(lock, args || []);
+    } catch (err) {
+      console.error('[creamy] lock.' + method + ' 호출 실패:', err);
+      pending = null;
+    }
+    if (!pending || typeof pending.then !== 'function') { refuse(); return; }
+    pending.then(function (res) {
+      if (button) button.disabled = false;
+      if (res && res.state) applyLockState(res.state);
+      settingsLockForm = '';
+      showToast((res && res.ok) ? okMessage : ((res && res.error) || failMessage));
+      renderPanel('settings');
+    }, function (err) {
+      console.error('[creamy] lock.' + method + ' 실패:', err);
+      if (button) button.disabled = false;
+      showToast(failMessage);
+    });
   }
 
   function winAction(action, fallback) {

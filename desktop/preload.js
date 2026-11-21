@@ -6,7 +6,15 @@ function on(channel, callback) {
 
 const fullBridge = {
   env: {
-    preloadPath: __filename
+    // Electron 33 샌드박스 프리로드에는 Node 전용 전역(파일 경로·버퍼·프로세스)이 없다.
+    // webview의 preload 속성에 쓸 로컬 경로는 메인 프로세스에서 받아온다.
+    getPreloadPath: function () {
+      try {
+        return ipcRenderer.invoke('env:preload-path');
+      } catch (err) {
+        return Promise.resolve('');
+      }
+    }
   },
   win: {
     minimize: function () { ipcRenderer.send('win:min'); },

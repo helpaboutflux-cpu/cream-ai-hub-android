@@ -525,6 +525,11 @@ function parseRssItems(xml, limit) {
 }
 
 function registerIpc() {
+  // webview의 preload 속성에 쓸 경로. 샌드박스 프리로드는 __filename을 쓸 수 없어 여기서 넘긴다.
+  ipcMain.handle('env:preload-path', function () {
+    return path.join(__dirname, 'preload.js');
+  });
+
   ipcMain.on('win:min', function () { if (mainWindow) mainWindow.minimize(); });
   ipcMain.on('win:max', function () {
     if (!mainWindow) return;
