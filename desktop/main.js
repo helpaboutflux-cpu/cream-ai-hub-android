@@ -10,6 +10,7 @@ const { translateTexts } = require('./translate');
 const { createSync } = require('./sync');
 
 let mainWindow = null;
+let shellContents = null;
 let sync = null;
 let pendingAuthUrl = '';
 
@@ -372,6 +373,9 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
+  shellContents = mainWindow.webContents;
+  const shellWc = shellContents;
+
   mainWindow.webContents.on('before-input-event', function (event, input) {
     if (input.key === 'F12' || (input.control && input.shift && (input.key === 'I' || input.key === 'i'))) {
       mainWindow.webContents.toggleDevTools();
@@ -385,20 +389,162 @@ function createWindow() {
 
   mainWindow.on('maximize', function () { sendToRenderer('win:state', { maximized: true }); });
   mainWindow.on('unmaximize', function () { sendToRenderer('win:state', { maximized: false }); });
-  mainWindow.on('closed', function () { mainWindow = null; });
+  mainWindow.on('closed', function () { mainWindow = null; if (shellContents === shellWc) shellContents = null; });
+}
+
+/* ---------- 웹사이트 팝업 창(window.open) ---------- */
+
+/* 로그인·연동·결제는 window.opener / postMessage 로 결과를 돌려받는 팝업 창을 쓴다.
+   이런 요청은 탭으로 보내면 opener 가 사라져 로그인이 끝나지 않으므로, 아래 조건에
+   해당하면 진짜 Electron 팝업 창을 허용하고 나머지 새 창 요청만 탭으로 라우팅한다. */
+
+const POPUP_DEFAULT_WIDTH = 520;
+const POPUP_DEFAULT_HEIGHT = 680;
+const POPUP_MIN_WIDTH = 320;
+const POPUP_MIN_HEIGHT = 240;
+const POPUP_MAX_WIDTH = 1600;
+const POPUP_MAX_HEIGHT = 1200;
+
+// 로그인·연동 팝업으로 흔히 쓰이는 URL. 새 창 요청이 이곳을 향하면 팝업 창으로 연다.
+const POPUP_URL_PATTERNS = [
+  /^about:blank/i,
+  /\/\/accounts\.google\.com\//i,
+  /\/\/accounts\.youtube\.com\//i,
+  /\/\/appleid\.apple\.com\//i,
+  /\/\/login\.microsoftonline\.com\//i,
+  /\/\/login\.live\.com\//i,
+  /\/\/kauth\.kakao\.com\//i,
+  /\/\/nid\.naver\.com\//i,
+  /\/dialog\/oauth/i,
+  /\/oauth2?\/authorize/i
+];
+
+// window.open(url, 'oauthPopup') 처럼 팝업 의도가 드러난 창 이름.
+const POPUP_FRAME_NAME = /^(popup|pop|oauth2?|auth|authorize|login|signin|sign-in|connect|share|dialog|picker|accounts?|_oauth)/i;
+
+function parseWindowFeatures(features) {
+  const out = { width: 0, height: 0, hasSize: false, wantsPopup: false };
+  if (!features || typeof features !== 'string') return out;
+  features.split(/[,\s]+/).forEach(function (token) {
+    if (!token) return;
+    const eq = token.indexOf('=');
+    if (eq === -1) {
+      if (/^popup$/i.test(token)) out.wantsPopup = true;
+      return;
+    }
+    const key = token.slice(0, eq).trim().toLowerCase();
+    const value = parseInt(token.slice(eq + 1).trim(), 10);
+    if (!isFinite(value)) return;
+    if (key === 'width' || key === 'innerwidth' || key === 'outerwidth') {
+      out.width = value;
+      out.hasSize = true;
+    } else if (key === 'height' || key === 'innerheight' || key === 'outerheight') {
+      out.height = value;
+      out.hasSize = true;
+    }
+  });
+  return out;
+}
+
+function clampPopupSize(value, min, max, fallback) {
+  const num = Math.round(Number(value));
+  if (!isFinite(num) || num <= 0) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+function looksLikePopupUrl(url) {
+  const target = String(url || '');
+  return POPUP_URL_PATTERNS.some(function (re) { return re.test(target); });
+}
+
+function shouldOpenPopupWindow(details) {
+  if (!details) return false;
+  const features = parseWindowFeatures(details.features);
+  if (details.disposition === 'new-window') return true;
+  if (features.hasSize || features.wantsPopup) return true;
+  if (looksLikePopupUrl(details.url)) return true;
+  const name = String(details.frameName || '');
+  if (name && name !== '_blank' && name !== '_self' && POPUP_FRAME_NAME.test(name)) return true;
+  return false;
+}
+
+function popupWindowOptions(details) {
+  const features = parseWindowFeatures(details && details.features);
+  const options = {
+    width: clampPopupSize(features.width, POPUP_MIN_WIDTH, POPUP_MAX_WIDTH, POPUP_DEFAULT_WIDTH),
+    height: clampPopupSize(features.height, POPUP_MIN_HEIGHT, POPUP_MAX_HEIGHT, POPUP_DEFAULT_HEIGHT),
+    autoHideMenuBar: true,
+    backgroundColor: '#ffffff',
+    modal: false,
+    show: true,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      nodeIntegrationInWorker: false,
+      webviewTag: false,
+      plugins: false
+    }
+  };
+  if (mainWindow && !mainWindow.isDestroyed()) options.parent = mainWindow;
+  return options;
+}
+
+function windowOpenHandlerFor(wc) {
+  return function (details) {
+    try {
+      if (shouldOpenPopupWindow(details)) {
+        return { action: 'allow', overrideBrowserWindowOptions: popupWindowOptions(details) };
+      }
+      sendToRenderer('cb:open-url', { url: details.url });
+    } catch (err) {
+      sendToRenderer('cb:open-url', { url: details && details.url });
+    }
+    return { action: 'deny' };
+  };
+}
+
+function chromeUserAgent() {
+  const raw = safeRead(function () { return session.defaultSession.getUserAgent(); }, '') || '';
+  return raw.replace(/Electron\/[\d.]+\s*/i, '').replace(/creamy-browser\/[\d.]+\s*/i, '');
+}
+
+/* 웹뷰 탭과 팝업 창 모두에 같은 정책을 건다: Electron 토큰이 없는 Chrome UA,
+   팝업/새 탭 라우팅, 컨텍스트 메뉴, 그리고 팝업 안에서 또 열리는 창까지 이어서 적용. */
+function attachWindowPolicy(wc) {
+  if (!wc || wc.__creamyWindowPolicy) return;
+  wc.__creamyWindowPolicy = true;
+  const ua = chromeUserAgent();
+  if (ua && typeof wc.setUserAgent === 'function') {
+    try { wc.setUserAgent(ua, 'ko-KR'); } catch (err) { /* ignore */ }
+  }
+  if (typeof wc.setWindowOpenHandler === 'function') {
+    wc.setWindowOpenHandler(windowOpenHandlerFor(wc));
+  }
+  wc.on('context-menu', function (event, params) {
+    event.preventDefault();
+    buildContextMenu(wc, params);
+  });
+  wc.on('did-create-window', function (win) {
+    if (win && win.webContents) attachWindowPolicy(win.webContents);
+  });
 }
 
 function registerWebviewContents() {
   app.on('web-contents-created', function (event, wc) {
-    if (wc.getType() === 'webview') {
+    const type = safeRead(function () { return wc.getType(); }, '');
+    if (type === 'webview') {
       wc.setBackgroundThrottling(false);
-      wc.setWindowOpenHandler(function (details) {
-        sendToRenderer('cb:open-url', { url: details.url });
-        return { action: 'deny' };
-      });
-      wc.on('context-menu', function (event, params) {
-        event.preventDefault();
-        buildContextMenu(wc, params);
+      attachWindowPolicy(wc);
+      return;
+    }
+    if (type === 'window') {
+      /* 앱 UI 셸 창은 대상이 아니다. new BrowserWindow 직후에는 mainWindow 대입 전이라
+         다음 틱에서 셸 여부를 확인한다(팝업 창은 이때 셸과 다른 webContents 다). */
+      setImmediate(function () {
+        if (wc === shellContents) return;
+        if (safeRead(function () { return wc.isDestroyed(); }, false)) return;
+        attachWindowPolicy(wc);
       });
     }
   });
@@ -467,7 +613,8 @@ function buildContextMenu(wc, params) {
     items.push({ label: '복사', role: 'copy' });
   }
   if (items.length === 0) return;
-  Menu.buildFromTemplate(items).popup({ window: mainWindow });
+  const ownerWindow = safeRead(function () { return BrowserWindow.fromWebContents(wc); }, null) || mainWindow;
+  Menu.buildFromTemplate(items).popup({ window: ownerWindow || undefined });
 }
 
 /* ---------- GitHub Releases 자동 업데이트 ---------- */
@@ -1305,10 +1452,8 @@ function registerIpc() {
 app.whenReady().then(function () {
   loadSettings();
   loadLockStore();
-  const ua = session.defaultSession.getUserAgent()
-    .replace(/Electron\/[\d.]+\s*/i, '')
-    .replace(/creamy-browser\/[\d.]+\s*/i, '');
-  session.defaultSession.setUserAgent(ua, 'ko-KR');
+  const ua = chromeUserAgent();
+  if (ua) session.defaultSession.setUserAgent(ua, 'ko-KR');
   session.defaultSession.setPermissionRequestHandler(function (wc, permission, callback) {
     const allowed = ['media', 'audio', 'video', 'clipboard-read', 'clipboard-sanitized-write', 'notifications', 'fullscreen', 'pointerLock'];
     callback(allowed.indexOf(permission) !== -1);

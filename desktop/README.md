@@ -35,6 +35,20 @@ windows-latest에서 NSIS와 포터블 타깃을 빌드하고 아티팩트로 �
 - `assets/start_page.html`: 시작 페이지 대시보드(시계, 날씨, 뉴스, 환율, 증시, 바로가기, 커스텀 배경)
 - `build/icon.ico`: 행성 로고 아이콘
 
+## v1.2.2 변경 내역
+
+- 웹사이트 팝업 창 지원: 지금까지는 `window.open` 요청이 모두 새 탭으로 넘겨져
+  `window.opener`·`postMessage`로 결과를 돌려받는 로그인 · Google Drive 연동 · 결제 팝업이
+  열리지 않았습니다. 이제 크기(`width`/`height`)를 지정한 팝업, `new-window` 요청, `about:blank`로
+  시작하는 스크립트 팝업, 로그인 호스트(accounts.google.com, kauth.kakao.com, nid.naver.com,
+  login.microsoftonline.com 등)는 진짜 팝업 창으로 열립니다(기본 520×680, 320×240~1600×1200 범위).
+  팝업 창도 부모 앱 창 위에 뜨고, 메뉴 바는 숨기며, `contextIsolation` · `sandbox`를 켜고
+  Node.js 접근은 끕니다.
+- 일반 새 탭 링크(`foreground-tab`, `background-tab`)는 그대로 앱의 새 탭으로 열립니다.
+- 팝업 창에서 다시 열리는 창과, 팝업 안의 컨텍스트 메뉴·링크도 같은 정책을 씁니다.
+- 팝업 창에도 Electron 토큰이 빠진 Chrome UA를 적용해 로그인 페이지가 "지원하지 않는 브라우저"로
+  막히지 않습니다.
+
 ## v1.2.1 변경 내역
 
 - 다운로드 목록 오류 수정: 존재하지 않는 `session.getAllDownloads()`·`getUniqueId()` 호출을 걷어내고
