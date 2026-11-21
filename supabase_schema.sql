@@ -17,6 +17,7 @@
 --    oauth_clients    LK 로그인 API — 앱 등록 (Client ID · Redirect URL)
 --    oauth_codes      LK 로그인 API — 5분짜리 일회용 코드 (함수만 접근)
 --    oauth_reports    LK 로그인 화면의 '이 서비스 신고' 접수 (관리자만 읽기)
+--    user_sessions    로그인한 기기 목록 — 기기별 원격 로그아웃 (본인만, 17번 항목)
 --  관리자 전용 함수
 --    admin_list_lk_accounts()  LK ID 가입 계정 목록 (관리자 세션만, 9번 항목)
 --    notifications      Soft Hub 알림 센터 — 앱이 보낸 알림 (본인만 읽기)
@@ -1210,7 +1211,9 @@ select 'notifications', count(*) from public.notifications
 union all
 select 'notification_prefs', count(*) from public.notification_prefs
 union all
-select 'oauth_grants', count(*) from public.oauth_grants;
+select 'oauth_grants', count(*) from public.oauth_grants
+union all
+select 'user_sessions', count(*) from public.user_sessions;
 
 
 -- ------------------------------------------------------------
@@ -1526,6 +1529,66 @@ revoke all on function public.oauth_send_push(text, uuid, text, text, text) from
 grant execute on function public.oauth_send_push(text, uuid, text, text, text) to anon, authenticated;
 
 
+-- ------------------------------------------------------------
+-- 17. user_sessions — 로그인한 기기 목록 · 기기별 원격 로그아웃
+--     · 로그인한 기기마다 한 줄(user_id + device_id)을 두고, 접속할 때마다
+--       last_seen_at 을 갱신한다. Google Drive 백업을 거치지 않고도
+--       다른 기기의 로그인 상태를 바로 확인할 수 있다.
+--     · 다른 기기에서 로그아웃시키면 revoked_at 을 채운다. 그 기기는 다음
+--       확인 때 이 값을 보고 스스로 로그아웃한다(lemon-cloud.js).
+--     · 본인 행만 읽고 쓸 수 있다(RLS: auth.uid() = user_id).
+--       관리자도 남의 기기 목록은 읽지 않는다.
+-- ------------------------------------------------------------
+create table if not exists public.user_sessions (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users (id) on delete cascade,
+  device_id     text not null,
+  device_type   text not null default '',   -- 모바일 / 태블릿 / 데스크톱
+  os            text not null default '',
+  browser       text not null default '',
+  screen        text not null default '',
+  tz            text not null default '',
+  user_agent    text not null default '',
+  app_name      text not null default 'Soft Hub',  -- Soft Hub · Creamy Browser PC
+  first_seen_at timestamptz not null default now(),
+  last_seen_at  timestamptz not null default now(),
+  revoked_at    timestamptz,
+  constraint user_sessions_user_device_key unique (user_id, device_id)
+);
+
+create index if not exists idx_user_sessions_user_last
+  on public.user_sessions (user_id, last_seen_at desc);
+
+alter table public.user_sessions enable row level security;
+
+drop policy if exists "user_sessions own read"   on public.user_sessions;
+drop policy if exists "user_sessions own insert" on public.user_sessions;
+drop policy if exists "user_sessions own update" on public.user_sessions;
+drop policy if exists "user_sessions own delete" on public.user_sessions;
+
+create policy "user_sessions own read"
+  on public.user_sessions for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+create policy "user_sessions own insert"
+  on public.user_sessions for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+create policy "user_sessions own update"
+  on public.user_sessions for update
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "user_sessions own delete"
+  on public.user_sessions for delete
+  to authenticated
+  using (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.user_sessions to authenticated;
+
 -- 확인용
 select 'site_config'    as table_name, count(*) from public.site_config
 union all
@@ -1547,4 +1610,6 @@ select 'notifications', count(*) from public.notifications
 union all
 select 'notification_prefs', count(*) from public.notification_prefs
 union all
-select 'oauth_grants', count(*) from public.oauth_grants;
+select 'oauth_grants', count(*) from public.oauth_grants
+union all
+select 'user_sessions', count(*) from public.user_sessions;

@@ -325,6 +325,8 @@
       rec.provider_expires_at = session.provider_expires_at || 0;
     }
     saveSession(rec);
+    /* 방금 로그인한 세션이다 — 이 기기의 기존 기록이 원격 로그아웃 상태였더라도 되살린다. */
+    freshAuth = true;
     emit('signed-in', u);
     return u;
   }
@@ -473,8 +475,13 @@
   }
 
   function signOut() {
-    var p = session ? request('/auth/v1/logout', { method: 'POST' }).catch(function () { }) : Promise.resolve();
-    return p.then(function () { clearSession(); return { ok: true }; });
+    /* 이 기기의 세션 기록도 끝난 것으로 남겨, 다른 기기 목록에서 사라지게 한다. */
+    var had = !!session;
+    var rev = had ? revokeDeviceSession(getDeviceId()).catch(function () { }) : Promise.resolve(null);
+    var p = rev.then(function () {
+      return had ? request('/auth/v1/logout', { method: 'POST' }).catch(function () { }) : null;
+    });
+    return p.then(function () { stopSessionTracking(); clearSession(); return { ok: true }; });
   }
 
   /* 다른 기기의 로그인 세션만 만료시킨다 — 이 기기의 세션은 그대로 남긴다.
@@ -1337,11 +1344,315 @@
     });
   }
 
+  /* ---------------- 기기·세션 (user_sessions) ----------------
+     로그인한 기기마다 user_sessions 에 한 줄을 두고 last_seen_at 을 갱신한다.
+     Google Drive 백업을 거치지 않고도 다른 기기의 로그인 상태를 바로 볼 수 있고,
+     다른 기기에서 원격 로그아웃(revoked_at)하면 그 기기는 다음 확인 때 스스로 끝난다.
+     클라우드가 없거나 테이블이 없으면(404) 아무것도 하지 않고 조용히 로컬 동작만 한다. */
+  var K_DEVICE = 'lemon_lk_device_v1';
+  var T_SESSIONS = 'user_sessions';
+  var SESS_POLL_MS = 20000;      /* 다른 기기 목록·원격 로그아웃 확인 주기 */
+  var SESS_TIMEOUT_MS = 9000;
+  var sessTableMissing = false;  /* 테이블이 아직 없으면(404) 더 묻지 않는다 */
+  var sessTrack = null;          /* { appName, deviceId, timer } */
+  var freshAuth = false;         /* 방금 로그인 — 이 기기 행의 revoked_at 을 비운다 */
+
+  /* 이 브라우저를 가리키는 기기 ID — auth.html 의 lemon_lk_device_v1 과 같은 키·형식. */
+  function getDeviceId() {
+    var id = '';
+    try { id = String(localStorage.getItem(K_DEVICE) || ''); } catch (e) { }
+    if (/^[a-z0-9]{10,24}$/.test(id)) return id;
+    var abc = 'abcdefghijkmnopqrstuvwxyz23456789', out = '', i;
+    try {
+      var arr = new Uint8Array(16);
+      if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(arr);
+      else for (i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+      for (i = 0; i < arr.length; i++) out += abc[arr[i] % abc.length];
+    } catch (e) { out = 'dev' + String(Date.now()).slice(-10); }
+    try { localStorage.setItem(K_DEVICE, out); } catch (e) { }
+    return out;
+  }
+
+  function detectOs(ua) {
+    if (/Windows NT 10/i.test(ua)) return 'Windows 10·11';
+    if (/Windows/i.test(ua)) return 'Windows';
+    if (/Android/i.test(ua)) return 'Android';
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
+    if (/Mac OS X|Macintosh/i.test(ua)) return 'macOS';
+    if (/CrOS/i.test(ua)) return 'ChromeOS';
+    if (/Linux/i.test(ua)) return 'Linux';
+    return '알 수 없음';
+  }
+  function detectBrowser(ua) {
+    if (/SamsungBrowser\/([\d.]+)/i.test(ua)) return 'Samsung Internet ' + RegExp.$1.split('.')[0];
+    if (/Whale\/([\d.]+)/i.test(ua)) return 'Whale ' + RegExp.$1.split('.')[0];
+    if (/EdgA?\/([\d.]+)/i.test(ua)) return 'Edge ' + RegExp.$1.split('.')[0];
+    if (/OPR\/([\d.]+)/i.test(ua)) return 'Opera ' + RegExp.$1.split('.')[0];
+    if (/Firefox\/([\d.]+)/i.test(ua)) return 'Firefox ' + RegExp.$1.split('.')[0];
+    if (/Chrome\/([\d.]+)/i.test(ua)) return 'Chrome ' + RegExp.$1.split('.')[0];
+    if (/Safari\/([\d.]+)/i.test(ua)) return 'Safari ' + RegExp.$1.split('.')[0];
+    return '브라우저';
+  }
+  /* auth.html 의 deviceInfo() 와 같은 값을 같은 이름으로 돌려준다. */
+  function detectDeviceInfo() {
+    var ua = String(navigator.userAgent || '');
+    var w = Number(window.screen && screen.width) || 0;
+    var h = Number(window.screen && screen.height) || 0;
+    var touch = ('ontouchstart' in window) || Number(navigator.maxTouchPoints) > 0;
+    var mobileUa = /Android|iPhone|iPod|Mobile/i.test(ua);
+    var type = mobileUa ? '모바일' : (/iPad|Tablet/i.test(ua) || (!touch && /Android/i.test(ua)) ? '태블릿' : (touch && w >= 700 ? '태블릿' : '데스크톱'));
+    var lang = String(navigator.language || '');
+    var tz = '';
+    try { tz = String(Intl.DateTimeFormat().resolvedOptions().timeZone || ''); } catch (e) { }
+    return {
+      type: type, os: detectOs(ua), browser: detectBrowser(ua),
+      screen: w && h ? w + ' × ' + h : '-',
+      dpr: Number(window.devicePixelRatio) || 1,
+      lang: lang || '-', tz: tz || '-', touch: touch,
+      ua: ua.slice(0, 180)
+    };
+  }
+
+  function sessTableUrl(uid, dev) {
+    return '/rest/v1/' + T_SESSIONS + '?user_id=eq.' + encodeURIComponent(uid) +
+      '&device_id=eq.' + encodeURIComponent(dev);
+  }
+
+  function sessRow(appName, dev, info, now) {
+    var s = function (v, n) {
+      return String(v === null || v === undefined ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+    };
+    return {
+      device_id: s(dev, 64),
+      device_type: s(info.type, 20),
+      os: s(info.os, 40),
+      browser: s(info.browser, 40),
+      screen: s(info.screen, 40),
+      tz: s(info.tz, 60),
+      user_agent: s(info.ua, 180),
+      app_name: s(appName || 'Soft Hub', 60) || 'Soft Hub',
+      last_seen_at: now
+    };
+  }
+
+  /* 원격 로그아웃된 기기 — 세션과 Google Drive 토큰을 지우고 화면에 알린다. */
+  function revokeLocal(dev) {
+    sdrop(K_PROVIDER);
+    drop('lemon_gdrive_token_v1');
+    if (sessTrack && sessTrack.timer) { try { clearInterval(sessTrack.timer); } catch (e) { } sessTrack.timer = null; }
+    clearSession();
+    emit('session-revoked', { device_id: String(dev || '') });
+  }
+
+  /* 이 기기가 다른 기기에서 원격 로그아웃되었는지 확인한다. */
+  function checkSessionRevoked(dev) {
+    if (!cfgReady()) return Promise.resolve(null);
+    loadSessionIfChanged();
+    if (!session || sessTableMissing) return Promise.resolve(null);
+    var uid = currentUid();
+    if (!uid) return Promise.resolve(null);
+    dev = String(dev || getDeviceId());
+    return request(sessTableUrl(uid, dev) + '&select=id,revoked_at', { timeout: SESS_TIMEOUT_MS })
+      .then(function (rows) {
+        var row = (rows && rows[0]) || null;
+        return { exists: !!row, revoked: !!(row && row.revoked_at), revoked_at: (row && row.revoked_at) || null };
+      }, function (err) {
+        if (err && err.status === 404) sessTableMissing = true;
+        throw err;
+      });
+  }
+
+  /* 이 기기의 세션 기록을 남기거나 갱신한다.
+     이미 원격 로그아웃된 기기라면 덮어쓰지 않고 곧바로 로컬 세션을 끝낸다. */
+  function syncCurrentSession(appName, opts) {
+    opts = opts || {};
+    if (!cfgReady() || sessTableMissing) return Promise.resolve({ ok: false, reason: 'unavailable' });
+    loadSessionIfChanged();
+    if (!session) return Promise.resolve({ ok: false, reason: 'no-session' });
+    var uid = currentUid();
+    if (!uid) return Promise.resolve({ ok: false, reason: 'no-session' });
+    var dev = String(opts.deviceId || getDeviceId());
+    var name = String(appName || opts.appName || 'Soft Hub');
+    var now = new Date().toISOString();
+    var info = detectDeviceInfo();
+
+    return request(sessTableUrl(uid, dev) + '&select=id,revoked_at', { timeout: SESS_TIMEOUT_MS })
+      .then(function (rows) {
+        var row = (rows && rows[0]) || null;
+        if (row && row.revoked_at && !freshAuth) {
+          revokeLocal(dev);
+          return { ok: false, reason: 'revoked', revoked: true };
+        }
+        var body = sessRow(name, dev, info, now);
+        if (row) {
+          if (freshAuth) body.revoked_at = null;
+          return request(sessTableUrl(uid, dev), {
+            method: 'PATCH',
+            headers: { Prefer: 'return=minimal' },
+            body: body,
+            timeout: SESS_TIMEOUT_MS
+          }).then(function () {
+            freshAuth = false;
+            return { ok: true, created: false, device_id: dev };
+          });
+        }
+        body.user_id = uid;
+        body.first_seen_at = now;
+        body.revoked_at = null;
+        return request('/rest/v1/' + T_SESSIONS + '?on_conflict=user_id,device_id', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: [body],
+          timeout: SESS_TIMEOUT_MS
+        }).then(function () {
+          freshAuth = false;
+          return { ok: true, created: true, device_id: dev };
+        });
+      })
+      .catch(function (err) {
+        if (err && err.status === 404) { sessTableMissing = true; return { ok: false, reason: 'table-missing' }; }
+        return { ok: false, reason: 'error', error: String((err && err.message) || '') };
+      });
+  }
+
+  /* 내 기기 목록 — 최근 확인 순. 실패하거나 테이블이 없으면 null(화면은 로컬 기록으로 물러난다). */
+  function listUserSessions(opts) {
+    opts = opts || {};
+    if (!cfgReady() || sessTableMissing) return Promise.resolve(null);
+    loadSessionIfChanged();
+    if (!session) return Promise.resolve(null);
+    var uid = currentUid();
+    if (!uid) return Promise.resolve(null);
+    var limit = Math.max(1, Math.min(50, parseInt(opts.limit, 10) || 20));
+    var q = '/rest/v1/' + T_SESSIONS +
+      '?select=device_id,device_type,os,browser,screen,tz,app_name,first_seen_at,last_seen_at,revoked_at' +
+      '&user_id=eq.' + encodeURIComponent(uid) + '&order=last_seen_at.desc&limit=' + limit;
+    return request(q, { timeout: SESS_TIMEOUT_MS }).then(function (rows) {
+      var list = Array.isArray(rows) ? rows : [];
+      /* 오래된(60일 넘은) 원격 로그아웃 기록은 목록에서 뺀다. */
+      var cut = Date.now() - 60 * 86400000;
+      return list.filter(function (r) {
+        if (!r || !r.revoked_at) return true;
+        var t = Date.parse(r.revoked_at) || 0;
+        return t > cut;
+      });
+    }, function (err) {
+      if (err && err.status === 404) sessTableMissing = true;
+      return null;
+    });
+  }
+
+  /* 특정 기기의 로그인 세션을 끝낸다(revoked_at). 그 기기는 다음 확인 때 로그아웃된다. */
+  function revokeDeviceSession(deviceId) {
+    var dev = String(deviceId || '');
+    if (!dev) return Promise.reject(new Error('device-required'));
+    if (!cfgReady() || sessTableMissing) return Promise.reject(new Error('cloud-unavailable'));
+    loadSessionIfChanged();
+    var uid = currentUid();
+    if (!session || !uid) return Promise.reject(loginRequired());
+    var now = new Date().toISOString();
+    return request(sessTableUrl(uid, dev), {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: { revoked_at: now },
+      timeout: SESS_TIMEOUT_MS
+    }).then(function () {
+      return { ok: true, device_id: dev, revoked_at: now };
+    }, function (err) {
+      if (err && err.status === 404) sessTableMissing = true;
+      throw err;
+    });
+  }
+
+  /* 이 기기만 남기고 나머지 기기의 세션을 끝낸다.
+     Supabase Auth 의 logout?scope=others 도 함께 불러 다른 기기의 토큰을 무효로 만든다. */
+  function revokeOtherSessions(currentDeviceId) {
+    if (!cfgReady()) return Promise.reject(new Error('cloud-not-configured'));
+    loadSessionIfChanged();
+    var uid = currentUid();
+    if (!session || !uid) return Promise.reject(loginRequired());
+    var me = String(currentDeviceId || getDeviceId());
+    var now = new Date().toISOString();
+    var rowsP = sessTableMissing ? Promise.resolve(null)
+      : request('/rest/v1/' + T_SESSIONS + '?user_id=eq.' + encodeURIComponent(uid) +
+        '&device_id=neq.' + encodeURIComponent(me) + '&revoked_at=is.null', {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: { revoked_at: now },
+        timeout: SESS_TIMEOUT_MS
+      }).catch(function (err) {
+        if (err && err.status === 404) { sessTableMissing = true; return null; }
+        throw err;
+      });
+    return rowsP.then(function () {
+      return request('/auth/v1/logout?scope=others', { method: 'POST', timeout: SESS_TIMEOUT_MS })
+        .catch(function () { return null; });
+    }).then(function () {
+      return { ok: true, device_id: me, revoked_at: now };
+    });
+  }
+
+  /* 이 기기의 접속을 계속 알린다 — 화면이 보이는 동안만 주기적으로 확인한다. */
+  function sessBeat() {
+    if (!sessTrack) return Promise.resolve(null);
+    loadSessionIfChanged();
+    if (!session) {
+      if (sessTrack.timer) { try { clearInterval(sessTrack.timer); } catch (e) { } sessTrack.timer = null; }
+      return Promise.resolve(null);
+    }
+    return syncCurrentSession(sessTrack.appName, { deviceId: sessTrack.deviceId });
+  }
+
+  function armSessionTimer() {
+    if (!sessTrack || sessTrack.timer) return;
+    var ms = Number(window.LEMON_SESSION_POLL_MS) > 0 ? Number(window.LEMON_SESSION_POLL_MS) : SESS_POLL_MS;
+    sessTrack.timer = setInterval(function () {
+      try { if (doc.visibilityState === 'hidden') return; } catch (e) { }
+      sessBeat();
+    }, Math.max(1000, ms));
+  }
+
+  function startSessionTracking(appName, opts) {
+    opts = opts || {};
+    if (sessTrack) {
+      if (appName) sessTrack.appName = String(appName);
+      if (opts.deviceId) sessTrack.deviceId = String(opts.deviceId);
+      armSessionTimer();
+      sessBeat();
+      return sessTrack;
+    }
+    sessTrack = {
+      appName: String(appName || opts.appName || 'Soft Hub'),
+      deviceId: String(opts.deviceId || ''),
+      timer: null
+    };
+    armSessionTimer();
+    sessBeat();
+    try {
+      window.addEventListener('focus', function () { sessBeat(); });
+      doc.addEventListener('visibilitychange', function () {
+        if (doc.visibilityState !== 'hidden') sessBeat();
+      });
+    } catch (e) { }
+    return sessTrack;
+  }
+
+  function stopSessionTracking() {
+    if (!sessTrack) return;
+    if (sessTrack.timer) { try { clearInterval(sessTrack.timer); } catch (e) { } }
+    sessTrack = null;
+  }
+
   /* ---------------- init ---------------- */
   function init() {
     if (initP) return initP;
     loadSession();
     watchSession();
+    /* 로그인하면 이 기기의 세션 기록을 자동으로 남기고, 로그아웃하면 멈춘다.
+       (다른 기기의 원격 로그아웃도 어느 화면에 있든 다음 확인 때 알아챈다) */
+    try {
+      window.addEventListener('lemoncloud:signed-in', function () { startSessionTracking(); });
+    } catch (e) { }
     initP = Promise.resolve()
       .then(function () { return ensureConfigFile(); })
       .then(function () {
@@ -1370,11 +1681,17 @@
           /* 사용자 정보(이메일)가 붙은 뒤에 Drive 엔진으로 넘긴다 — 연결 계정 표시에 쓴다. */
           return getUser().catch(function () { }).then(function () {
             if (session && session.provider_token) handoffProvider(session);
+            startSessionTracking();
             return null;
           });
         }
         loadSession();
-        if (session && cfg.url) return getUser().catch(function () { });
+        if (session && cfg.url) {
+          return getUser().catch(function () { }).then(function () {
+            startSessionTracking();
+            return null;
+          });
+        }
         return null;
       })
       .then(function () { return cfg; });
@@ -1382,7 +1699,7 @@
   }
 
   window.LemonCloud = {
-    __v: 2,
+    __v: 3,
     init: init,
     configured: function () { return cfgReady(); },
     config: function () { return cfg ? { url: cfg.url, anonKey: cfg.anonKey } : { url: '', anonKey: '' }; },
@@ -1426,6 +1743,17 @@
       };
     },
     hasSession: function () { return !!session; },
+
+    /* 기기·세션 (user_sessions) — 로그인한 기기 목록과 기기별 원격 로그아웃 */
+    getDeviceId: getDeviceId,
+    detectDeviceInfo: detectDeviceInfo,
+    syncCurrentSession: syncCurrentSession,
+    checkSessionRevoked: checkSessionRevoked,
+    listUserSessions: listUserSessions,
+    revokeDeviceSession: revokeDeviceSession,
+    revokeOtherSessions: revokeOtherSessions,
+    startSessionTracking: startSessionTracking,
+    stopSessionTracking: stopSessionTracking,
 
     fetchSiteData: fetchSiteData,
     saveSiteData: saveSiteData,

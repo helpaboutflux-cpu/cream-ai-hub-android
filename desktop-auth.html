@@ -391,7 +391,7 @@
   </main>
 </div>
 
-<script src="lemon-cloud.js?v=20261121b"></script>
+<script src="lemon-cloud.js?v=20261121e"></script>
 <script src="lemon-gdrive.js?v=20261121b"></script>
 <script>
 (function () {
@@ -400,6 +400,8 @@
   var P = new URLSearchParams(location.search || '');
   var PORT = parseInt(P.get('port') || '', 10);
   var STATE = String(P.get('state') || '');
+  /* 크리미 브라우저가 자기 기기 ID 를 넘겨주면 그 값으로 기기 목록에 남긴다. */
+  var DEVICE = String(P.get('device') || P.get('device_id') || '');
   var portOK = PORT >= 1024 && PORT <= 65535;
   var stateOK = /^[a-f0-9]{16,64}$/i.test(STATE);
   var K_RETURN = 'lk_desktop_auth_return';
@@ -502,7 +504,24 @@
     var ready = !!(hasSession && conn);
     var btn = $('sendBtn');
     if (btn) btn.disabled = !ready || state.sending || state.sent;
+    recordSession(false);
     return ready;
+  }
+
+  /* 로그인한 PC 도 LK 계정의 기기 목록에 남긴다 — auth.html 에서 이 PC 를 보고 원격 로그아웃할 수 있다. */
+  var lastRec = 0;
+  function recordSession(force) {
+    if (!window.LemonCloud || !LemonCloud.syncCurrentSession) return;
+    if (!(LemonCloud.hasSession && LemonCloud.hasSession())) return;
+    var now = Date.now();
+    if (!force && (now - lastRec) < 60000) return;
+    lastRec = now;
+    var opts = {};
+    if (/^[a-z0-9]{10,24}$/i.test(DEVICE)) opts.deviceId = DEVICE;
+    try { LemonCloud.syncCurrentSession('Creamy Browser PC', opts); } catch (e) { }
+    if (LemonCloud.startSessionTracking) {
+      try { LemonCloud.startSessionTracking('Creamy Browser PC', opts); } catch (e) { }
+    }
   }
 
   /* ---------- LK 계정 ---------- */
@@ -522,6 +541,7 @@
         $('lkPw').value = '';
         msg('lkMsg', 'LK 계정으로 로그인했습니다.', 'ok');
         paint();
+        recordSession(true);
       } else {
         msg('lkMsg', '로그인하지 못했습니다. 이메일과 비밀번호를 확인해 주세요.', 'err');
       }

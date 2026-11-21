@@ -844,13 +844,14 @@
         </div>
 
         <div class="lks-card">
-          <div class="lks-card__head"><span>로그인 알림과 현황</span></div>
+          <div class="lks-card__head"><span>로그인 알림과 현황</span><button class="lk-btn lk-btn--line lk-btn--sm" type="button" data-act="sess-refresh" id="alRefresh">새로고침</button></div>
           <div class="lks-kv"><span>최근 로그인</span><b id="alLast">-</b></div>
           <div class="lks-kv"><span>이 기기 마지막 확인</span><b id="alSeen">-</b></div>
           <div class="lks-kv"><span>새 기기 로그인</span><b id="alNew">-</b></div>
           <div class="lks-kv"><span>알림 권한</span><b id="alPerm">-</b></div>
           <div class="lks-kv"><span>기록된 기기</span><b id="alDevices">-</b></div>
-          <p class="lks-note" id="alNote">로그인할 때마다 이 기기의 접속 기록을 남깁니다. 다른 기기 기록은 Google Drive 백업으로 함께 오가서, 어느 기기에서 열어도 같은 목록을 봅니다.</p>
+          <div id="alDevList"></div>
+          <p class="lks-note" id="alNote">로그인한 기기마다 실시간으로 기록됩니다. Drive 백업 없이도 다른 기기에서 바로 확인하고 원격 로그아웃할 수 있습니다.</p>
         </div>
 
         <div class="lks-card">
@@ -1011,9 +1012,11 @@
           <div class="lks-kv"><span>마지막 확인</span><b id="sessSeen">-</b></div>
 
           <div class="lks-card__head" style="margin:16px 0 6px"><span class="lks-card__ttl">다른 기기의 로그인 세션</span><span class="lks-badge" id="otherSessBadge">0</span></div>
-          <p class="lks-card__desc" style="margin-bottom:6px">로그인한 기기마다 기록이 남고, Google Drive 백업으로 함께 오가 다른 기기까지 보입니다.</p>
+          <p class="lks-card__desc" style="margin-bottom:6px">로그인한 기기마다 실시간으로 기록되어 Drive 백업 없이도 다른 기기에서 바로 확인하고 원격 로그아웃할 수 있습니다.</p>
           <div id="otherSessList"></div>
+          <p class="lks-note" id="otherSessSync">-</p>
           <div class="lks-actions">
+            <button class="lk-btn lk-btn--line" type="button" data-act="sess-refresh" id="sessRefresh">새로고침</button>
             <button class="lk-btn lk-btn--line" type="button" data-act="sign-out">이 기기에서 로그아웃</button>
             <button class="lk-btn lk-btn--line" type="button" data-act="sign-out-others" id="otherSignOut">다른 기기 모두 로그아웃</button>
             <button class="lk-btn lk-btn--line" type="button" data-act="clear-token">이 기기의 로그인 정보 지우기</button>
@@ -1200,7 +1203,7 @@
   </div>
 </div>
 
-<script src="lemon-cloud.js?v=20261121d"></script>
+<script src="lemon-cloud.js?v=20261121e"></script>
 <script src="lemon-gdrive.js?v=20261121d"></script>
 <script src="lemon-site.js"></script>
 <script src="lemon-ui.js"></script>
@@ -1396,7 +1399,7 @@
     ['sharing', '공유 및 연결', '<circle cx="9" cy="8.5" r="3"></circle><circle cx="17" cy="15.5" r="3"></circle><path d="M11.4 10.6 14.6 13.2"></path>'],
     ['dev', '개발자', '<path d="M9 7 4.5 12 9 17"></path><path d="M15 7l4.5 5L15 17"></path><path d="M13.2 5.5 10.8 18.5"></path>']
   ];
-  var state = { user: null, route: 'home', opened: false };
+  var state = { user: null, route: 'home', opened: false, sessRemote: null, sessRemoteAt: 0 };
 
   function fmtBytes(n) {
     n = Number(n) || 0;
@@ -1568,6 +1571,12 @@
       a.classList.toggle('on', a.getAttribute('data-nav') === r);
     });
     paintRoute(r);
+    if (r === 'security' || r === 'personal') {
+      if (state.user) refreshSessions(false);
+      startSessTimer();
+    } else {
+      stopSessTimer();
+    }
   }
 
   function paintRoute(r) {
@@ -1642,6 +1651,10 @@
   var loggedOut = false;
 
   function deviceId() {
+    /* lemon-cloud.js 와 같은 기기 ID 를 쓴다 — 두 곳이 다른 값을 만들지 않도록 위임한다. */
+    if (window.LemonCloud && LemonCloud.getDeviceId) {
+      try { return LemonCloud.getDeviceId(); } catch (e) { }
+    }
     var id = '';
     try { id = String(localStorage.getItem(K_DEV) || ''); } catch (e) { }
     if (/^[a-z0-9]{10,24}$/.test(id)) return id;
@@ -1677,6 +1690,9 @@
     return '브라우저';
   }
   function deviceInfo() {
+    if (window.LemonCloud && LemonCloud.detectDeviceInfo) {
+      try { var lc = LemonCloud.detectDeviceInfo(); if (lc && lc.type) return lc; } catch (e) { }
+    }
     var ua = String(navigator.userAgent || '');
     var w = Number(window.screen && screen.width) || 0;
     var h = Number(window.screen && screen.height) || 0;
@@ -1734,19 +1750,167 @@
     saveSessRec(rec);
     return next;
   }
-  function sessionRows() {
+  /* 이 기기에 남은 기록 — 클라우드가 없거나 아직 목록을 못 받았을 때의 바탕. */
+  function localSessionRows() {
     var rec = sessRec(), me = deviceId(), out = [];
     Object.keys(rec.devices).forEach(function (k) {
       var d = rec.devices[k];
       if (!d) return;
       out.push({
         id: k, me: k === me, type: d.type || '기기', os: d.os || '', browser: d.browser || '',
-        screen: d.screen || '', firstAt: Number(d.firstAt) || 0, lastAt: Number(d.lastAt) || 0,
-        count: Number(d.count) || 0, newAt: Number(d.newAt) || 0
+        screen: d.screen || '', app: '', firstAt: Number(d.firstAt) || 0, lastAt: Number(d.lastAt) || 0,
+        count: Number(d.count) || 0, newAt: Number(d.newAt) || 0, remote: false
       });
     });
+    return out;
+  }
+
+  /* 클라우드(user_sessions)에서 받은 기기 목록. 아직 못 받았으면 null. */
+  function remoteSessionRows() {
+    var list = state.sessRemote;
+    if (!Array.isArray(list)) return null;
+    var me = deviceId(), out = [], seenMe = false;
+    list.forEach(function (r) {
+      if (!r || !r.device_id) return;
+      var id = String(r.device_id);
+      if (r.revoked_at) return;   /* 이미 끝난 세션은 로그인 목록에 넣지 않는다 */
+      if (id === me) seenMe = true;
+      out.push({
+        id: id, me: id === me, type: r.device_type || '기기', os: r.os || '', browser: r.browser || '',
+        screen: r.screen || '', app: r.app_name || 'Soft Hub',
+        firstAt: Date.parse(r.first_seen_at) || 0, lastAt: Date.parse(r.last_seen_at) || 0,
+        count: 0, newAt: Date.parse(r.first_seen_at) || 0,
+        remote: true, revoked: false
+      });
+    });
+    /* 이 기기의 기록이 아직 서버에 없으면(막 로그인한 순간) 화면에서 빠지지 않게 더한다. */
+    if (!seenMe && state.user) {
+      var info = deviceInfo();
+      out.push({
+        id: me, me: true, type: info.type, os: info.os, browser: info.browser, screen: info.screen,
+        app: 'Soft Hub', firstAt: Date.now(), lastAt: Date.now(), count: 0, newAt: Date.now(),
+        remote: true, revoked: false
+      });
+    }
+    return out;
+  }
+
+  function sortRows(out) {
     out.sort(function (a, b) { return (b.me ? 1 : 0) - (a.me ? 1 : 0) || b.lastAt - a.lastAt; });
     return out;
+  }
+
+  /* 로그인 상태면 클라우드 목록을 먼저 쓰고, 아니면 이 기기의 기록을 쓴다. */
+  function sessionRows() {
+    var remote = remoteSessionRows();
+    if (remote) return sortRows(remote);
+    return sortRows(localSessionRows());
+  }
+
+  /* ---------------- 실시간 기기 목록 (Supabase user_sessions) ----------------
+     로그인한 기기마다 한 줄씩 서버에 남는다. 이 화면은 그 목록을 바로 읽어
+     다른 기기의 로그인 상태를 보여 주고, 기기별 원격 로그아웃까지 한다.
+     클라우드가 없거나 표가 아직 없으면 이 기기의 기록으로 조용히 물러난다. */
+  var SESS_VIEW_MS = 12000;   /* 이 탭을 보는 동안 다시 확인하는 간격 */
+  var sessTimer = null, sessBusy = null;
+
+  function listSessionsNow() {
+    var lc = window.LemonCloud;
+    if (!state.user || !lc || !lc.listUserSessions) {
+      state.sessRemote = null;
+      return Promise.resolve(null);
+    }
+    if (sessBusy) return sessBusy;
+    sessBusy = lc.listUserSessions({ limit: 20 }).then(function (rows) {
+      sessBusy = null;
+      state.sessRemote = Array.isArray(rows) ? rows : null;
+      if (state.sessRemote) state.sessRemoteAt = Date.now();
+      return state.sessRemote;
+    }, function () {
+      sessBusy = null;
+      state.sessRemote = null;
+      return null;
+    });
+    return sessBusy;
+  }
+
+  /* 목록을 다시 받아 기기 관련 화면만 새로 그린다. */
+  function refreshSessions(showMsg) {
+    if (!state.user) {
+      paintAlerts();
+      if (state.route === 'security') paintSecurity();
+      if (showMsg) sMsg('로그인하면 다른 기기의 로그인 상태를 확인할 수 있습니다.');
+      return Promise.resolve(null);
+    }
+    return listSessionsNow().then(function (rows) {
+      paintAlerts();
+      if (state.route === 'security') paintSecurity();
+      if (showMsg) {
+        sMsg(rows ? '다른 기기의 로그인 상태를 확인했습니다.' : '다른 기기 목록을 불러오지 못했습니다. 이 기기의 기록만 보여 줍니다.', rows ? 'ok' : 'err');
+      }
+      return rows;
+    });
+  }
+
+  function stopSessTimer() { if (sessTimer) { clearInterval(sessTimer); sessTimer = null; } }
+  function startSessTimer() {
+    stopSessTimer();
+    if (!state.user) return;
+    if (state.route !== 'security' && state.route !== 'personal') return;
+    sessTimer = setInterval(function () {
+      if (document.visibilityState === 'hidden') return;
+      listSessionsNow().then(function () {
+        paintAlerts();
+        if (state.route === 'security') paintSecurity();
+      });
+    }, SESS_VIEW_MS);
+  }
+
+  /* 기기 한 줄 — 이름 · 유형 · 앱 · 마지막 활동 · 인라인 로그아웃 */
+  function sessRowHtml(r) {
+    var head = [];
+    if (r.os) head.push(r.os);
+    if (r.type) head.push(r.type);
+    if (r.app) head.push(r.app);
+    var sub = [];
+    if (r.browser) sub.push(r.browser);
+    if (r.screen) sub.push(r.screen);
+    sub.push('마지막 확인 ' + (r.lastAt ? whenFull(r.lastAt) : '-'));
+    if (r.count) sub.push('로그인 ' + r.count + '회');
+    var act = r.me
+      ? '<span class="lks-badge on">이 기기</span>'
+      : '<button class="lk-btn lk-btn--line" type="button" data-dev-revoke="' + esc(r.id) + '">로그아웃</button>';
+    if (!r.me && !r.remote) {
+      act += '<button class="lk-btn lk-btn--line" type="button" data-dev-del="' + esc(r.id) + '">기록 지우기</button>';
+    }
+    return '<div class="lks-dev" data-dev="' + esc(r.id) + '">' +
+      '<div class="lks-dev__tx"><b>' + esc(head.join(' · ') || '기기') + '</b>' +
+      '<small>' + esc(sub.join(' · ')) + '</small></div>' +
+      '<div class="lks-dev__act">' + act + '</div>' +
+      '</div>';
+  }
+
+  /* 한 기기만 원격 로그아웃 — 되돌리기 어려운 동작이라 화면 안에서 한 번 더 묻는다. */
+  function revokeDevice(id) {
+    id = String(id || '');
+    if (!id) return;
+    var row = null;
+    sessionRows().forEach(function (r) { if (r.id === id) row = r; });
+    if (!row || row.me) return;
+    var label = [row.os, row.type, row.app].filter(Boolean).join(' · ') || '다른 기기';
+    ask('[' + label + ']의 로그인 세션을 끝낼까요? 그 기기는 다음 확인 때 자동으로 로그아웃되고, 이 기기의 로그인은 그대로 유지됩니다.', '로그아웃', function () {
+      if (!window.LemonCloud || !LemonCloud.revokeDeviceSession) { sMsg('지금은 처리할 수 없습니다.', 'err'); return; }
+      sMsg('그 기기의 세션을 끝내는 중입니다.');
+      LemonCloud.revokeDeviceSession(id).then(function () {
+        return listSessionsNow();
+      }).then(function () {
+        paintAlerts();
+        if (state.route === 'security') paintSecurity();
+        sMsg('그 기기의 로그인 세션을 끝냈습니다. 그 기기는 다음 확인 때 로그아웃됩니다.', 'ok');
+      }, function () {
+        sMsg('세션을 끝내지 못했습니다. 잠시 뒤 다시 시도해 주세요.', 'err');
+      });
+    });
   }
 
   /* ---------------- 개인 정보 ---------------- */
@@ -1811,24 +1975,29 @@
     var others = rows.filter(function (r) { return !r.me; });
     var newest = rows.slice().sort(function (a, b) { return (b.newAt || b.firstAt) - (a.newAt || a.firstAt); })[0] || null;
     $('alLast').textContent = u && (u.last_sign_in_at || u.confirmed_at) ? whenFull(u.last_sign_in_at || u.confirmed_at) : '-';
-    $('alSeen').textContent = me && me.lastAt ? whenFull(me.lastAt) + ' (' + me.count + '회)' : '-';
+    $('alSeen').textContent = me && me.lastAt ? whenFull(me.lastAt) + (me.count ? ' (' + me.count + '회)' : '') : '-';
     $('alNew').textContent = u
       ? (rows.length <= 1 ? '이 기기만 기록됨'
         : (newest && !newest.me
           ? '다른 기기 ' + (newest.type || '기기') + ' · ' + when(newest.newAt || newest.firstAt)
           : '다른 기기 ' + others.length + '대 기록됨'))
-      : '-';    var perm = '알 수 없음';
+      : '-';
+    var perm = '알 수 없음';
     try {
       var p = window.Notification && Notification.permission;
       perm = p === 'granted' ? '허용' : p === 'denied' ? '차단' : p === 'default' ? '아직 묻지 않음' : '지원하지 않음';
     } catch (e) { perm = '지원하지 않음'; }
     $('alPerm').textContent = perm;
     $('alDevices').textContent = rows.length ? rows.length + '대' : '0대';
+    var list = $('alDevList');
+    if (list) list.innerHTML = (u && rows.length) ? rows.map(sessRowHtml).join('') : '';
     var note = $('alNote');
     if (note) {
       note.textContent = u
-        ? '로그인할 때마다 이 기기의 접속 기록을 남깁니다. 다른 기기 기록은 Google Drive 백업으로 함께 오가서, 어느 기기에서 열어도 같은 목록을 봅니다.'
-        : '로그인하면 이 기기의 접속 기록이 쌓입니다. 알림은 이 브라우저의 알림 권한을 따릅니다.';
+        ? (state.sessRemote
+          ? '로그인한 기기마다 실시간으로 기록됩니다. Drive 백업 없이도 다른 기기에서 바로 확인하고 원격 로그아웃할 수 있습니다.'
+          : '이 기기에 남은 기록을 보여 줍니다. 클라우드 목록을 불러오면 다른 기기까지 함께 보입니다.')
+        : '로그인하면 이 기기의 기록이 쌓이고, 알림은 이 브라우저의 알림 권한을 따릅니다.';
     }
   }
 
@@ -2153,7 +2322,7 @@
     if (stale.length) issues.push('30일 넘게 확인되지 않은 기기 ' + stale.length + '대');
     sessV.textContent = !u ? '-' : (issues.length ? issues.length + '건 확인 필요' : '이상 없음');
     sessS.textContent = !u ? '로그인하면 기록된 세션을 점검합니다'
-      : (issues.length ? issues.join(' · ') : '이 기기에 기록된 세션 기록 기준');
+      : (issues.length ? issues.join(' · ') : (state.sessRemote ? '로그인한 기기 목록 기준' : '이 기기에 남은 기록 기준'));
     var ds = $('dashSess');
     if (ds) ds.classList.toggle('is-warn', !!(u && issues.length));
 
@@ -2168,30 +2337,32 @@
       : (others && others.length ? '이 기기 외 ' + others.length + '대' : '이 기기만 기록됨');
   }
 
-  /* 다른 기기의 로그인 세션 목록 */
+  /* 다른 기기의 로그인 세션 목록 — 실시간 목록(있으면) 우선, 각 행에 인라인 로그아웃 */
   function paintOtherSessions(u, others) {
     var host = $('otherSessList');
     var badge = $('otherSessBadge');
     var btn = $('otherSignOut');
+    var refresh = $('sessRefresh');
+    var sync = $('otherSessSync');
     if (!host) return;
     if (badge) { badge.textContent = String(others.length); badge.classList.toggle('on', others.length > 0); }
     if (btn) btn.disabled = !u || !others.length;
+    if (refresh) refresh.disabled = !u;
+    if (sync) {
+      sync.textContent = !u ? '로그인하면 다른 기기의 로그인 상태를 바로 확인할 수 있습니다.'
+        : (state.sessRemote
+          ? (state.sessRemoteAt ? '마지막 확인 ' + whenFull(state.sessRemoteAt) : '방금 확인했습니다.') + ' · 이 화면을 보는 동안 12초마다 다시 확인합니다.'
+          : '이 기기의 기록만 보여 줍니다. Supabase user_sessions 표를 만들면 다른 기기 목록이 여기에 나옵니다.');
+    }
     if (!u) {
-      host.innerHTML = '<p class="lks-card__desc" style="margin:0">로그인하면 이 기기의 접속 기록이 여기에 쌓이고, Drive 백업으로 다른 기기 기록까지 함께 보입니다.</p>';
+      host.innerHTML = '<p class="lks-card__desc" style="margin:0">로그인하면 이 기기의 접속 기록이 여기에 쌓이고, 다른 기기의 로그인 상태도 함께 보입니다.</p>';
       return;
     }
     if (!others.length) {
-      host.innerHTML = '<p class="lks-card__desc" style="margin:0">아직 다른 기기에서의 로그인 기록이 없습니다.</p>';
+      host.innerHTML = '<p class="lks-card__desc" style="margin:0">지금 이 기기만 로그인되어 있습니다. 다른 기기에서 로그인하면 여기에 바로 나타납니다.</p>';
       return;
     }
-    host.innerHTML = others.map(function (r) {
-      return '<div class="lks-dev" data-dev="' + esc(r.id) + '">' +
-        '<div class="lks-dev__tx"><b>' + esc(r.type + ' · ' + r.os) + '</b>' +
-        '<small>' + esc(r.browser) + (r.screen ? ' · ' + esc(r.screen) : '') + '<br>' +
-        '마지막 확인 ' + esc(whenFull(r.lastAt)) + ' · 로그인 ' + r.count + '회</small></div>' +
-        '<div class="lks-dev__act"><button class="lk-btn lk-btn--line" type="button" data-dev-del="' + esc(r.id) + '">기록 지우기</button></div>' +
-        '</div>';
-    }).join('');
+    host.innerHTML = others.map(sessRowHtml).join('');
   }
 
   function estimateStore() {
@@ -2421,6 +2592,10 @@
     $('settingsShell').classList.remove('hidden');
     if (!document.querySelector('#lksNav a')) renderNav();
     try { registerSession(); } catch (e) { }
+    /* 이 기기의 로그인을 서버 목록(user_sessions)에 남긴다 — 다른 기기에서 바로 보이게. */
+    if (window.LemonCloud && LemonCloud.startSessionTracking) {
+      try { LemonCloud.startSessionTracking('Soft Hub'); } catch (e) { }
+    }
     applyRoute();
     paintAll();
     window.scrollTo(0, 0);
@@ -2710,17 +2885,24 @@
       else finish();
     } catch (e) { finish(); }
   }
-  /* 다른 기기 세션만 만료 — 이 기기의 로그인은 그대로 둔다. */
+  /* 다른 기기 세션만 만료 — 이 기기의 로그인은 그대로 둔다.
+     서버의 기기 목록(user_sessions)과 Supabase Auth 세션을 함께 끝낸다. */
   function signOutOthers() {
     if (!state.user) { sMsg('로그인 후 사용할 수 있습니다.'); return; }
     ask('다른 기기의 LK 로그인 세션을 모두 만료시킬까요? 이 기기의 로그인은 그대로 유지되고, 다른 기기에서는 다시 로그인해야 합니다.', '모두 로그아웃', function () {
-      if (!window.LemonCloud || !LemonCloud.signOutOthers) { sMsg('지금은 처리할 수 없습니다.', 'err'); return; }
+      var lc = window.LemonCloud || {};
+      var run = lc.revokeOtherSessions ? lc.revokeOtherSessions(deviceId())
+        : (lc.signOutOthers ? lc.signOutOthers() : null);
+      if (!run || !run.then) { sMsg('지금은 처리할 수 없습니다.', 'err'); return; }
       sMsg('다른 기기 세션을 만료시키는 중입니다.');
-      LemonCloud.signOutOthers().then(function () {
+      run.then(function () {
         var rec = sessRec(), me = deviceId();
         Object.keys(rec.devices).forEach(function (k) { if (k !== me) delete rec.devices[k]; });
         saveSessRec(rec);
+        state.sessRemote = null;
         paintAll();
+        return listSessionsNow().then(function () { paintAll(); });
+      }).then(function () {
         sMsg('다른 기기의 로그인 세션을 모두 만료시켰습니다. 이 기기는 그대로 로그인되어 있습니다.', 'ok');
       }, function (err) {
         var m = String((err && err.message) || '');
@@ -2782,6 +2964,7 @@
     'change-pw': function () { changePw(); },
     'sign-out': function () { signOut(); },
     'sign-out-others': function () { signOutOthers(); },
+    'sess-refresh': function () { refreshSessions(true); },
     'goto-backup': function () { location.hash = '#backup'; },
     'svc-all-on': function () { setAllServices(true); },
     'svc-all-off': function () { setAllServices(false); },
@@ -2799,6 +2982,12 @@
     if (t) {
       var act = t.getAttribute('data-act');
       if (ACT[act]) { e.preventDefault(); ACT[act](t, t.getAttribute('data-val')); return; }
+    }
+    var dr = e.target && e.target.closest ? e.target.closest('[data-dev-revoke]') : null;
+    if (dr) {
+      e.preventDefault();
+      revokeDevice(dr.getAttribute('data-dev-revoke'));
+      return;
     }
     var dd = e.target && e.target.closest ? e.target.closest('[data-dev-del]') : null;
     if (dd) {
@@ -3167,11 +3356,23 @@
       if (!u) return;
       if (!wantsSettings && goNext(320)) { msg('로그인했습니다. 이동합니다.', 'ok'); return; }
       openSettings(u);
+      refreshSessions(false);
     });
     window.addEventListener('lemoncloud:signed-out', function () {
       state.user = null;
+      state.sessRemote = null;
+      stopSessTimer();
       if (state.opened) { paintAll(); return; }
       showAuth();
+    });
+    /* 다른 기기에서 이 기기를 원격 로그아웃시킨 경우 — 이유를 남기고 로그인 화면으로 돌린다. */
+    window.addEventListener('lemoncloud:session-revoked', function () {
+      state.user = null;
+      state.sessRemote = null;
+      stopSessTimer();
+      msg('다른 기기에서 이 기기의 로그인 세션을 끝냈습니다. 다시 로그인해 주세요.', 'err');
+      sMsg('다른 기기에서 이 기기의 로그인 세션을 끝냈습니다. 다시 로그인해 주세요.', 'err');
+      if (state.opened) paintAll();
     });
 
     if (scopeRetry) {
@@ -3184,6 +3385,14 @@
       setTimeout(function () { LemonCloud.signInWithGoogle({ drive: false }); }, 1400);
     }
   }
+
+  /* 다른 탭을 보다 돌아오면 기기 목록을 다시 받는다(그 사이 바뀐 로그인을 바로 반영). */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') return;
+    if (!state.user) return;
+    if (state.route !== 'security' && state.route !== 'personal') return;
+    refreshSessions(false);
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
