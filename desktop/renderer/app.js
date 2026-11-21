@@ -60,6 +60,7 @@
       translateTarget: 'ko'
     },
     mainSettings: {},
+    lock: { locked: false, enabled: false, hasPassword: false },
     history: [],
     bookmarks: [],
     bag: [],
@@ -311,6 +312,7 @@
   function buildGroupPill(group) {
     var pill = document.createElement('div');
     pill.className = 'group-pill';
+    pill.setAttribute('data-group-id', String(group.id));
     pill.style.setProperty('--group-color', group.color);
     pill.style.borderColor = group.color;
     var collapsedMark = group.collapsed ? '+' : '-';
@@ -1360,6 +1362,222 @@
     });
     modelRow.appendChild(modelInput);
 
+    var gLock = group();
+    var lockInfo = state.lock || { enabled: false, hasPassword: false };
+    var lockDesc = lockInfo.enabled
+      ? '켜짐 · 앱을 열면 잠금 화면이 먼저 표시되고, 비밀번호를 넣어야 브라우저가 열립니다.'
+      : (lockInfo.hasPassword
+        ? '꺼짐 · 저장된 비밀번호는 그대로 유지됩니다.'
+        : '꺼짐 · 비밀번호를 설정하면 앱을 열 때 잠금 화면이 먼저 표시됩니다.');
+    var lockRow = row(gLock, '브라우저 잠금', lockDesc);
+    var lockStateChip = document.createElement('span');
+    lockStateChip.className = 'lock-state' + (lockInfo.enabled ? ' on' : '');
+    lockStateChip.textContent = lockInfo.enabled ? '잠금 켜짐' : '잠금 꺼짐';
+    var lockSwitch = document.createElement('button');
+    lockSwitch.className = 'switch' + (lockInfo.enabled ? ' on' : '');
+    lockSwitch.title = lockInfo.enabled ? '브라우저 잠금 끄기' : '브라우저 잠금 켜기';
+    var lockCtrl = document.createElement('div');
+    lockCtrl.className = 'set-control';
+    lockCtrl.appendChild(lockStateChip);
+    lockCtrl.appendChild(lockSwitch);
+    lockRow.appendChild(lockCtrl);
+
+    function lockField(placeholder, autocomplete) {
+      var input = document.createElement('input');
+      input.type = 'password';
+      input.className = 'set-input';
+      input.placeholder = placeholder;
+      input.autocomplete = autocomplete || 'new-password';
+      input.spellcheck = false;
+      input.maxLength = 128;
+      return input;
+    }
+
+    function lockFormBox(title, inputs, submitLabel, handler) {
+      var box = document.createElement('div');
+      box.className = 'set-inline';
+      var t = document.createElement('div');
+      t.className = 'set-inline-title';
+      t.textContent = title;
+      box.appendChild(t);
+      inputs.forEach(function (el) { box.appendChild(el); });
+      var msg = document.createElement('div');
+      msg.className = 'set-inline-msg hidden';
+      box.appendChild(msg);
+      var actions = document.createElement('div');
+      actions.className = 'set-inline-actions';
+      var cancel = document.createElement('button');
+      cancel.className = 'btn ghost';
+      cancel.textContent = '취소';
+      var submit = document.createElement('button');
+      submit.className = 'btn';
+      submit.textContent = submitLabel;
+      actions.appendChild(cancel);
+      actions.appendChild(submit);
+      box.appendChild(actions);
+
+      var ctx = {
+        fail: function (text) {
+          msg.textContent = text;
+          msg.classList.remove('hidden');
+        },
+        busy: function (state) {
+          submit.disabled = state;
+          submit.textContent = state ? '처리 중' : submitLabel;
+        },
+        finish: function (res, okMessage) {
+          ctx.busy(false);
+          if (res && res.state) applyLockState(res.state);
+          if (res && res.ok) {
+            settingsLockForm = '';
+            if (okMessage) showToast(okMessage);
+            renderPanel('settings');
+            return;
+          }
+          ctx.fail((res && res.error) || '요청을 처리하지 못했습니다. 다시 시도하세요.');
+        }
+      };
+
+      cancel.addEventListener('click', function () {
+        settingsLockForm = '';
+        renderPanel('settings');
+      });
+      submit.addEventListener('click', function () {
+        msg.classList.add('hidden');
+        msg.textContent = '';
+        handler(ctx);
+      });
+      inputs.forEach(function (el) {
+        el.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submit.click();
+          }
+        });
+        el.addEventListener('input', function () { msg.classList.add('hidden'); });
+      });
+      gLock.appendChild(box);
+      setTimeout(function () {
+        try { inputs[0].focus(); } catch (err) { /* ignore */ }
+      }, 60);
+    }
+
+    if (!bridge || !bridge.lock) {
+      // Lock bridge unavailable: keep the section read-only.
+      lockSwitch.disabled = true;
+    }
+
+    lockSwitch.addEventListener('click', function () {
+      if (!bridge || !bridge.lock) return;
+      if (lockInfo.enabled) {
+        if (lockInfo.hasPassword) {
+          settingsLockForm = 'disable';
+          renderPanel('settings');
+        } else {
+          lockSwitch.disabled = true;
+          bridge.lock.disable('').then(function (res) {
+            lockSwitch.disabled = false;
+            if (res && res.state) applyLockState(res.state);
+            settingsLockForm = '';
+            if (res && res.ok) showToast('브라우저 잠금을 껐습니다.');
+            else showToast((res && res.error) || '요청을 처리하지 못했습니다.');
+            renderPanel('settings');
+          });
+        }
+      } else if (lockInfo.hasPassword) {
+        lockSwitch.disabled = true;
+        bridge.lock.enable().then(function (res) {
+          lockSwitch.disabled = false;
+          if (res && res.state) applyLockState(res.state);
+          settingsLockForm = '';
+          if (res && res.ok) showToast('브라우저 잠금을 켰습니다.');
+          else showToast((res && res.error) || '요청을 처리하지 못했습니다.');
+          renderPanel('settings');
+        });
+      } else {
+        settingsLockForm = 'setup';
+        renderPanel('settings');
+      }
+    });
+
+    if (settingsLockForm === 'setup') {
+      var setupNew = lockField('새 비밀번호 (4자 이상)');
+      var setupConfirm = lockField('새 비밀번호 확인');
+      lockFormBox('잠금에 사용할 비밀번호를 설정하고 잠금을 켭니다.', [setupNew, setupConfirm], '비밀번호 설정 및 잠금 켜기', function (ctx) {
+        var next = setupNew.value;
+        if (next.length < 4) { ctx.fail('비밀번호는 4자 이상이어야 합니다.'); return; }
+        if (next !== setupConfirm.value) { ctx.fail('새 비밀번호가 서로 일치하지 않습니다.'); return; }
+        ctx.busy(true);
+        bridge.lock.setPassword('', next).then(function (res) {
+          ctx.finish(res, '브라우저 잠금을 켰습니다.');
+        }, function () { ctx.finish(null); });
+      });
+    } else if (settingsLockForm === 'change') {
+      var changeCurrent = lockField('현재 비밀번호', 'current-password');
+      var changeNew = lockField('새 비밀번호 (4자 이상)');
+      var changeConfirm = lockField('새 비밀번호 확인');
+      lockFormBox('현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.', [changeCurrent, changeNew, changeConfirm], '비밀번호 변경', function (ctx) {
+        if (!changeCurrent.value) { ctx.fail('현재 비밀번호를 입력하세요.'); return; }
+        if (changeNew.value.length < 4) { ctx.fail('새 비밀번호는 4자 이상이어야 합니다.'); return; }
+        if (changeNew.value !== changeConfirm.value) { ctx.fail('새 비밀번호가 서로 일치하지 않습니다.'); return; }
+        if (changeNew.value === changeCurrent.value) { ctx.fail('현재 비밀번호와 다른 비밀번호를 입력하세요.'); return; }
+        ctx.busy(true);
+        bridge.lock.setPassword(changeCurrent.value, changeNew.value).then(function (res) {
+          ctx.finish(res, '비밀번호를 변경했습니다.');
+        }, function () { ctx.finish(null); });
+      });
+    } else if (settingsLockForm === 'disable') {
+      var disableCurrent = lockField('현재 비밀번호', 'current-password');
+      lockFormBox('현재 비밀번호를 확인한 뒤 잠금을 끕니다. 저장된 비밀번호는 유지됩니다.', [disableCurrent], '잠금 끄기', function (ctx) {
+        if (!disableCurrent.value) { ctx.fail('현재 비밀번호를 입력하세요.'); return; }
+        ctx.busy(true);
+        bridge.lock.disable(disableCurrent.value).then(function (res) {
+          ctx.finish(res, '브라우저 잠금을 껐습니다.');
+        }, function () { ctx.finish(null); });
+      });
+    } else {
+      var lockActions = document.createElement('div');
+      lockActions.className = 'set-inline';
+      var lockActionRow = document.createElement('div');
+      lockActionRow.className = 'set-inline-actions';
+      lockActionRow.style.justifyContent = 'flex-start';
+      if (lockInfo.enabled) {
+        var lockNowBtn = document.createElement('button');
+        lockNowBtn.className = 'btn ghost';
+        lockNowBtn.textContent = '지금 바로 잠그기';
+        lockNowBtn.addEventListener('click', function () {
+          if (!bridge || !bridge.lock) return;
+          lockNowBtn.disabled = true;
+          bridge.lock.lockNow().then(function (res) {
+            if (res && res.ok) {
+              saveSession();
+              window.location.reload();
+              return;
+            }
+            lockNowBtn.disabled = false;
+            showToast((res && res.error) || '잠금을 실행하지 못했습니다.');
+          });
+        });
+        lockActionRow.appendChild(lockNowBtn);
+      }
+      var pwBtn = document.createElement('button');
+      pwBtn.className = 'btn ghost';
+      pwBtn.textContent = lockInfo.hasPassword ? '비밀번호 변경' : '비밀번호 설정';
+      pwBtn.addEventListener('click', function () {
+        settingsLockForm = lockInfo.hasPassword ? 'change' : 'setup';
+        renderPanel('settings');
+      });
+      lockActionRow.appendChild(pwBtn);
+      lockActions.appendChild(lockActionRow);
+      gLock.appendChild(lockActions);
+    }
+
+    var lockHint = document.createElement('div');
+    lockHint.className = 'set-hint';
+    lockHint.innerHTML = '비밀번호는 scrypt 해시로 이 PC에만 저장됩니다. 잊으면 잠금을 해제할 수 없으니, ' +
+      '사용자 데이터 폴더의 <b>creamy-lock.json</b> 파일을 삭제해 잠금 설정을 초기화하세요.';
+    gLock.appendChild(lockHint);
+
     var gInfo = group();
     var infoRow = row(gInfo, '버전', 'Creamy Browser for Windows');
     bridge.app.version().then(function (v) {
@@ -1469,12 +1687,7 @@
       menu.appendChild(colors);
       ctxDivider(menu);
       ctxItem(menu, '그룹 이름 변경', function () {
-        var next = window.prompt('그룹 이름', group.name);
-        if (next !== null && next.trim().length > 0) {
-          group.name = next.trim();
-          renderTabs();
-          saveSession();
-        }
+        startGroupRename(group);
       });
       ctxItem(menu, '그룹 해제', function () {
         state.tabs.forEach(function (t) { if (t.groupId === group.id) t.groupId = null; });
@@ -1489,6 +1702,38 @@
         saveSession();
       });
     });
+  }
+
+  function startGroupRename(group) {
+    var pills = document.querySelectorAll('#tabs .group-pill');
+    var target = null;
+    for (var i = 0; i < pills.length; i++) {
+      if (pills[i].getAttribute('data-group-id') === String(group.id)) { target = pills[i]; break; }
+    }
+    if (!target) return;
+    var input = document.createElement('input');
+    input.className = 'group-rename';
+    input.value = group.name;
+    input.spellcheck = false;
+    input.maxLength = 40;
+    target.innerHTML = '';
+    target.appendChild(input);
+    try { input.focus(); input.select(); } catch (err) { /* ignore */ }
+    var done = false;
+    function commit(save) {
+      if (done) return;
+      done = true;
+      var next = input.value.trim();
+      if (save && next.length > 0) group.name = next;
+      renderTabs();
+      saveSession();
+    }
+    input.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+    });
+    input.addEventListener('blur', function () { commit(true); });
   }
 
   function cleanupEmptyGroups() {
@@ -1507,6 +1752,136 @@
     toast.classList.remove('hidden');
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toast.classList.add('hidden'); }, 2600);
+  }
+
+  /* ---------- Browser lock ---------- */
+
+  var settingsLockForm = '';
+  var browserStarted = false;
+  var unlockBusy = false;
+
+  function setLockError(text) {
+    var box = $('#lock-error');
+    if (!box) return;
+    if (!text) {
+      box.textContent = '';
+      box.classList.add('hidden');
+      return;
+    }
+    box.textContent = text;
+    box.classList.remove('hidden');
+  }
+
+  function shakeLockCard() {
+    var card = $('#lock-card');
+    if (!card) return;
+    card.classList.remove('shake');
+    void card.offsetWidth;
+    card.classList.add('shake');
+  }
+
+  function applyLockState(next) {
+    if (!next) return;
+    state.lock = {
+      locked: next.locked === true,
+      enabled: next.enabled === true,
+      hasPassword: next.hasPassword === true
+    };
+  }
+
+  function showLockScreen() {
+    state.lock.locked = true;
+    document.body.classList.remove('boot-pending');
+    document.body.classList.add('locked');
+    var screen = $('#lock-screen');
+    if (screen) screen.classList.remove('hidden');
+
+    var input = $('#lock-input');
+    var eye = $('#lock-eye');
+    var form = $('#lock-form');
+    var submit = $('#lock-submit');
+
+    $('#lock-btn-min').addEventListener('click', function () { bridge.win.minimize(); });
+    $('#lock-btn-close').addEventListener('click', function () { bridge.win.close(); });
+
+    eye.addEventListener('click', function () {
+      var reveal = input.type === 'password';
+      input.type = reveal ? 'text' : 'password';
+      $('#lock-eye-open').classList.toggle('hidden', reveal);
+      $('#lock-eye-off').classList.toggle('hidden', !reveal);
+      eye.title = reveal ? '비밀번호 숨기기' : '비밀번호 보기';
+      eye.setAttribute('aria-label', eye.title);
+      input.focus();
+    });
+
+    input.addEventListener('input', function () { setLockError(''); });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      attemptUnlock();
+    });
+
+    setTimeout(function () {
+      try { input.focus(); } catch (err) { /* ignore */ }
+    }, 80);
+  }
+
+  async function attemptUnlock() {
+    if (unlockBusy) return;
+    var input = $('#lock-input');
+    var submit = $('#lock-submit');
+    var password = input.value;
+    if (!password) {
+      setLockError('비밀번호를 입력하세요.');
+      shakeLockCard();
+      return;
+    }
+    unlockBusy = true;
+    submit.disabled = true;
+    submit.textContent = '확인 중';
+    var res = null;
+    try {
+      res = await bridge.lock.unlock(password);
+    } catch (err) {
+      res = { ok: false, error: '잠금 상태를 확인하지 못했습니다. 다시 시도하세요.' };
+    }
+    unlockBusy = false;
+    submit.disabled = false;
+    submit.textContent = '잠금 해제';
+    if (res && res.ok) {
+      applyLockState(res.state);
+      state.lock.locked = false;
+      input.value = '';
+      setLockError('');
+      document.body.classList.remove('locked');
+      $('#lock-screen').classList.add('hidden');
+      startBrowser();
+      return;
+    }
+    input.value = '';
+    setLockError((res && res.error) || '비밀번호가 올바르지 않습니다.');
+    shakeLockCard();
+    try { input.focus(); } catch (err) { /* ignore */ }
+  }
+
+  async function startBrowser() {
+    if (browserStarted) return;
+    browserStarted = true;
+    document.body.classList.remove('boot-pending');
+    document.body.classList.remove('locked');
+    var screen = $('#lock-screen');
+    if (screen) screen.classList.add('hidden');
+    try {
+      if (bridge && bridge.settings && bridge.settings.get) {
+        state.mainSettings = (await bridge.settings.get()) || {};
+      }
+    } catch (err) {
+      console.error('Settings get error:', err);
+    }
+    applyTheme();
+    restoreSession();
+    bindChrome();
+    updateToolbar();
   }
 
   /* ---------- Wiring ---------- */
@@ -1628,20 +2003,29 @@
   }
 
   async function boot() {
+    var savedSession = lsGet('session', null);
+    if (savedSession && savedSession.settings) {
+      state.settings = Object.assign(state.settings, savedSession.settings);
+    }
+    applyTheme();
+
     state.history = lsGet('history', []);
     state.bookmarks = lsGet('bookmarks', []);
     state.bag = lsGet('bag', []);
+
+    var lockState = null;
     try {
-      if (bridge && bridge.settings && bridge.settings.get) {
-        state.mainSettings = (await bridge.settings.get()) || {};
-      }
+      if (bridge && bridge.lock && bridge.lock.state) lockState = await bridge.lock.state();
     } catch (err) {
-      console.error('Settings get error:', err);
+      console.error('Lock state error:', err);
     }
-    applyTheme();
-    restoreSession();
-    bindChrome();
-    updateToolbar();
+    applyLockState(lockState);
+
+    if (state.lock.locked) {
+      showLockScreen();
+      return;
+    }
+    await startBrowser();
   }
 
   boot();

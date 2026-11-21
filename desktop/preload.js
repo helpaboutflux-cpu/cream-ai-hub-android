@@ -22,6 +22,14 @@ const fullBridge = {
     pickBackground: function () { return ipcRenderer.invoke('settings:pick-background'); },
     clearBackground: function () { return ipcRenderer.invoke('settings:clear-background'); }
   },
+  lock: {
+    state: function () { return ipcRenderer.invoke('lock:state'); },
+    unlock: function (password) { return ipcRenderer.invoke('lock:unlock', password); },
+    setPassword: function (currentPassword, newPassword) { return ipcRenderer.invoke('lock:set-password', currentPassword, newPassword); },
+    enable: function () { return ipcRenderer.invoke('lock:enable'); },
+    disable: function (password) { return ipcRenderer.invoke('lock:disable', password); },
+    lockNow: function () { return ipcRenderer.invoke('lock:lock-now'); }
+  },
   net: {
     weather: function (lat, lon) { return ipcRenderer.invoke('net:weather', lat, lon); },
     geocode: function (name) { return ipcRenderer.invoke('net:geocode', name); },

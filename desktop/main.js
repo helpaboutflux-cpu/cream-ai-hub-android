@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, session, dialog, webContents, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
 const { execFile, spawn } = require('child_process');
@@ -40,6 +41,84 @@ function saveSettings() {
   try {
     fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2), 'utf8');
   } catch (err) { /* ignore */ }
+}
+
+/* ---------- Browser lock ---------- */
+
+const LOCK_MIN_PASSWORD = 4;
+
+let lockStore = { enabled: false, salt: '', hash: '', updatedAt: '' };
+let isLocked = false;
+let failedUnlocks = 0;
+
+function lockFilePath() {
+  return path.join(userDataPath(), 'creamy-lock.json');
+}
+
+function loadLockStore() {
+  try {
+    const raw = fs.readFileSync(lockFilePath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    lockStore = {
+      enabled: parsed.enabled === true,
+      salt: typeof parsed.salt === 'string' ? parsed.salt : '',
+      hash: typeof parsed.hash === 'string' ? parsed.hash : '',
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : ''
+    };
+  } catch (err) {
+    lockStore = { enabled: false, salt: '', hash: '', updatedAt: '' };
+  }
+  if (!lockStore.salt || !lockStore.hash) lockStore.enabled = false;
+  isLocked = !!(lockStore.enabled && lockStore.salt && lockStore.hash);
+}
+
+function saveLockStore() {
+  try {
+    fs.writeFileSync(lockFilePath(), JSON.stringify(lockStore, null, 2), { encoding: 'utf8', mode: 384 });
+  } catch (err) { /* ignore */ }
+}
+
+function lockHasPassword() {
+  return !!(lockStore.salt && lockStore.hash);
+}
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(String(password), salt, 64).toString('hex');
+}
+
+function passwordMatches(password) {
+  if (!lockHasPassword()) return false;
+  let trial = null;
+  try {
+    trial = crypto.scryptSync(String(password), lockStore.salt, 64);
+  } catch (err) {
+    return false;
+  }
+  let stored = null;
+  try {
+    stored = Buffer.from(lockStore.hash, 'hex');
+  } catch (err) {
+    return false;
+  }
+  if (!stored || stored.length !== trial.length) return false;
+  try {
+    return crypto.timingSafeEqual(trial, stored);
+  } catch (err) {
+    return false;
+  }
+}
+
+function lockState() {
+  return { locked: isLocked, enabled: lockStore.enabled === true, hasPassword: lockHasPassword() };
+}
+
+function passwordText(value) {
+  return typeof value === 'string' ? value : '';
+}
+
+function unlockPenalty() {
+  const delay = Math.min(250 + failedUnlocks * 250, 2500);
+  return new Promise(function (resolve) { setTimeout(resolve, delay); });
 }
 
 function sendToRenderer(channel, payload) {
@@ -460,6 +539,75 @@ function registerIpc() {
     return mainWindow ? mainWindow.isMaximized() : false;
   });
 
+  ipcMain.handle('lock:state', function () { return lockState(); });
+
+  ipcMain.handle('lock:unlock', async function (event, password) {
+    if (!isLocked) return { ok: true, state: lockState() };
+    if (!lockStore.enabled || !lockHasPassword()) {
+      isLocked = false;
+      return { ok: true, state: lockState() };
+    }
+    await unlockPenalty();
+    if (passwordMatches(passwordText(password))) {
+      isLocked = false;
+      failedUnlocks = 0;
+      return { ok: true, state: lockState() };
+    }
+    failedUnlocks = failedUnlocks + 1;
+    return { ok: false, error: '비밀번호가 올바르지 않습니다.', state: lockState() };
+  });
+
+  ipcMain.handle('lock:set-password', function (event, currentPassword, newPassword) {
+    const next = passwordText(newPassword);
+    if (next.length < LOCK_MIN_PASSWORD) {
+      return { ok: false, error: '비밀번호는 ' + LOCK_MIN_PASSWORD + '자 이상이어야 합니다.', state: lockState() };
+    }
+    if (next.length > 128) {
+      return { ok: false, error: '비밀번호는 128자까지 입력할 수 있습니다.', state: lockState() };
+    }
+    if (lockHasPassword() && !passwordMatches(passwordText(currentPassword))) {
+      return { ok: false, error: '현재 비밀번호가 올바르지 않습니다.', state: lockState() };
+    }
+    const salt = crypto.randomBytes(16).toString('hex');
+    lockStore.salt = salt;
+    lockStore.hash = hashPassword(next, salt);
+    lockStore.enabled = true;
+    lockStore.updatedAt = new Date().toISOString();
+    saveLockStore();
+    failedUnlocks = 0;
+    return { ok: true, state: lockState() };
+  });
+
+  ipcMain.handle('lock:enable', function () {
+    if (!lockHasPassword()) {
+      return { ok: false, error: '비밀번호를 먼저 설정하세요.', state: lockState() };
+    }
+    lockStore.enabled = true;
+    lockStore.updatedAt = new Date().toISOString();
+    saveLockStore();
+    return { ok: true, state: lockState() };
+  });
+
+  ipcMain.handle('lock:disable', function (event, password) {
+    if (lockHasPassword() && !passwordMatches(passwordText(password))) {
+      return { ok: false, error: '현재 비밀번호가 올바르지 않습니다.', state: lockState() };
+    }
+    lockStore.enabled = false;
+    lockStore.updatedAt = new Date().toISOString();
+    saveLockStore();
+    isLocked = false;
+    failedUnlocks = 0;
+    return { ok: true, state: lockState() };
+  });
+
+  ipcMain.handle('lock:lock-now', function () {
+    if (!lockStore.enabled || !lockHasPassword()) {
+      return { ok: false, error: '브라우저 잠금이 설정되지 않았습니다.', state: lockState() };
+    }
+    isLocked = true;
+    return { ok: true, state: lockState() };
+  });
+
   ipcMain.handle('settings:get', function () { return settings; });
   ipcMain.handle('settings:set', function (event, key, value) {
     settings[key] = value;
@@ -637,6 +785,7 @@ function registerIpc() {
 
 app.whenReady().then(function () {
   loadSettings();
+  loadLockStore();
   const ua = session.defaultSession.getUserAgent()
     .replace(/Electron\/[\d.]+\s*/i, '')
     .replace(/creamy-browser\/[\d.]+\s*/i, '');
