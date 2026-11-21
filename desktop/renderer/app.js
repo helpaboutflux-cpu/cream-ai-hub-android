@@ -143,7 +143,12 @@
       if (tab.id === id) {
         tab.webview.classList.remove('hidden');
         tab.webview.classList.remove('offscreen');
-        tab.webview.focus();
+        // dom-ready 이전에는 focus()가 예외를 던질 수 있다. 탭 전환은 계속 진행한다.
+        try {
+          tab.webview.focus();
+        } catch (err) {
+          console.warn('[creamy] webview focus를 건너뜁니다:', err && err.message ? err.message : err);
+        }
       } else {
         tab.webview.classList.add('offscreen');
       }
@@ -444,7 +449,7 @@
         local.push({ kind: '북마크', text: b.title, url: b.url });
       }
     });
-    bridge.net.suggest(q).then(function (remote) {
+    Promise.resolve(bridgeCall('net', 'suggest', q) || []).then(function (remote) {
       var items = local.slice();
       (remote || []).forEach(function (s) {
         if (items.length >= 8) return;
@@ -615,7 +620,7 @@
       var batchSize = 40;
       for (var start = 0; start < texts.length; start = start + batchSize) {
         var slice = texts.slice(start, start + batchSize);
-        var translated = await bridge.translate.batch(slice, state.settings.translateTarget);
+        var translated = await Promise.resolve(bridgeCall('translate', 'batch', slice, state.settings.translateTarget) || []);
         for (var i = 0; i < slice.length; i++) {
           map[start + i] = translated[i];
         }
@@ -641,7 +646,7 @@
     if (!tab) return;
     try {
       var wcId = tab.webview.getWebContentsId();
-      var result = await bridge.page.savePdf(wcId);
+      var result = await bridgeCall('page', 'savePdf', wcId);
       if (result && result.ok) showToast('PDF를 저장했습니다: ' + result.path);
       else if (result && !result.canceled) showToast('PDF 저장에 실패했습니다: ' + (result.error || ''));
     } catch (err) {
@@ -652,7 +657,9 @@
   function printPage() {
     var tab = activeTab();
     if (!tab) return;
-    bridge.page.print(tab.webview.getWebContentsId());
+    safeRun('인쇄', function () {
+      bridgeCall('page', 'print', tab.webview.getWebContentsId());
+    });
   }
 
   /* ---------- Media download ---------- */
@@ -667,7 +674,7 @@
   function startMediaDownload(mode) {
     var tab = activeTab();
     if (!tab) return;
-    bridge.media.download(tab.url, mode);
+    bridgeCall('media', 'download', tab.url, mode);
     $('#media-menu').classList.add('hidden');
     showToast(mode === 'audio' ? '음원(M4A) 추출을 시작합니다.' : '동영상(MP4) 추출을 시작합니다.');
   }
@@ -850,7 +857,7 @@
       try {
         var messages = [{ role: 'system', content: buildSystemPrompt(pageText) }];
         creamyChat.slice(0, -1).forEach(function (m) { messages.push({ role: m.role, content: m.content }); });
-        var res = await bridge.net.creamy({
+        var res = await bridgeCall('net', 'creamy', {
           baseUrl: state.mainSettings.creamyBaseUrl || 'https://api.openai.com/v1',
           apiKey: apiKey,
           model: state.mainSettings.creamyModel || 'gpt-4o-mini',
@@ -1011,7 +1018,7 @@
     var folderBtn = document.createElement('button');
     folderBtn.className = 'btn ghost';
     folderBtn.textContent = '다운로드 폴더 열기';
-    folderBtn.addEventListener('click', function () { bridge.downloads.openFolder(); });
+    folderBtn.addEventListener('click', function () { bridgeCall('downloads', 'openFolder'); });
     actions.appendChild(folderBtn);
     body.appendChild(actions);
 
@@ -1041,7 +1048,7 @@
         openBtn.className = 'li-btn';
         openBtn.title = '열기';
         openBtn.innerHTML = SVG_ICONS.open;
-        openBtn.addEventListener('click', function () { bridge.downloads.openFile(item.path); });
+        openBtn.addEventListener('click', function () { bridgeCall('downloads', 'openFile', item.path); });
         acts.appendChild(openBtn);
       }
       el.appendChild(acts);
@@ -1069,7 +1076,7 @@
     body.appendChild(item('인쇄', svg('<path d="M6 7V3h8v4M6 14H3V8h14v6h-3M6 11h8v6H6z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>'), function () { printPage(); }));
     body.appendChild(item('현재 페이지 번역', svg('<path d="M3 5h9M7 3v2c0 3-2 5-4 5M5 7c1 2 3 3.4 5 4M11 17l3.5-8L18 17M12.3 14.5h4.4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'), function () { toggleTranslate(); }));
     body.appendChild(item('전체 화면', svg('<path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>'), function () {
-      bridge.win.fullscreenToggle();
+      winAction('fullscreenToggle');
     }));
     body.appendChild(item('방문 기록 지우기', svg('<circle cx="10" cy="10" r="6.5" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M10 6.5V10l2.5 2" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/>'), function () {
       state.history = [];
@@ -1276,7 +1283,7 @@
     bgPick.className = 'btn ghost';
     bgPick.textContent = '이미지 선택';
     bgPick.addEventListener('click', function () {
-      bridge.settings.pickBackground().then(function (p) {
+      Promise.resolve(bridgeCall('settings', 'pickBackground')).then(function (p) {
         if (p) { showToast('배경 이미지를 적용했습니다.'); reloadStartTabs(); }
       });
     });
@@ -1284,7 +1291,7 @@
     bgClear.className = 'btn ghost';
     bgClear.textContent = '해제';
     bgClear.addEventListener('click', function () {
-      bridge.settings.clearBackground().then(function () { reloadStartTabs(); });
+      Promise.resolve(bridgeCall('settings', 'clearBackground')).then(function () { reloadStartTabs(); });
     });
     bgCtrl.appendChild(bgPick);
     bgCtrl.appendChild(bgClear);
@@ -1292,7 +1299,7 @@
 
     var gPrivacy = group();
     switchRow(gPrivacy, '클린 광고 차단', '광고와 트래커 도메인을 차단합니다.', ms.adblockEnabled !== false, function (next) {
-      bridge.settings.set('adblockEnabled', next).then(function (updated) {
+      Promise.resolve(bridgeCall('settings', 'set', 'adblockEnabled', next)).then(function (updated) {
         state.mainSettings = updated;
       });
     });
@@ -1307,11 +1314,16 @@
     cityBtn.className = 'btn ghost';
     cityBtn.textContent = '적용';
     cityBtn.addEventListener('click', function () {
-      bridge.net.geocode(cityInput.value.trim()).then(function (res) {
+      var geo = bridgeCall('net', 'geocode', cityInput.value.trim());
+      if (!geo || typeof geo.then !== 'function') {
+        showToast('이 환경에서는 도시를 변경할 수 없습니다.');
+        return;
+      }
+      geo.then(function (res) {
         if (res) {
-          bridge.settings.set('city', cityInput.value.trim());
-          bridge.settings.set('cityLat', res.lat);
-          bridge.settings.set('cityLon', res.lon).then(function () {
+          bridgeCall('settings', 'set', 'city', cityInput.value.trim());
+          bridgeCall('settings', 'set', 'cityLat', res.lat);
+          Promise.resolve(bridgeCall('settings', 'set', 'cityLon', res.lon)).then(function () {
             showToast('도시를 ' + res.name + ' 로 설정했습니다.');
             reloadStartTabs();
           });
@@ -1338,7 +1350,7 @@
     keyInput.value = ms.creamyApiKey || '';
     keyInput.placeholder = 'sk-...';
     keyInput.addEventListener('change', function () {
-      bridge.settings.set('creamyApiKey', keyInput.value.trim()).then(function (u) { state.mainSettings = u; });
+      Promise.resolve(bridgeCall('settings', 'set', 'creamyApiKey', keyInput.value.trim())).then(function (u) { state.mainSettings = u || state.mainSettings; });
     });
     keyRow.appendChild(keyInput);
 
@@ -1348,7 +1360,7 @@
     urlInput.className = 'set-input';
     urlInput.value = ms.creamyBaseUrl || 'https://api.openai.com/v1';
     urlInput.addEventListener('change', function () {
-      bridge.settings.set('creamyBaseUrl', urlInput.value.trim()).then(function (u) { state.mainSettings = u; });
+      Promise.resolve(bridgeCall('settings', 'set', 'creamyBaseUrl', urlInput.value.trim())).then(function (u) { state.mainSettings = u || state.mainSettings; });
     });
     urlRow.appendChild(urlInput);
 
@@ -1358,7 +1370,7 @@
     modelInput.className = 'set-input';
     modelInput.value = ms.creamyModel || 'gpt-4o-mini';
     modelInput.addEventListener('change', function () {
-      bridge.settings.set('creamyModel', modelInput.value.trim()).then(function (u) { state.mainSettings = u; });
+      Promise.resolve(bridgeCall('settings', 'set', 'creamyModel', modelInput.value.trim())).then(function (u) { state.mainSettings = u || state.mainSettings; });
     });
     modelRow.appendChild(modelInput);
 
@@ -1580,12 +1592,15 @@
 
     var gInfo = group();
     var infoRow = row(gInfo, '버전', 'Creamy Browser for Windows');
-    bridge.app.version().then(function (v) {
-      var ctrl = document.createElement('div');
-      ctrl.className = 'set-control';
-      ctrl.innerHTML = '<span class="li-badge">v' + v + '</span>';
-      infoRow.appendChild(ctrl);
-    });
+    var versionCall = bridgeCall('app', 'version');
+    if (versionCall && typeof versionCall.then === 'function') {
+      versionCall.then(function (v) {
+        var ctrl = document.createElement('div');
+        ctrl.className = 'set-control';
+        ctrl.innerHTML = '<span class="li-badge">v' + v + '</span>';
+        infoRow.appendChild(ctrl);
+      });
+    }
   }
 
   /* ---------- Context menus ---------- */
@@ -1801,8 +1816,8 @@
     var form = $('#lock-form');
     var submit = $('#lock-submit');
 
-    $('#lock-btn-min').addEventListener('click', function () { bridge.win.minimize(); });
-    $('#lock-btn-close').addEventListener('click', function () { bridge.win.close(); });
+    $('#lock-btn-min').addEventListener('click', function () { winAction('minimize'); });
+    $('#lock-btn-close').addEventListener('click', function () { winAction('close', function () { window.close(); }); });
 
     eye.addEventListener('click', function () {
       var reveal = input.type === 'password';
@@ -1871,143 +1886,253 @@
     document.body.classList.remove('locked');
     var screen = $('#lock-screen');
     if (screen) screen.classList.add('hidden');
+
+    // 창이 열리자마자 닫기/최대화/사이드바/설정 등 모든 껍데기 버튼을 먼저 건다.
+    // 복원이나 테마에서 무슨 일이 생겨도 버튼은 살아 있어야 한다.
+    safeRun('브라우저 버튼', function () { bindChrome(); });
+    safeRun('테마 적용', function () { applyTheme(); });
+
     try {
-      if (bridge && bridge.settings && bridge.settings.get) {
+      if (bridge && bridge.settings && typeof bridge.settings.get === 'function') {
         state.mainSettings = (await bridge.settings.get()) || {};
       }
     } catch (err) {
       console.error('Settings get error:', err);
     }
-    applyTheme();
-    restoreSession();
-    bindChrome();
-    updateToolbar();
+
+    safeRun('테마 적용', function () { applyTheme(); });
+    safeRun('세션 복원', function () { restoreSession(); });
+    safeRun('툴바 갱신', function () { updateToolbar(); });
   }
 
   /* ---------- Wiring ---------- */
 
+  var chromeBound = false;
+
+  // 어떤 오류가 나도 나머지 바인딩을 막지 않는다.
+  function safeRun(label, fn) {
+    try {
+      return fn();
+    } catch (err) {
+      console.error('[creamy] ' + label + ' 바인딩 실패:', err);
+      return null;
+    }
+  }
+
+  // 프리로드 브리지가 없거나 일부 API가 빠져 있어도 화면이 죽지 않게 호출한다.
+  function bridgeCall(group, name) {
+    var args = Array.prototype.slice.call(arguments, 2);
+    var svc = bridge ? bridge[group] : null;
+    if (!svc || typeof svc[name] !== 'function') return null;
+    try {
+      return svc[name].apply(svc, args);
+    } catch (err) {
+      console.error('[creamy] ' + group + '.' + name + ' 호출 실패:', err);
+      return null;
+    }
+  }
+
+  function winApi() {
+    return bridge && bridge.win ? bridge.win : null;
+  }
+
+  function winAction(action, fallback) {
+    var api = winApi();
+    var done = false;
+    if (api && typeof api[action] === 'function') {
+      try {
+        api[action]();
+        done = true;
+      } catch (err) {
+        console.error('[creamy] 창 제어 실패 (' + action + '):', err);
+      }
+    }
+    if (!done && typeof fallback === 'function') {
+      try { fallback(); } catch (err) { console.error('[creamy] 창 제어 대체 실패 (' + action + '):', err); }
+    }
+  }
+
+  function onEl(sel, event, handler) {
+    var el = document.querySelector(sel);
+    if (!el) {
+      console.error('[creamy] 요소를 찾지 못했습니다: ' + sel);
+      return null;
+    }
+    el.addEventListener(event, handler);
+    return el;
+  }
+
+  function onAll(sel, event, handler) {
+    var list = document.querySelectorAll(sel);
+    if (!list || list.length === 0) console.error('[creamy] 요소를 찾지 못했습니다: ' + sel);
+    else list.forEach(function (el) { el.addEventListener(event, handler); });
+    return list;
+  }
+
+  // 브라우저 껍데기 버튼은 창이 뜨는 즉시, 다른 어떤 초기화보다 먼저 건다.
   function bindChrome() {
-    bridge.win.onState(function (payload) {
-      $('#btn-max').title = payload.maximized ? '복원' : '최대화';
+    if (chromeBound) return;
+    chromeBound = true;
+
+    safeRun('창 제어 버튼', function () {
+      onEl('#btn-min', 'click', function () { winAction('minimize'); });
+      onEl('#btn-max', 'click', function () { winAction('maxToggle'); });
+      onEl('#btn-close', 'click', function () { winAction('close', function () { window.close(); }); });
     });
-    $('#btn-min').addEventListener('click', function () { bridge.win.minimize(); });
-    $('#btn-max').addEventListener('click', function () { bridge.win.maxToggle(); });
-    $('#btn-close').addEventListener('click', function () { bridge.win.close(); });
 
-    $('#btn-newtab').addEventListener('click', function () { createTab(startPageUrl()); });
-
-    $('#nav-back').addEventListener('click', function () {
-      var tab = activeTab();
-      if (tab) {
-        tab.webview.goBack();
+    safeRun('창 상태 구독', function () {
+      var api = winApi();
+      if (api && typeof api.onState === 'function') {
+        api.onState(function (payload) {
+          var btn = document.querySelector('#btn-max');
+          if (btn && payload) btn.title = payload.maximized ? '복원' : '최대화';
+        });
       }
     });
-    $('#nav-fwd').addEventListener('click', function () {
-      var tab = activeTab();
-      if (tab) tab.webview.goForward();
+
+    safeRun('새 탭 버튼', function () {
+      onEl('#btn-newtab', 'click', function () { createTab(startPageUrl()); });
     });
-    $('#nav-reload').addEventListener('click', function () {
-      var tab = activeTab();
-      if (tab) {
-        if (tab.url === START_URL || tab.url.indexOf('start_page.html') !== -1) navigateTab(tab, startPageUrl());
-        else tab.webview.reload();
+
+    safeRun('탐색 버튼', function () {
+      onEl('#nav-back', 'click', function () {
+        var tab = activeTab();
+        if (tab) safeRun('뒤로', function () { tab.webview.goBack(); });
+      });
+      onEl('#nav-fwd', 'click', function () {
+        var tab = activeTab();
+        if (tab) safeRun('앞으로', function () { tab.webview.goForward(); });
+      });
+      onEl('#nav-reload', 'click', function () {
+        var tab = activeTab();
+        if (!tab) return;
+        safeRun('새로고침', function () {
+          if (tab.url === START_URL || tab.url.indexOf('start_page.html') !== -1) navigateTab(tab, startPageUrl());
+          else tab.webview.reload();
+        });
+      });
+      onEl('#nav-home', 'click', function () { goHome(); });
+    });
+
+    safeRun('주소창', function () {
+      var omniInput = document.querySelector('#omni-input');
+      if (!omniInput) {
+        console.error('[creamy] 요소를 찾지 못했습니다: #omni-input');
+        return;
       }
-    });
-    $('#nav-home').addEventListener('click', goHome);
-
-    var omniInput = $('#omni-input');
-    omniInput.addEventListener('focus', function () { omniInput.select(); });
-    omniInput.addEventListener('input', onOmniInput);
-    omniInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') navigateInput(omniInput.value);
-      else if (e.key === 'Escape') { hideSuggest(); omniInput.blur(); }
-      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        var items = document.querySelectorAll('#omni-suggest .suggest-item');
-        if (items.length === 0) return;
-        suggestSelected = suggestSelected + (e.key === 'ArrowDown' ? 1 : -1);
-        if (suggestSelected < 0) suggestSelected = items.length - 1;
-        if (suggestSelected >= items.length) suggestSelected = 0;
-        items.forEach(function (el, i) { el.classList.toggle('selected', i === suggestSelected); });
-      }
-    });
-    omniInput.addEventListener('blur', function () {
-      setTimeout(hideSuggest, 180);
-    });
-
-    $('#btn-star').addEventListener('click', addBookmarkCurrent);
-    $('#chip-translate').addEventListener('click', toggleTranslate);
-    $('#chip-media').addEventListener('click', function (e) {
-      var rect = e.currentTarget.getBoundingClientRect();
-      showMediaMenu(rect.left, rect.bottom);
-    });
-    document.querySelectorAll('#media-menu button').forEach(function (btn) {
-      btn.addEventListener('click', function () { startMediaDownload(btn.getAttribute('data-mode')); });
-    });
-
-    document.querySelectorAll('.rail-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () { togglePanel(btn.getAttribute('data-panel')); });
-    });
-    $('#sb-close').addEventListener('click', closePanel);
-
-    document.addEventListener('click', function (e) {
-      var menu = $('#ctxmenu');
-      if (!menu.classList.contains('hidden') && !menu.contains(e.target)) hideMenus();
-      var mm = $('#media-menu');
-      if (!mm.classList.contains('hidden') && !mm.contains(e.target) && e.target.id !== 'chip-media') mm.classList.add('hidden');
-    });
-
-    document.addEventListener('keydown', function (e) {
-      var ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key === 't') { e.preventDefault(); createTab(startPageUrl()); }
-      else if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTab()) closeTab(activeTab().id); }
-      else if (ctrl && e.key === 'l') { e.preventDefault(); omniInput.focus(); }
-      else if (ctrl && e.key === 'r') { e.preventDefault(); var t = activeTab(); if (t) t.webview.reload(); }
-      else if (ctrl && e.key === 'd') { e.preventDefault(); addBookmarkCurrent(); }
-      else if (ctrl && e.key === 'p') { e.preventDefault(); savePdf(); }
-      else if (e.key === 'F5') { e.preventDefault(); var t2 = activeTab(); if (t2) t2.webview.reload(); }
-      else if (e.key === 'F11') { e.preventDefault(); bridge.win.fullscreenToggle(); }
-      else if (e.key === 'Escape') hideMenus();
-      else if (ctrl && e.key === 'Tab') {
-        e.preventDefault();
-        if (state.tabs.length > 1) {
-          var index = state.tabs.indexOf(activeTab());
-          var next = state.tabs[(index + 1) % state.tabs.length];
-          activateTab(next.id);
+      omniInput.addEventListener('focus', function () { omniInput.select(); });
+      omniInput.addEventListener('input', onOmniInput);
+      omniInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') navigateInput(omniInput.value);
+        else if (e.key === 'Escape') { hideSuggest(); omniInput.blur(); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          var items = document.querySelectorAll('#omni-suggest .suggest-item');
+          if (items.length === 0) return;
+          suggestSelected = suggestSelected + (e.key === 'ArrowDown' ? 1 : -1);
+          if (suggestSelected < 0) suggestSelected = items.length - 1;
+          if (suggestSelected >= items.length) suggestSelected = 0;
+          items.forEach(function (el, i) { el.classList.toggle('selected', i === suggestSelected); });
         }
+      });
+      omniInput.addEventListener('blur', function () {
+        setTimeout(hideSuggest, 180);
+      });
+    });
+
+    safeRun('툴바 칩', function () {
+      onEl('#btn-star', 'click', function () { addBookmarkCurrent(); });
+      onEl('#chip-translate', 'click', function () { toggleTranslate(); });
+      onEl('#chip-media', 'click', function (e) {
+        var rect = e.currentTarget.getBoundingClientRect();
+        showMediaMenu(rect.left, rect.bottom);
+      });
+      onAll('#media-menu button', 'click', function (e) {
+        startMediaDownload(e.currentTarget.getAttribute('data-mode'));
+      });
+    });
+
+    safeRun('사이드 패널', function () {
+      onAll('.rail-btn', 'click', function (e) { togglePanel(e.currentTarget.getAttribute('data-panel')); });
+      onEl('#sb-close', 'click', function () { closePanel(); });
+    });
+
+    safeRun('메뉴 닫기', function () {
+      document.addEventListener('click', function (e) {
+        var menu = document.querySelector('#ctxmenu');
+        if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target)) hideMenus();
+        var mm = document.querySelector('#media-menu');
+        if (mm && !mm.classList.contains('hidden') && !mm.contains(e.target) && e.target.id !== 'chip-media') mm.classList.add('hidden');
+      });
+    });
+
+    safeRun('단축키', function () {
+      document.addEventListener('keydown', function (e) {
+        var ctrl = e.ctrlKey || e.metaKey;
+        if (ctrl && e.key === 't') { e.preventDefault(); createTab(startPageUrl()); }
+        else if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTab()) closeTab(activeTab().id); }
+        else if (ctrl && e.key === 'l') { e.preventDefault(); var omni = document.querySelector('#omni-input'); if (omni) omni.focus(); }
+        else if (ctrl && e.key === 'r') { e.preventDefault(); var t = activeTab(); if (t) safeRun('새로고침', function () { t.webview.reload(); }); }
+        else if (ctrl && e.key === 'd') { e.preventDefault(); addBookmarkCurrent(); }
+        else if (ctrl && e.key === 'p') { e.preventDefault(); savePdf(); }
+        else if (e.key === 'F5') { e.preventDefault(); var t2 = activeTab(); if (t2) safeRun('새로고침', function () { t2.webview.reload(); }); }
+        else if (e.key === 'F11') { e.preventDefault(); winAction('fullscreenToggle'); }
+        else if (e.key === 'Escape') hideMenus();
+        else if (ctrl && e.key === 'Tab') {
+          e.preventDefault();
+          if (state.tabs.length > 1) {
+            var index = state.tabs.indexOf(activeTab());
+            var next = state.tabs[(index + 1) % state.tabs.length];
+            activateTab(next.id);
+          }
+        }
+      });
+    });
+
+    safeRun('메인 프로세스 이벤트 구독', function () {
+      if (bridge && bridge.bus && typeof bridge.bus.onOpenUrl === 'function') {
+        bridge.bus.onOpenUrl(function (payload) {
+          if (payload && payload.url) createTab(payload.url);
+        });
+      }
+      if (bridge && bridge.bus && typeof bridge.bus.onAction === 'function') {
+        bridge.bus.onAction(function (payload) {
+          if (!payload) return;
+          if (payload.action === 'translate') toggleTranslate();
+          else if (payload.action === 'pdf') savePdf();
+          else if (payload.action === 'bag') addToBag();
+          else if (payload.action === 'settings') openPanel('settings');
+        });
       }
     });
 
-    bridge.bus.onOpenUrl(function (payload) {
-      if (payload && payload.url) createTab(payload.url);
+    safeRun('다운로드 구독', function () {
+      if (!(bridge && bridge.downloads && typeof bridge.downloads.onUpdate === 'function')) return;
+      bridge.downloads.onUpdate(function (item) {
+        if (!item) return;
+        state.downloads = state.downloads.filter(function (d) { return d.id !== item.id; });
+        state.downloads.push(item);
+        if (state.downloads.length > 50) state.downloads.shift();
+        if (state.activePanel === 'downloads') renderPanel('downloads');
+        if (item.state === 'completed') showToast('다운로드 완료: ' + item.filename);
+        if (item.state === 'failed') showToast('다운로드 실패: ' + item.filename);
+      });
     });
 
-    bridge.bus.onAction(function (payload) {
-      if (!payload) return;
-      if (payload.action === 'translate') toggleTranslate();
-      else if (payload.action === 'pdf') savePdf();
-      else if (payload.action === 'bag') addToBag();
-      else if (payload.action === 'settings') openPanel('settings');
+    safeRun('종료 시 세션 저장', function () {
+      window.addEventListener('beforeunload', saveSession);
     });
-
-    bridge.downloads.onUpdate(function (item) {
-      state.downloads = state.downloads.filter(function (d) { return d.id !== item.id; });
-      state.downloads.push(item);
-      if (state.downloads.length > 50) state.downloads.shift();
-      if (state.activePanel === 'downloads') renderPanel('downloads');
-      if (item.state === 'completed') showToast('다운로드 완료: ' + item.filename);
-      if (item.state === 'failed') showToast('다운로드 실패: ' + item.filename);
-    });
-
-    window.addEventListener('beforeunload', saveSession);
   }
 
   async function boot() {
+    // 부팅 도중 무엇이 실패하더라도 창 제어와 껍데기 버튼은 먼저 살려 둔다.
+    safeRun('브라우저 버튼', function () { bindChrome(); });
+
     var savedSession = lsGet('session', null);
     if (savedSession && savedSession.settings) {
       state.settings = Object.assign(state.settings, savedSession.settings);
     }
-    applyTheme();
+    safeRun('테마 적용', function () { applyTheme(); });
 
     state.history = lsGet('history', []);
     state.bookmarks = lsGet('bookmarks', []);
