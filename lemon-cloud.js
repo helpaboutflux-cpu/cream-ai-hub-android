@@ -1245,6 +1245,17 @@
     signInWithGoogle: signInWithGoogle,
     getUser: getUser,
     sessionUser: sessionUser,
+    /* 다른 출처(크리미 브라우저 PC 브리지 등)로 세션을 넘겨야 하는 화면용.
+       표시 이름·비밀번호가 아닌 토큰 필드만 돌려준다. */
+    session: function () {
+      if (!session) return null;
+      return {
+        access_token: session.access_token || '',
+        refresh_token: session.refresh_token || '',
+        expires_at: Number(session.expires_at || 0),
+        user_id: (session.user && session.user.id) || ''
+      };
+    },
     hasSession: function () { return !!session; },
 
     fetchSiteData: fetchSiteData,

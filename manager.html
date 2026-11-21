@@ -639,6 +639,13 @@ tailwind.config = {
             </span>
             <label class="gd-sw" id="mgrGdPushSw"><input type="checkbox" id="mgrGdPush" aria-label="변경 시 자동 백업"><i></i></label>
           </div>
+          <div class="gd-row">
+            <span class="min-w-0">
+              <span class="text-[11px] font-bold block">Lemon Pass 비밀번호 동기화</span>
+              <span class="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed">켜면 금고를 마스터 비밀번호로 암호화한 암호문 그대로 Drive 백업에 함께 넣습니다. 기본은 꺼짐입니다.</span>
+            </span>
+            <label class="gd-sw" id="mgrGdPassSw"><input type="checkbox" id="mgrGdPass" aria-label="Lemon Pass 비밀번호 동기화"><i></i></label>
+          </div>
         </div>
         <p class="mt-2 text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed" id="mgrGdAutoState">연결하면 자동 동기화를 켜고 끌 수 있습니다.</p>
       </div>
@@ -671,7 +678,7 @@ tailwind.config = {
         <div class="bar-track"><div class="bar-fill is-busy" style="--c1:#0d9488;--c2:#22d3ee"></div></div>
       </div>
       <p class="mt-2 text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed" id="mgrGdProgText">
-        복원은 이 기기에 없는 항목만 채우고 기존 데이터를 덮어쓰지 않습니다. 비밀번호 금고와 AI API 키는 Drive로 보내지 않습니다.
+        복원은 이 기기에 없는 항목만 채우고 기존 데이터를 덮어쓰지 않습니다. 비밀번호 금고는 위에서 ‘Lemon Pass 비밀번호 동기화’를 켰을 때만 암호문 그대로 포함되고, AI API 키는 Drive로 보내지 않습니다.
       </p>
     </div>
   </section>
@@ -1974,7 +1981,7 @@ tailwind.config = {
 
   /* ---------------- Google Drive 동기화 (lemon-gdrive.js) ---------------- */
   var gd = { busy: false, quotaBusy: false };
-  var GD_NOTE = '복원은 이 기기에 없는 항목만 채우고 기존 데이터를 덮어쓸지 않습니다. 비밀번호 금고와 AI API 키는 Drive로 보내지 않습니다.';
+  var GD_NOTE = '복원은 이 기기에 없는 항목만 채우고 기존 데이터를 덮어쓰지 않습니다. 비밀번호 금고는 ‘Lemon Pass 비밀번호 동기화’를 켰을 때만 암호문 그대로 포함되고, AI API 키는 Drive로 보내지 않습니다.';
   function gdApi() { return window.LemonGDrive || null; }
   function gdSt() {
     var g = gdApi();
@@ -2081,6 +2088,13 @@ tailwind.config = {
       push.checked = a ? !!a.push : true;
       push.disabled = !connected || gd.busy;
       swOn($('#mgrGdPushSw'), push.checked, !push.disabled);
+    }
+    var passEl = $('#mgrGdPass');
+    if (passEl) {
+      passEl.checked = a ? a.includePass === true : false;
+      /* 연결 전에도 미리 정해 둘 수 있게 한다(프라이버시 설정). */
+      passEl.disabled = gd.busy;
+      swOn($('#mgrGdPassSw'), passEl.checked, !passEl.disabled);
     }
     gdTag($('#mgrGdAutoBadge'), a && a.enabled ? '#0d9488' : '#64748b', !a ? '-' : (a.enabled ? '켜짐' : '꺼짐'));
     var as = $('#mgrGdAutoState');
@@ -2377,6 +2391,20 @@ tailwind.config = {
     else if (st) Lemon.toast('자동 동기화를 켰습니다' + (st.pull ? ' · 접속 시 불러오기' : '') + (st.push ? ' · 변경 시 백업' : ''), 'ok');
   }
 
+  /* Lemon Pass 금고 동기화 — 기본 꺼짐, 켜면 다음 백업부터 금고 암호문이 포함된다. */
+  function gdTogglePass(on) {
+    var g = gdApi();
+    if (!g || !g.setPassSync) return;
+    g.setPassSync(!!on);
+    gdPaint();
+    if (on) {
+      Lemon.toast('Lemon Pass 금고를 Drive 백업에 포함합니다', 'ok');
+      if (g.connected && g.connected()) setTimeout(function () { gdBackupNow(); }, 400);
+    } else {
+      Lemon.toast('금고 동기화를 껐습니다. 다음 백업부터 금고가 제외됩니다', 'info');
+    }
+  }
+
   /* ---------------- events ---------------- */
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act]');
@@ -2548,6 +2576,8 @@ tailwind.config = {
   var pullEl = $('#mgrGdPull'), pushEl = $('#mgrGdPush');
   if (pullEl) pullEl.addEventListener('change', function () { gdToggle('pull', pullEl.checked); });
   if (pushEl) pushEl.addEventListener('change', function () { gdToggle('push', pushEl.checked); });
+  var passEl = $('#mgrGdPass');
+  if (passEl) passEl.addEventListener('change', function () { gdTogglePass(passEl.checked); });
 
   ['lemongdrive:change', 'lemon-gdrive:change',
     'lemongdrive:account', 'lemon-gdrive:account',

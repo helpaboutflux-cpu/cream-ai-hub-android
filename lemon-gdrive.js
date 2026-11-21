@@ -17,6 +17,8 @@
        IndexedDB     Flux Drive(flux_drive_v1) · 서비스 저장소 28종 · 같은 출처의 나머지 DB
    · 백업 제외 : 비밀번호 금고(lemon_pass_vault) · AI API 키(flux_notebook_gemini_key)
                  · 이 엔진의 연결 토큰(lemon_gdrive_*)
+   · 예외     : 이용자가 'Lemon Pass 비밀번호 동기화'를 켜면(includePass, 기본 꺼짐)
+                 금고는 마스터 비밀번호로 암호화된 암호문(ct) 그대로 백업·복원한다.
    · 복원은 덮어쓰지 않는다 — 이 기기에 없는 항목만 채운다.
 
    자동 동기화 (2026-11)
@@ -79,6 +81,7 @@
     /* 민감 정보 — Drive 로도 올리지 않는다 (이 기기에만) */
     lemon_pass_vault: 1, flux_notebook_gemini_key: 1
   };
+  var PASS_KEY = 'lemon_pass_vault';
   var PREFIX = /^(lemon_|flux_)/i;
   var KEY_MAX = 4 * 1024 * 1024;            /* 항목 하나 4MB 까지 (그 이상은 건너뛴다) */
 
@@ -1232,7 +1235,8 @@
     var out = [], seen = {};
     function add(k) {
       k = String(k === null || k === undefined ? '' : k);
-      if (!k || seen['#' + k] || SKIP[k]) return;
+      if (!k || seen['#' + k]) return;
+      if (SKIP[k] && !passIncluded(k)) return;
       if (!PREFIX.test(k) && !EXPLICIT_KEYS[k]) return;
       seen['#' + k] = 1;
       out.push(k);
@@ -1491,7 +1495,7 @@
       if (!snap || typeof snap !== 'object' || !snap.keys) throw gerr('no-backup');
       progress('keys', 0, 0, '설정을 복원하는 중');
       Object.keys(snap.keys || {}).forEach(function (k) {
-        if (SKIP[k]) return;
+        if (SKIP[k] && !passIncluded(k)) return;
         var has = false;
         try { has = localStorage.getItem(k) !== null; } catch (e) { }
         if (has) { out.kept++; return; }
@@ -1585,8 +1589,18 @@
     last_remote_at: 0,       /* 그때 Drive 스냅샷의 modifiedTime */
     last_backup_at: 0, last_auto_at: 0, last_restore_at: 0,
     silent_at: 0,            /* 마지막 silent 토큰 갱신 시도 */
+    includePass: false,      /* Lemon Pass 금고(암호문)를 백업에 포함할지 — 기본 꺼짐 */
     state: 'idle', state_at: 0, error: ''
   };
+
+  /* 금고 키 — includePass 가 켜져 있을 때만 SKIP 예외로 둔다. */
+  function passSyncOn() {
+    var s = syncRec();
+    return s.includePass === true;
+  }
+  function passIncluded(key) {
+    return key === PASS_KEY && passSyncOn();
+  }
 
   function syncRec() {
     var r = readJSON(K_SYNC, null), out = {};
@@ -1626,6 +1640,7 @@
       lastRestoreAt: Number(s.last_restore_at) || 0,
       stateAt: Number(s.state_at) || 0,
       autoBackups: autoBackups, autoRestores: autoRestores,
+      includePass: s.includePass === true,
       busy: busy || isRestoring
     };
   }
@@ -1643,6 +1658,18 @@
     if (!push) { autoPending = false; }
     if (pull && token() && linked) setTimeout(function () { autoPull({ reason: 'enabled' }); }, 400);
     return autoState();
+  }
+
+  /* Lemon Pass 금고 동기화 (기본 꺼짐)
+     켜면 금고 암호문(lemon_pass_vault)을 백업·복원 대상에 넣는다.
+     평문·마스터 비밀번호는 어디에도 남기지 않는다. */
+  function isPassSyncEnabled() {
+    return passSyncOn();
+  }
+  function setPassSync(enabled) {
+    var on = enabled === true;
+    patchSync({ includePass: on });
+    return { ok: true, includePass: on, auto: autoState() };
   }
 
   /* ---- 탭 간 동시 실행 방지 ---- */
@@ -2341,6 +2368,12 @@
     clientId: function () { return CLIENT_ID; },
     scope: function () { return SCOPE; },
     folderName: function () { return FOLDER_NAME; },
+    /* 크리미 브라우저 PC 처럼 이 출처 밖에서 연결을 이어받아야 하는 화면용.
+       만료된 토큰은 돌려주지 않는다(빈 문자열). */
+    accessToken: function () { return token() || ''; },
+    tokenExpiresAt: function () { return tokenExpiry(); },
+    isPassSyncEnabled: isPassSyncEnabled,
+    setPassSync: setPassSync,
     explicitKeys: function () { return Object.keys(EXPLICIT_KEYS); },
     idbNames: function () { return IDB_NAMES.slice(); },
     dbList: function () { return listBackupDbs(); },

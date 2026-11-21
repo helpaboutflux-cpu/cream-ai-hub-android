@@ -804,6 +804,10 @@
             <span class="lks-swrow__tx"><b>변경 시 자동 백업</b><small>작업물이 바뀌면 5초 뒤 조용히 Drive에 백업합니다.</small></span>
             <label class="lks-sw"><input type="checkbox" id="gdAutoPush" aria-label="변경 시 자동 백업"><i></i></label>
           </div>
+          <div class="lks-swrow">
+            <span class="lks-swrow__tx"><b>Lemon Pass 비밀번호 동기화</b><small>켜면 금고를 마스터 비밀번호로 암호화한 암호문 그대로 백업에 넣습니다. 기본은 꺼음입니다.</small></span>
+            <label class="lks-sw"><input type="checkbox" id="gdAutoPass" aria-label="Lemon Pass 비밀번호 동기화"><i></i></label>
+          </div>
           <p class="lks-state" id="gdQuotaState"></p>
         </div>
 
@@ -812,7 +816,7 @@
           <div class="lks-kv"><span>설정</span><b id="gdWhatKeys">-</b></div>
           <div class="lks-kv"><span>서비스 저장소</span><b id="gdWhatDbs">-</b></div>
           <div class="lks-kv"><span>Flux Drive 파일</span><b>폴더 구조와 파일 내용 전체</b></div>
-          <div class="lks-kv"><span>백업 제외</span><b>비밀번호 금고 · AI API 키</b></div>
+          <div class="lks-kv"><span>백업 제외</span><b>AI API 키 · 비밀번호 금고(위 동기화를 켰을 때만 포함)</b></div>
           <p class="lks-note">설정에는 허브 환경설정, 서비스별 localStorage, 개발자 허브 프로젝트와 짧은 링크가 포함됩니다. 서비스 저장소는 메모·캘린더·가계부·사진 같은 IndexedDB 데이터입니다.</p>
         </div>
       </section>
@@ -863,7 +867,7 @@
           <div class="lks-actions">
             <button class="lk-btn lk-btn--line" type="button" data-act="key-delete">AI 키 삭제</button>
           </div>
-          <p class="lks-note">이 두 항목은 Google Drive 백업에도 포함되지 않고 이 기기에만 남습니다. 금고는 비밀번호로 암호화되어 있고, 잃어버리면 되살릴 수 없습니다.</p>
+          <p class="lks-note">AI API 키는 Google Drive 백업에도 포함되지 않고 이 기기에만 남깁니다. 금고는 비밀번호로 암호화되어 있으며, 백업 화면의 ‘Lemon Pass 비밀번호 동기화’를 켰을 때만 암호문 그대로 Drive에 함께 보관됩니다. 마스터 비밀번호를 잃으면 복원한 금고도 열 수 없습니다.</p>
         </div>
 
         <div class="lks-card">
@@ -1431,9 +1435,10 @@
   function paintAuto(st) {
     st = st || gdStatus();
     var a = (st && st.auto) || null;
-    var pull = $('gdAutoPull'), push = $('gdAutoPush');
+    var pull = $('gdAutoPull'), push = $('gdAutoPush'), passSw = $('gdAutoPass');
     if (pull) pull.checked = a ? !!a.pull : true;
     if (push) push.checked = a ? !!a.push : true;
+    if (passSw) passSw.checked = a ? a.includePass === true : false;
   }
 
   /* ---------------- Google Drive 저장 용량 ---------------- */
@@ -2033,6 +2038,20 @@
       sMsg(!st.enabled
         ? '자동 동기화를 껐습니다. [지금 전체 백업]·[다른 기기에서 복원]으로 직접 하실 수 있습니다.'
         : '자동 동기화를 켰습니다' + (st.pull ? ' · 접속 시 자동 불러오기' : '') + (st.push ? ' · 변경 시 자동 백업' : '') + '.', 'ok');
+      return;
+    }
+    if (t.id === 'gdAutoPass') {
+      var gp = gdApi();
+      if (!gp || !gp.setPassSync) return;
+      var on = !!t.checked;
+      gp.setPassSync(on);
+      paintAuto(gdStatus());
+      if (on) {
+        sMsg('Lemon Pass 금고를 Drive 백업에 암호문 그대로 포함합니다. 다음 백업부터 함께 올라갑니다.', 'ok');
+        if (gp.connected && gp.connected()) gp.backup();
+      } else {
+        sMsg('금고 동기화를 껐습니다. 다음 백업부터 금고가 제외되고 이 기기에만 남습니다.', 'info');
+      }
     }
   });
 

@@ -539,6 +539,28 @@ tailwind.config = {
 
       <div id="vaultList" class="space-y-2"></div>
     </div>
+
+    <!-- Lemon Pass 비밀번호 동기화 (기본 꺼짐) -->
+    <div class="panel p-4 sm:p-5 space-y-3" id="passSyncCard">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-start gap-2.5 min-w-0">
+          <span class="w-9 h-9 rounded-xl bg-sky-500/12 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+            <svg style="width:1.05rem;height:1.05rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7.4 18.5a4 4 0 0 1-.4-8 5.2 5.2 0 0 1 10-1.2 3.6 3.6 0 0 1 .6 7.1"></path><path d="M7.4 18.5h9.6"></path></svg>
+          </span>
+          <div class="min-w-0">
+            <h2 class="text-[13px] font-black tracking-tight">Lemon Pass 비밀번호 동기화</h2>
+            <p class="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">켜면 금고를 마스터 비밀번호로 암호화한 <b>암호문 그대로</b> 내 Google Drive의 Soft Hub Backup에 함께 보관합니다. 평문과 마스터 비밀번호는 전송되지 않습니다.</p>
+          </div>
+        </div>
+        <button type="button" class="switch" id="passSyncSw" role="switch" aria-checked="false" aria-label="Lemon Pass 비밀번호 동기화"></button>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span id="passSyncState" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">꺼짐 · 이 기기에만</span>
+        <button class="ghost-btn !py-1.5 !px-3 !text-[11px]" type="button" id="passSyncNow">지금 백업에 반영</button>
+        <button class="ghost-btn !py-1.5 !px-3 !text-[11px]" type="button" id="passSyncConnect">Google Drive 연결</button>
+      </div>
+      <p class="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed" id="passSyncNote">기본값은 꺼짐입니다. 켜면 Drive 백업·복원에 금고가 포함되고, 새 기기에서는 마스터 비밀번호를 입력해 열 수 있습니다.</p>
+    </div>
   </section>
 
 </main>
@@ -557,6 +579,7 @@ tailwind.config = {
   </div>
 </footer>
 
+<script src="lemon-gdrive.js"></script>
 <script src="lemon-ui.js"></script>
 <script>
 (function () {
@@ -1318,6 +1341,91 @@ tailwind.config = {
     initVaultView();
     Lemon.toast('금고를 초기화했어요', 'info');
   });
+
+  /* ---------------- Lemon Pass 비밀번호 동기화 (lemon-gdrive.js) ---------------- */
+  function passSyncApi() { return window.LemonGDrive || null; }
+  function paintPassSync() {
+    var g = passSyncApi();
+    var sw = $('passSyncSw');
+    var st = $('passSyncState');
+    var note = $('passSyncNote');
+    var now = $('passSyncNow');
+    var connBtn = $('passSyncConnect');
+    var on = !!(g && g.isPassSyncEnabled && g.isPassSyncEnabled());
+    var conn = !!(g && g.connected && g.connected());
+    if (sw) {
+      sw.classList.toggle('on', on);
+      sw.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    if (st) {
+      st.textContent = on
+        ? (conn ? '켜짐 · 내 Google Drive와 동기화' : '켜짐 · Drive 연결 필요')
+        : '꺼짐 · 이 기기에만';
+      st.classList.toggle('text-emerald-600', !!(on && conn));
+      st.classList.toggle('dark:text-emerald-400', !!(on && conn));
+    }
+    if (now) now.disabled = !conn;
+    if (connBtn) connBtn.classList.toggle('hidden', conn);
+    if (note) {
+      if (on) note.textContent = '금고는 마스터 비밀번호로 암호화된 암호문 그대로 백업됩니다. 마스터 비밀번호를 잊으면 복원한 금고도 열 수 없으니 따로 보관하세요.';
+      else note.textContent = '기본값은 꺼짐입니다. 켜면 Drive 백업·복원에 금고가 포함되고, 새 기기에서는 마스터 비밀번호를 입력해 열 수 있습니다.';
+    }
+  }
+
+  function passSyncBackup() {
+    var g = passSyncApi();
+    if (!g || !g.connected || !g.connected()) {
+      Lemon.toast('Google Drive를 먼저 연결해 주세요', 'info');
+      return;
+    }
+    var btn = $('passSyncNow');
+    if (btn) { btn.disabled = true; btn.textContent = '백업하는 중'; }
+    g.backup().then(function (r) {
+      if (btn) { btn.disabled = false; btn.textContent = '지금 백업에 반영'; }
+      if (r && r.ok) Lemon.toast('Drive 백업에 금고를 반영했어요 (설정 ' + r.keys + '개)', 'ok');
+      else Lemon.toast('백업 실패: ' + (g.message ? g.message(r && r.error) : '다시 시도해 주세요'), 'err');
+      paintPassSync();
+    }, function () {
+      if (btn) { btn.disabled = false; btn.textContent = '지금 백업에 반영'; }
+      Lemon.toast('백업 요청을 마치지 못했어요', 'err');
+    });
+  }
+
+  if ($('passSyncSw')) {
+    $('passSyncSw').addEventListener('click', function () {
+      var g = passSyncApi();
+      if (!g || !g.setPassSync) { Lemon.toast('동기화 모듈을 불러오지 못했어요', 'err'); return; }
+      var on = !g.isPassSyncEnabled();
+      g.setPassSync(on);
+      paintPassSync();
+      if (on) {
+        Lemon.toast('금고 동기화를 켰어요', 'ok');
+        if (g.connected && g.connected()) passSyncBackup();
+        else Lemon.toast('Google Drive를 연결하면 금고도 함께 백업됩니다', 'info');
+      } else {
+        Lemon.toast('금고 동기화를 껐어요. 금고는 이 기기에만 남고 다음 백업부터 제외됩니다', 'info');
+      }
+    });
+  }
+  if ($('passSyncNow')) $('passSyncNow').addEventListener('click', passSyncBackup);
+  if ($('passSyncConnect')) $('passSyncConnect').addEventListener('click', function () {
+    var g = passSyncApi();
+    if (!g || !g.connect) { Lemon.toast('동기화 모듈을 불러오지 못했어요', 'err'); return; }
+    g.connect({ silent: !!(g.status && g.status().wasLinked) }).then(function (r) {
+      paintPassSync();
+      if (r && r.ok) {
+        Lemon.toast('Google Drive에 연결했어요', 'ok');
+        if (g.isPassSyncEnabled()) passSyncBackup();
+      } else if (r && r.error) {
+        Lemon.toast(g.message ? g.message(r.error) : '연결하지 못했어요', 'err');
+      }
+    });
+  });
+
+  ['lemongdrive:sync', 'lemon-gdrive:sync', 'lemongdrive:change', 'lemon-gdrive:change', 'lemongdrive:account', 'lemon-gdrive:account'].forEach(function (name) {
+    window.addEventListener(name, paintPassSync);
+  });
+  paintPassSync();
 
   /* ---------------- home shortcuts ---------------- */
   Array.prototype.forEach.call(document.querySelectorAll('[data-goto]'), function (btn) {
