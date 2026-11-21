@@ -1231,7 +1231,7 @@
     }
 
     return listBackupDbs().then(function (list) {
-      names = list || [];
+      names = (list || []).filter(function (n) { return svcOn(serviceIdOfDb(n)); });
       return step();
     }).then(function () {
       return out;
@@ -1366,6 +1366,10 @@
     function step() {
       if (i >= dbs.length) return Promise.resolve(true);
       var rec = dbs[i++];
+      if (rec && rec.name) {
+        if (serviceIdOfDb(rec.name) === 'pass') return step();
+        if (!svcOn(serviceIdOfDb(rec.name))) return step();
+      }
       if (!rec || !rec.name || !Array.isArray(rec.stores)) return step();
       progress('idb', i, dbs.length, rec.name);
       return restoreDb(rec, media, out).then(function () { return step(); }, function () { return step(); });
@@ -1374,8 +1378,9 @@
   }
 
   /* ---------------- 이 기기의 백업 대상 ---------------- */
-  function keyList() {
-    /* 백업 대상: lemon_* · flux_* + 프로젝트 키 6종 (내부·민감 키 제외) */
+  /* 후보 키 전부 — 서비스 켜기/끄기와 상관없이 '백업 대상이 될 수 있는 키'
+     (민감·내부 키는 빼고, Lemon Pass 는 켰을 때만). 서비스별 목록 화면이 쓴다. */
+  function keyListRaw() {
     var out = [], seen = {};
     function add(k) {
       k = String(k === null || k === undefined ? '' : k);
@@ -1393,6 +1398,52 @@
       }
     } catch (e) { }
     return out;
+  }
+
+  /* 실제로 백업·복원에 넣을 키 — 동기화를 끈 서비스의 키는 빼진다. */
+  function keyList() {
+    return keyListRaw().filter(function (k) { return svcOn(serviceIdOfKey(k)); });
+  }
+
+  /* 동기화할 서비스 목록 — 이 기기에 데이터가 있는 서비스 + 이미 꺼 둔 서비스.
+     { items: [{ id, label, on, keys, keyBytes, dbs, hasData }] } */
+  function serviceList() {
+    return listBackupDbs().then(function (list) {
+      var map = {};
+      function slot(id) {
+        if (!map[id]) map[id] = { id: id, label: svcLabel(id), keys: [], keyBytes: 0, dbs: [] };
+        return map[id];
+      }
+      keyListRaw().forEach(function (k) {
+        var id = serviceIdOfKey(k);
+        var s = slot(id);
+        var raw = null;
+        try { raw = localStorage.getItem(k); } catch (e) { }
+        s.keys.push(k);
+        s.keyBytes += raw === null ? 0 : utf8Bytes(raw);
+      });
+      (list || []).forEach(function (n) { slot(serviceIdOfDb(n)).dbs.push(n); });
+      exclSvc().forEach(function (id) { if (id !== 'pass') slot(id); });
+      var items = Object.keys(map).filter(function (id) { return !SVC_HIDE[id]; }).map(function (id) {
+        var s = map[id];
+        return {
+          id: id, label: s.label, on: svcOn(id),
+          keys: s.keys, keyBytes: s.keyBytes, dbs: s.dbs,
+          hasData: (s.keys.length + s.dbs.length) > 0
+        };
+      });
+      items.sort(function (a, b) {
+        if (a.hasData !== b.hasData) return a.hasData ? -1 : 1;
+        if (a.on !== b.on) return a.on ? -1 : 1;
+        return String(a.label).localeCompare(String(b.label), 'ko');
+      });
+      return {
+        items: items,
+        total: items.length,
+        onCount: items.filter(function (x) { return x.on; }).length,
+        offCount: items.filter(function (x) { return !x.on; }).length
+      };
+    }, function () { return { items: [], total: 0, onCount: 0, offCount: 0 }; });
   }
 
   function collectKeys() {
@@ -1640,6 +1691,7 @@
       progress('keys', 0, 0, '설정을 복원하는 중');
       Object.keys(snap.keys || {}).forEach(function (k) {
         if (SKIP[k] && !passIncluded(k)) return;
+        if (!svcOn(serviceIdOfKey(k))) return;
         var has = false;
         try { has = localStorage.getItem(k) !== null; } catch (e) { }
         if (has) { out.kept++; return; }
@@ -1734,6 +1786,7 @@
     last_backup_at: 0, last_auto_at: 0, last_restore_at: 0,
     silent_at: 0,            /* 마지막 silent 토큰 갱신 시도 */
     includePass: false,      /* Lemon Pass 금고(암호문)를 백업에 포함할지 — 기본 꺼짐 */
+    excludeSvc: [],          /* 동기화를 끈 서비스 id 목록 — 그 서비스의 설정·저장소는 백업·복원에서 빠진다 */
     state: 'idle', state_at: 0, error: ''
   };
 
@@ -1785,8 +1838,77 @@
       stateAt: Number(s.state_at) || 0,
       autoBackups: autoBackups, autoRestores: autoRestores,
       includePass: s.includePass === true,
+      excludeSvc: exclSvc(),
       busy: busy || isRestoring
     };
+  }
+
+  /* ============================================================
+     서비스별 동기화 (2026-11)
+     ------------------------------------------------------------
+     데이터 및 백업 화면에서 서비스 하나하나를 켜고 끈다.
+     localStorage 키와 IndexedDB 이름에서 서비스 토큰을 뽑아 같은 서비스로 묶는다.
+       lemon_shelf_media_v1 (저장소) · lemon_shelf_last (설정)  →  'shelf'
+     끈 서비스(id)는 syncRec().excludeSvc 에 남고, 백업·복원 양쪽에서 빠진다.
+     Lemon Pass 는 예외 — 다른 키와 달리 includePass(기본 꺼짐)로 따로 다룬다.
+     ============================================================ */
+  var SVC_LABEL = {
+    bio: 'Lemon Bio', builder: 'Lemon Builder', calendar: 'Flux Calendar',
+    clip: 'Lemon Clip', contacts: 'Flux Contacts', dday: 'Lemon D-Day',
+    grade: 'Lemon Grade', groups: 'Flux Groups', mail: 'Flux Mail', memo: 'Flux Memo',
+    minutes: 'Lemon Minutes', notebook: 'Flux Notebook', notes: 'Flux Notes',
+    planner: 'Lemon Planner', player: 'Lemon Player', prompt: 'Lemon Prompt',
+    quiz: 'Lemon Quiz', shelf: 'Lemon Shelf', sketch: 'Lemon Sketch',
+    studio: 'Lemon Studio', tasks: 'Flux Tasks', tempmail: 'Flux TempMail',
+    typing: 'Lemon Typing', wallet: 'Lemon Wallet', weather: 'Lemon Weather',
+    zip: 'Lemon Zip', kv: '공통 저장소', pass: 'Lemon Pass',
+    theme: '테마 설정', anim: '모션 설정', short: '짧은 공유 링크',
+    apk: 'APK 프로젝트', web: '웹런처 사이트', qr: 'Flux QR', pdf: 'Flux PDF',
+    focus: 'Flux Focus', voice: 'Flux Voice', secret: 'Flux Secret', frames: 'Flux Frames',
+    forms: 'Flux Forms', drop: 'Flux Drop', docs: 'Flux Docs', compress: 'Lemon Compress',
+    board: 'Flux Board', money: 'Lemon Money', finance: 'Lemon Finance', news: 'Flux News',
+    lang: '번역 설정', followed: '스포츠 팔로우', drive: 'Flux Drive',
+    devhub: '개발자 허브', unlock: '앱 잠금', pop: 'Flux Pop',
+    lemon3d: 'Lemon 3D', lemonlogo: 'Lemon Logo', fluxgroups: 'Flux Groups 닉네임',
+    etc: '기타 설정'
+  };
+  function svcToken(name) {
+    var n = String(name === null || name === undefined ? '' : name).toLowerCase();
+    n = n.replace(/_v\d+$/, '');
+    n = n.replace(/^(lemon|flux|cream)_/, '');
+    return n.split('_')[0] || '';
+  }
+  function svcLabel(id) { return SVC_LABEL[id] || id; }
+  /* 내부 기록 키는 서비스 목록에 내보이지 않는다(로그인 기기 기록 등).
+     백업에는 그대로 들어가서 다른 기기가 같은 기기 목록을 본다. */
+  var SVC_HIDE = { lk: 1, cloud: 1, gdrive: 1 };
+  function serviceIdOfKey(k) {
+    if (String(k) === PASS_KEY) return 'pass';
+    return svcToken(k) || 'etc';
+  }
+  function serviceIdOfDb(name) { return svcToken(name) || 'etc'; }
+
+  function exclSvc() {
+    var s = syncRec();
+    var a = Array.isArray(s.excludeSvc) ? s.excludeSvc : [];
+    return a.map(function (x) { return String(x); }).filter(Boolean);
+  }
+  /* 이 서비스의 데이터를 백업·복원할지 */
+  function svcOn(id) {
+    id = String(id || 'etc');
+    if (id === 'pass') return passSyncOn();
+    return exclSvc().indexOf(id) < 0;
+  }
+  function setServiceSync(id, on) {
+    id = String(id || '').trim();
+    if (!id) return { ok: false, error: 'invalid-id' };
+    if (id === 'pass') { setPassSync(on === true); return { ok: true, id: id, on: on === true }; }
+    var list = exclSvc();
+    var i = list.indexOf(id);
+    if (on === true && i >= 0) list.splice(i, 1);
+    if (on !== true && i < 0) list.push(id);
+    patchSync({ excludeSvc: list });
+    return { ok: true, id: id, on: on === true, excluded: list };
   }
 
   /* 사용자가 켜고 끄는 자동 동기화 (기본 ON)
@@ -2519,6 +2641,12 @@
     tokenExpiresAt: function () { return tokenExpiry(); },
     isPassSyncEnabled: isPassSyncEnabled,
     setPassSync: setPassSync,
+    /* 서비스별 동기화 — 데이터 및 백업 화면 */
+    services: serviceList,
+    setServiceSync: setServiceSync,
+    isServiceSyncEnabled: svcOn,
+    excludedServices: exclSvc,
+    serviceNames: function () { return SVC_LABEL; },
     explicitKeys: function () { return Object.keys(EXPLICIT_KEYS); },
     idbNames: function () { return IDB_NAMES.slice(); },
     dbList: function () { return listBackupDbs(); },

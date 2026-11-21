@@ -477,6 +477,15 @@
     return p.then(function () { clearSession(); return { ok: true }; });
   }
 
+  /* 다른 기기의 로그인 세션만 만료시킨다 — 이 기기의 세션은 그대로 남긴다.
+     Supabase Auth(GoTrue) 의 logout?scope=others 를 그대로 쓴다. */
+  function signOutOthers() {
+    if (!session) return Promise.reject(loginRequired());
+    return rest('/auth/v1/logout?scope=others', { method: 'POST' }).then(function () {
+      return { ok: true };
+    });
+  }
+
   function recover(email) {
     return request('/auth/v1/recover', { method: 'POST', body: { email: email } });
   }
@@ -1393,6 +1402,7 @@
     defaultEmailRedirect: defaultEmailRedirect,
     signIn: signIn,
     signOut: signOut,
+    signOutOthers: signOutOthers,
     recover: recover,
     updateUser: updateUser,
     signInWithGoogle: signInWithGoogle,
