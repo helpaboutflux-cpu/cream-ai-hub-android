@@ -139,7 +139,7 @@
       <div class="da-card__head">
         <div>
           <p class="da-card__title"><span class="da-step">1</span>LK 계정</p>
-          <p class="da-card__desc">Soft Hub 통합 계정입니다. 로그인 정보는 이 페이지에서만 쓰이고 PC로는 세션만 전달됩니다.</p>
+          <p class="da-card__desc">Soft Hub 통합 계정입니다. Google 계정으로 로그인하면 Google Drive 연결까지 한 번에 끝나서 2단계를 따로 누르지 않아도 됩니다.</p>
         </div>
         <span class="da-tag" id="lkTag">확인 중</span>
       </div>
@@ -154,7 +154,11 @@
           <input class="da-input" id="lkPw" type="password" autocomplete="current-password" placeholder="LK ID 비밀번호">
         </div>
         <div class="da-actions">
-          <button class="da-btn solid" type="button" id="lkSignIn">LK 계정 로그인</button>
+          <button class="da-btn solid" type="button" id="lkGoogle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.6 12.2c0-.7-.1-1.4-.2-2H12v3.9h6a5.1 5.1 0 0 1-2.2 3.3v2.7h3.5c2-1.9 3.3-4.7 3.3-7.9z"></path><path fill="#34A853" d="M12 23c2.9 0 5.4-1 7.2-2.7l-3.5-2.7c-1 .7-2.2 1-3.7 1-2.9 0-5.3-1.9-6.2-4.5H2.2v2.8A11 11 0 0 0 12 23z"></path><path fill="#FBBC05" d="M5.8 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.2a11 11 0 0 0 0 9.8z"></path><path fill="#EA4335" d="M12 5.4c1.6 0 3 .6 4.2 1.7l3.1-3.1A11 11 0 0 0 2.2 7.1l3.6 2.8C6.7 7.3 9.1 5.4 12 5.4z"></path></svg>
+            Google 계정으로 계속
+          </button>
+          <button class="da-btn" type="button" id="lkSignIn">LK 계정 로그인</button>
           <a class="da-btn" href="auth.html" target="_blank" rel="noopener">계정 페이지 열기</a>
         </div>
       </div>
@@ -162,6 +166,7 @@
         <button class="da-btn" type="button" id="lkSignOut">로그아웃</button>
       </div>
       <p class="da-msg hidden" id="lkMsg"></p>
+      <p class="da-note">Google 계정으로 계속하면 LK 로그인과 Drive 권한을 함께 받습니다. Drive 권한만 따로 주고 싶다면 아래 2단계에서 연결할 수 있습니다.</p>
     </section>
 
     <!-- 2. Google Drive -->
@@ -220,8 +225,8 @@
   </p>
 </main>
 
-<script src="lemon-cloud.js?v=20261121a"></script>
-<script src="lemon-gdrive.js"></script>
+<script src="lemon-cloud.js?v=20261121b"></script>
+<script src="lemon-gdrive.js?v=20261121b"></script>
 <script>
 (function () {
   'use strict';
@@ -231,6 +236,37 @@
   var STATE = String(P.get('state') || '');
   var portOK = PORT >= 1024 && PORT <= 65535;
   var stateOK = /^[a-f0-9]{16,64}$/i.test(STATE);
+  var K_RETURN = 'lk_desktop_auth_return';
+
+  /* Google 로그인은 다른 주소로 건너갔다 돌아오므로 port·state 를 이 탭에 적어 둔다. */
+  function saveReturn() {
+    try { sessionStorage.setItem(K_RETURN, JSON.stringify({ port: PORT, state: STATE, at: Date.now() })); } catch (e) { }
+  }
+  function restoreReturn() {
+    if (portOK && stateOK) { try { sessionStorage.removeItem(K_RETURN); } catch (e) { } return; }
+    try {
+      var r = JSON.parse(sessionStorage.getItem(K_RETURN) || 'null');
+      if (!r || !r.port || !r.state) return;
+      if ((Date.now() - (Number(r.at) || 0)) > 30 * 60 * 1000) return;
+      var p2 = parseInt(r.port, 10);
+      if (!(p2 >= 1024 && p2 <= 65535) || !/^[a-f0-9]{16,64}$/i.test(String(r.state))) return;
+      PORT = p2;
+      STATE = String(r.state);
+      portOK = true;
+      stateOK = true;
+      if (history.replaceState) {
+        history.replaceState(null, '', location.pathname + '?port=' + PORT + '&state=' + encodeURIComponent(STATE));
+      }
+    } catch (e) { }
+  }
+
+  /* 로그인 화면에서 돌아올 때 남은 OAuth 실패 흔적. */
+  var retErr = (function () {
+    try {
+      var p = new URLSearchParams(String(location.hash || '').replace(/^#/, ''));
+      return String(p.get('error_description') || p.get('error') || '');
+    } catch (e) { return ''; }
+  })();
 
   function $(id) { return document.getElementById(id); }
   function text(id, v) { var el = $(id); if (el) el.textContent = v; }
@@ -318,6 +354,36 @@
     }, function () {
       msg('lkMsg', '로그아웃하지 못했습니다.', 'err');
     });
+  }
+
+  /* ---------- Google 로그인 (LK 로그인 + Drive 권한) ---------- */
+  function googleSignIn() {
+    if (!window.LemonCloud || !LemonCloud.signInWithGoogle || !LemonCloud.configured()) {
+      msg('lkMsg', '클라우드 로그인이 아직 설정되지 않았습니다.', 'err');
+      return;
+    }
+    saveReturn();
+    var btn = $('lkGoogle');
+    if (btn) btn.disabled = true;
+    msg('lkMsg', 'Google 계정을 고르면 LK 로그인과 Drive 연결이 함께 끝나고 이 화면으로 돌아옵니다.', '');
+    LemonCloud.signInWithGoogle();
+  }
+
+  /* LK 로그인으로 넘어온 Drive 토큰을 팝업 없이 이어받는다. */
+  function lkDriveAuto() {
+    var g = window.LemonGDrive;
+    if (!g || !g.adoptFromSession) return Promise.resolve(null);
+    if (g.connected && g.connected()) return Promise.resolve(null);
+    var p = (window.LemonCloud && LemonCloud.providerToken) ? LemonCloud.providerToken() : null;
+    if (!p || !p.access_token) return Promise.resolve(null);
+    msg('gdMsg', 'LK 로그인으로 Google Drive를 연결하는 중입니다.', '');
+    return g.adoptFromSession().then(function (r) {
+      paint();
+      if (r && r.ok) msg('gdMsg', 'LK 로그인 한 번으로 Google Drive까지 연결했습니다.', 'ok');
+      else if (r && r.scopeMissing) msg('gdMsg', 'Google Drive 권한이 함께 승인되지 않았습니다. 위 버튼으로 한 번만 연결해 주세요.', 'err');
+      else msg('gdMsg', '', '');
+      return r;
+    }, function () { paint(); return null; });
   }
 
   /* ---------- Google Drive ---------- */
@@ -471,6 +537,7 @@
   }
 
   function boot() {
+    restoreReturn();
     if (!portOK || !stateOK) {
       show('flow', false);
       show('badParams', true);
@@ -479,8 +546,9 @@
     show('badParams', false);
     show('flow', true);
 
+    var initP = Promise.resolve();
     if (window.LemonCloud && LemonCloud.init) {
-      try { LemonCloud.init(); } catch (e) { }
+      try { initP = LemonCloud.init() || Promise.resolve(); } catch (e) { initP = Promise.resolve(); }
     }
     if (window.LemonGDrive && LemonGDrive.prewarm) {
       try { LemonGDrive.prewarm(); } catch (e) { }
@@ -489,7 +557,16 @@
     if (window.LemonGDrive && LemonGDrive.refreshAccount) {
       LemonGDrive.refreshAccount().then(function () { paint(); }, function () { });
     }
+    initP.then(function () {
+      paint();
+      if (retErr) {
+        msg('lkMsg', 'Google 로그인을 마치지 못했습니다. 다시 시도하거나 LK 계정으로 로그인해 주세요. 다시 시도하면 LK 로그인만 먼저 끝내고 Drive 는 2단계에서 연결합니다.', 'err');
+        return null;
+      }
+      return lkDriveAuto();
+    }, function () { paint(); }).then(function () { paint(); }, function () { });
 
+    $('lkGoogle').addEventListener('click', googleSignIn);
     $('lkSignIn').addEventListener('click', signIn);
     $('lkPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); signIn(); } });
     $('lkEmail').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); signIn(); } });
@@ -500,7 +577,7 @@
 
     ['lemongdrive:change', 'lemon-gdrive:change', 'lemongdrive:account', 'lemon-gdrive:account',
       'lemongdrive:sync', 'lemon-gdrive:sync', 'lemoncloud:signed-in', 'lemoncloud:signed-out',
-      'lemoncloud:user-updated'].forEach(function (n) {
+      'lemoncloud:user-updated', 'lemoncloud:provider-token'].forEach(function (n) {
       window.addEventListener(n, function () { paint(); });
     });
   }

@@ -417,6 +417,10 @@
   .lks-reset__row { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; font-size: 11px; }
   .lks-reset__row input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--lk-ink); flex: none; }
   .lks-reset__row .lk-input { height: 36px; font-size: 12px; }
+  .lks-ask { margin: 0 0 14px; padding: 13px 14px; border: 1px dashed var(--lk-line2); }
+  .lks-ask__t { margin: 0; font-size: 11.5px; font-weight: 700; line-height: 1.75; color: var(--lk-ink2); }
+  .lks-ask__acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+  .lks-ask__acts .lk-btn { width: auto; height: 34px; padding: 0 13px; font-size: 11.5px; }
 
   @media (max-width: 900px) {
     .lks-wrap { grid-template-columns: minmax(0, 1fr); }
@@ -600,7 +604,7 @@
         </div>
 
         <div class="lk-notes" id="benefits">
-          <div class="lk-note"><span>개인 작업물은 내 Google Drive(15GB)로 직접 백업</span></div>
+          <div class="lk-note"><span>Google 로그인 한 번으로 Drive 백업까지 함께 연결</span></div>
           <div class="lk-note"><span>짧은 공유 링크 (view.html?id=...)</span></div>
           <div class="lk-note"><span>로그인하지 않아도 모든 도구는 그대로 무료</span></div>
         </div>
@@ -661,6 +665,13 @@
         <p class="lks-sub" id="viewSub">계정과 백업 상태를 한눈에 봅니다.</p>
       </div>
       <div class="lks-msg" id="sMsg" role="status" aria-live="polite"></div>
+      <div class="lks-ask hidden" id="askBox" role="region" aria-live="polite">
+        <p class="lks-ask__t" id="askText"></p>
+        <div class="lks-ask__acts">
+          <button class="lk-btn lk-btn--solid" type="button" id="askGo">실행</button>
+          <button class="lk-btn lk-btn--line" type="button" id="askCancel">취소</button>
+        </div>
+      </div>
 
       <!-- 홈 -->
       <section class="lks-view" data-view="home" hidden>
@@ -777,6 +788,7 @@
             <button class="lk-btn lk-btn--line" type="button" data-act="gd-disconnect" id="gdDisconnect">연결 해제</button>
           </div>
           <p class="lks-state" data-gd-state></p>
+          <p class="lks-note hidden" id="gdLinkNote">LK 계정의 Google 로그인으로 연결되었습니다. 따로 [Google Drive 연결]을 누르지 않아도 새 기기에서 백업을 바로 불러옵니다.</p>
           <p class="lks-note">앱이 만든 전용 폴더만 다루는 최소 권한(<b>drive.file</b>)을 요청합니다. 아직 Google 앱 정식 검수 전이라 연결할 때 <b>Google에서 확인하지 않은 앱</b> 경고가 뜰 수 있습니다 — <b>고급</b>에서 <b>계속</b>을 누르면 연결됩니다. 복원은 이 기기에 없는 항목만 채우고 기존 데이터를 덮어쓰지 않습니다.</p>
         </div>
 
@@ -935,8 +947,8 @@
   </div>
 </div>
 
-<script src="lemon-cloud.js?v=20261120c"></script>
-<script src="lemon-gdrive.js"></script>
+<script src="lemon-cloud.js?v=20261121b"></script>
+<script src="lemon-gdrive.js?v=20261121b"></script>
 <script src="lemon-site.js"></script>
 <script src="lemon-ui.js"></script>
 <script>
@@ -957,11 +969,12 @@
       return {
         type: p.get('type') || ph.get('type') || '',
         error: p.get('error_description') || ph.get('error_description') || p.get('error') || ph.get('error') || '',
+        errorDescription: p.get('error_description') || ph.get('error_description') || '',
         errorCode: p.get('error_code') || ph.get('error_code') || '',
         hasToken: /(^|&)access_token=/.test(h),
         hash: h
       };
-    } catch (e) { return { type: '', error: '', errorCode: '', hasToken: false, hash: '' }; }
+    } catch (e) { return { type: '', error: '', errorDescription: '', errorCode: '', hasToken: false, hash: '' }; }
   })();
 
   function lastSignupEmail() {
@@ -1242,6 +1255,25 @@
     el.className = 'lks-msg on' + (kind === 'err' ? ' err' : kind === 'ok' ? ' ok' : '');
     el.textContent = text;
   }
+
+  /* 삭제·해제처럼 되돌리기 어려운 동작은 창(팝업) 대신 화면 안에서 한 번 더 묻는다. */
+  var askPending = null;
+  function ask(text, label, fn) {
+    var box = $('askBox');
+    if (!box) { if (fn) fn(); return; }
+    askPending = fn || null;
+    $('askText').textContent = String(text || '');
+    $('askGo').textContent = String(label || '실행');
+    box.classList.remove('hidden');
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) { }
+  }
+  function askClose(run) {
+    var fn = askPending;
+    askPending = null;
+    var box = $('askBox');
+    if (box) box.classList.add('hidden');
+    if (run && fn) fn();
+  }
   function setGdState(text) {
     Array.prototype.forEach.call(document.querySelectorAll('[data-gd-state]'), function (el) {
       el.textContent = text || '';
@@ -1391,6 +1423,9 @@
     }
     var accEl = $('gdAccount');
     if (accEl) accEl.textContent = gdAccountText(st);
+    /* LK 로그인으로 이어진 연결이면 안내 문구를 보여 준다. */
+    var linkNote = $('gdLinkNote');
+    if (linkNote) linkNote.classList.toggle('hidden', !(st && st.connected && st.viaLkGoogle));
     var sw = $('gdSwitch');
     if (sw) sw.classList.toggle('hidden', !(st && st.connected));
     var gdEngine = gdApi();
@@ -1748,6 +1783,57 @@
 
   /* ---------------- Google Drive (lemon-gdrive.js) ---------------- */
   function gdApi() { return window.LemonGDrive || null; }
+
+  /* Google 로그인에 함께 요청한 drive.file 범위가 거부되어 돌아왔는지.
+     (사용자가 스스로 취소한 경우는 다시 시도하지 않는다 · 5분에 한 번만) */
+  function googleScopeHiccup() {
+    var text = String((verifyInfo && verifyInfo.error) || '') + ' ' +
+      String((verifyInfo && verifyInfo.errorDescription) || '') + ' ' +
+      String((verifyInfo && verifyInfo.errorCode) || '');
+    if (/access_denied|cancel/i.test(text)) return false;
+    var scopeish = /scope|invalid_request/i.test(text);
+    if (!scopeish) {
+      try {
+        var ae = (window.LemonCloud && LemonCloud.authError) ? LemonCloud.authError() : null;
+        if (ae && ae.driveScope === true) scopeish = true;
+        if (ae) text += ' ' + String(ae.error || '') + ' ' + String(ae.description || '');
+      } catch (e) { }
+    }
+    if (!scopeish) return false;
+    if (/access_denied|cancel/i.test(text)) return false;
+    try {
+      var at = Number(sessionStorage.getItem('lk_google_scope_retry') || 0);
+      if (at && (Date.now() - at) < 5 * 60 * 1000) return false;
+    } catch (e) { }
+    return true;
+  }
+
+  /* LK 로그인 한 번으로 Google Drive 까지 —
+     남아 있는 provider_token 을 이어받아 팝업 없이 연결하고,
+     Drive 에 백업이 있으면 이 기기에 없는 항목을 바로 불러온다. */
+  function lkDriveAuto() {
+    var g = gdApi();
+    if (!g || !g.adoptFromSession) return Promise.resolve(null);
+    if (g.connected && g.connected()) return Promise.resolve(null);
+    var p = (window.LemonCloud && LemonCloud.providerToken) ? LemonCloud.providerToken() : null;
+    if (!p || !p.access_token) return Promise.resolve(null);
+    setGdState('LK 로그인으로 Google Drive를 연결하는 중');
+    return g.adoptFromSession().then(function (r) {
+      gdPaint();
+      if (r && r.ok) {
+        var pulled = !!(r.pull && r.pull.restored);
+        setGdState(pulled ? 'LK 로그인으로 Drive 백업을 불러왔습니다.' : 'LK 로그인으로 Google Drive까지 연결되었습니다.');
+        sMsg('LK 로그인 한 번으로 Google Drive까지 연결되었습니다.' +
+          (pulled ? ' Drive에 있던 백업을 이 기기로 불러왔습니다.' : ' 별도로 [Google Drive 연결]을 누르지 않아도 됩니다.'), 'ok');
+      } else if (r && r.scopeMissing) {
+        setGdState('');
+        sMsg('Google Drive 권한이 함께 승인되지 않았습니다. [Google Drive 연결]을 한 번 누르면 바로 연결됩니다.', 'info');
+      } else {
+        setGdState('');
+      }
+      return r;
+    }, function () { setGdState(''); return null; });
+  }
   function gdPaint() {
     paintBackup();
     paintHome();
@@ -1875,7 +1961,9 @@
   function gdDisconnect() {
     var g = gdApi();
     if (!g || gdBusy) return;
-    if (!confirm('Google Drive 연결을 해제할까요?\n드라이브에 이미 올린 백업 파일은 지워지지 않고 그대로 남습니다. 이 기기의 연결 정보만 삭제됩니다.')) return;
+    ask('Google Drive 연결을 해제할까요? 드라이브에 이미 올린 백업 파일은 지워지지 않고 그대로 남습니다. 이 기기의 연결 정보만 삭제됩니다.', '연결 해제', function () { gdDisconnectNow(g); });
+  }
+  function gdDisconnectNow(g) {
     gdBusy = true;
     setGdState('연결을 해제하는 중');
     g.disconnect().then(function () {
@@ -1948,7 +2036,9 @@
     });
   }
   function clearToken() {
-    if (!confirm('이 기기에 저장된 로그인 정보(세션 토큰)를 지울까요?\n작업물은 그대로 남습니다.')) return;
+    ask('이 기기에 저장된 로그인 정보(세션 토큰)를 지울까요? 작업물은 그대로 남습니다.', '지우기', clearTokenNow);
+  }
+  function clearTokenNow() {
     try { localStorage.removeItem('lemon_cloud_session'); } catch (e) { }
     try { localStorage.removeItem('lemon_gdrive_token_v1'); } catch (e) { }
     state.user = null;
@@ -1956,14 +2046,18 @@
     sMsg('이 기기의 로그인 정보를 지웠습니다. 필요하면 다시 로그인하세요.', 'ok');
   }
   function vaultReset() {
-    if (!confirm('비밀번호 금고를 초기화할까요?\n금고에 저장한 모든 항목이 이 기기에서 지워지고 되살릴 수 없습니다.')) return;
+    ask('비밀번호 금고를 초기화할까요? 금고에 저장한 모든 항목이 이 기기에서 지워지고 되살릴 수 없습니다.', '초기화', vaultResetNow);
+  }
+  function vaultResetNow() {
     try { localStorage.removeItem('lemon_pass_vault'); } catch (e) { }
     paintSecurity();
     paintHome();
     sMsg('비밀번호 금고를 초기화했습니다.', 'ok');
   }
   function keyDelete() {
-    if (!confirm('이 기기에 저장한 AI API 키를 삭제할까요?\n노트북의 AI 기능은 키를 다시 넣을 때까지 멈춥니다.')) return;
+    ask('이 기기에 저장한 AI API 키를 삭제할까요? 노트북의 AI 기능은 키를 다시 넣을 때까지 멈춥니다.', '삭제', keyDeleteNow);
+  }
+  function keyDeleteNow() {
     try { localStorage.removeItem('flux_notebook_gemini_key'); } catch (e) { }
     paintSecurity();
     paintHome();
@@ -2078,9 +2172,12 @@
   function boot() {
     paintTheme();
     if (!window.LemonCloud) { showAuth(); return; }
+    var scopeRetry = googleScopeHiccup();
     var wantsSettings = settingsIntent || VIEWS.indexOf(String(location.hash || '').replace(/^#/, '')) >= 0;
     LemonCloud.init().then(function () {
       var u = LemonCloud.sessionUser();
+      /* LK Google 로그인으로 돌아왔다면 Drive 연결과 백업 불러오기를 바로 잇는다. */
+      lkDriveAuto();
       if (verifyInfo.error) {
         var expired = /expired|invalid/i.test(verifyInfo.error + ' ' + verifyInfo.errorCode);
         showVerify('bad',
@@ -2179,6 +2276,8 @@
     });
 
     $('nextBtn').addEventListener('click', function () { goNext(0); });
+    $('askGo').addEventListener('click', function () { askClose(true); });
+    $('askCancel').addEventListener('click', function () { askClose(false); });
 
     $('resendBtn').addEventListener('click', function () {
       var mail = ($('confirmMail').textContent || '').trim();
@@ -2340,6 +2439,16 @@
       if (state.opened) { paintAll(); return; }
       showAuth();
     });
+
+    if (scopeRetry) {
+      /* 범위 요청이 막혀 돌아왔으면 LK 로그인만 다시 하고, Drive 는 수동 연결로 남긴다. */
+      try { sessionStorage.setItem('lk_google_scope_retry', String(Date.now())); } catch (e) { }
+      LemonCloud.clearGoogleDriveScope();
+      try { sessionStorage.removeItem('lemon_cloud_auth_error_v1'); } catch (e) { }
+      if (LemonCloud.clearAuthError) LemonCloud.clearAuthError();
+      msg('Google 계정 권한 승인을 마치지 못해 LK 로그인만 다시 시도합니다. Google Drive 는 [Google Drive 연결]로 따로 이어갈 수 있습니다.', 'info');
+      setTimeout(function () { LemonCloud.signInWithGoogle({ drive: false }); }, 1400);
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

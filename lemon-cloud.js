@@ -30,6 +30,11 @@
   var K_CFG = 'lemon_cloud_cfg';
   var K_SESSION = 'lemon_cloud_session';
   var K_LOCAL_SHARES = 'lemon_shares_v1';
+  /* LK Google 로그인이 함께 받아 오는 Google Drive 접근 범위.
+     한 번의 로그인으로 개인 백업까지 이어지도록 drive.file 을 함께 요청한다. */
+  var DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  var K_PROVIDER = 'lemon_cloud_provider_v1';   /* sessionStorage — Drive 엔진으로 넘기는 토큰 인계 */
+  var K_OAUTH_DRIVE = 'lemon_cloud_oauth_drive'; /* sessionStorage — drive 범위를 요청한 로그인이었는지 */
 
   /* ---------------- 상태 ---------------- */
   var cfg = null;
@@ -49,6 +54,20 @@
     try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; }
   }
   function drop(key) { try { localStorage.removeItem(key); } catch (e) { } }
+
+  /* 탭을 닫으면 사라지는 임시 값 — 토큰 인계와 재시도 표시에만 쓴다. */
+  function sread(key, fb) {
+    try {
+      var raw = sessionStorage.getItem(key);
+      if (!raw) return fb;
+      var v = JSON.parse(raw);
+      return v === null || v === undefined ? fb : v;
+    } catch (e) { return fb; }
+  }
+  function swrite(key, val) {
+    try { sessionStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; }
+  }
+  function sdrop(key) { try { sessionStorage.removeItem(key); } catch (e) { } }
 
   function utf8Bytes(str) {
     str = String(str === null || str === undefined ? '' : str);
@@ -240,12 +259,20 @@
       method: 'POST', body: { refresh_token: session.refresh_token }
     }).then(function (d) {
       var u = session.user;
-      saveSession({
+      var rec = {
         access_token: d.access_token,
         refresh_token: d.refresh_token || session.refresh_token,
         expires_at: d.expires_in ? Date.now() + d.expires_in * 1000 : 0,
         user: d.user || u
-      });
+      };
+      /* 세션을 새로 받아도 LK Google 로그인이 넘긴 Drive 토큰은 남은 시간 동안 유지한다. */
+      if (session.provider_token && Number(session.provider_expires_at) > Date.now()) {
+        rec.provider_token = session.provider_token;
+        rec.provider_refresh_token = session.provider_refresh_token || '';
+        rec.provider_got_at = session.provider_got_at || 0;
+        rec.provider_expires_at = session.provider_expires_at || 0;
+      }
+      saveSession(rec);
       return session;
     });
   }
@@ -262,31 +289,115 @@
   }
 
   /* ---------------- 인증 ---------------- */
+
+  /* Google OAuth 가 함께 돌려준 provider_token 을 세션에 남긴다.
+     drive.file 범위를 함께 승인받았다면 이 토큰으로 Google Drive 백업이 곧바로 열린다.
+     만료(약 1시간)가 지나면 쓰지 않는다 — 이후에는 기존 Drive 엔진의 갱신·재연결을 따른다. */
+  function providerFields(d) {
+    var got = Date.now();
+    var sec = Number(d.provider_expires_in) > 0 ? Number(d.provider_expires_in) : 3600;
+    return {
+      provider_token: String(d.provider_token || ''),
+      provider_refresh_token: String(d.provider_refresh_token || ''),
+      provider_got_at: got,
+      provider_expires_at: got + sec * 1000
+    };
+  }
+
   function storeAuth(d) {
     var u = d.user || null;
-    saveSession({
+    var rec = {
       access_token: d.access_token,
       refresh_token: d.refresh_token,
       expires_at: d.expires_in ? Date.now() + d.expires_in * 1000 : 0,
       user: u
-    });
+    };
+    if (d.provider_token) {
+      var pf = providerFields(d);
+      rec.provider_token = pf.provider_token;
+      rec.provider_refresh_token = pf.provider_refresh_token;
+      rec.provider_got_at = pf.provider_got_at;
+      rec.provider_expires_at = pf.provider_expires_at;
+    } else if (session && session.provider_token && Number(session.provider_expires_at) > Date.now()) {
+      rec.provider_token = session.provider_token;
+      rec.provider_refresh_token = session.provider_refresh_token || '';
+      rec.provider_got_at = session.provider_got_at || 0;
+      rec.provider_expires_at = session.provider_expires_at || 0;
+    }
+    saveSession(rec);
     emit('signed-in', u);
     return u;
   }
 
+  /* provider_token 인계 — sessionStorage 에 한 벌 남기고, Drive 엔진에는 곧바로 알린다.
+     화면이 늦게 로드되어도 같은 탭에서 이어받을 수 있고, 다른 페이지로 옮겨도
+     세션 기록의 토큰으로 adoptFromSession() 이 자동 연결한다. */
+  function handoffProvider(rec) {
+    var info = {
+      access_token: String(rec.provider_token || ''),
+      expires_at: Number(rec.provider_expires_at) || 0,
+      got_at: Number(rec.provider_got_at) || Date.now(),
+      email: String((rec.user && rec.user.email) || '')
+    };
+    if (!info.access_token) return null;
+    swrite(K_PROVIDER, info);
+    try {
+      window.dispatchEvent(new CustomEvent('lemoncloud:provider-token', {
+        detail: { accountEmail: info.email, expires_at: info.expires_at }
+      }));
+    } catch (e) { }
+    return info;
+  }
+
+  /* 지금 쓸 수 있는 provider_token — 세션 기록 우선, 없으면 이 탭의 인계값. */
+  function providerToken() {
+    var now = Date.now();
+    var p = null;
+    if (session && session.provider_token) {
+      p = {
+        access_token: String(session.provider_token),
+        expires_at: Number(session.provider_expires_at) || 0,
+        got_at: Number(session.provider_got_at) || 0,
+        email: String((session.user && session.user.email) || '')
+      };
+    }
+    if (!p || !p.access_token || (p.expires_at && now > (Number(p.expires_at) - 60000))) {
+      var st = sread(K_PROVIDER, null);
+      p = (st && st.access_token) ? {
+        access_token: String(st.access_token),
+        expires_at: Number(st.expires_at) || 0,
+        got_at: Number(st.got_at) || 0,
+        email: String(st.email || '')
+      } : null;
+    }
+    if (!p || !p.access_token) return null;
+    if (p.expires_at && now > (Number(p.expires_at) - 60000)) return null;
+    return p;
+  }
+
+  var lastAuthErr = null;
+
   function consumeRedirect() {
     try {
       var h = location.hash && location.hash.charAt(0) === '#' ? location.hash.slice(1) : '';
-      if (!h || h.indexOf('access_token=') < 0) return null;
+      if (!h) return null;
       var p = new URLSearchParams(h);
       var at = p.get('access_token');
-      if (!at) return null;
+      var err = p.get('error');
+      /* OAuth 실패(범위 거부 등)도 확인한다 — drive 범위 요청이 막힌 경우를 화면이 안내한다. */
+      if (!at && !err) return null;
       var d = {
-        access_token: at,
+        access_token: at || '',
         refresh_token: p.get('refresh_token') || '',
         expires_in: parseInt(p.get('expires_in'), 10) || 3600,
+        provider_token: p.get('provider_token') || '',
+        provider_refresh_token: p.get('provider_refresh_token') || '',
         user: null
       };
+      if (err) {
+        d.error = String(err);
+        d.error_description = String(p.get('error_description') || p.get('error_code') || '');
+      }
       if (history.replaceState) history.replaceState(null, '', location.pathname + location.search);
       return d;
     } catch (e) { return null; }
@@ -384,11 +495,33 @@
     });
   }
 
-  function signInWithGoogle() {
-    if (!isConfigured(cfg)) return false;
-    var back = location.origin + location.pathname;
-    location.href = cfg.url + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(back);
+  /* Google 로그인 — 기본으로 drive.file 범위를 함께 요청한다.
+     opts.drive === false 면 LK 계정 로그인만 한다(범위 요청이 거부됐을 때의 대비책). */
+  function signInWithGoogle(opts) {
+    opts = opts || {};
+    if (!cfgReady()) return false;
+    var back = String(opts.redirectTo || (location.origin + location.pathname));
+    var url = cfg.url + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(back);
+    if (opts.drive === false) {
+      sdrop(K_OAUTH_DRIVE);
+    } else {
+      url += '&scopes=' + encodeURIComponent(DRIVE_SCOPE);
+      swrite(K_OAUTH_DRIVE, '1');
+    }
+    location.href = url;
     return true;
+  }
+
+  /* 방금 Google 로그인이 drive 범위를 요청했는지 — 실패 안내와 재시도 판단에 쓴다. */
+  function googleDriveScopeRequested() {
+    return sread(K_OAUTH_DRIVE, '') === '1';
+  }
+  function clearGoogleDriveScope() { sdrop(K_OAUTH_DRIVE); }
+
+  function authError() {
+    if (lastAuthErr) return lastAuthErr;
+    var e = sread('lemon_cloud_auth_error_v1', null);
+    return e && e.error ? e : null;
   }
 
   function getUser() {
@@ -1206,10 +1339,30 @@
         cfg = loadConfig();
         remoteReady = isConfigured(cfg);
         var redir = consumeRedirect();
-        if (redir) {
+        if (redir && redir.error) {
+          /* OAuth 화면에서 돌아온 실패 — 세션은 그대로 두고 화면이 안내한다. */
+          var errText = String(redir.error) + ' ' + String(redir.error_description || '');
+          var scopeish = /scope|invalid_request/i.test(errText) && !/access_denied|cancel/i.test(errText);
+          /* 함께 요청한 drive.file 범위 때문에 실패했다면, 다음 시도는 LK 로그인만 하도록 표시를 지운다. */
+          if (scopeish) sdrop(K_OAUTH_DRIVE);
+          lastAuthErr = {
+            error: redir.error, description: redir.error_description || '',
+            driveScope: scopeish, at: Date.now()
+          };
+          swrite('lemon_cloud_auth_error_v1', lastAuthErr);
+          emit('auth-error', lastAuthErr);
+          return null;
+        }
+        if (redir && redir.access_token) {
+          sdrop('lemon_cloud_auth_error_v1');
+          lastAuthErr = null;
           loadSession();
           storeAuth(redir);
-          return getUser().catch(function () { });
+          /* 사용자 정보(이메일)가 붙은 뒤에 Drive 엔진으로 넘긴다 — 연결 계정 표시에 쓴다. */
+          return getUser().catch(function () { }).then(function () {
+            if (session && session.provider_token) handoffProvider(session);
+            return null;
+          });
         }
         loadSession();
         if (session && cfg.url) return getUser().catch(function () { });
@@ -1243,6 +1396,12 @@
     recover: recover,
     updateUser: updateUser,
     signInWithGoogle: signInWithGoogle,
+    driveScope: function () { return DRIVE_SCOPE; },
+    providerToken: providerToken,
+    googleDriveScopeRequested: googleDriveScopeRequested,
+    clearGoogleDriveScope: clearGoogleDriveScope,
+    authError: authError,
+    clearAuthError: function () { lastAuthErr = null; sdrop('lemon_cloud_auth_error_v1'); },
     getUser: getUser,
     sessionUser: sessionUser,
     /* 다른 출처(크리미 브라우저 PC 브리지 등)로 세션을 넘겨야 하는 화면용.

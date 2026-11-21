@@ -38,6 +38,15 @@
      drive.file 범위상 about 이 403 이면 폴더 소유자로 한 번 더 시도하고, 그래도 모르면 조용히 비운다.
    · 계정이 실제로 바뀌면 이전 계정의 폴더 id·원격 기준(last_remote_at)·용량 캐시를 버리고
      새 계정의 백업과 처음부터 동기화한다(이전 계정의 Drive 백업 파일은 지우지 않는다).
+
+   LK Google 로그인 자동 연동 (2026-11)
+   · LK 계정의 Google 로그인(Supabase OAuth)이 drive.file 까지 함께 승인받으면
+     provider_token 이 넘어온다. adoptToken() 이 그 토큰을 lemon_gdrive_token_v1 로 채택해
+     팝업 없이 연결 상태가 되고, probeDrive() 로 범위를 확인한 뒤 autoPull() 로
+     기존 Drive 백업을 바로 확인·복원한다(복원 규칙은 아래와 같다 — 덮어쓰지 않음).
+   · adoptFromSession() 은 페이지가 열릴 때 남아 있는 토큰을 스스로 이어받는다.
+     한 번 채택한 로그인(providerAt)은 다시 시도하지 않고, [연결 해제] 뒤에는
+     같은 로그인 토큰으로 자동 연결하지 않는다(새 Google 로그인부터 다시 허용).
    ============================================================ */
 (function () {
   'use strict';
@@ -66,6 +75,7 @@
   var K_LAST_RESTORE = 'lemon_gdrive_restore_v1';
   var K_SYNC = 'lemon_gdrive_sync_v1';      /* 자동 동기화 설정·상태 */
   var K_LOCK = 'lemon_gdrive_synclock_v1';  /* 탭 간 동시 실행 방지 잠금 */
+  var K_LK = 'lemon_gdrive_lklogin_v1';     /* LK Google 로그인 자동 연결을 이용자가 끈 표시 */
 
   /* ---- 백업에서 빼는 내부·민감 키 ---- */
   var SKIP = {
@@ -75,9 +85,10 @@
     lemon_site_remote_cfg_v1: 1, lemon_site_remote_ads_v1: 1,
     lemon_notice_ack_v1: 1, lemon_home_ack_v1: 1, lemon_cp_recent: 1,
     lemon_shares_v1: 1, cream_theme: 1, lemon_anim_mode: 1,
+    lemon_cloud_provider_v1: 1, lemon_cloud_oauth_drive: 1, lemon_cloud_auth_error_v1: 1,
     lemon_gdrive_token_v1: 1, lemon_gdrive_link_v1: 1,
     lemon_gdrive_last_v1: 1, lemon_gdrive_restore_v1: 1,
-    lemon_gdrive_sync_v1: 1, lemon_gdrive_synclock_v1: 1,
+    lemon_gdrive_sync_v1: 1, lemon_gdrive_synclock_v1: 1, lemon_gdrive_lklogin_v1: 1,
     /* 민감 정보 — Drive 로도 올리지 않는다 (이 기기에만) */
     lemon_pass_vault: 1, flux_notebook_gemini_key: 1
   };
@@ -195,6 +206,136 @@
     writeJSON(K_LINK, cur);
   }
 
+  /* ---------------- LK Google 로그인 자동 연결 (2026-11) ----------------
+     LK 계정의 Google 로그인이 함께 승인받은 provider_token(drive.file)을 그대로 이어받는다.
+     이 기기에서는 별도 팝업 없이 연결 상태가 되고, Drive 에 백업이 있으면 바로 확인한다.
+     이용자가 [연결 해제]를 누르면 같은 로그인 토큰으로 다시 자동 연결하지 않는다. */
+  function lkOffAt() {
+    var r = readJSON(K_LK, null) || {};
+    return r.off === true ? (Number(r.at) || 0) : 0;
+  }
+  function setLkOff(at) { writeJSON(K_LK, { off: true, at: Number(at) || Date.now() }); }
+  function clearLkOff() { drop(K_LK); }
+
+  function providerFromCloud() {
+    try {
+      var c = window.LemonCloud;
+      if (c && typeof c.providerToken === 'function') {
+        var p = c.providerToken();
+        if (p && p.access_token) return p;
+      }
+    } catch (e) { }
+    return null;
+  }
+
+  /* Drive 접근이 실제로 열려 있는지 확인한다 — 범위가 승인되지 않은 토큰은 여기서 걸린다. */
+  function probeDrive() {
+    return findFolder(FOLDER_NAME, null).then(function (f) {
+      return { ok: true, folderId: (f && f.id) || '' };
+    }, function (e) {
+      return {
+        ok: false,
+        error: String((e && e.code) || 'api-error'),
+        detail: String((e && (e.detail || e.message)) || '')
+      };
+    });
+  }
+
+  /* 외부에서 받은 Google 액세스 토큰 채택 — 팝업 없이 연결 상태로 전환한다.
+     expiresInSec 초 단위 수명 · emailHint 는 연결 계정 표시용 힌트. */
+  function adoptToken(accessToken, expiresInSec, emailHint, opts) {
+    opts = opts || {};
+    var tok = String(accessToken || '').trim();
+    if (!tok) return Promise.resolve({ ok: false, error: 'no-token' });
+    if (busy || isRestoring) return Promise.resolve({ ok: false, error: 'busy' });
+    var wasConnected = !!token();
+    var prevAcc = accountRec();
+    saveToken(tok, Number(expiresInSec) > 0 ? Number(expiresInSec) : 3600);
+    var hint = String(emailHint || '').trim();
+    if (hint && hint.toLowerCase() !== String(prevAcc.email || '').toLowerCase()) {
+      /* 다른 Google 계정을 이어받았으면 이전 계정의 폴더·원격 기준을 버린다. */
+      saveAccount(hint, '');
+    } else if (hint) {
+      saveLink({ accountAt: Date.now() });
+    }
+    saveLink({ providerAt: Number(opts.gotAt) || Date.now() });
+    clearLkOff();
+    var s = syncRec();
+    patchSync({ state: (s.pull || s.push) ? 'idle' : 'off', error: '', silent_at: 0 });
+    emit('change', { connected: true, source: 'lk-google', accountEmail: account().email, accountName: account().name });
+
+    var res = {
+      ok: true, connected: true, adopted: !wasConnected, source: 'lk-google',
+      accountEmail: account().email, accountKnown: account().known, pull: null
+    };
+
+    return probeDrive().then(function (probe) {
+      if (!probe.ok) {
+        var code = probe.error;
+        if (code === 'not-linked' || code === 'forbidden' || code === 'api-error') {
+          /* 토큰이 만료됐거나 drive.file 범위가 승인되지 않았다 — 버리고 수동 연결로 안내한다. */
+          dropToken();
+          saveLink({ providerBlockedAt: Date.now() });
+          patchSync({ state: 'need-reconnect', error: 'scope-missing' });
+          emit('change', { connected: false, reason: 'scope-missing' });
+          res.ok = false;
+          res.connected = false;
+          res.error = 'scope-missing';
+          res.scopeMissing = true;
+          return res;
+        }
+        /* 네트워크·일시 오류에는 토큰을 버리지 않는다. 다음 접속에 다시 시도한다. */
+        res.warning = code;
+        return res;
+      }
+      if (probe.folderId) saveLink({ folderId: probe.folderId });
+      var doPull = (opts.pull === undefined) ? (syncRec().pull !== false) : !!opts.pull;
+      if (!doPull) return res;
+      return autoPull({ force: true, reason: 'lk-google' }).then(function (r) {
+        res.pull = r || null;
+        return res;
+      }, function () { return res; });
+    });
+  }
+
+  /* 페이지가 열릴 때 LK 로그인의 토큰이 남아 있으면 자동으로 이어받는다. */
+  var adoptP = null;
+  function adoptFromSession(opts) {
+    opts = opts || {};
+    if (adoptP) return adoptP;
+    if (token()) return Promise.resolve({ ok: true, connected: true, skipped: 'connected' });
+    if (busy || isRestoring) return Promise.resolve({ ok: false, error: 'busy', skipped: 'busy' });
+    var p = providerFromCloud();
+    if (!p) return Promise.resolve({ ok: false, error: 'no-provider-token', skipped: 'none' });
+    var l = linkRec() || {};
+    if (l.providerBlockedAt && p.got_at && Number(l.providerBlockedAt) >= Number(p.got_at)) {
+      return Promise.resolve({
+        ok: false, error: 'scope-missing', skipped: 'blocked', scopeMissing: true
+      });
+    }
+    if (l.providerAt && p.got_at && Number(l.providerAt) === Number(p.got_at)) {
+      return Promise.resolve({ ok: false, error: 'already-adopted', skipped: 'adopted' });
+    }
+    var offAt = lkOffAt();
+    if (offAt && (!p.got_at || offAt >= Number(p.got_at))) {
+      return Promise.resolve({ ok: false, error: 'lk-google-off', skipped: 'opt-out' });
+    }
+    var exp = Number(p.expires_at) || 0;
+    var sec = exp ? Math.round((exp - Date.now()) / 1000) : 3600;
+    if (exp && sec <= 5) return Promise.resolve({ ok: false, error: 'expired', skipped: 'expired' });
+    /* 연결 계정 표시용 이메일 — 로그인 정보에 없으면 LK 계정 이메일을 쓴다(Google 로그인 계정과 같다). */
+    var hint = String(p.email || '').trim();
+    if (!hint) {
+      try {
+        var c = window.LemonCloud;
+        var u = (c && typeof c.sessionUser === 'function') ? c.sessionUser() : null;
+        if (u && u.email) hint = String(u.email);
+      } catch (e) { }
+    }
+    return adoptP = adoptToken(p.access_token, sec, hint, { gotAt: p.got_at, pull: opts.pull })
+      .then(function (r) { adoptP = null; return r; }, function (e) { adoptP = null; throw e; });
+  }
+
   /* ---------------- 연결된 Google 계정 (이 기기에만) ----------------
      drive.file 범위라도 about.get 이 user 를 돌려주면 이메일을 남긴다.
      범위 밖(403)이면 조용히 알 수 없는 상태로 둔다 — 백업은 그대로 동작한다. */
@@ -280,6 +421,7 @@
             }
             if (!resp.access_token) return end({ ok: false, error: 'no-token' });
             saveToken(resp.access_token, resp.expires_in);
+            clearLkOff();
             var acc0 = accountRec();
             emit('change', { connected: true, expires_at: tokenExpiry(), accountEmail: acc0.email, accountName: acc0.name });
             end({ ok: true, expires_at: tokenExpiry(), scope: String(resp.scope || '') });
@@ -339,6 +481,8 @@
       dropToken();
       drop(K_LINK);
       quotaCache = null;
+      /* 같은 LK 로그인 토큰으로 곧바로 다시 자동 연결되지 않게 표시한다. */
+      setLkOff(Date.now());
       emit('change', { connected: false });
       return { ok: true };
     });
@@ -2242,6 +2386,7 @@
       accountKnown: acc.known,
       accountAt: acc.at,
       account: acc,
+      viaLkGoogle: !!(token() && (linkRec() || {}).providerAt),
       last: readJSON(K_LAST, null),
       lastRestore: readJSON(K_LAST_RESTORE, null),
       keyCount: Object.keys(EXPLICIT_KEYS).length,
@@ -2381,6 +2526,9 @@
     connected: function () { return !!token(); },
     connect: connect,
     switchAccount: switchAccount,
+    /* LK Google 로그인 토큰 이어받기 (팝업 없음) */
+    adoptToken: function (access, expiresIn, emailHint, opts) { return adoptToken(access, expiresIn, emailHint, opts); },
+    adoptFromSession: function (opts) { return adoptFromSession(opts); },
     account: account,
     refreshAccount: function (o) { return probeAccount(o); },
     prewarm: prewarm,
@@ -2419,8 +2567,14 @@
         if (!document.hidden) autoPull({ reason: 'visible' });
       });
     } catch (e) { }
-    if (!isLinked()) return;
-    setTimeout(function () { autoPull({ reason: 'boot' }); }, 700);
+    /* LK Google 로그인으로 받은 토큰이 있으면 먼저 이어받아 보고, 아니면 기존 자동 복원을 따른다. */
+    setTimeout(function () {
+      adoptFromSession().then(function (r) {
+        if (r && r.ok) return null;          /* 채택이 Drive 확인·복원까지 마쳤다 */
+        if (!isLinked()) return null;
+        return autoPull({ reason: 'boot' });
+      }, function () { return null; });
+    }, 600);
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', bootAuto);
   else bootAuto();
