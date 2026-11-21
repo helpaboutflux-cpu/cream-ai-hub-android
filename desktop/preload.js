@@ -61,9 +61,21 @@ const fullBridge = {
   },
   downloads: {
     list: function () { return ipcRenderer.invoke('dl:list'); },
+    cancel: function (id) { return ipcRenderer.invoke('dl:cancel', id); },
+    open: function (id) { return ipcRenderer.invoke('dl:open', id); },
+    show: function (id) { return ipcRenderer.invoke('dl:show', id); },
     openFile: function (p) { return ipcRenderer.invoke('dl:open-file', p); },
     openFolder: function () { return ipcRenderer.invoke('dl:open-folder'); },
     onUpdate: function (cb) { on('dl:update', cb); }
+  },
+  updates: {
+    getState: function () { return ipcRenderer.invoke('update:get-state'); },
+    check: function () { return ipcRenderer.invoke('update:check'); },
+    install: function () { return ipcRenderer.invoke('update:install'); },
+    launch: function () { return ipcRenderer.invoke('update:launch'); },
+    openFolder: function () { return ipcRenderer.invoke('update:open-folder'); },
+    openRelease: function () { return ipcRenderer.invoke('update:open-release'); },
+    onState: function (cb) { on('update:state', cb); }
   },
   shell: {
     external: function (url) { return ipcRenderer.invoke('shell:external', url); }
@@ -75,7 +87,10 @@ const fullBridge = {
     run: function (input) { return ipcRenderer.invoke('sync:run', input || {}); },
     logout: function () { return ipcRenderer.invoke('sync:logout'); },
     setPassSync: function (enabled) { return ipcRenderer.invoke('sync:set-pass-sync', enabled === true); },
-    onUpdate: function (cb) { on('sync:updated', cb); }
+    getAuthUrl: function () { return ipcRenderer.invoke('sync:get-auth-url'); },
+    openAuthExternal: function () { return ipcRenderer.invoke('sync:open-auth-external'); },
+    onUpdate: function (cb) { on('sync:updated', cb); },
+    onAuthUrl: function (cb) { on('sync:auth-url', cb); }
   },
   pass: {
     getVault: function () { return ipcRenderer.invoke('pass:get-vault'); },

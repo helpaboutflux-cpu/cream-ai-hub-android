@@ -11,6 +11,7 @@ const { createSync } = require('./sync');
 
 let mainWindow = null;
 let sync = null;
+let pendingAuthUrl = '';
 
 function userDataPath() {
   return app.getPath('userData');
@@ -22,6 +23,7 @@ function settingsFile() {
 
 let settings = {
   adblockEnabled: true,
+  autoUpdateCheck: true,
   userName: '',
   city: 'Seoul',
   cityLat: 37.5665,
@@ -43,6 +45,138 @@ function saveSettings() {
   try {
     fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2), 'utf8');
   } catch (err) { /* ignore */ }
+}
+
+/* ---------- Downloads ---------- */
+
+/* Electron의 session.defaultSession 에는 getAllDownloads() 가 없고,
+   DownloadItem 에도 getUniqueId() 가 없다. 다운로드 기록은 이 프로세스가
+   직접 Map 으로 들고 있으면서 실제 DownloadItem API 만 사용한다. */
+
+const downloadRegistry = new Map();
+const DOWNLOAD_HISTORY_LIMIT = 100;
+let downloadSeq = 0;
+
+function nextDownloadId() {
+  downloadSeq = downloadSeq + 1;
+  return 'dl_' + Date.now().toString(36) + '_' + downloadSeq;
+}
+
+function safeRead(fn, fallback) {
+  try {
+    const value = fn();
+    return value === undefined || value === null ? fallback : value;
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function normalizeDownloadState(state) {
+  if (state === 'completed') return 'completed';
+  if (state === 'cancelled' || state === 'canceled') return 'canceled';
+  if (state === 'interrupted') return 'interrupted';
+  return 'progressing';
+}
+
+function downloadSnapshot(rec) {
+  const item = rec.item;
+  const live = !!item && rec.state === 'progressing';
+  const total = live ? Number(safeRead(function () { return item.getTotalBytes(); }, rec.total)) || 0 : rec.total;
+  const received = live ? Number(safeRead(function () { return item.getReceivedBytes(); }, rec.received)) || 0 : rec.received;
+  const state = live ? normalizeDownloadState(safeRead(function () { return item.getState(); }, 'progressing')) : rec.state;
+  const pathText = (live ? safeRead(function () { return item.getSavePath(); }, '') : '') || rec.path;
+  const filename = (live ? safeRead(function () { return item.getFilename(); }, '') : '') || rec.filename;
+  return {
+    id: rec.id,
+    kind: 'file',
+    filename: filename,
+    path: pathText,
+    url: rec.url,
+    total: total,
+    received: received,
+    state: state,
+    startedAt: rec.startedAt
+  };
+}
+
+function syncDownloadRecord(rec, forcedState) {
+  const item = rec.item;
+  if (item) {
+    rec.total = Number(safeRead(function () { return item.getTotalBytes(); }, rec.total)) || 0;
+    rec.received = Number(safeRead(function () { return item.getReceivedBytes(); }, rec.received)) || 0;
+    rec.path = safeRead(function () { return item.getSavePath(); }, rec.path) || rec.path;
+    rec.filename = safeRead(function () { return item.getFilename(); }, rec.filename) || rec.filename;
+  }
+  if (forcedState) {
+    rec.state = normalizeDownloadState(forcedState);
+  } else if (item) {
+    rec.state = normalizeDownloadState(safeRead(function () { return item.getState(); }, rec.state));
+  }
+}
+
+function broadcastDownload(rec) {
+  sendToRenderer('dl:update', downloadSnapshot(rec));
+}
+
+function trimDownloadHistory() {
+  if (downloadRegistry.size <= DOWNLOAD_HISTORY_LIMIT) return;
+  const keys = Array.from(downloadRegistry.keys());
+  for (let i = 0; i < keys.length && downloadRegistry.size > DOWNLOAD_HISTORY_LIMIT; i++) {
+    const rec = downloadRegistry.get(keys[i]);
+    if (rec && rec.state !== 'progressing') downloadRegistry.delete(keys[i]);
+  }
+}
+
+function downloadStates() {
+  return Array.from(downloadRegistry.values()).map(downloadSnapshot);
+}
+
+function findDownload(id) {
+  if (id === undefined || id === null) return null;
+  return downloadRegistry.get(String(id)) || null;
+}
+
+function registerDownloads() {
+  const dl = session.defaultSession;
+  dl.on('will-download', function (event, item) {
+    const downloadPath = app.getPath('downloads');
+    if (!item.getSavePath()) {
+      const savePath = path.join(downloadPath, item.getFilename());
+      let finalPath = savePath;
+      let n = 1;
+      const ext = path.extname(savePath);
+      const stem = path.basename(savePath, ext);
+      while (fs.existsSync(finalPath)) {
+        finalPath = path.join(downloadPath, stem + ' (' + n + ')' + ext);
+        n = n + 1;
+      }
+      item.setSavePath(finalPath);
+    }
+    const rec = {
+      id: nextDownloadId(),
+      item: item,
+      filename: safeRead(function () { return item.getFilename(); }, ''),
+      url: safeRead(function () { return item.getURL(); }, ''),
+      path: safeRead(function () { return item.getSavePath(); }, ''),
+      total: Number(safeRead(function () { return item.getTotalBytes(); }, 0)) || 0,
+      received: 0,
+      state: 'progressing',
+      startedAt: Date.now()
+    };
+    downloadRegistry.set(rec.id, rec);
+    trimDownloadHistory();
+    broadcastDownload(rec);
+
+    item.on('updated', function (e, state) {
+      syncDownloadRecord(rec, state === 'interrupted' ? 'interrupted' : '');
+      broadcastDownload(rec);
+    });
+    item.on('done', function (e, state) {
+      syncDownloadRecord(rec, state);
+      rec.item = null;
+      broadcastDownload(rec);
+    });
+  });
 }
 
 /* ---------- Browser lock ---------- */
@@ -336,50 +470,295 @@ function buildContextMenu(wc, params) {
   Menu.buildFromTemplate(items).popup({ window: mainWindow });
 }
 
-function downloadStates() {
-  const list = [];
-  session.defaultSession.getAllDownloads().forEach(function (item) {
-    list.push(downloadStateOf(item));
-  });
-  return list;
+/* ---------- GitHub Releases 자동 업데이트 ---------- */
+
+const UPDATE_REPO = 'helpaboutflux-cpu/cream-ai-hub-android';
+const UPDATE_API_BASE = (process.env.CREAMY_UPDATE_API_BASE || 'https://api.github.com').replace(/\/$/, '');
+const UPDATE_ASSET_SETUP = 'creamy-browser-setup.exe';
+const UPDATE_ASSET_PORTABLE = 'creamy-browser-portable.exe';
+const UPDATE_AUTO_DELAY = 4000;
+
+let updateState = {
+  status: 'idle',
+  currentVersion: '',
+  latestVersion: '',
+  tag: '',
+  releaseName: '',
+  releaseUrl: '',
+  publishedAt: '',
+  assetName: '',
+  assetSize: 0,
+  assetUrl: '',
+  assetSha256: '',
+  portable: false,
+  received: 0,
+  percent: 0,
+  error: '',
+  manual: false,
+  downloadedPath: '',
+  updatedAt: 0
+};
+
+let updateCheckPromise = null;
+let updateDownloadPromise = null;
+
+function versionParts(raw) {
+  const match = String(raw || '').match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
-function downloadStateOf(item) {
-  return {
-    id: item.getUniqueId(),
-    filename: item.getFilename(),
-    path: item.getSavePath(),
-    url: item.getURL(),
-    total: item.getTotalBytes(),
-    received: item.getReceivedBytes(),
-    state: item.getState(),
-    kind: 'file'
-  };
+function isNewerVersion(candidate, current) {
+  const a = versionParts(candidate);
+  const b = versionParts(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return false;
 }
 
-function registerDownloads() {
-  const dl = session.defaultSession;
-  dl.on('will-download', function (event, item) {
-    const downloadPath = app.getPath('downloads');
-    if (!item.getSavePath()) {
-      const savePath = path.join(downloadPath, item.getFilename());
-      let finalPath = savePath;
-      let n = 1;
-      const ext = path.extname(savePath);
-      const stem = path.basename(savePath, ext);
-      while (fs.existsSync(finalPath)) {
-        finalPath = path.join(downloadPath, stem + ' (' + n + ')' + ext);
-        n = n + 1;
+function isPortableBuild() {
+  const portablePath = process.env.PORTABLE_EXECUTABLE_FILE;
+  return !!(portablePath && safeRead(function () { return fs.existsSync(portablePath); }, false));
+}
+
+function patchUpdateState(patch) {
+  updateState = Object.assign({}, updateState, patch || {}, { updatedAt: Date.now() });
+  sendToRenderer('update:state', updateState);
+  return updateState;
+}
+
+function fetchJson(url, headers) {
+  return new Promise(function (resolve, reject) {
+    let target = null;
+    try { target = new URL(url); } catch (err) { reject(new Error('bad-url')); return; }
+    const lib = target.protocol === 'http:' ? http : https;
+    const options = {
+      headers: Object.assign({
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'CreamyBrowser/' + app.getVersion()
+      }, headers || {})
+    };
+    const req = lib.get(target, options, function (res) {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        const next = new URL(res.headers.location, target).toString();
+        fetchJson(next, headers).then(resolve, reject);
+        return;
       }
-      item.setSavePath(finalPath);
-    }
-    item.on('updated', function (e, state) {
-      sendToRenderer('dl:update', downloadStateOf(item));
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', function (chunk) { body = body + chunk; });
+      res.on('end', function () {
+        if (res.statusCode !== 200) {
+          reject(new Error('HTTP ' + res.statusCode));
+          return;
+        }
+        try { resolve(JSON.parse(body)); } catch (err) { reject(new Error('invalid-json')); }
+      });
     });
-    item.on('done', function (e, state) {
-      sendToRenderer('dl:update', downloadStateOf(item));
-    });
+    req.on('error', function (err) { reject(err); });
+    req.setTimeout(15000, function () { req.destroy(new Error('timeout')); });
   });
+}
+
+function checkForUpdate(options) {
+  const manual = !!(options && options.manual);
+  if (updateCheckPromise) return updateCheckPromise;
+  const current = app.getVersion();
+  patchUpdateState({
+    status: 'checking',
+    error: '',
+    manual: manual,
+    currentVersion: current,
+    received: 0,
+    percent: 0,
+    downloadedPath: ''
+  });
+  const url = UPDATE_API_BASE + '/repos/' + UPDATE_REPO + '/releases/latest';
+  updateCheckPromise = fetchJson(url).then(function (release) {
+    const tag = String((release && release.tag_name) || '');
+    const latest = tag.replace(/^creamy-/i, '').replace(/^v/i, '');
+    const assets = Array.isArray(release && release.assets) ? release.assets : [];
+    const portable = isPortableBuild();
+    const wanted = portable ? UPDATE_ASSET_PORTABLE : UPDATE_ASSET_SETUP;
+    let asset = null;
+    for (let i = 0; i < assets.length; i++) {
+      if (assets[i] && assets[i].name === wanted) { asset = assets[i]; break; }
+    }
+    if (!asset) {
+      for (let i = 0; i < assets.length; i++) {
+        if (assets[i] && assets[i].name === UPDATE_ASSET_SETUP) { asset = assets[i]; break; }
+      }
+    }
+    const digest = asset && typeof asset.digest === 'string' ? asset.digest : '';
+    const base = {
+      currentVersion: current,
+      latestVersion: latest,
+      tag: tag,
+      releaseName: (release && release.name) || '',
+      releaseUrl: (release && release.html_url) || '',
+      publishedAt: (release && release.published_at) || '',
+      assetName: asset ? asset.name : wanted,
+      assetSize: asset ? Number(asset.size) || 0 : 0,
+      assetUrl: asset ? String(asset.browser_download_url || asset.url || '') : '',
+      assetSha256: digest.indexOf('sha256:') === 0 ? digest.slice(7).toLowerCase() : '',
+      portable: portable
+    };
+    if (latest && isNewerVersion(latest, current)) {
+      return patchUpdateState(Object.assign({ status: 'available', error: '' }, base));
+    }
+    return patchUpdateState(Object.assign({ status: 'current', error: '' }, base));
+  }).catch(function (err) {
+    return patchUpdateState({
+      status: 'error',
+      error: (err && err.message) || 'check-failed',
+      currentVersion: current
+    });
+  }).then(function (result) {
+    updateCheckPromise = null;
+    return result;
+  });
+  return updateCheckPromise;
+}
+
+function downloadUpdateAsset(url, destPath, onProgress) {
+  return new Promise(function (resolve, reject) {
+    let redirects = 5;
+    let finished = false;
+    const partPath = destPath + '.part';
+
+    function fail(err) {
+      if (finished) return;
+      finished = true;
+      try { fs.unlinkSync(partPath); } catch (e) { /* ignore */ }
+      reject(err);
+    }
+
+    function run(currentUrl) {
+      let target = null;
+      try { target = new URL(currentUrl); } catch (err) { fail(new Error('bad-url')); return; }
+      const lib = target.protocol === 'http:' ? http : https;
+      const req = lib.get(target, {
+        headers: { 'User-Agent': 'CreamyBrowser/' + app.getVersion() }
+      }, function (res) {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+          res.resume();
+          redirects = redirects - 1;
+          run(new URL(res.headers.location, target).toString());
+          return;
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          fail(new Error('HTTP ' + res.statusCode));
+          return;
+        }
+        const total = Number(res.headers['content-length'] || 0) || 0;
+        const hash = crypto.createHash('sha256');
+        let received = 0;
+        const out = fs.createWriteStream(partPath);
+        out.on('error', fail);
+        res.on('data', function (chunk) {
+          received = received + chunk.length;
+          hash.update(chunk);
+          out.write(chunk);
+          if (onProgress) onProgress(received, total);
+        });
+        res.on('error', fail);
+        res.on('end', function () {
+          if (finished) return;
+          out.end(function () {
+            if (finished) return;
+            const sha256 = hash.digest('hex');
+            try {
+              if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+              fs.renameSync(partPath, destPath);
+            } catch (err) { fail(err); return; }
+            finished = true;
+            resolve({ size: received, total: total, sha256: sha256 });
+          });
+        });
+      });
+      req.on('error', fail);
+      req.setTimeout(180000, function () { req.destroy(new Error('timeout')); });
+    }
+
+    run(url);
+  });
+}
+
+function installUpdate() {
+  if (updateDownloadPromise) return updateDownloadPromise;
+  if (updateState.status === 'downloaded') return Promise.resolve(launchUpdateInstaller());
+  if (updateState.status !== 'available' || !updateState.assetUrl) {
+    return Promise.resolve({ ok: false, error: updateState.status === 'available' ? 'asset-missing' : 'no-update' });
+  }
+
+  const version = String(updateState.latestVersion || 'latest').replace(/[^0-9A-Za-z._-]/g, '_');
+  const dir = path.join(app.getPath('temp'), 'creamy-browser-update', version);
+  const fileName = updateState.assetName || (isPortableBuild() ? UPDATE_ASSET_PORTABLE : UPDATE_ASSET_SETUP);
+  const destPath = path.join(dir, fileName);
+  let lastEmit = 0;
+
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    return Promise.resolve({ ok: false, error: 'temp-failed' });
+  }
+
+  patchUpdateState({ status: 'downloading', error: '', received: 0, percent: 0 });
+
+  updateDownloadPromise = downloadUpdateAsset(updateState.assetUrl, destPath, function (received, total) {
+    const now = Date.now();
+    const size = total || updateState.assetSize || 0;
+    const percent = size > 0 ? Math.min(100, Math.round((received / size) * 100)) : 0;
+    if (now - lastEmit < 180 && percent < 100) return;
+    lastEmit = now;
+    patchUpdateState({ received: received, percent: percent });
+  }).then(function (result) {
+    if (updateState.assetSha256 && result.sha256 !== updateState.assetSha256) {
+      try { fs.unlinkSync(destPath); } catch (err) { /* ignore */ }
+      return patchUpdateState({ status: 'available', error: 'checksum-mismatch', received: 0, percent: 0 });
+    }
+    return patchUpdateState({
+      status: 'downloaded',
+      error: '',
+      received: result.size,
+      percent: 100,
+      downloadedPath: destPath
+    });
+  }).catch(function (err) {
+    return patchUpdateState({ status: 'available', error: (err && err.message) || 'download-failed', received: 0, percent: 0 });
+  }).then(function (result) {
+    updateDownloadPromise = null;
+    return { ok: updateState.status === 'downloaded', error: updateState.error, state: updateState, result: result };
+  });
+  return updateDownloadPromise;
+}
+
+function launchUpdateInstaller() {
+  const file = updateState.downloadedPath;
+  if (!file || !safeRead(function () { return fs.existsSync(file); }, false)) {
+    return { ok: false, error: 'missing-file' };
+  }
+  let child = null;
+  let quitTimer = null;
+  try {
+    child = spawn(file, [], { detached: true, stdio: 'ignore' });
+    if (child && typeof child.unref === 'function') child.unref();
+  } catch (err) {
+    return { ok: false, error: 'launch-failed' };
+  }
+  if (child && typeof child.on === 'function') {
+    child.on('error', function (err) {
+      if (quitTimer) { clearTimeout(quitTimer); quitTimer = null; }
+      patchUpdateState({ status: 'downloaded', error: 'launch-failed' });
+    });
+  }
+  patchUpdateState({ status: 'installing', error: '' });
+  quitTimer = setTimeout(function () { app.quit(); }, 1500);
+  return { ok: true, path: file };
 }
 
 function applyAdblock() {
@@ -623,6 +1002,10 @@ function registerIpc() {
     sync = createSync({
       userDataPath: userDataPath,
       openExternal: function (url) { shell.openExternal(url); },
+      openAuthUrl: function (url) {
+        pendingAuthUrl = url;
+        sendToRenderer('sync:auth-url', { url: url });
+      },
       focusWindow: function () {
         if (!mainWindow || mainWindow.isDestroyed()) return;
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -652,15 +1035,29 @@ function registerIpc() {
   ipcMain.handle('sync:start-auth', async function () {
     if (!sync) return { ok: false, error: 'sync-unavailable' };
     try {
-      return await sync.startAuth();
+      const result = await sync.startAuth();
+      pendingAuthUrl = '';
+      return result;
     } catch (err) {
-      return { ok: false, error: (err && err.code) || 'start-failed' };
+      const code = (err && err.code) || 'start-failed';
+      if (code !== 'busy') pendingAuthUrl = '';
+      return { ok: false, error: code };
     }
   });
 
   ipcMain.handle('sync:cancel-auth', function () {
     if (!sync) return { ok: false, error: 'sync-unavailable' };
     return sync.cancelAuth();
+  });
+
+  ipcMain.handle('sync:get-auth-url', function () {
+    return { url: pendingAuthUrl };
+  });
+
+  ipcMain.handle('sync:open-auth-external', function () {
+    if (!pendingAuthUrl) return { ok: false, error: 'no-auth-url' };
+    shell.openExternal(pendingAuthUrl);
+    return { ok: true, url: pendingAuthUrl };
   });
 
   ipcMain.handle('sync:run', function (event, input) {
@@ -693,6 +1090,7 @@ function registerIpc() {
     settings[key] = value;
     saveSettings();
     if (key === 'adblockEnabled') applyAdblock();
+    if (key === 'autoUpdateCheck' && value === true) checkForUpdate({ manual: false });
     return settings;
   });
 
@@ -856,11 +1254,52 @@ function registerIpc() {
   ipcMain.handle('dl:open-folder', function () {
     shell.openPath(app.getPath('downloads'));
   });
+  ipcMain.handle('dl:cancel', function (event, id) {
+    const rec = findDownload(id);
+    if (!rec) return { ok: false, error: 'not-found' };
+    if (rec.state !== 'progressing' || !rec.item) return { ok: false, error: 'not-running' };
+    safeRead(function () { rec.item.cancel(); }, null);
+    syncDownloadRecord(rec, 'cancelled');
+    rec.item = null;
+    broadcastDownload(rec);
+    return { ok: true, item: downloadSnapshot(rec) };
+  });
+  ipcMain.handle('dl:open', function (event, id) {
+    const rec = findDownload(id);
+    if (!rec || !rec.path) return { ok: false, error: 'not-found' };
+    if (!fs.existsSync(rec.path)) return { ok: false, error: 'missing-file' };
+    shell.openPath(rec.path);
+    return { ok: true };
+  });
+  ipcMain.handle('dl:show', function (event, id) {
+    const rec = findDownload(id);
+    if (!rec || !rec.path) return { ok: false, error: 'not-found' };
+    if (!fs.existsSync(rec.path)) return { ok: false, error: 'missing-file' };
+    shell.showItemInFolder(rec.path);
+    return { ok: true };
+  });
   ipcMain.handle('shell:external', function (event, url) {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
   });
   ipcMain.handle('app:version', function () { return app.getVersion(); });
   ipcMain.handle('dl:list', function () { return downloadStates(); });
+
+  ipcMain.handle('update:get-state', function () {
+    return Object.assign({}, updateState, { currentVersion: app.getVersion() });
+  });
+  ipcMain.handle('update:check', function () { return checkForUpdate({ manual: true }); });
+  ipcMain.handle('update:install', function () { return installUpdate(); });
+  ipcMain.handle('update:launch', function () { return launchUpdateInstaller(); });
+  ipcMain.handle('update:open-folder', function () {
+    const file = updateState.downloadedPath;
+    if (!file || !safeRead(function () { return fs.existsSync(file); }, false)) return { ok: false, error: 'missing-file' };
+    shell.showItemInFolder(file);
+    return { ok: true };
+  });
+  ipcMain.handle('update:open-release', function () {
+    if (updateState.releaseUrl) shell.openExternal(updateState.releaseUrl);
+    return { ok: true };
+  });
 }
 
 app.whenReady().then(function () {
@@ -880,6 +1319,10 @@ app.whenReady().then(function () {
   registerIpc();
   applyAdblock();
   createWindow();
+
+  if (settings.autoUpdateCheck !== false) {
+    setTimeout(function () { checkForUpdate({ manual: false }); }, UPDATE_AUTO_DELAY);
+  }
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

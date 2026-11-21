@@ -80,6 +80,9 @@ function createSync(opts) {
     ? opts.userDataPath
     : function () { return opts.userDataPathDir || ''; };
   var openExternal = opts.openExternal || function () { };
+  // 인증 페이지는 기본적으로 크리미 브라우저 안의 새 탭에서 연다.
+  // openAuthUrl 이 없을 때만 시스템 브라우저로 연다.
+  var openAuthUrl = opts.openAuthUrl || openExternal;
   var focusWindow = opts.focusWindow || function () { };
   var onUpdate = opts.onUpdate || function () { };
   var authUrl = opts.authUrl || DEFAULT_AUTH_URL;
@@ -90,6 +93,7 @@ function createSync(opts) {
   var authServer = null;
   var authPromise = null;
   var authState = '';
+  var pendingAuthFinish = null;
 
   var store = {
     lkUser: null,
@@ -209,11 +213,14 @@ function createSync(opts) {
       function finish(result) {
         if (settled) return;
         settled = true;
+        if (pendingAuthFinish === finish) pendingAuthFinish = null;
         if (timer) { clearTimeout(timer); timer = null; }
         closeAuthServer();
         emit();
         resolve(result);
       }
+
+      pendingAuthFinish = finish;
 
       var server = http.createServer(function (req, res) {
         var origin = req.headers.origin || '';
@@ -293,7 +300,7 @@ function createSync(opts) {
         var sep = authUrl.indexOf('?') >= 0 ? '&' : '?';
         var target = authUrl + sep + 'port=' + port + '&state=' + seq;
         try {
-          openExternal(target);
+          openAuthUrl(target);
         } catch (e) {
           closeAuthServer();
           finish({ ok: false, error: 'open-failed', detail: String((e && e.message) || e) });
@@ -631,11 +638,20 @@ function createSync(opts) {
     return { ok: true };
   }
 
+  function cancelAuth() {
+    var finish = pendingAuthFinish;
+    pendingAuthFinish = null;
+    closeAuthServer();
+    if (finish) finish({ ok: false, error: 'canceled' });
+    emit();
+    return { ok: true };
+  }
+
   return {
     load: load,
     state: stateSnapshot,
     startAuth: startAuth,
-    cancelAuth: function () { closeAuthServer(); emit(); return { ok: true }; },
+    cancelAuth: cancelAuth,
     run: run,
     logout: logout,
     setPassSync: setPassSync,

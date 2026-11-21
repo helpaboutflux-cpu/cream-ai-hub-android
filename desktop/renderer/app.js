@@ -71,6 +71,10 @@
     bookmarks: [],
     bag: [],
     downloads: [],
+    update: null,
+    updateBannerDismissed: '',
+    profileOpen: false,
+    authTab: { id: null, returnTabId: null },
     activePanel: null,
     translating: {}
   };
@@ -132,6 +136,12 @@
   function closeTab(id) {
     var tab = tabById(id);
     if (!tab) return;
+    if (state.authTab.id !== null && state.authTab.id === id) {
+      // 사용자가 인증 탭을 닫으면 대기 중인 연결도 취소한다.
+      state.authTab.id = null;
+      var authApi = bridgeGroup('sync', ['cancelAuth']);
+      if (authApi) { try { authApi.cancelAuth(); } catch (err) { /* ignore */ } }
+    }
     var index = state.tabs.indexOf(tab);
     state.tabs.splice(index, 1);
     if (tab.webview && tab.webview.parentNode) tab.webview.parentNode.removeChild(tab.webview);
@@ -1047,7 +1057,8 @@
       var el = document.createElement('div');
       el.className = 'list-item';
       var stateText = item.state === 'completed' ? '완료' : (item.state === 'failed' ? '실패' : (item.kind === 'media' ? '추출 중' : '다운로드 중'));
-      if (item.state === 'canceled') stateText = '취소됨';
+      if (item.state === 'canceled' || item.state === 'cancelled') stateText = '취소됨';
+      if (item.state === 'interrupted') stateText = '중단됨';
       var kindText = item.kind === 'media' ? (item.mode === 'audio' ? 'M4A 추출' : 'MP4 추출') : '파일';
       el.innerHTML = '<div class="li-main">' +
         '<div class="li-title">' + escapeHtml(item.filename || '(알 수 없음)') + '</div>' +
@@ -1056,6 +1067,14 @@
         '</div>';
       var acts = document.createElement('div');
       acts.className = 'li-actions';
+      if (item.state === 'progressing' && item.kind !== 'media' && item.id) {
+        var stopBtn = document.createElement('button');
+        stopBtn.className = 'li-btn text';
+        stopBtn.textContent = '중지';
+        stopBtn.title = '다운로드 취소';
+        stopBtn.addEventListener('click', function () { cancelDownload(item); });
+        acts.appendChild(stopBtn);
+      }
       if (item.path && item.state === 'completed') {
         var openBtn = document.createElement('button');
         openBtn.className = 'li-btn';
@@ -1063,10 +1082,25 @@
         openBtn.innerHTML = SVG_ICONS.open;
         openBtn.addEventListener('click', function () { bridgeCall('downloads', 'openFile', item.path); });
         acts.appendChild(openBtn);
+        var showBtn = document.createElement('button');
+        showBtn.className = 'li-btn text';
+        showBtn.textContent = '폴더';
+        showBtn.title = '폴더에서 보기';
+        showBtn.addEventListener('click', function () { bridgeCall('downloads', 'show', item.id); });
+        acts.appendChild(showBtn);
       }
       el.appendChild(acts);
       body.appendChild(el);
     });
+  }
+
+  function cancelDownload(item) {
+    var api = bridgeGroup('downloads', ['cancel']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    Promise.resolve(api.cancel(item.id)).then(function (res) {
+      if (res && res.ok) showToast('다운로드를 취소했습니다.');
+      else showToast('이미 끝난 다운로드는 취소할 수 없습니다.');
+    }, function () { showToast(BRIDGE_GONE_TEXT); });
   }
 
   /* ---------- Menu panel ---------- */
@@ -1145,7 +1179,9 @@
       'folder-create-failed': 'Drive에 백업 폴더를 만들지 못했습니다.',
       'server-error': 'Google 서버가 잠시 응답하지 않습니다.',
       'open-failed': '브라우저를 열지 못했습니다. 기본 브라우저 설정을 확인해 주세요.',
-      'bad-state': '연결 요청이 만료되었습니다. 계정 연결을 다시 눌러 주세요.'
+      'bad-state': '연결 요청이 만료되었습니다. 계정 연결을 다시 눌러 주세요.',
+      'canceled': '계정 연결을 취소했습니다.',
+      'cancel-failed': '계정 연결 요청을 닫지 못했습니다.'
     };
     if (!code) return '동기화를 마치지 못했습니다.';
     return map[code] || ('동기화를 마치지 못했습니다 (' + code + ').');
@@ -1159,6 +1195,7 @@
   function syncApplySnapshot(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') return;
     state.sync = snapshot;
+    safeRun('프로필 배지', function () { refreshProfileButton(); });
     if (state.activePanel === 'settings') safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
   }
 
@@ -1178,6 +1215,7 @@
     } catch (err) {
       console.error('[creamy] sync.getState 실패:', err);
     }
+    safeRun('프로필 배지', function () { refreshProfileButton(); });
     return state.sync;
   }
 
@@ -1191,12 +1229,16 @@
       if (btn) { btn.disabled = false; btn.textContent = label; }
       if (res && res.ok) {
         state.sync = res.state || state.sync;
+        closeAuthTab();
         showToast('LK 계정과 Google Drive를 연결했습니다.');
+        safeRun('프로필 배지', function () { refreshProfileButton(); });
         safeRun('연결 후 동기화', function () {
           if (state.sync && state.sync.drive && state.sync.drive.connected) syncRunNow(null, { silent: false });
         });
       } else {
+        if (!res || res.error !== 'busy') closeAuthTab();
         showToast(syncErrorText(res && res.error));
+        safeRun('프로필 배지', function () { refreshProfileButton(); });
       }
       safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
     }, function (err) {
@@ -1221,6 +1263,7 @@
       if (btn) { btn.disabled = false; btn.textContent = label; }
       var done = function () {
         loadSyncState().then(function () {
+          safeRun('프로필 배지', function () { refreshProfileButton(); });
           if (!options.silent) safeRun('설정 다시 그리기', function () { renderPanel(state.activePanel || 'settings'); });
         });
       };
@@ -1265,6 +1308,8 @@
     if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
     api.logout().then(function (res) {
       if (res && res.state) state.sync = res.state;
+      closeProfileMenu();
+      safeRun('프로필 배지', function () { refreshProfileButton(); });
       showToast('LK 계정 연결을 해제했습니다. 이 기기의 데이터는 그대로 남습니다.');
       safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
     }, function () { showToast(BRIDGE_GONE_TEXT); });
@@ -1870,7 +1915,7 @@
     var nameInput = document.createElement('input');
     nameInput.className = 'set-input';
     nameInput.value = s.userName || '';
-    nameInput.placeholder = '예: 민중';
+    nameInput.placeholder = '예: 크리미 사용자';
     nameInput.addEventListener('change', function () {
       s.userName = nameInput.value.trim();
       lsSet('settings', s);
@@ -2253,17 +2298,108 @@
       '사용자 데이터 폴더의 <b>creamy-lock.json</b> 파일을 삭제해 잠금 설정을 초기화하세요.';
     gLock.appendChild(lockHint);
 
-    var gInfo = group();
-    var infoRow = row(gInfo, '버전', 'Creamy Browser for Windows');
-    var versionCall = bridgeCall('app', 'version');
-    if (versionCall && typeof versionCall.then === 'function') {
-      versionCall.then(function (v) {
-        var ctrl = document.createElement('div');
-        ctrl.className = 'set-control';
-        ctrl.innerHTML = '<span class="li-badge">v' + v + '</span>';
-        infoRow.appendChild(ctrl);
+    var gUpdate = group();
+    var up = state.update || {};
+
+    switchRow(gUpdate, '자동 업데이트 확인', '앱을 열 때 GitHub Releases에서 새 버전을 조용히 확인합니다.', ms.autoUpdateCheck !== false, function (next) {
+      Promise.resolve(bridgeCall('settings', 'set', 'autoUpdateCheck', next)).then(function (updated) {
+        state.mainSettings = updated || state.mainSettings;
+        showToast(next ? '자동 업데이트 확인을 켰습니다.' : '자동 업데이트 확인을 껐습니다.');
+        if (next) requestUpdateCheck(null);
       });
+    });
+
+    var versionRow = row(gUpdate, '버전', 'Creamy Browser for Windows · ' + (up.portable ? '무설치판' : '설치판'));
+    var versionCtrl = document.createElement('div');
+    versionCtrl.className = 'set-control';
+    var versionBadge = document.createElement('span');
+    versionBadge.className = 'li-badge';
+    versionBadge.id = 'appVersionBadge';
+    versionBadge.textContent = up.currentVersion ? ('v' + up.currentVersion) : 'v-.-.-';
+    versionCtrl.appendChild(versionBadge);
+    versionRow.appendChild(versionCtrl);
+    if (!up.currentVersion) {
+      var versionCall = bridgeCall('app', 'version');
+      if (versionCall && typeof versionCall.then === 'function') {
+        versionCall.then(function (v) { versionBadge.textContent = 'v' + v; });
+      }
     }
+
+    var statusRow = document.createElement('div');
+    statusRow.className = 'set-row column';
+    var statusLabelBox = document.createElement('div');
+    statusLabelBox.innerHTML = '<div class="set-label">최신 상태</div>';
+    var statusDesc = document.createElement('div');
+    statusDesc.className = 'set-desc';
+    statusDesc.id = 'updateStatusText';
+    statusDesc.textContent = updateStatusText(up);
+    if (up.status === 'error') statusDesc.classList.add('upd-status-error');
+    statusLabelBox.appendChild(statusDesc);
+    statusRow.appendChild(statusLabelBox);
+    gUpdate.appendChild(statusRow);
+
+    if (up.status === 'downloading') {
+      var track = document.createElement('div');
+      track.className = 'progress-track upd-progress';
+      var fill = document.createElement('div');
+      fill.className = 'progress-fill';
+      fill.id = 'updateProgressFill';
+      fill.style.width = Math.max(2, up.percent || 0) + '%';
+      track.appendChild(fill);
+      statusRow.appendChild(track);
+    }
+
+    var updateActions = document.createElement('div');
+    updateActions.className = 'upd-actions';
+
+    var checkBtn = document.createElement('button');
+    checkBtn.className = 'btn ghost';
+    checkBtn.id = 'updateCheckBtn';
+    checkBtn.textContent = up.status === 'checking' ? '확인 중' : '지금 확인';
+    checkBtn.disabled = up.status === 'checking' || up.status === 'downloading' || up.status === 'installing';
+    checkBtn.addEventListener('click', function () { requestUpdateCheck(this); });
+    updateActions.appendChild(checkBtn);
+
+    if (up.status === 'available') {
+      var installBtn = document.createElement('button');
+      installBtn.className = 'btn';
+      installBtn.id = 'updateInstallBtn';
+      installBtn.textContent = '지금 업데이트 설치';
+      installBtn.addEventListener('click', requestUpdateInstall);
+      updateActions.appendChild(installBtn);
+    }
+
+    if (up.status === 'downloaded') {
+      var launchBtn = document.createElement('button');
+      launchBtn.className = 'btn';
+      launchBtn.id = 'updateLaunchBtn';
+      launchBtn.textContent = '지금 설치하고 다시 시작';
+      launchBtn.addEventListener('click', requestUpdateLaunch);
+      updateActions.appendChild(launchBtn);
+
+      var folderBtn = document.createElement('button');
+      folderBtn.className = 'btn ghost';
+      folderBtn.id = 'updateFolderBtn';
+      folderBtn.textContent = '폴더에서 보기';
+      folderBtn.addEventListener('click', function () { bridgeCall('updates', 'openFolder'); });
+      updateActions.appendChild(folderBtn);
+    }
+
+    if (up.releaseUrl) {
+      var notesBtn = document.createElement('button');
+      notesBtn.className = 'btn ghost';
+      notesBtn.id = 'updateNotesBtn';
+      notesBtn.textContent = '릴리즈 노트';
+      notesBtn.addEventListener('click', function () { bridgeCall('updates', 'openRelease'); });
+      updateActions.appendChild(notesBtn);
+    }
+
+    statusRow.appendChild(updateActions);
+
+    var updHint = document.createElement('div');
+    updHint.className = 'set-hint';
+    updHint.textContent = '업데이트 파일은 GitHub Releases에서 내려받고 SHA-256을 릴리즈 정보와 대조한 뒤 실행합니다. 설치하면 열어 둔 탭은 다음 실행 때 복원됩니다.';
+    gUpdate.appendChild(updHint);
   }
 
   /* ---------- Context menus ---------- */
@@ -2430,6 +2566,372 @@
     toast.classList.remove('hidden');
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toast.classList.add('hidden'); }, 2600);
+  }
+
+  /* ---------- 자동 업데이트 ---------- */
+
+  function updateSnapshot() { return state.update || {}; }
+
+  function updateErrorText(code) {
+    var map = {
+      'timeout': '서버 응답이 없습니다. 잠시 뒤 다시 확인하세요.',
+      'HTTP 404': '릴리즈 정보를 찾지 못했습니다.',
+      'HTTP 403': 'GitHub 요청 한도를 넘었습니다. 잠시 뒤 다시 확인하세요.',
+      'invalid-json': '릴리즈 정보를 읽지 못했습니다.',
+      'checksum-mismatch': '내려받은 파일 검증에 실패했습니다. 다시 시도하세요.',
+      'asset-missing': '이 빌드에 맞는 설치 파일이 릴리즈에 없습니다.',
+      'download-failed': '업데이트 파일을 내려받지 못했습니다.',
+      'temp-failed': '임시 폴더를 만들지 못했습니다.'
+    };
+    if (!code) return '업데이트를 확인하지 못했습니다.';
+    return map[code] || ('업데이트를 확인하지 못했습니다 (' + code + ').');
+  }
+
+  function updateStatusText(u) {
+    if (!u || !u.status || u.status === 'idle') return '아직 확인하지 않았습니다. 지금 확인을 누르면 GitHub Releases에서 새 버전을 찾습니다.';
+    if (u.status === 'checking') return '새 버전을 확인하는 중입니다.';
+    if (u.status === 'current') return '최신 버전을 쓰고 있습니다. (v' + (u.currentVersion || '') + ')';
+    if (u.status === 'available') {
+      return '새 버전 v' + (u.latestVersion || '') + (u.assetSize ? ' · ' + formatBytes(u.assetSize) : '') + ' 사용 가능';
+    }
+    if (u.status === 'downloading') {
+      return '내려받는 중 ' + (u.percent || 0) + '%' + (u.assetSize ? ' · ' + formatBytes(u.received) + ' / ' + formatBytes(u.assetSize) : '');
+    }
+    if (u.status === 'downloaded') return '다운로드를 마쳤습니다. 설치하면 앱이 닫히고 새 버전이 실행됩니다.';
+    if (u.status === 'installing') return '설치 파일을 실행했습니다. 앱을 닫는 중입니다.';
+    if (u.status === 'error') return updateErrorText(u.error);
+    return '아직 확인하지 않았습니다.';
+  }
+
+  function patchUpdateProgress(u) {
+    var text = $('#updateStatusText');
+    if (text) text.textContent = updateStatusText(u);
+    var fill = $('#updateProgressFill');
+    if (fill) fill.style.width = Math.max(2, u.percent || 0) + '%';
+  }
+
+  function applyUpdateState(next) {
+    if (!next || typeof next !== 'object') return;
+    var prev = state.update || {};
+    state.update = next;
+    safeRun('업데이트 배너', function () { renderUpdateBanner(); });
+    if (state.activePanel === 'settings') {
+      if (next.status === 'downloading' && prev.status === 'downloading') {
+        safeRun('업데이트 진행률', function () { patchUpdateProgress(next); });
+      } else {
+        safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
+      }
+    }
+  }
+
+  function renderUpdateBanner() {
+    var banner = $('#update-banner');
+    if (!banner) return;
+    var u = updateSnapshot();
+    var version = u.latestVersion || '';
+    var visible = u.status === 'available' && !!version && state.updateBannerDismissed !== version;
+    if (!visible) { banner.classList.add('hidden'); return; }
+    $('#ub-text').textContent = '새 버전 v' + version + '가 있습니다.';
+    banner.classList.remove('hidden');
+  }
+
+  function initUpdateBanner() {
+    var openBtn = $('#ub-open');
+    if (openBtn) openBtn.addEventListener('click', function () { openPanel('settings'); });
+    var closeBtn = $('#ub-close');
+    if (closeBtn) closeBtn.addEventListener('click', function () {
+      state.updateBannerDismissed = updateSnapshot().latestVersion || '';
+      renderUpdateBanner();
+    });
+  }
+
+  function requestUpdateCheck(btn) {
+    var api = bridgeGroup('updates', ['check']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    if (btn) { btn.disabled = true; btn.textContent = '확인 중'; }
+    Promise.resolve(api.check()).then(function (snap) {
+      if (snap) applyUpdateState(snap);
+      var u = updateSnapshot();
+      if (u.status === 'current') showToast('최신 버전을 쓰고 있습니다. (v' + (u.currentVersion || '') + ')');
+      else if (u.status === 'available') showToast('새 버전 v' + u.latestVersion + '가 있습니다.');
+      else if (u.status === 'error') showToast(updateErrorText(u.error));
+    }, function (err) {
+      console.error('[creamy] update.check 실패:', err);
+      showToast(BRIDGE_GONE_TEXT);
+    });
+  }
+
+  function requestUpdateInstall() {
+    var api = bridgeGroup('updates', ['install']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    showToast('업데이트 파일을 내려받습니다.');
+    Promise.resolve(api.install()).then(function (res) {
+      if (res && res.state) applyUpdateState(res.state);
+      if (res && res.ok) showToast('다운로드를 마쳤습니다. 설치 버튼을 누르면 새 버전으로 다시 시작됩니다.');
+      else showToast(updateErrorText(res && res.error));
+    }, function (err) {
+      console.error('[creamy] update.install 실패:', err);
+      showToast(BRIDGE_GONE_TEXT);
+    });
+  }
+
+  function requestUpdateLaunch() {
+    var api = bridgeGroup('updates', ['launch']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    Promise.resolve(api.launch()).then(function (res) {
+      if (res && res.ok) showToast('설치 파일을 실행합니다. 크리미 브라우저가 곧 닫힙니다.');
+      else showToast('설치 파일을 실행하지 못했습니다. 폴더에서 직접 실행하세요.');
+    }, function () { showToast(BRIDGE_GONE_TEXT); });
+  }
+
+  /* ---------- LK 계정 프로필 (툴바 오른쪽) ---------- */
+
+  var LK_ACCOUNT_URL = 'https://helpaboutflux-cpu.github.io/cream-ai-hub-android/auth.html';
+
+  function profileUser() {
+    return (state.sync && state.sync.lkUser) || null;
+  }
+
+  function profileInitials(user) {
+    var name = user && user.name ? String(user.name).trim() : '';
+    var email = user && user.email ? String(user.email).trim() : '';
+    var source = name || email;
+    if (!source) return '?';
+    return source.slice(0, 1).toUpperCase();
+  }
+
+  function refreshProfileButton() {
+    var btn = $('#btn-profile');
+    if (!btn) return;
+    var user = profileUser();
+    var initials = $('#profile-initials');
+    var label = $('#profile-label');
+    if (user) {
+      btn.classList.remove('login');
+      btn.classList.add('avatar-mode');
+      if (label) label.classList.add('hidden');
+      if (initials) {
+        initials.classList.remove('hidden');
+        initials.textContent = profileInitials(user);
+      }
+      btn.title = (user.name || user.email || 'LK 계정') + ' · LK 계정';
+    } else {
+      btn.classList.add('login');
+      btn.classList.remove('avatar-mode');
+      if (initials) initials.classList.add('hidden');
+      if (label) {
+        label.classList.remove('hidden');
+        label.textContent = state.profileBusy ? '연결 중' : '로그인';
+      }
+      btn.title = 'LK 계정으로 로그인';
+    }
+    btn.setAttribute('aria-expanded', state.profileOpen ? 'true' : 'false');
+    if (state.profileOpen) renderProfileMenu();
+  }
+
+  function closeProfileMenu() {
+    state.profileOpen = false;
+    var menu = $('#profile-menu');
+    if (menu) menu.classList.add('hidden');
+    var btn = $('#btn-profile');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleProfileMenu() {
+    if (state.profileOpen) { closeProfileMenu(); return; }
+    state.profileOpen = true;
+    renderProfileMenu();
+    var btn = $('#btn-profile');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  }
+
+  function renderProfileMenu() {
+    var menu = $('#profile-menu');
+    if (!menu) return;
+    menu.innerHTML = '';
+    var user = profileUser();
+    if (!user) {
+      state.profileOpen = false;
+      menu.classList.add('hidden');
+      return;
+    }
+    var snap = state.sync || {};
+    var drive = snap.drive || {};
+
+    var head = document.createElement('div');
+    head.className = 'pm-head';
+    var avatar = document.createElement('span');
+    avatar.className = 'profile-avatar';
+    avatar.textContent = profileInitials(user);
+    head.appendChild(avatar);
+    var idBox = document.createElement('div');
+    idBox.className = 'pm-id';
+    var nameEl = document.createElement('div');
+    nameEl.className = 'pm-name';
+    nameEl.textContent = user.name || 'LK 계정';
+    var mailEl = document.createElement('div');
+    mailEl.className = 'pm-mail';
+    mailEl.textContent = user.email || '';
+    idBox.appendChild(nameEl);
+    idBox.appendChild(mailEl);
+    head.appendChild(idBox);
+    menu.appendChild(head);
+
+    function infoRow(key, value, onState) {
+      var r = document.createElement('div');
+      r.className = 'pm-row';
+      var k = document.createElement('span');
+      k.className = 'pm-key';
+      k.textContent = key;
+      var v = document.createElement('span');
+      v.className = 'pm-state' + (onState ? ' on' : '');
+      v.textContent = value;
+      r.appendChild(k);
+      r.appendChild(v);
+      menu.appendChild(r);
+      return r;
+    }
+
+    infoRow('Google Drive',
+      drive.connected ? '동기화 연결됨' : (drive.expired ? '연결 만료' : '연결 안 됨'),
+      drive.connected === true);
+    infoRow('마지막 동기화', snap.lastSyncAt ? syncTimeText(snap.lastSyncAt) : '없음', false);
+
+    if (snap.lastError) {
+      var err = document.createElement('div');
+      err.className = 'pm-note error';
+      err.textContent = syncErrorText(snap.lastError);
+      menu.appendChild(err);
+    }
+
+    var actions = document.createElement('div');
+    actions.className = 'pm-actions';
+
+    var syncBtn = document.createElement('button');
+    syncBtn.className = 'btn';
+    syncBtn.id = 'profileSyncBtn';
+    syncBtn.textContent = snap.busy ? '동기화 중' : '지금 동기화';
+    syncBtn.disabled = !drive.connected || !!snap.busy;
+    syncBtn.addEventListener('click', function () { syncRunNow(syncBtn); });
+    actions.appendChild(syncBtn);
+
+    var accountBtn = document.createElement('button');
+    accountBtn.className = 'btn ghost';
+    accountBtn.id = 'profileAccountBtn';
+    accountBtn.textContent = 'LK 계정 열기';
+    accountBtn.addEventListener('click', function () {
+      closeProfileMenu();
+      bridgeCall('shell', 'external', LK_ACCOUNT_URL);
+    });
+    actions.appendChild(accountBtn);
+
+    var outBtn = document.createElement('button');
+    outBtn.className = 'btn ghost';
+    outBtn.id = 'profileLogoutBtn';
+    outBtn.textContent = '로그아웃';
+    outBtn.addEventListener('click', function () {
+      closeProfileMenu();
+      syncLogout();
+    });
+    actions.appendChild(outBtn);
+
+    menu.appendChild(actions);
+
+    var note = document.createElement('div');
+    note.className = 'pm-note';
+    note.textContent = '세션과 동기화 토큰은 이 PC의 creamy-sync.json에만 저장됩니다.';
+    menu.appendChild(note);
+
+    var fallback = document.createElement('button');
+    fallback.className = 'pm-link';
+    fallback.id = 'profileExternalAuth';
+    fallback.textContent = '인증 화면이 열리지 않으면 시스템 브라우저에서 열기';
+    fallback.addEventListener('click', function () {
+      var api = bridgeGroup('sync', ['openAuthExternal']);
+      if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+      Promise.resolve(api.openAuthExternal()).then(function (res) {
+        if (!res || !res.ok) showToast('다시 로그인을 눌러 인증 주소를 새로 만들어 주세요.');
+        else showToast('시스템 브라우저에서 인증 화면을 열었습니다.');
+      }, function () { showToast(BRIDGE_GONE_TEXT); });
+    });
+    menu.appendChild(fallback);
+
+    menu.classList.remove('hidden');
+  }
+
+  function openAuthTab(url) {
+    if (!url) return;
+    if (state.authTab.id !== null && tabById(state.authTab.id)) {
+      var existing = tabById(state.authTab.id);
+      navigateTab(existing, url);
+      activateTab(existing.id);
+      return;
+    }
+    state.authTab.returnTabId = state.activeTabId;
+    var tab = createTab(url, { title: 'LK 계정 연결' });
+    state.authTab.id = tab.id;
+  }
+
+  function closeAuthTab() {
+    var id = state.authTab.id;
+    var back = state.authTab.returnTabId;
+    state.authTab.id = null;
+    state.authTab.returnTabId = null;
+    if (id !== null && tabById(id)) closeTab(id);
+    if (back !== null && tabById(back)) activateTab(back);
+  }
+
+  function profileLogin() {
+    var api = bridgeGroup('sync', ['startAuth']);
+    if (!api) { showToast(BRIDGE_GONE_TEXT); return; }
+    var btn = $('#btn-profile');
+    if (btn) btn.disabled = true;
+    state.profileBusy = true;
+    refreshProfileButton();
+    showToast('크리미 브라우저 새 탭에서 LK 계정 연결을 마쳐 주세요.');
+    api.startAuth().then(function (res) {
+      state.profileBusy = false;
+      if (btn) btn.disabled = false;
+      if (res && res.ok) {
+        state.sync = res.state || state.sync;
+        closeAuthTab();
+        showToast('LK 계정과 Google Drive를 연결했습니다.');
+        refreshProfileButton();
+        if (state.sync && state.sync.drive && state.sync.drive.connected) syncRunNow(null, { silent: false });
+      } else {
+        if (!res || res.error !== 'busy') closeAuthTab();
+        showToast(syncErrorText(res && res.error));
+        refreshProfileButton();
+      }
+      if (state.activePanel === 'settings') safeRun('설정 다시 그리기', function () { renderPanel('settings'); });
+    }, function (err) {
+      console.error('[creamy] sync.startAuth 실패:', err);
+      state.profileBusy = false;
+      if (btn) btn.disabled = false;
+      closeAuthTab();
+      refreshProfileButton();
+      showToast(BRIDGE_GONE_TEXT);
+    });
+  }
+
+  function initProfileButton() {
+    var btn = $('#btn-profile');
+    if (btn) btn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (!profileUser()) { profileLogin(); return; }
+      toggleProfileMenu();
+    });
+    document.addEventListener('click', function (event) {
+      if (!state.profileOpen) return;
+      var menu = $('#profile-menu');
+      if (menu && menu.contains(event.target)) return;
+      if (btn && (event.target === btn || btn.contains(event.target))) return;
+      closeProfileMenu();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (state.profileOpen && event.key === 'Escape') closeProfileMenu();
+    });
+    refreshProfileButton();
   }
 
   /* ---------- Browser lock ---------- */
@@ -2601,6 +3103,25 @@
       }, function () { /* ignore */ });
     });
 
+    safeRun('업데이트 상태', function () {
+      if (bridge && bridge.updates && typeof bridge.updates.onState === 'function') {
+        bridge.updates.onState(function (snap) { applyUpdateState(snap); });
+      }
+      if (bridge && bridge.updates && typeof bridge.updates.getState === 'function') {
+        Promise.resolve(bridge.updates.getState()).then(function (snap) {
+          if (snap) applyUpdateState(snap);
+        }, function () { /* ignore */ });
+      }
+    });
+
+    safeRun('인증 탭', function () {
+      if (bridge && bridge.sync && typeof bridge.sync.onAuthUrl === 'function') {
+        bridge.sync.onAuthUrl(function (payload) {
+          if (payload && payload.url) openAuthTab(payload.url);
+        });
+      }
+    });
+
     // 금고 메타는 미리 읽어 둔다(패널을 열 때 바로 상태를 보여 주기 위해).
     safeRun('금고 상태', function () { loadPassVault(false); });
   }
@@ -2762,6 +3283,9 @@
       onEl('#btn-newtab', 'click', function () { createTab(startPageUrl()); });
     });
 
+    safeRun('LK 프로필 버튼', function () { initProfileButton(); });
+    safeRun('업데이트 배너', function () { initUpdateBanner(); });
+
     safeRun('탐색 버튼', function () {
       onEl('#nav-back', 'click', function () {
         var tab = activeTab();
@@ -2885,6 +3409,16 @@
         if (item.state === 'completed') showToast('다운로드 완료: ' + item.filename);
         if (item.state === 'failed') showToast('다운로드 실패: ' + item.filename);
       });
+    });
+
+    safeRun('다운로드 목록', function () {
+      var api = bridgeGroup('downloads', ['list']);
+      if (!api) return;
+      Promise.resolve(api.list()).then(function (list) {
+        if (!Array.isArray(list) || list.length === 0) return;
+        state.downloads = list;
+        if (state.activePanel === 'downloads') renderPanel('downloads');
+      }, function () { /* ignore */ });
     });
 
     safeRun('종료 시 세션 저장', function () {
