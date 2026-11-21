@@ -1,0 +1,42 @@
+name: Publish Creamy Windows Release
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/publish-creamy-assets.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag'
+        required: false
+        default: 'creamy-v1.2.0'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build Windows Targets
+        working-directory: desktop
+        run: |
+          npm install
+          npm run build
+        env:
+          ELECTRON_BUILDER_ALLOW_UNRESOLVED: true
+      - name: Upload to Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.event.inputs.tag || 'creamy-v1.2.0' }}"
+          cp desktop/dist/Cream-ai-Hub-Windows-Setup.exe creamy-browser-setup.exe
+          cp desktop/dist/Cream-ai-Hub-Windows-Portable.exe creamy-browser-portable.exe
+          gh release upload "$TAG" creamy-browser-setup.exe creamy-browser-portable.exe --clobber
