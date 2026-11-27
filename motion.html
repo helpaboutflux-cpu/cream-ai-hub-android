@@ -60,6 +60,7 @@ tailwind.config = {
 </script>
 <link rel="stylesheet" href="lemon-ui.css">
 <script src="lemon-ui.js"></script>
+<script src="webm-duration.js"></script>
 <style>
   :root { --brand: #3b5bdb; --brand-2: #6b83ef; --brand-deep: #273a91; }
   .stage-wrap { position: relative; border-radius: 20px; overflow: hidden; background: #05070d; border: 1px solid rgba(120,140,190,.22); }
@@ -85,6 +86,13 @@ tailwind.config = {
   .export-box.show { display: block; }
   .export-track { height: 5px; border-radius: 5px; background: color-mix(in srgb, currentColor 14%, transparent); overflow: hidden; }
   .export-track i { display: block; height: 100%; width: 0; border-radius: 5px; background: linear-gradient(90deg, var(--brand-deep), var(--brand-2)); transition: width .18s linear; }
+  .export-note { margin-top: 7px; font-size: 11px; font-weight: 600; color: #b4801f; line-height: 1.4; }
+  .dark .export-note { color: #e3b25a; }
+  .export-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
+  .export-link { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; cursor: pointer; padding: 6px 12px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 11.5px; font-weight: 700; }
+  .export-link:hover { background: var(--brand-deep); }
+  .export-share { border: 1px solid rgba(120,140,190,.4); background: transparent; color: inherit; border-radius: 999px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+  .export-share:hover { border-color: var(--brand); color: var(--brand); }
   [hidden] { display: none !important; }
   @media (max-height: 620px) { .stage-wrap canvas { max-height: 52vh; } }
 </style>
@@ -225,6 +233,11 @@ tailwind.config = {
             <button type="button" id="btnCancel" class="ghost-btn !px-2 !py-1 !text-[11px]">취소</button>
           </div>
           <div class="export-track"><i id="exportFill"></i></div>
+          <div class="export-note" id="exportNote" hidden></div>
+          <div class="export-actions" id="exportActions" hidden>
+            <a class="export-link" id="exportLink" href="#" download rel="noopener">자동 저장이 안 되면 여기를 눌러 저장</a>
+            <button type="button" class="export-share" id="exportShare" hidden>공유해서 저장</button>
+          </div>
         </div>
       </div>
     </div>
@@ -759,26 +772,180 @@ tailwind.config = {
   var exportFill = document.getElementById('exportFill');
   var exportPct = document.getElementById('exportPct');
   var exportLabel = document.getElementById('exportLabel');
+  var exportNote = document.getElementById('exportNote');
+  var exportActions = document.getElementById('exportActions');
+  var exportLink = document.getElementById('exportLink');
+  var exportShare = document.getElementById('exportShare');
   var btnExport = document.getElementById('btnExport');
   var btnCancel = document.getElementById('btnCancel');
   var recState = { rec: null, discard: false, chunks: [] };
   var speedBeforeExport = 1;
+  var lastBlob = null, lastUrl = null;
+  var REVOKE_DELAY = 120000;
 
-  function pickMime() {
-    var list = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-    for (var i = 0; i < list.length; i++) {
-      if (window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i];
+  /* WebM first: MediaRecorder's WebM is a live stream without a Duration
+     header (players show 0:00), and KM_WEBM repairs that header afterwards.
+     mp4 only takes over where the browser cannot record WebM at all. */
+  var MIME_CANDIDATES = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4'
+  ];
+
+  function pickMimes() {
+    var out = [];
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return out;
+    for (var i = 0; i < MIME_CANDIDATES.length; i++) {
+      try { if (MediaRecorder.isTypeSupported(MIME_CANDIDATES[i])) out.push(MIME_CANDIDATES[i]); } catch (e) { }
     }
-    return 'video/webm';
+    return out;
+  }
+
+  function stamp() {
+    var d = new Date();
+    var p2 = function (n) { return ('0' + n).slice(-2); };
+    return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' +
+      p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+  }
+
+  function kb(n) {
+    if (!n) return '0 KB';
+    if (n < 1024 * 1024) return Math.max(1, Math.round(n / 1024)) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
   }
 
   function setExportUI(s) {
-    if (s.phase === 'render') exportLabel.textContent = '영상으로 녹화하는 중';
-    else if (s.phase === 'done') exportLabel.textContent = '저장했습니다 · ' + Math.max(1, Math.round(s.size / 1024)) + ' KB';
+    if (s.phase === 'render') exportLabel.textContent = s.attempt > 1 ? '다시 녹화하는 중' : '영상으로 녹화하는 중';
+    else if (s.phase === 'done') exportLabel.textContent = '저장했습니다 · ' + kb(s.size) + (s.seconds ? ' · ' + s.seconds.toFixed(1) + '초' : '');
     else if (s.phase === 'cancel') exportLabel.textContent = '녹화를 취소했습니다';
     else if (s.error) exportLabel.textContent = s.error;
     exportFill.style.width = Math.round((s.progress || 0) * 100) + '%';
     exportPct.textContent = Math.round((s.progress || 0) * 100) + '%';
+    exportNote.hidden = !s.warn;
+    if (s.warn) exportNote.textContent = s.warn;
+    if (s.phase === 'done' && s.url) {
+      exportLink.href = s.url;
+      exportLink.download = s.name || 'lemon-motion.webm';
+      exportActions.hidden = false;
+      exportShare.hidden = !s.share;
+      btnCancel.hidden = true;
+    } else if (s.phase !== 'done') {
+      exportActions.hidden = true;
+    }
+    if (s.phase === 'render') btnCancel.hidden = false;
+  }
+
+  function closeUrl() {
+    if (lastUrl) { try { URL.revokeObjectURL(lastUrl); } catch (e) { } lastUrl = null; }
+  }
+
+  function shareSupported(blob, name) {
+    try {
+      if (!navigator.canShare || typeof File !== 'function') return false;
+      var f = new File([blob], name, { type: blob.type || 'video/webm' });
+      return !!navigator.canShare({ files: [f] });
+    } catch (e) { return false; }
+  }
+
+  function deliver(blob, name) {
+    lastBlob = blob;
+    closeUrl();
+    var url = URL.createObjectURL(blob);
+    lastUrl = url;
+    var a = document.createElement('a');
+    a.href = url; a.download = name; a.rel = 'noopener';
+    a.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0';
+    document.body.appendChild(a);
+    try { a.click(); } catch (e) { }
+    /* the anchor must outlive the click, and the blob: URL must outlive a slow
+       mobile download — revoking early cancels it on Android */
+    setTimeout(function () { try { a.remove(); } catch (e) { } }, 60000);
+    setTimeout(function () {
+      if (lastUrl !== url) return;
+      closeUrl();
+    }, REVOKE_DELAY);
+  }
+
+  /* one pass of the current template → { ok, blob, mime, size, elapsed } */
+  function recordOnce(cfg) {
+    return new Promise(function (resolve) {
+      var dur = cfg.dur;
+      var stream = null;
+      try { stream = canvas.captureStream(30); } catch (e) { stream = null; }
+      if (!stream || !stream.getVideoTracks || !stream.getVideoTracks().length) {
+        resolve({ ok: false, reason: 'capture-stream' });
+        return;
+      }
+      var make = function () {
+        if (cfg.mime) return new MediaRecorder(stream, { mimeType: cfg.mime, videoBitsPerSecond: 5000000 });
+        return new MediaRecorder(stream);
+      };
+      var rec = null;
+      try { rec = make(); } catch (e) {
+        resolve({ ok: false, reason: 'recorder-init', error: e && e.message });
+        return;
+      }
+      var chunks = [], settled = false, failed = null, started = 0, rafId = 0, toId = 0, lastDraw = 0, frames = 0;
+      var my = { rec: rec, discard: false };
+      recState = my;
+
+      function settle() {
+        if (settled) return;
+        settled = true;
+        cancelAnimationFrame(rafId); clearTimeout(toId);
+        try { stream.getTracks().forEach(function (tr) { tr.stop(); }); } catch (e) { }
+        if (my.discard) { resolve({ ok: false, canceled: true, reason: 'cancel' }); return; }
+        if (failed) { resolve({ ok: false, reason: 'recorder-error', error: failed }); return; }
+        var mime = rec.mimeType || cfg.mime || 'video/webm';
+        var blob = new Blob(chunks, { type: mime.split(';')[0] });
+        if (!blob.size || blob.size < 2048) { resolve({ ok: false, reason: 'empty', size: blob.size }); return; }
+        resolve({ ok: true, blob: blob, size: blob.size, mime: mime, frames: frames, elapsed: Math.max(0, (performance.now() - started) / 1000) });
+      }
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onerror = function (e) { failed = (e && e.error && e.error.name) || 'MediaRecorderError'; try { rec.stop(); } catch (err) { } };
+      rec.onstop = function () { settle(); };
+
+      function step() {
+        if (settled) return;
+        var now = performance.now();
+        var t = Math.min(dur, (now - started) / 1000);
+        if (now - lastDraw >= (1000 / 30) - 2 || t >= dur) {
+          lastDraw = now;
+          st.t = t;
+          try { render(t); } catch (e) { }
+          frames++;
+          setExportUI({ phase: 'render', progress: t / dur, attempt: cfg.attempt });
+        }
+        if (t >= dur) {
+          setTimeout(function () { try { rec.stop(); } catch (e) { } }, 260);
+          return;
+        }
+        schedule();
+      }
+      function schedule() {
+        var fired = false;
+        function once() {
+          if (fired || settled) return;
+          fired = true;
+          cancelAnimationFrame(rafId); clearTimeout(toId);
+          step();
+        }
+        rafId = requestAnimationFrame(once);
+        /* keeps the clock running when rAF is throttled (hidden tab, screen off) */
+        toId = setTimeout(once, 50);
+      }
+
+      try { render(0); } catch (e) { }
+      started = performance.now();
+      try { rec.start(500); } catch (e) {
+        failed = 'start:' + (e && e.message);
+        settle();
+        return;
+      }
+      schedule();
+    });
   }
 
   function startExport() {
@@ -792,69 +959,75 @@ tailwind.config = {
     st.t = 0;
     setPlaying(false);
     exportBox.classList.add('show');
+    exportActions.hidden = true;
+    exportNote.hidden = true;
     btnCancel.hidden = false;
     btnExport.disabled = true;
     setExportUI({ phase: 'render', progress: 0 });
 
     var dur = TPL[st.tpl].dur;
-    var stream = canvas.captureStream(30);
-    var mime = pickMime();
-    var chunks = [];
-    var rec;
-    try {
-      rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5000000 });
-    } catch (e) {
-      st.exporting = false; btnExport.disabled = false;
-      setExportUI({ phase: 'error', error: '녹화기를 시작할 수 없습니다.' });
-      return;
+    speedBeforeExport = st.speed;
+    st.speed = 1; // 녹화는 항상 1x로 (영상 자체가 결과물)
+
+    var mimes = pickMimes();
+    var plan = [];
+    var first = mimes.length ? mimes[0] : null;
+    plan.push({ mime: first });
+    for (var i = 1; i < mimes.length && plan.length < 3; i++) plan.push({ mime: mimes[i] });
+
+    var wakeLock = null;
+    if (navigator.wakeLock && navigator.wakeLock.request) {
+      try { navigator.wakeLock.request('screen').then(function (l) { wakeLock = l; }, function () { }); } catch (e) { }
     }
-    recState = { rec: rec, discard: false, chunks: chunks };
-    rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
-    rec.onstop = function () {
-      stream.getTracks().forEach(function (tr) { try { tr.stop(); } catch (e) { } });
+    function releaseWake() { try { if (wakeLock) wakeLock.release(); } catch (e) { } wakeLock = null; }
+
+    function finish() {
+      releaseWake();
       st.exporting = false;
       btnExport.disabled = false;
       st.speed = speedBeforeExport;
-      if (recState.discard) {
-        setExportUI({ phase: 'cancel', progress: 1 });
-        setTimeout(function () { exportBox.classList.remove('show'); }, 1800);
-        return;
-      }
-      var blob = new Blob(chunks, { type: 'video/webm' });
-      if (blob.size > 1024) {
-        var d = new Date();
-        var p2 = function (n) { return ('0' + n).slice(-2); };
-        var name = 'lemon-motion-' + st.tpl + '-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.webm';
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url; a.download = name;
-        document.body.appendChild(a); a.click();
-        setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 5000);
-        setExportUI({ phase: 'done', progress: 1, size: blob.size });
-        st.t = 0; setPlaying(true);
-      } else {
-        setExportUI({ phase: 'error', error: '녹화 결과가 비어 있습니다.' });
-      }
-      setTimeout(function () { if (!st.exporting) exportBox.classList.remove('show'); }, 4200);
-    };
-
-    render(0);
-    rec.start(400);
-    var t0 = performance.now();
-    speedBeforeExport = st.speed;
-    st.speed = 1; // 녹화는 항상 1x로 (영상 자체가 결과물)
-    function tick(now) {
-      var t = Math.min(dur, (now - t0) / 1000);
-      st.t = t;
-      render(t);
-      setExportUI({ phase: 'render', progress: t / dur });
-      if (t >= dur) {
-        setTimeout(function () { try { rec.stop(); } catch (e) { } }, 240);
-        return;
-      }
-      requestAnimationFrame(tick);
+      setTimeout(function () { if (!st.exporting) exportBox.classList.remove('show'); }, 45000);
     }
-    requestAnimationFrame(tick);
+
+    var attempt = 0;
+    function runNext() {
+      if (attempt >= plan.length) {
+        st.exporting = false; btnExport.disabled = false; st.speed = speedBeforeExport;
+        setExportUI({ phase: 'error', error: '영상을 녹화하지 못했습니다. 다른 브라우저에서 다시 시도해 주세요.' });
+        setTimeout(function () { if (!st.exporting) exportBox.classList.remove('show'); }, 6000);
+        return;
+      }
+      var cfg = plan[attempt++];
+      cfg.dur = dur; cfg.attempt = attempt;
+      recordOnce(cfg).then(function (r) {
+        if (r.canceled) {
+          setExportUI({ phase: 'cancel', progress: 1 });
+          st.exporting = false; btnExport.disabled = false; st.speed = speedBeforeExport;
+          setTimeout(function () { if (!st.exporting) exportBox.classList.remove('show'); }, 1800);
+          return;
+        }
+        if (!r.ok) { runNext(); return; }
+        var mp4 = /mp4/i.test(r.mime);
+        var name = 'lemon-motion-' + st.tpl + '-' + stamp() + (mp4 ? '.mp4' : '.webm');
+        var fix = (window.KM_WEBM && KM_WEBM.fix)
+          ? KM_WEBM.fix(r.blob, { duration: (r.elapsed + 0.1) * 1000, name: name })
+          : Promise.resolve({ blob: r.blob, patched: false, reason: 'no-patcher' });
+        fix.then(function (fx) {
+          var blob = fx.blob || r.blob;
+          deliver(blob, name);
+          var st2 = {
+            phase: 'done', progress: 1, size: blob.size, name: name,
+            url: lastUrl, share: shareSupported(blob, name),
+            seconds: fx.patched ? (fx.seconds || r.elapsed) : r.elapsed,
+            warn: (!fx.patched && !mp4) ? '길이 정보를 채우지 못했습니다.' : ''
+          };
+          setExportUI(st2);
+          finish();
+          st.t = 0; setPlaying(true);
+        });
+      });
+    }
+    runNext();
   }
 
   btnExport.addEventListener('click', startExport);
@@ -862,6 +1035,15 @@ tailwind.config = {
     if (!recState.rec || !st.exporting) return;
     recState.discard = true;
     try { recState.rec.stop(); } catch (e) { }
+  });
+  exportLink.addEventListener('click', function (e) { e.stopPropagation(); });
+  exportShare.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (!lastBlob || !navigator.share) return;
+    var f;
+    try { f = new File([lastBlob], exportLink.download || 'lemon-motion.webm', { type: lastBlob.type || 'video/webm' }); }
+    catch (err) { return; }
+    try { navigator.share({ files: [f] }); } catch (err) { }
   });
 
   /* ---------------- init ---------------- */
