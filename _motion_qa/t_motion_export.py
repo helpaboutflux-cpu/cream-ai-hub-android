@@ -1,8 +1,8 @@
 import asyncio, json, os, subprocess, sys, time
 from playwright.async_api import async_playwright
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(ROOT, "..", "kite-motion", "shots")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(os.path.dirname(ROOT), "kite-motion", "shots")
 FF = "/workspace/.cache/ms-playwright/ffmpeg-1013/ffmpeg-linux"
 
 
